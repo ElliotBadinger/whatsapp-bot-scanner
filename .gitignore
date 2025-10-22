@@ -26,3 +26,4 @@ tmp/
 # WhatsApp session artifacts
 services/wa-client/data/
 
+whatsapp-web.js/
