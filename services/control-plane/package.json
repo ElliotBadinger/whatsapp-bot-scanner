@@ -1,0 +1,27 @@
+{
+  "name": "@wbscanner/control-plane",
+  "version": "0.1.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "ts-node src/index.ts",
+    "test": "echo 'No control-plane tests yet'"
+  },
+  "dependencies": {
+    "@wbscanner/shared": "file:../../packages/shared",
+    "fastify": "^4.27.0",
+    "@fastify/static": "^7.0.4",
+    "ioredis": "^5.4.1",
+    "pg": "^8.11.5",
+    "pino": "^9.4.0",
+    "prom-client": "^15.1.3",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "@types/pg": "^8.10.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4"
+  }
+}

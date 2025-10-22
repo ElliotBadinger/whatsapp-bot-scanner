@@ -1,0 +1,15 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "title": "WBScanner Operational",
+  "panels": [
+    {"type":"stat","title":"Messages Ingested","gridPos":{"x":0,"y":0,"w":6,"h":4},"targets":[{"expr":"sum(increase(wbscanner_messages_ingested_total[5m]))"}]},
+    {"type":"gauge","title":"Cache Hit Ratio","gridPos":{"x":6,"y":0,"w":6,"h":4},"targets":[{"expr":"sum(rate(wbscanner_cache_hits_total[5m]))/(sum(rate(wbscanner_cache_hits_total[5m]))+sum(rate(wbscanner_cache_misses_total[5m])))"}]},
+    {"type":"timeseries","title":"Scan Latency P95","gridPos":{"x":0,"y":4,"w":12,"h":6},"targets":[{"expr":"histogram_quantile(0.95, sum(rate(wbscanner_scan_latency_seconds_bucket[5m])) by (le))"}]},
+    {"type":"stat","title":"VT Submissions","gridPos":{"x":0,"y":10,"w":6,"h":4},"targets":[{"expr":"sum(increase(wbscanner_vt_submissions_total[5m]))"}]},
+    {"type":"stat","title":"GSB Hits","gridPos":{"x":6,"y":10,"w":6,"h":4},"targets":[{"expr":"sum(increase(wbscanner_gsb_hits_total[5m]))"}]}
+  ]
+}
+

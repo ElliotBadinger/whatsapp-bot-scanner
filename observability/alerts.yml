@@ -1,0 +1,18 @@
+groups:
+  - name: wbscanner-alerts
+    rules:
+      - alert: HighScanLatencyP95
+        expr: histogram_quantile(0.95, sum(rate(wbscanner_scan_latency_seconds_bucket[5m])) by (le)) > 15
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "P95 scan latency above 15s"
+      - alert: WAClientDown
+        expr: up{job="wa-client"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "wa-client not scraping"
+
