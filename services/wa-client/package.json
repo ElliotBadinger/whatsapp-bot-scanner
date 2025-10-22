@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "ts-node src/index.ts",
-    "test": "echo 'No wa-client tests yet'"
+    "test": "jest"
   },
   "dependencies": {
     "@wbscanner/shared": "file:../../packages/shared",
@@ -20,8 +20,11 @@
     "rate-limiter-flexible": "^5.0.3"
   },
   "devDependencies": {
+    "@types/jest": "^29.5.12",
     "@types/node": "^20.11.30",
     "@types/qrcode-terminal": "^0.12.2",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.4"
   }

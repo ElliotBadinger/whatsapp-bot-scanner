@@ -18,10 +18,27 @@ export interface ScanResult {
   score: number;
   reasons: string[];
   vt?: any;
-  gsb?: boolean;
+  gsb?: { matches: any[] } | boolean;
+  phishtank?: any;
+  urlhaus?: any;
+  urlscan?: {
+    status?: string;
+    uuid?: string;
+  };
+  whois?: {
+    source?: 'rdap' | 'whoisxml';
+    ageDays?: number;
+    registrar?: string;
+  };
   domainAgeDays?: number;
   redirectChain?: string[];
   cacheTtl?: number;
+  ttlLevel?: Verdict;
+  shortener?: {
+    provider: string;
+    chain: string[];
+  };
+  finalUrlMismatch?: boolean;
 }
 
 export interface GroupSettings {
@@ -33,4 +50,3 @@ export interface GroupSettings {
   quiet_hours?: string; // e.g., "22-07"
   language?: string; // e.g., "en"
 }
-

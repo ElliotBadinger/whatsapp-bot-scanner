@@ -14,6 +14,7 @@ export const config = {
   queues: {
     scanRequest: process.env.SCAN_REQUEST_QUEUE || 'scan:request',
     scanVerdict: process.env.SCAN_VERDICT_QUEUE || 'scan:verdict',
+    urlscan: process.env.SCAN_URLSCAN_QUEUE || 'scan:urlscan',
   },
   vt: {
     apiKey: process.env.VT_API_KEY || '',
@@ -37,6 +38,30 @@ export const config = {
   rdap: {
     timeoutMs: parseInt(process.env.RDAP_TIMEOUT_MS || '5000', 10),
   },
+  urlscan: {
+    enabled: (process.env.URLSCAN_ENABLED || 'true') === 'true',
+    apiKey: process.env.URLSCAN_API_KEY || '',
+    baseUrl: process.env.URLSCAN_BASE_URL || 'https://urlscan.io',
+    visibility: process.env.URLSCAN_VISIBILITY || 'private',
+    tags: (process.env.URLSCAN_TAGS || 'wbscanner').split(',').map(t => t.trim()).filter(Boolean),
+    callbackUrl: process.env.URLSCAN_CALLBACK_URL || '',
+    callbackSecret: process.env.URLSCAN_CALLBACK_SECRET || '',
+    submitTimeoutMs: parseInt(process.env.URLSCAN_SUBMIT_TIMEOUT_MS || '10000', 10),
+    resultPollTimeoutMs: parseInt(process.env.URLSCAN_RESULT_TIMEOUT_MS || '30000', 10),
+    uuidTtlSeconds: parseInt(process.env.URLSCAN_UUID_TTL_SECONDS || '86400', 10),
+    resultTtlSeconds: parseInt(process.env.URLSCAN_RESULT_TTL_SECONDS || '86400', 10),
+    concurrency: parseInt(process.env.URLSCAN_CONCURRENCY || '2', 10),
+  },
+  whoisxml: {
+    enabled: (process.env.WHOISXML_ENABLED || 'true') === 'true',
+    apiKey: process.env.WHOISXML_API_KEY || '',
+    timeoutMs: parseInt(process.env.WHOISXML_TIMEOUT_MS || '5000', 10),
+  },
+  shortener: {
+    unshortenEndpoint: process.env.UNSHORTEN_ENDPOINT || 'https://unshorten.me/json/',
+    unshortenRetries: parseInt(process.env.UNSHORTEN_RETRIES || '1', 10),
+    cacheTtlSeconds: parseInt(process.env.SHORTENER_CACHE_TTL_SECONDS || '86400', 10),
+  },
   orchestrator: {
     concurrency: parseInt(process.env.SCAN_CONCURRENCY || '10', 10),
     expansion: {
@@ -45,8 +70,9 @@ export const config = {
       maxContentLength: parseInt(process.env.URL_MAX_CONTENT_LENGTH || '1048576', 10),
     },
     cacheTtl: {
-      negative: parseInt(process.env.NEGATIVE_CACHE_TTL_SECONDS || '604800', 10),
-      positive: parseInt(process.env.POSITIVE_CACHE_TTL_SECONDS || '259200', 10)
+      benign: parseInt(process.env.CACHE_TTL_BENIGN_SECONDS || '86400', 10),
+      suspicious: parseInt(process.env.CACHE_TTL_SUSPICIOUS_SECONDS || '3600', 10),
+      malicious: parseInt(process.env.CACHE_TTL_MALICIOUS_SECONDS || '900', 10),
     }
   },
   controlPlane: {

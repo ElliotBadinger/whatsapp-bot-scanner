@@ -7,6 +7,9 @@ import {
   logger,
   register,
   metrics,
+  externalLatency,
+  externalErrors,
+  circuitStates,
   normalizeUrl,
   expandUrl,
   urlHash,
@@ -16,22 +19,105 @@ import {
   domainAgeDaysFromRdap,
   extraHeuristics,
   scoreFromSignals,
-  isShortener,
   urlhausLookup,
   phishtankLookup,
+  submitUrlscan,
+  resolveShortener,
+  whoisXmlLookup,
+  CircuitBreaker,
+  CircuitState,
+  withRetry,
 } from '@wbscanner/shared';
-import type { GsbThreatMatch, UrlhausLookupResult, PhishtankLookupResult } from '@wbscanner/shared';
+import type { GsbThreatMatch, UrlhausLookupResult, PhishtankLookupResult, VirusTotalAnalysis, UrlscanSubmissionResponse, WhoisXmlResponse } from '@wbscanner/shared';
 
 const redis = new Redis(config.redisUrl);
 const scanRequestQueue = new Queue(config.queues.scanRequest, { connection: redis });
 const scanVerdictQueue = new Queue(config.queues.scanVerdict, { connection: redis });
+const urlscanQueue = new Queue(config.queues.urlscan, { connection: redis });
 
 const ANALYSIS_TTLS = {
   gsb: 60 * 60,
   phishtank: 60 * 60,
   vt: 60 * 60,
   urlhaus: 60 * 60,
+  urlscan: 60 * 60,
+  whois: 7 * 24 * 60 * 60,
 };
+
+const URLSCAN_UUID_PREFIX = 'urlscan:uuid:';
+const URLSCAN_QUEUED_PREFIX = 'urlscan:queued:';
+const URLSCAN_SUBMITTED_PREFIX = 'urlscan:submitted:';
+const URLSCAN_RESULT_PREFIX = 'urlscan:result:';
+const SHORTENER_CACHE_PREFIX = 'url:shortener:';
+
+const CIRCUIT_DEFAULTS = {
+  failureThreshold: 5,
+  successThreshold: 3,
+  timeoutMs: 30_000,
+  windowMs: 60_000,
+} as const;
+
+const CIRCUIT_LABELS = {
+  gsb: 'google_safe_browsing',
+  phishtank: 'phishtank',
+  urlhaus: 'urlhaus',
+  vt: 'virustotal',
+  urlscan: 'urlscan',
+  whoisxml: 'whoisxml',
+} as const;
+
+function makeCircuit(name: string) {
+  const breaker = new CircuitBreaker({
+    ...CIRCUIT_DEFAULTS,
+    name,
+    onStateChange: (state, from) => {
+      circuitStates.labels(name).set(state);
+      logger.debug({ name, from, to: state }, 'Circuit state change');
+    }
+  });
+  circuitStates.labels(name).set(CircuitState.CLOSED);
+  return breaker;
+}
+
+const gsbCircuit = makeCircuit(CIRCUIT_LABELS.gsb);
+const phishtankCircuit = makeCircuit(CIRCUIT_LABELS.phishtank);
+const urlhausCircuit = makeCircuit(CIRCUIT_LABELS.urlhaus);
+const vtCircuit = makeCircuit(CIRCUIT_LABELS.vt);
+const urlscanCircuit = makeCircuit(CIRCUIT_LABELS.urlscan);
+const whoisCircuit = makeCircuit(CIRCUIT_LABELS.whoisxml);
+
+function recordLatency(service: string, ms?: number) {
+  if (typeof ms === 'number' && ms >= 0) {
+    externalLatency.labels(service).observe(ms / 1000);
+  }
+}
+
+function classifyError(err: unknown): string {
+  const rawCode = (err as any)?.code ?? (err as any)?.statusCode;
+  if (rawCode === 'UND_ERR_HEADERS_TIMEOUT' || rawCode === 'UND_ERR_CONNECT_TIMEOUT') return 'timeout';
+  const codeNum = typeof rawCode === 'string' ? Number(rawCode) : rawCode;
+  if (codeNum === 429) return 'rate_limited';
+  if (codeNum === 408) return 'timeout';
+  if (typeof codeNum === 'number' && codeNum >= 500) return 'server_error';
+  if (typeof codeNum === 'number' && codeNum >= 400) return 'client_error';
+  const message = (err as Error)?.message || '';
+  if (message.includes('Circuit') && message.includes('open')) return 'circuit_open';
+  return 'unknown';
+}
+
+function recordError(service: string, err: unknown) {
+  externalErrors.labels(service, classifyError(err)).inc();
+}
+
+function shouldRetry(err: unknown): boolean {
+  const rawCode = (err as any)?.code ?? (err as any)?.statusCode;
+  if (rawCode === 'UND_ERR_HEADERS_TIMEOUT' || rawCode === 'UND_ERR_CONNECT_TIMEOUT') return true;
+  const codeNum = typeof rawCode === 'string' ? Number(rawCode) : rawCode;
+  if (codeNum === 429) return false;
+  if (codeNum === 408) return true;
+  if (typeof codeNum === 'number' && codeNum >= 500) return true;
+  return !codeNum;
+}
 
 async function getJsonCache<T>(key: string): Promise<T | null> {
   const raw = await redis.get(key);
@@ -52,6 +138,226 @@ type VtStats = ReturnType<typeof vtVerdictStats>;
 type UrlhausResult = UrlhausLookupResult;
 type PhishtankResult = PhishtankLookupResult;
 
+interface GsbFetchResult {
+  matches: GsbMatch[];
+  fromCache: boolean;
+  durationMs: number;
+  error: Error | null;
+}
+
+async function fetchGsbAnalysis(finalUrl: string, hash: string): Promise<GsbFetchResult> {
+  const cacheKey = `url:analysis:${hash}:gsb`;
+  const cached = await getJsonCache<GsbMatch[]>(cacheKey);
+  if (cached) {
+    return { matches: cached, fromCache: true, durationMs: 0, error: null };
+  }
+  try {
+    const result = await gsbCircuit.execute(() =>
+      withRetry(() => gsbLookup([finalUrl]), {
+        retries: 3,
+        baseDelayMs: 1000,
+        factor: 2,
+        retryable: shouldRetry,
+      })
+    );
+    recordLatency(CIRCUIT_LABELS.gsb, result.latencyMs);
+    await setJsonCache(cacheKey, result.matches, ANALYSIS_TTLS.gsb);
+    return {
+      matches: result.matches,
+      fromCache: false,
+      durationMs: result.latencyMs ?? 0,
+      error: null,
+    };
+  } catch (err) {
+    recordError(CIRCUIT_LABELS.gsb, err);
+    logger.warn({ err, url: finalUrl }, 'Google Safe Browsing lookup failed');
+    return { matches: [], fromCache: false, durationMs: 0, error: err as Error };
+  }
+}
+
+interface PhishtankFetchResult {
+  result: PhishtankResult | null;
+  fromCache: boolean;
+  error: Error | null;
+}
+
+async function fetchPhishtank(finalUrl: string, hash: string): Promise<PhishtankFetchResult> {
+  if (!config.phishtank.enabled) {
+    return { result: null, fromCache: true, error: null };
+  }
+  const cacheKey = `url:analysis:${hash}:phishtank`;
+  const cached = await getJsonCache<PhishtankResult>(cacheKey);
+  if (cached) {
+    return { result: cached, fromCache: true, error: null };
+  }
+  try {
+    const result = await phishtankCircuit.execute(() =>
+      withRetry(() => phishtankLookup(finalUrl), {
+        retries: 2,
+        baseDelayMs: 1000,
+        factor: 2,
+        retryable: shouldRetry,
+      })
+    );
+    recordLatency(CIRCUIT_LABELS.phishtank, result.latencyMs);
+    await setJsonCache(cacheKey, result, ANALYSIS_TTLS.phishtank);
+    return { result, fromCache: false, error: null };
+  } catch (err) {
+    recordError(CIRCUIT_LABELS.phishtank, err);
+    logger.warn({ err, url: finalUrl }, 'Phishtank lookup failed');
+    return { result: null, fromCache: false, error: err as Error };
+  }
+}
+
+interface VirusTotalFetchResult {
+  stats?: VtStats;
+  fromCache: boolean;
+  quotaExceeded: boolean;
+  error: Error | null;
+}
+
+async function fetchVirusTotal(finalUrl: string, hash: string): Promise<VirusTotalFetchResult> {
+  if (!config.vt.apiKey) {
+    return { stats: undefined, fromCache: true, quotaExceeded: false, error: null };
+  }
+  const cacheKey = `url:analysis:${hash}:vt`;
+  const cached = await getJsonCache<VtStats>(cacheKey);
+  if (cached) {
+    return { stats: cached, fromCache: true, quotaExceeded: false, error: null };
+  }
+  try {
+    const analysis = await vtCircuit.execute(() =>
+      withRetry(() => vtAnalyzeUrl(finalUrl), {
+        retries: 3,
+        baseDelayMs: 1000,
+        factor: 2,
+        retryable: shouldRetry,
+      })
+    );
+    recordLatency(CIRCUIT_LABELS.vt, analysis.latencyMs);
+    const stats = vtVerdictStats(analysis as VirusTotalAnalysis);
+    if (stats) {
+      await setJsonCache(cacheKey, stats, ANALYSIS_TTLS.vt);
+    }
+    return { stats, fromCache: false, quotaExceeded: false, error: null };
+  } catch (err) {
+    recordError(CIRCUIT_LABELS.vt, err);
+    const quotaExceeded = ((err as any)?.code ?? (err as any)?.statusCode) === 429;
+    if (!quotaExceeded) {
+      logger.warn({ err, url: finalUrl }, 'VirusTotal lookup failed');
+    }
+    return { stats: undefined, fromCache: false, quotaExceeded, error: err as Error };
+  }
+}
+
+interface UrlhausFetchResult {
+  result: UrlhausResult | null;
+  fromCache: boolean;
+  error: Error | null;
+}
+
+async function fetchUrlhaus(finalUrl: string, hash: string): Promise<UrlhausFetchResult> {
+  if (!config.urlhaus.enabled) {
+    return { result: null, fromCache: true, error: null };
+  }
+  const cacheKey = `url:analysis:${hash}:urlhaus`;
+  const cached = await getJsonCache<UrlhausResult>(cacheKey);
+  if (cached) {
+    return { result: cached, fromCache: true, error: null };
+  }
+  try {
+    const result = await urlhausCircuit.execute(() =>
+      withRetry(() => urlhausLookup(finalUrl), {
+        retries: 2,
+        baseDelayMs: 1000,
+        factor: 2,
+        retryable: shouldRetry,
+      })
+    );
+    recordLatency(CIRCUIT_LABELS.urlhaus, result.latencyMs);
+    await setJsonCache(cacheKey, result, ANALYSIS_TTLS.urlhaus);
+    return { result, fromCache: false, error: null };
+  } catch (err) {
+    recordError(CIRCUIT_LABELS.urlhaus, err);
+    logger.warn({ err, url: finalUrl }, 'URLhaus lookup failed');
+    return { result: null, fromCache: false, error: err as Error };
+  }
+}
+
+interface ShortenerCacheEntry {
+  finalUrl: string;
+  provider: string;
+  chain: string[];
+  wasShortened: boolean;
+}
+
+async function resolveShortenerWithCache(url: string, hash: string): Promise<ShortenerCacheEntry | null> {
+  const cacheKey = `${SHORTENER_CACHE_PREFIX}${hash}`;
+  const cached = await getJsonCache<ShortenerCacheEntry>(cacheKey);
+  if (cached) return cached;
+  try {
+    const start = Date.now();
+    const resolved = await resolveShortener(url);
+    recordLatency('shortener', Date.now() - start);
+    if (resolved.wasShortened) {
+      const payload: ShortenerCacheEntry = {
+        finalUrl: resolved.finalUrl,
+        provider: resolved.provider,
+        chain: resolved.chain,
+        wasShortened: true,
+      };
+      await setJsonCache(cacheKey, payload, config.shortener.cacheTtlSeconds);
+      return payload;
+    }
+    return null;
+  } catch (err) {
+    recordError('shortener', err);
+    logger.warn({ err, url }, 'Shortener resolution failed');
+    return null;
+  }
+}
+
+interface DomainIntelResult {
+  ageDays?: number;
+  source: 'rdap' | 'whoisxml' | 'none';
+  registrar?: string;
+}
+
+async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainIntelResult> {
+  const rdapAge = await domainAgeDaysFromRdap(hostname, config.rdap.timeoutMs).catch(() => undefined);
+  if (rdapAge !== undefined) {
+    return { ageDays: rdapAge, source: 'rdap' };
+  }
+  if (!config.whoisxml.enabled || !config.whoisxml.apiKey) {
+    return { ageDays: undefined, source: 'none' };
+  }
+  const cacheKey = `url:analysis:${hash}:whois`;
+  const cached = await getJsonCache<{ ageDays?: number; registrar?: string }>(cacheKey);
+  if (cached) {
+    return { ageDays: cached.ageDays, registrar: cached.registrar, source: 'whoisxml' };
+  }
+  try {
+    const start = Date.now();
+    const response = await whoisCircuit.execute(() =>
+      withRetry(() => whoisXmlLookup(hostname), {
+        retries: 2,
+        baseDelayMs: 1000,
+        factor: 2,
+        retryable: shouldRetry,
+      })
+    );
+    recordLatency(CIRCUIT_LABELS.whoisxml, Date.now() - start);
+    const ageDays = response?.record?.estimatedDomainAgeDays;
+    const registrar = response?.record?.registrarName;
+    await setJsonCache(cacheKey, { ageDays, registrar }, ANALYSIS_TTLS.whois);
+    return { ageDays, registrar, source: 'whoisxml' };
+  } catch (err) {
+    recordError(CIRCUIT_LABELS.whoisxml, err);
+    logger.warn({ err, hostname }, 'WhoisXML lookup failed');
+    return { ageDays: undefined, source: 'none' };
+  }
+}
+
 const pg = new PgClient({
   host: config.postgres.host,
   port: config.postgres.port,
@@ -67,6 +373,59 @@ async function main() {
   app.get('/metrics', async (_req, reply) => {
     reply.header('Content-Type', register.contentType);
     return register.metrics();
+  });
+
+  app.post('/urlscan/callback', async (req, reply) => {
+    if (!config.urlscan.enabled) {
+      reply.code(503).send({ ok: false, error: 'urlscan disabled' });
+      return;
+    }
+    if (config.urlscan.callbackSecret) {
+      const headers = req.headers as Record<string, string | undefined>;
+      const headerToken = headers['x-urlscan-secret'] || headers['x-urlscan-token'];
+      const queryToken = (req.query as Record<string, string | undefined> | undefined)?.token;
+      if (headerToken !== config.urlscan.callbackSecret && queryToken !== config.urlscan.callbackSecret) {
+        reply.code(401).send({ ok: false, error: 'unauthorized' });
+        return;
+      }
+    }
+    const body = req.body as any;
+    const uuid = body?.uuid || body?.task?.uuid;
+    if (!uuid) {
+      reply.code(400).send({ ok: false, error: 'missing uuid' });
+      return;
+    }
+    let urlHashValue = await redis.get(`${URLSCAN_UUID_PREFIX}${uuid}`);
+    if (!urlHashValue) {
+      const taskUrl: string | undefined = body?.task?.url;
+      if (taskUrl) {
+        const normalized = normalizeUrl(taskUrl);
+        if (normalized) {
+          urlHashValue = urlHash(normalized);
+        }
+      }
+    }
+    if (!urlHashValue) {
+      logger.warn({ uuid }, 'urlscan callback without known url hash');
+      reply.code(202).send({ ok: true });
+      return;
+    }
+
+    await redis.set(
+      `${URLSCAN_RESULT_PREFIX}${urlHashValue}`,
+      JSON.stringify(body),
+      'EX',
+      config.urlscan.resultTtlSeconds
+    );
+
+    await pg.query(
+      `UPDATE scans SET urlscan_status=$1, urlscan_completed_at=now(), urlscan_result=$2 WHERE url_hash=$3`,
+      ['completed', JSON.stringify(body), urlHashValue]
+    ).catch((err: Error) => {
+      logger.error({ err }, 'failed to persist urlscan callback');
+    });
+
+    reply.send({ ok: true });
   });
 
   new Worker(config.queues.scanRequest, async (job) => {
@@ -86,134 +445,139 @@ async function main() {
       }
       metrics.cacheMiss.inc();
 
-      const exp = await expandUrl(norm, config.orchestrator.expansion);
+      const shortenerInfo = await resolveShortenerWithCache(norm, h);
+      const preExpansionUrl = shortenerInfo?.finalUrl ?? norm;
+      const exp = await expandUrl(preExpansionUrl, config.orchestrator.expansion);
       const finalUrl = exp.finalUrl;
-      const redirectChain = exp.chain;
       const finalUrlObj = new URL(finalUrl);
-      const heur = extraHeuristics(finalUrlObj);
-      const shortener = isShortener(finalUrlObj.hostname);
-      const domainAgeDays = await domainAgeDaysFromRdap(finalUrlObj.hostname, config.rdap.timeoutMs).catch(() => undefined);
+      const redirectChain = [...(shortenerInfo?.chain ?? []), ...exp.chain.filter(item => !(shortenerInfo?.chain ?? []).includes(item))];
+      const heurSignals = extraHeuristics(finalUrlObj);
+      const domainIntel = await fetchDomainIntel(finalUrlObj.hostname, h);
+      const domainAgeDays = domainIntel.ageDays;
+      const wasShortened = Boolean(shortenerInfo?.wasShortened);
+      const finalUrlMismatch = wasShortened && new URL(norm).hostname !== finalUrlObj.hostname;
 
-      // Google Safe Browsing lookup (primary blocklist)
-      let gsbMatches: GsbMatch[] = [];
-      let gsbHit = false;
-      let gsbDuration = 0;
-      const gsbCacheKey = `url:analysis:${h}:gsb`;
-      const cachedGsb = await getJsonCache<GsbMatch[]>(gsbCacheKey);
-      let gsbLookupError: Error | null = null;
-      let gsbFromCache = false;
-      if (cachedGsb) {
-        gsbMatches = cachedGsb;
-        gsbFromCache = true;
-      } else {
-        const gsbStart = Date.now();
-        try {
-          const gsbResult = await gsbLookup([finalUrl]);
-          gsbDuration = Date.now() - gsbStart;
-          gsbMatches = gsbResult.matches;
-          await setJsonCache(gsbCacheKey, gsbMatches, ANALYSIS_TTLS.gsb);
-        } catch (err) {
-          gsbLookupError = err as Error;
-          logger.warn({ err: gsbLookupError, url: finalUrl }, 'Google Safe Browsing lookup failed');
-        }
-      }
-      gsbHit = gsbMatches.length > 0;
+      const gsbResult = await fetchGsbAnalysis(finalUrl, h);
+      const gsbMatches = gsbResult.matches;
+      const gsbHit = gsbMatches.length > 0;
       if (gsbHit) metrics.gsbHits.inc();
 
       const shouldFallbackToPhishtank =
-        !gsbFromCache &&
-        (gsbLookupError !== null || !config.gsb.apiKey || gsbDuration > config.gsb.fallbackLatencyMs);
-      let phishtankResult: PhishtankResult | null | undefined;
+        !gsbResult.fromCache &&
+        (gsbResult.error !== null || !config.gsb.apiKey || gsbResult.durationMs > config.gsb.fallbackLatencyMs);
+      let phishtankResult: PhishtankResult | null = null;
       if (shouldFallbackToPhishtank) {
-        const phishCacheKey = `url:analysis:${h}:phishtank`;
-        phishtankResult = await getJsonCache<PhishtankResult>(phishCacheKey);
-        if (!phishtankResult) {
-          try {
-            phishtankResult = await phishtankLookup(finalUrl);
-            await setJsonCache(phishCacheKey, phishtankResult, ANALYSIS_TTLS.phishtank);
-          } catch (err) {
-            logger.warn({ err, url: finalUrl }, 'Phishtank lookup failed');
-          }
-        }
+        const phishResponse = await fetchPhishtank(finalUrl, h);
+        phishtankResult = phishResponse.result;
       }
       const phishtankHit = Boolean(phishtankResult?.verified);
 
       let vtStats: VtStats | undefined;
-      let vtError: Error | null = null;
       let vtQuotaExceeded = false;
-      if (!gsbHit) {
-        const vtCacheKey = `url:analysis:${h}:vt`;
-        vtStats = (await getJsonCache<VtStats>(vtCacheKey)) ?? undefined;
-        if (!vtStats) {
+      let vtError: Error | null = null;
+      if (!gsbHit && !phishtankHit) {
+        const vtResponse = await fetchVirusTotal(finalUrl, h);
+        vtStats = vtResponse.stats;
+        vtQuotaExceeded = vtResponse.quotaExceeded;
+        vtError = vtResponse.error;
+        if (!vtResponse.fromCache && !vtResponse.error) {
           metrics.vtSubmissions.inc();
-          try {
-            const vt = await vtAnalyzeUrl(finalUrl);
-            vtStats = vtVerdictStats(vt);
-            if (vtStats) {
-              await setJsonCache(vtCacheKey, vtStats, ANALYSIS_TTLS.vt);
-            }
-          } catch (err) {
-            vtError = err as Error;
-            const code = (vtError as any)?.code;
-            if (code === 429) {
-              vtQuotaExceeded = true;
-            } else {
-              logger.warn({ err: vtError, url: finalUrl }, 'VirusTotal lookup failed');
-            }
-          }
         }
       }
 
-      let urlhausResult: UrlhausResult | null | undefined;
+      let urlhausResult: UrlhausResult | null = null;
       const shouldQueryUrlhaus =
-        (!config.vt.apiKey && !gsbHit) ||
-        vtQuotaExceeded ||
-        (!gsbHit && !vtStats && vtError !== null);
+        !gsbHit && (
+          !config.vt.apiKey ||
+          vtQuotaExceeded ||
+          vtError !== null ||
+          !vtStats
+        );
       if (shouldQueryUrlhaus) {
-        const urlhausCacheKey = `url:analysis:${h}:urlhaus`;
-        urlhausResult = await getJsonCache<UrlhausResult>(urlhausCacheKey);
-        if (!urlhausResult) {
-          try {
-            urlhausResult = await urlhausLookup(finalUrl);
-            await setJsonCache(urlhausCacheKey, urlhausResult, ANALYSIS_TTLS.urlhaus);
-          } catch (err) {
-            logger.warn({ err, url: finalUrl }, 'URLhaus lookup failed');
-          }
-        }
+        const urlhausResponse = await fetchUrlhaus(finalUrl, h);
+        urlhausResult = urlhausResponse.result;
       }
 
       const signals = {
-        gsbHit,
-        gsbMatches,
-        phishtankHit,
+        gsbThreatTypes: gsbMatches.map(m => m.threatType),
+        phishtankVerified: Boolean(phishtankResult?.verified),
         urlhausListed: Boolean(urlhausResult?.listed),
-        vt: vtStats,
+        vtMalicious: vtStats?.malicious,
+        vtSuspicious: vtStats?.suspicious,
+        vtHarmless: vtStats?.harmless,
         domainAgeDays,
-        excessiveRedirects: redirectChain.length > 3,
-        shortener,
-        ...heur
+        redirectCount: redirectChain.length,
+        wasShortened,
+        finalUrlMismatch,
+        ...heurSignals,
       };
-      const { verdict, score, reasons } = scoreFromSignals(signals);
+      const verdictResult = scoreFromSignals(signals);
+      const verdict = verdictResult.level;
+      const { score, reasons } = verdictResult;
+
+      const blocklistHit = gsbHit || phishtankHit || Boolean(urlhausResult?.listed);
+
+      let enqueuedUrlscan = false;
+      if (config.urlscan.enabled && config.urlscan.apiKey && verdict === 'suspicious') {
+        const queued = await redis.set(
+          `${URLSCAN_QUEUED_PREFIX}${h}`,
+          '1',
+          'EX',
+          config.urlscan.uuidTtlSeconds,
+          'NX'
+        );
+        if (queued) {
+          enqueuedUrlscan = true;
+          await urlscanQueue.add(
+            'submit',
+            {
+              url: finalUrl,
+              urlHash: h,
+            },
+            {
+              removeOnComplete: true,
+              removeOnFail: 500,
+              attempts: 1,
+            }
+          );
+        }
+      }
+
+      const ttlByLevel = config.orchestrator.cacheTtl as Record<string, number>;
+      const ttl = ttlByLevel[verdict] ?? verdictResult.cacheTtl ?? 3600;
 
       const res = {
-        messageId, chatId, url: finalUrl, normalizedUrl: finalUrl, urlHash: h,
-        verdict, score, reasons,
+        messageId,
+        chatId,
+        url: finalUrl,
+        normalizedUrl: finalUrl,
+        urlHash: h,
+        verdict,
+        score,
+        reasons,
         gsb: { matches: gsbMatches },
         phishtank: phishtankResult,
         urlhaus: urlhausResult,
         vt: vtStats,
+        urlscan: enqueuedUrlscan ? { status: 'queued' } : undefined,
+        whois: domainIntel,
         domainAgeDays,
-        redirectChain
+        redirectChain,
+        ttlLevel: verdict,
+        cacheTtl: ttl,
+        shortener: shortenerInfo ? { provider: shortenerInfo.provider, chain: shortenerInfo.chain } : undefined,
+        finalUrlMismatch,
       };
-
-      const ttl = verdict === 'benign' ? config.orchestrator.cacheTtl.positive : config.orchestrator.cacheTtl.negative;
       await redis.set(cacheKey, JSON.stringify(res), 'EX', ttl);
 
-      await pg.query(`INSERT INTO scans (url_hash, normalized_url, verdict, score, reasons, vt_stats, gsafebrowsing_hit, domain_age_days, redirect_chain_summary, cache_ttl, source_kind)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-        ON CONFLICT (url_hash) DO UPDATE SET last_seen_at=now(), verdict=EXCLUDED.verdict, score=EXCLUDED.score, reasons=EXCLUDED.reasons, vt_stats=EXCLUDED.vt_stats, gsafebrowsing_hit=EXCLUDED.gsafebrowsing_hit, domain_age_days=EXCLUDED.domain_age_days, redirect_chain_summary=EXCLUDED.redirect_chain_summary, cache_ttl=EXCLUDED.cache_ttl`,
-        [h, finalUrl, verdict, score, JSON.stringify(reasons), JSON.stringify(vtStats || {}), gsbHit || phishtankHit, domainAgeDays ?? null, JSON.stringify(redirectChain), ttl, 'wa']
+      await pg.query(`INSERT INTO scans (url_hash, normalized_url, verdict, score, reasons, vt_stats, gsafebrowsing_hit, domain_age_days, redirect_chain_summary, cache_ttl, source_kind, urlscan_status, whois_source, whois_registrar, shortener_provider)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        ON CONFLICT (url_hash) DO UPDATE SET last_seen_at=now(), verdict=EXCLUDED.verdict, score=EXCLUDED.score, reasons=EXCLUDED.reasons, vt_stats=EXCLUDED.vt_stats, gsafebrowsing_hit=EXCLUDED.gsafebrowsing_hit, domain_age_days=EXCLUDED.domain_age_days, redirect_chain_summary=EXCLUDED.redirect_chain_summary, cache_ttl=EXCLUDED.cache_ttl, urlscan_status=COALESCE(EXCLUDED.urlscan_status, scans.urlscan_status), whois_source=COALESCE(EXCLUDED.whois_source, scans.whois_source), whois_registrar=COALESCE(EXCLUDED.whois_registrar, scans.whois_registrar), shortener_provider=COALESCE(EXCLUDED.shortener_provider, scans.shortener_provider)`,
+        [h, finalUrl, verdict, score, JSON.stringify(reasons), JSON.stringify(vtStats || {}), blocklistHit, domainAgeDays ?? null, JSON.stringify(redirectChain), ttl, 'wa', enqueuedUrlscan ? 'queued' : null, domainIntel.source === 'none' ? null : domainIntel.source, domainIntel.registrar ?? null, shortenerInfo?.provider ?? null]
       );
+      if (enqueuedUrlscan) {
+        await pg.query('UPDATE scans SET urlscan_status=$1 WHERE url_hash=$2', ['queued', h]).catch(() => undefined);
+      }
       await pg.query(`INSERT INTO messages (chat_id, message_id, url_hash, verdict, posted_at)
         VALUES ($1,$2,$3,$4,now()) ON CONFLICT DO NOTHING`, [chatId, messageId, h, verdict]);
 
@@ -224,7 +588,69 @@ async function main() {
     }
   }, { connection: redis, concurrency: config.orchestrator.concurrency });
 
+  if (config.urlscan.enabled && config.urlscan.apiKey) {
+    new Worker(config.queues.urlscan, async (job) => {
+      const { url, urlHash: urlHashValue } = job.data as { url: string; urlHash: string };
+      try {
+        const submission: UrlscanSubmissionResponse = await urlscanCircuit.execute(() =>
+          withRetry(
+            () =>
+              submitUrlscan(url, {
+                callbackUrl: config.urlscan.callbackUrl || undefined,
+                visibility: config.urlscan.visibility,
+                tags: config.urlscan.tags,
+              }),
+            {
+              retries: 2,
+              baseDelayMs: 1000,
+              factor: 2,
+              retryable: shouldRetry,
+            }
+          )
+        );
+        recordLatency(CIRCUIT_LABELS.urlscan, submission.latencyMs);
+        if (submission.uuid) {
+          await redis.set(
+            `${URLSCAN_UUID_PREFIX}${submission.uuid}`,
+            urlHashValue,
+            'EX',
+            config.urlscan.uuidTtlSeconds
+          );
+          await redis.set(
+            `${URLSCAN_SUBMITTED_PREFIX}${urlHashValue}`,
+            submission.uuid,
+            'EX',
+            config.urlscan.uuidTtlSeconds
+          );
+          await pg.query(
+            `UPDATE scans SET urlscan_uuid=$1, urlscan_status=$2, urlscan_submitted_at=now(), urlscan_result_url=$3 WHERE url_hash=$4`,
+            [submission.uuid, 'submitted', submission.result ?? null, urlHashValue]
+          );
+        }
+      } catch (err) {
+        recordError(CIRCUIT_LABELS.urlscan, err);
+        logger.error({ err, url }, 'urlscan submission failed');
+        await pg.query(
+          `UPDATE scans SET urlscan_status=$1, urlscan_completed_at=now() WHERE url_hash=$2`,
+          ['failed', urlHashValue]
+        ).catch(() => undefined);
+        throw err;
+      }
+    }, { connection: redis, concurrency: config.urlscan.concurrency });
+  }
+
   await app.listen({ host: '0.0.0.0', port: 3001 });
 }
 
-main().catch(err => { logger.error(err, 'Fatal in orchestrator'); process.exit(1); });
+if (process.env.NODE_ENV !== 'test') {
+  main().catch(err => { logger.error(err, 'Fatal in orchestrator'); process.exit(1); });
+}
+
+export const __testables = {
+  fetchGsbAnalysis,
+  fetchPhishtank,
+  fetchVirusTotal,
+  fetchUrlhaus,
+  shouldRetry,
+  classifyError,
+};

@@ -10,10 +10,11 @@ export interface GsbThreatMatch {
 
 export interface GsbLookupResult {
   matches: GsbThreatMatch[];
+  latencyMs: number;
 }
 
 export async function gsbLookup(urls: string[], timeoutMs = config.gsb.timeoutMs): Promise<GsbLookupResult> {
-  if (!config.gsb.apiKey || urls.length === 0) return { matches: [] };
+  if (!config.gsb.apiKey || urls.length === 0) return { matches: [], latencyMs: 0 };
   const body = {
     client: { clientId: 'wbscanner', clientVersion: '0.1' },
     threatInfo: {
@@ -23,6 +24,7 @@ export async function gsbLookup(urls: string[], timeoutMs = config.gsb.timeoutMs
       threatEntries: urls.map(u => ({ url: u }))
     }
   };
+  const start = Date.now();
   const res = await request(`https://safebrowsing.googleapis.com/v4/threatMatches:find?key=${config.gsb.apiKey}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -44,5 +46,5 @@ export async function gsbLookup(urls: string[], timeoutMs = config.gsb.timeoutMs
         threat: match.threat?.url ?? match.threat ?? ''
       }))
     : [];
-  return { matches };
+  return { matches, latencyMs: Date.now() - start };
 }

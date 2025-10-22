@@ -15,19 +15,19 @@
 - Tasks:
 - [x] URLhaus integration
 - [x] Phishtank integration
-- [ ] urlscan.io integration
-- [ ] WhoisXML integration
-- [ ] Shortener expansion pipeline
-- [ ] Circuit breaker module + instrumentation
-- [ ] Scoring policy alignment (0-15 scale)
-- [ ] Caching strategy refactor
+- [x] urlscan.io integration
+- [x] WhoisXML integration
+- [x] Shortener expansion pipeline
+- [x] Circuit breaker module + instrumentation
+- [x] Scoring policy alignment (0-15 scale)
+- [x] Caching strategy refactor
 - [ ] Security hardening (SSRF, rate limiting, containers)
 - [ ] Observability expansion (metrics, logs, dashboard, alerts)
 - [ ] LLM explainability feature flag
 
 ## Phase 3: Testing 📋
-- [ ] Unit test suite expansion (shared + services)
-- [ ] Integration tests with API mocks
+- [x] Unit test suite expansion (shared + services)
+- [x] Integration tests with API mocks
 - [ ] E2E WhatsApp/control-plane flows
 - [ ] Load testing (k6) + long soak
 - [ ] Manual validation script (20 scenarios)

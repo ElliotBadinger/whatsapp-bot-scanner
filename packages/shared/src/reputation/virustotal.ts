@@ -1,7 +1,13 @@
 import { request } from 'undici';
 import { config } from '../config';
 
-export async function vtAnalyzeUrl(url: string): Promise<any> {
+export interface VirusTotalAnalysis {
+  data?: any;
+  latencyMs?: number;
+  disabled?: boolean;
+}
+
+export async function vtAnalyzeUrl(url: string): Promise<VirusTotalAnalysis> {
   if (!config.vt.apiKey) return { disabled: true };
   const submit = await request('https://www.virustotal.com/api/v3/urls', {
     method: 'POST',
@@ -44,11 +50,12 @@ export async function vtAnalyzeUrl(url: string): Promise<any> {
     if (status !== 'queued') break;
     await new Promise(r => setTimeout(r, 2000));
   }
-  return analysis;
+  return { data: analysis, latencyMs: Date.now() - started };
 }
 
-export function vtVerdictStats(analysis: any): { malicious: number; suspicious: number; harmless: number } | undefined {
-  const st = analysis?.data?.attributes?.stats;
+export function vtVerdictStats(analysis: VirusTotalAnalysis | any): { malicious: number; suspicious: number; harmless: number } | undefined {
+  if (analysis?.disabled) return undefined;
+  const st = analysis?.data?.data?.attributes?.stats ?? analysis?.data?.attributes?.stats;
   if (!st) return undefined;
   return {
     malicious: st.malicious || 0,

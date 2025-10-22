@@ -106,7 +106,7 @@ function redactDomain(u: string) {
   try { const url = new URL(u); return url.hostname.replace(/\./g, '[.]'); } catch { return u; }
 }
 
-function formatGroupVerdict(verdict: string, reasons: string[], url: string) {
+export function formatGroupVerdict(verdict: string, reasons: string[], url: string) {
   const level = verdict.toUpperCase();
   const domain = redactDomain(url);
   let advice = 'Use caution.';
@@ -116,7 +116,7 @@ function formatGroupVerdict(verdict: string, reasons: string[], url: string) {
   return `Link scan: ${level}\nDomain: ${domain}\n${advice}${reasonsStr ? `\nWhy: ${reasonsStr}` : ''}`;
 }
 
-async function handleAdminCommand(client: Client, msg: Message) {
+export async function handleAdminCommand(client: Client, msg: Message) {
   const chat = await msg.getChat();
   if (!(chat as GroupChat).isGroup) return;
   const gc = chat as GroupChat;
@@ -148,7 +148,9 @@ async function handleAdminCommand(client: Client, msg: Message) {
   }
 }
 
-main().catch(err => {
-  logger.error(err, 'Fatal in wa-client');
-  process.exit(1);
-});
+if (process.env.NODE_ENV !== 'test') {
+  main().catch(err => {
+    logger.error(err, 'Fatal in wa-client');
+    process.exit(1);
+  });
+}

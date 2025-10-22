@@ -9,10 +9,12 @@ export interface UrlhausLookupResult {
   lastSeen?: string;
   reporter?: string;
   blacklists?: string[];
+  latencyMs?: number;
 }
 
 export async function urlhausLookup(url: string, timeoutMs = config.urlhaus.timeoutMs): Promise<UrlhausLookupResult> {
-  if (!config.urlhaus.enabled) return { listed: false };
+  if (!config.urlhaus.enabled) return { listed: false, latencyMs: 0 };
+  const start = Date.now();
   const res = await request('https://urlhaus-api.abuse.ch/v1/url/', {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
@@ -39,11 +41,12 @@ export async function urlhausLookup(url: string, timeoutMs = config.urlhaus.time
       firstSeen: json.date_added ?? json.firstseen ?? undefined,
       lastSeen: json.last_seen ?? undefined,
       reporter: json.reporter ?? undefined,
-      blacklists: Array.isArray(json.blacklists) ? json.blacklists : undefined
+      blacklists: Array.isArray(json.blacklists) ? json.blacklists : undefined,
+      latencyMs: Date.now() - start
     };
   }
   if (json?.query_status === 'no_results') {
-    return { listed: false };
+    return { listed: false, latencyMs: Date.now() - start };
   }
   // Unknown response – treat as error to trigger fallback handling
   const err = new Error('URLhaus unexpected response');

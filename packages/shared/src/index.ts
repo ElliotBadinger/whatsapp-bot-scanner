@@ -9,4 +9,8 @@ export * from './reputation/gsb';
 export * from './reputation/rdap';
 export * from './reputation/urlhaus';
 export * from './reputation/phishtank';
+export * from './reputation/urlscan';
+export * from './reputation/whoisxml';
+export * from './circuit-breaker';
+export * from './url-shortener';
 export * from './types';

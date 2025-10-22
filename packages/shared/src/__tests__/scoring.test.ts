@@ -1,12 +1,27 @@
 import { scoreFromSignals } from '../scoring';
 
-test('gsb hit is malicious', () => {
-  const { verdict } = scoreFromSignals({ gsbHit: true });
-  expect(verdict).toBe('malicious');
+test('gsb malware threat is malicious', () => {
+  const result = scoreFromSignals({ gsbThreatTypes: ['MALWARE'] });
+  expect(result.level).toBe('malicious');
+  expect(result.score).toBeGreaterThanOrEqual(10);
 });
 
 test('young domain suspicious', () => {
-  const { verdict } = scoreFromSignals({ domainAgeDays: 3 });
-  expect(verdict).toBe('suspicious');
+  const result = scoreFromSignals({ domainAgeDays: 3 });
+  expect(result.level).toBe('suspicious');
 });
 
+test('multiple blocklists escalate to malicious', () => {
+  const result = scoreFromSignals({
+    gsbThreatTypes: ['PHISHING'],
+    phishtankVerified: true,
+    urlhausListed: true,
+  });
+  expect(result.level).toBe('malicious');
+  expect(result.score).toBeGreaterThanOrEqual(10);
+});
+
+test('final url mismatch adds risk', () => {
+  const result = scoreFromSignals({ finalUrlMismatch: true });
+  expect(result.score).toBeGreaterThanOrEqual(2);
+});

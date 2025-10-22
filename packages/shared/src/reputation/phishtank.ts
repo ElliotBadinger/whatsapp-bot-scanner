@@ -9,11 +9,12 @@ export interface PhishtankLookupResult {
   phishId?: number;
   submissionTime?: string;
   detailsUrl?: string;
+  latencyMs?: number;
 }
 
 export async function phishtankLookup(url: string, timeoutMs = config.phishtank.timeoutMs): Promise<PhishtankLookupResult> {
   if (!config.phishtank.enabled) {
-    return { inDatabase: false, verified: false };
+    return { inDatabase: false, verified: false, latencyMs: 0 };
   }
   const params = new URLSearchParams({
     url,
@@ -22,6 +23,7 @@ export async function phishtankLookup(url: string, timeoutMs = config.phishtank.
     response: 'json'
   });
 
+  const start = Date.now();
   const res = await request('https://checkurl.phishtank.com/checkurl/', {
     method: 'POST',
     headers: {
@@ -47,7 +49,7 @@ export async function phishtankLookup(url: string, timeoutMs = config.phishtank.
   const json: any = await res.body.json();
   const results = json?.results;
   if (!results) {
-    return { inDatabase: false, verified: false };
+    return { inDatabase: false, verified: false, latencyMs: Date.now() - start };
   }
   const inDatabase = Boolean(results.in_database);
   const verified = inDatabase && Boolean(results.verified);
@@ -58,6 +60,7 @@ export async function phishtankLookup(url: string, timeoutMs = config.phishtank.
     url: results.url ?? undefined,
     phishId: results.phish_id ?? undefined,
     submissionTime: results.submission_time ?? undefined,
-    detailsUrl: results.phishtank_url ?? undefined
+    detailsUrl: results.phishtank_url ?? undefined,
+    latencyMs: Date.now() - start
   };
 }

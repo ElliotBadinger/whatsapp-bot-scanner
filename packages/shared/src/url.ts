@@ -4,9 +4,9 @@ import { isPrivateHostname } from './ssrf';
 import { request } from 'undici';
 import punycode from 'punycode';
 import { parse } from 'tldts';
+import { isKnownShortener } from './url-shortener';
 
 const TRACKING_PARAMS = new Set(['utm_source','utm_medium','utm_campaign','utm_term','utm_content','gclid','fbclid','mc_cid','mc_eid','vero_conv','vero_id']);
-const SHORTENERS = new Set(['bit.ly','goo.gl','t.co','tinyurl.com','ow.ly','is.gd','buff.ly','adf.ly','rebrand.ly','lnkd.in','rb.gy','s.id']);
 
 export function extractUrls(text: string): string[] {
   if (!text) return [];
@@ -80,6 +80,5 @@ export function isSuspiciousTld(hostname: string): boolean {
 }
 
 export function isShortener(hostname: string): boolean {
-  return SHORTENERS.has(hostname.toLowerCase());
+  return isKnownShortener(hostname);
 }
-

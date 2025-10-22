@@ -43,10 +43,31 @@ export const metrics = {
   })
 };
 
+export const externalLatency = new client.Histogram({
+  name: 'wbscanner_external_api_latency_seconds',
+  help: 'External API latency by service',
+  buckets: [0.1, 0.25, 0.5, 1, 2, 5, 10],
+  labelNames: ['service'],
+  registers: [register],
+});
+
+export const externalErrors = new client.Counter({
+  name: 'wbscanner_external_api_errors_total',
+  help: 'External API errors by service and type',
+  labelNames: ['service', 'reason'],
+  registers: [register],
+});
+
+export const circuitStates = new client.Gauge({
+  name: 'wbscanner_circuit_breaker_state',
+  help: 'Circuit breaker state per external service (0=closed,1=open,2=half-open)',
+  labelNames: ['service'],
+  registers: [register],
+});
+
 export function metricsRoute() {
   return async (_req: any, res: any) => {
     res.header('Content-Type', register.contentType);
     res.send(await register.metrics());
   };
 }
-
