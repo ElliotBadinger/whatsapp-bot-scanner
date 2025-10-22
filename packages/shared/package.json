@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "bullmq": "^5.7.8",
-    "dotenv": "^16.4.5",
+    "dotenv": "^17.2.3",
     "fastify": "^4.27.0",
     "ioredis": "^5.4.1",
     "ipaddr.js": "^2.2.0",
