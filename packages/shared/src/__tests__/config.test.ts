@@ -17,8 +17,6 @@ describe('queue configuration validation', () => {
       expect(config.queues.scanRequest).toBe('scan-request');
       expect(config.queues.scanVerdict).toBe('scan-verdict');
       expect(config.queues.urlscan).toBe('scan-urlscan');
-      expect(config.vt.requestsPerMinute).toBe(4);
-      expect(config.vt.requestJitterMs).toBe(500);
     });
   });
 
@@ -32,19 +30,6 @@ describe('queue configuration validation', () => {
         require(CONFIG_PATH);
       });
     }).toThrow(/must not contain ':'/);
-  });
-
-  it('falls back to defaults when VT rate configs invalid', () => {
-    process.env.URLSCAN_CALLBACK_SECRET = 'test-secret';
-    process.env.VT_REQUESTS_PER_MINUTE = '-1';
-    process.env.VT_REQUEST_JITTER_MS = '-100';
-    process.env.CONTROL_PLANE_API_TOKEN = 'test-token';
-
-    jest.isolateModules(() => {
-      const { config } = require(CONFIG_PATH) as typeof import('../config');
-      expect(config.vt.requestsPerMinute).toBe(4);
-      expect(config.vt.requestJitterMs).toBe(500);
-    });
   });
 
   it('throws when urlscan enabled without callback secret', () => {

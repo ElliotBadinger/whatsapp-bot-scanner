@@ -2,8 +2,6 @@ import Fastify from 'fastify';
 import Redis from 'ioredis';
 import { Queue, Worker } from 'bullmq';
 import { Client as PgClient } from 'pg';
-import { RateLimiterRedis, RateLimiterRes } from 'rate-limiter-flexible';
-import { request as undiciRequest } from 'undici';
 import {
   config,
   logger,
@@ -13,6 +11,8 @@ import {
   externalErrors,
   circuitStates,
   rateLimiterDelay,
+  circuitBreakerTransitionCounter,
+  queueDepthGauge,
   normalizeUrl,
   expandUrl,
   urlHash,
@@ -27,9 +27,12 @@ import {
   submitUrlscan,
   resolveShortener,
   whoisXmlLookup,
+  disableWhoisXmlForMonth,
   CircuitBreaker,
   CircuitState,
   withRetry,
+  QuotaExceededError,
+  detectHomoglyphs,
 } from '@wbscanner/shared';
 import {
   checkBlocklistsWithRedundancy,
@@ -38,22 +41,12 @@ import {
   type PhishtankFetchResult,
 } from './blocklists';
 import type { GsbThreatMatch, UrlhausLookupResult, PhishtankLookupResult, VirusTotalAnalysis, UrlscanSubmissionResponse, WhoisXmlResponse } from '@wbscanner/shared';
+import { downloadUrlscanArtifacts } from './urlscan-artifacts';
 
 const redis = new Redis(config.redisUrl);
 const scanRequestQueue = new Queue(config.queues.scanRequest, { connection: redis });
 const scanVerdictQueue = new Queue(config.queues.scanVerdict, { connection: redis });
 const urlscanQueue = new Queue(config.queues.urlscan, { connection: redis });
-
-let vtRateLimiter: RateLimiterRedis | null = config.vt.requestsPerMinute > 0
-  ? new RateLimiterRedis({
-      storeClient: redis,
-      keyPrefix: 'vt_rate',
-      points: config.vt.requestsPerMinute,
-      duration: 60,
-      blockDuration: 60,
-    })
-  : null;
-const defaultVtRateLimiter = vtRateLimiter;
 
 const ANALYSIS_TTLS = {
   gsb: 60 * 60,
@@ -92,6 +85,7 @@ function makeCircuit(name: string) {
     name,
     onStateChange: (state, from) => {
       circuitStates.labels(name).set(state);
+      circuitBreakerTransitionCounter.labels(name, String(from ?? ''), String(state)).inc();
       logger.debug({ name, from, to: state }, 'Circuit state change');
     }
   });
@@ -137,40 +131,6 @@ function shouldRetry(err: unknown): boolean {
   if (codeNum === 408) return true;
   if (typeof codeNum === 'number' && codeNum >= 500) return true;
   return !codeNum;
-}
-
-async function applyVtRateLimit(): Promise<void> {
-  if (!config.vt.apiKey || !vtRateLimiter) return;
-  let totalDelayMs = 0;
-  while (true) {
-    try {
-      await vtRateLimiter.consume('global');
-      break;
-    } catch (err) {
-      const res = err as RateLimiterRes;
-      if (res && typeof res.msBeforeNext === 'number') {
-        const wait = Math.max(0, Math.ceil(res.msBeforeNext));
-        if (wait > 0) {
-          totalDelayMs += wait;
-          await new Promise(resolve => setTimeout(resolve, wait));
-        }
-      } else {
-        logger.warn({ err }, 'vt rate limiter failure, proceeding without delay');
-        break;
-      }
-    }
-  }
-
-  const jitter = config.vt.requestJitterMs > 0
-    ? Math.floor(Math.random() * config.vt.requestJitterMs)
-    : 0;
-  if (jitter > 0) {
-    totalDelayMs += jitter;
-    await new Promise(resolve => setTimeout(resolve, jitter));
-  }
-  if (totalDelayMs > 0) {
-    rateLimiterDelay.labels(CIRCUIT_LABELS.vt).observe(totalDelayMs / 1000);
-  }
 }
 
 async function getJsonCache<T>(key: string): Promise<T | null> {
@@ -273,57 +233,6 @@ function extractUrlscanArtifactCandidates(uuid: string, payload: any): ArtifactC
   return candidates;
 }
 
-async function persistUrlscanArtifacts(urlHashValue: string, uuid: string, payload: any): Promise<void> {
-  if (!config.urlscan.enabled) return;
-  const candidates = extractUrlscanArtifactCandidates(uuid, payload);
-  if (candidates.length === 0) return;
-
-  for (const candidate of candidates) {
-    try {
-      const { rowCount } = await pg.query('SELECT 1 FROM urlscan_artifacts WHERE url_hash=$1 AND artifact_type=$2', [urlHashValue, candidate.type]);
-      if (rowCount && rowCount > 0) {
-        continue;
-      }
-    } catch (err) {
-      logger.warn({ err }, 'urlscan artifact existence check failed');
-    }
-
-    try {
-      const response = await undiciRequest(candidate.url, {
-        method: 'GET',
-        headers: config.urlscan.apiKey ? { 'API-Key': config.urlscan.apiKey } : undefined,
-        headersTimeout: config.urlscan.resultPollTimeoutMs,
-        bodyTimeout: config.urlscan.resultPollTimeoutMs,
-      });
-
-      if (response.statusCode >= 400) {
-        logger.warn({ statusCode: response.statusCode, url: candidate.url }, 'urlscan artifact fetch failed');
-        continue;
-      }
-
-      const arrayBuffer = await response.body.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-      if (buffer.length === 0) {
-        continue;
-      }
-      const header = response.headers['content-type'];
-      const contentType = Array.isArray(header)
-        ? header[0]
-        : header || (candidate.type === 'dom' ? 'application/json' : 'image/png');
-
-      await pg.query(
-        `INSERT INTO urlscan_artifacts (url_hash, artifact_type, content, content_type, size_bytes)
-         VALUES ($1,$2,$3,$4,$5)
-         ON CONFLICT (url_hash, artifact_type)
-         DO UPDATE SET content=EXCLUDED.content, content_type=EXCLUDED.content_type, size_bytes=EXCLUDED.size_bytes, created_at=now()`,
-        [urlHashValue, candidate.type, buffer, contentType, buffer.length]
-      );
-    } catch (err) {
-      logger.warn({ err, url: candidate.url, type: candidate.type }, 'urlscan artifact persistence failed');
-    }
-  }
-}
-
 async function fetchGsbAnalysis(finalUrl: string, hash: string): Promise<GsbFetchResult> {
   const cacheKey = `url:analysis:${hash}:gsb`;
   const cached = await getJsonCache<GsbMatch[]>(cacheKey);
@@ -400,10 +309,7 @@ async function fetchVirusTotal(finalUrl: string, hash: string): Promise<VirusTot
   }
   try {
     const analysis = await vtCircuit.execute(() =>
-      withRetry(async () => {
-        await applyVtRateLimit();
-        return vtAnalyzeUrl(finalUrl);
-      }, {
+      withRetry(() => vtAnalyzeUrl(finalUrl), {
         retries: 3,
         baseDelayMs: 1000,
         factor: 2,
@@ -418,7 +324,7 @@ async function fetchVirusTotal(finalUrl: string, hash: string): Promise<VirusTot
     return { stats, fromCache: false, quotaExceeded: false, error: null };
   } catch (err) {
     recordError(CIRCUIT_LABELS.vt, err);
-    const quotaExceeded = ((err as any)?.code ?? (err as any)?.statusCode) === 429;
+    const quotaExceeded = err instanceof QuotaExceededError || ((err as any)?.code ?? (err as any)?.statusCode) === 429;
     if (!quotaExceeded) {
       logger.warn({ err, url: finalUrl }, 'VirusTotal lookup failed');
     }
@@ -529,7 +435,12 @@ async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainI
     return { ageDays, registrar, source: 'whoisxml' };
   } catch (err) {
     recordError(CIRCUIT_LABELS.whoisxml, err);
-    logger.warn({ err, hostname }, 'WhoisXML lookup failed');
+    if (err instanceof QuotaExceededError) {
+      logger.warn({ hostname }, 'WhoisXML quota exhausted, disabling for remainder of month');
+      disableWhoisXmlForMonth();
+    } else {
+      logger.warn({ err, hostname }, 'WhoisXML lookup failed');
+    }
     return { ageDays: undefined, source: 'none' };
   }
 }
@@ -613,15 +524,28 @@ async function main() {
       config.urlscan.resultTtlSeconds
     );
 
+    let artifacts: { screenshotPath: string | null; domPath: string | null } | null = null;
+    try {
+      artifacts = await downloadUrlscanArtifacts(uuid, urlHashValue);
+    } catch (err) {
+      logger.warn({ err, uuid }, 'failed to download urlscan artifacts');
+    }
+
     await pg.query(
-      `UPDATE scans SET urlscan_status=$1, urlscan_completed_at=now(), urlscan_result=$2 WHERE url_hash=$3`,
-      ['completed', JSON.stringify(body), urlHashValue]
+      `UPDATE scans
+         SET urlscan_status=$1,
+             urlscan_completed_at=now(),
+             urlscan_result=$2,
+             urlscan_screenshot_path=COALESCE($4, urlscan_screenshot_path),
+             urlscan_dom_path=COALESCE($5, urlscan_dom_path),
+             urlscan_artifact_stored_at=CASE
+               WHEN $4 IS NOT NULL OR $5 IS NOT NULL THEN now()
+               ELSE urlscan_artifact_stored_at
+             END
+       WHERE url_hash=$3`,
+      ['completed', JSON.stringify(body), urlHashValue, artifacts?.screenshotPath ?? null, artifacts?.domPath ?? null]
     ).catch((err: Error) => {
       logger.error({ err }, 'failed to persist urlscan callback');
-    });
-
-    await persistUrlscanArtifacts(urlHashValue, uuid, body).catch((err: Error) => {
-      logger.warn({ err, uuid }, 'failed to persist urlscan artifacts');
     });
 
     reply.send({ ok: true });
@@ -655,6 +579,30 @@ async function main() {
       const domainAgeDays = domainIntel.ageDays;
       const wasShortened = Boolean(shortenerInfo?.wasShortened);
       const finalUrlMismatch = wasShortened && new URL(norm).hostname !== finalUrlObj.hostname;
+
+      const homoglyphResult = detectHomoglyphs(finalUrlObj.hostname);
+      if (homoglyphResult.detected) {
+        metrics.homoglyphDetections.labels(homoglyphResult.riskLevel).inc();
+        logger.info({ hostname: finalUrlObj.hostname, risk: homoglyphResult.riskLevel, confusables: homoglyphResult.confusableChars }, 'Homoglyph detection');
+      }
+
+      let manualOverride: 'allow' | 'deny' | null = null;
+      try {
+        const overrideResult = await pg.query(
+          `SELECT status FROM overrides
+             WHERE (url_hash = $1 OR pattern = $2)
+               AND (expires_at IS NULL OR expires_at > NOW())
+             ORDER BY created_at DESC
+             LIMIT 1`,
+          [h, finalUrlObj.hostname]
+        );
+        if (overrideResult.rows[0]?.status) {
+          manualOverride = overrideResult.rows[0].status as 'allow' | 'deny';
+          metrics.manualOverrideApplied.labels(manualOverride).inc();
+        }
+      } catch (err) {
+        logger.warn({ err, url: finalUrl }, 'Failed to load manual override');
+      }
 
       const blocklistResult = await checkBlocklistsWithRedundancy({
         finalUrl,
@@ -709,6 +657,8 @@ async function main() {
         redirectCount: redirectChain.length,
         wasShortened,
         finalUrlMismatch,
+        manualOverride,
+        homoglyph: homoglyphResult,
         ...heurSignals,
       };
       const verdictResult = scoreFromSignals(signals);
@@ -782,9 +732,12 @@ async function main() {
         VALUES ($1,$2,$3,$4,now()) ON CONFLICT DO NOTHING`, [chatId, messageId, h, verdict]);
 
       await scanVerdictQueue.add('verdict', res, { removeOnComplete: true });
+      metrics.verdictCounter.labels(verdict).inc();
       metrics.scanLatency.observe((Date.now() - start) / 1000);
     } catch (e) {
       logger.error(e, 'scan worker error');
+    } finally {
+      queueDepthGauge.labels(config.queues.scanRequest).set(await scanRequestQueue.getWaitingCount());
     }
   }, { connection: redis, concurrency: config.orchestrator.concurrency });
 
@@ -835,6 +788,8 @@ async function main() {
           ['failed', urlHashValue]
         ).catch(() => undefined);
         throw err;
+      } finally {
+        queueDepthGauge.labels(config.queues.urlscan).set(await urlscanQueue.getWaitingCount());
       }
     }, { connection: redis, concurrency: config.urlscan.concurrency });
   }
@@ -855,9 +810,6 @@ export const __testables = {
   classifyError,
   checkBlocklistsWithRedundancy,
   shouldQueryPhishtank,
-  applyVtRateLimit,
-  setVtRateLimiterForTest: (limiter: RateLimiterRedis | null) => { vtRateLimiter = limiter; },
-  resetVtRateLimiterForTest: () => { vtRateLimiter = defaultVtRateLimiter; },
   extractUrlscanArtifactCandidates,
   normalizeUrlscanArtifactCandidate,
 };

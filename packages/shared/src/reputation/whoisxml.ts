@@ -1,5 +1,8 @@
 import { request } from 'undici';
 import { config } from '../config';
+import { apiQuotaRemainingGauge, apiQuotaStatusGauge, metrics } from '../metrics';
+import { QuotaExceededError, FeatureDisabledError } from '../errors';
+import { logger } from '../log';
 
 export interface WhoisXmlRecord {
   domainName?: string;
@@ -14,10 +17,61 @@ export interface WhoisXmlResponse {
   record?: WhoisXmlRecord;
 }
 
-export async function whoisXmlLookup(domain: string): Promise<WhoisXmlResponse> {
-  if (!config.whoisxml.enabled || !config.whoisxml.apiKey) {
-    throw new Error('WhoisXML disabled or missing API key');
+let monthlyRequestCount = 0;
+let currentMonth = new Date().getMonth();
+let quotaDisabled = false;
+
+apiQuotaRemainingGauge.labels('whoisxml').set(config.whoisxml.monthlyQuota);
+apiQuotaStatusGauge.labels('whoisxml').set(config.whoisxml.enabled ? 1 : 0);
+
+function resetMonthlyQuotaIfNeeded(): void {
+  const now = new Date();
+  if (now.getMonth() !== currentMonth) {
+    logger.info({ previousCount: monthlyRequestCount }, 'WhoisXML quota counter reset (new month)');
+    monthlyRequestCount = 0;
+    currentMonth = now.getMonth();
+    quotaDisabled = false;
+    apiQuotaRemainingGauge.labels('whoisxml').set(config.whoisxml.monthlyQuota);
+    apiQuotaStatusGauge.labels('whoisxml').set(config.whoisxml.enabled ? 1 : 0);
   }
+}
+
+function assertQuotaAvailable(): void {
+  if (!config.whoisxml.enabled) {
+    apiQuotaStatusGauge.labels('whoisxml').set(0);
+    throw new FeatureDisabledError('whoisxml', 'WhoisXML disabled');
+  }
+  if (quotaDisabled) {
+    apiQuotaStatusGauge.labels('whoisxml').set(0);
+    throw new QuotaExceededError('whoisxml', 'WhoisXML monthly quota exhausted');
+  }
+  if (monthlyRequestCount >= config.whoisxml.monthlyQuota) {
+    quotaDisabled = true;
+    apiQuotaRemainingGauge.labels('whoisxml').set(0);
+    apiQuotaStatusGauge.labels('whoisxml').set(0);
+    metrics.whoisDisabled.labels('quota').inc();
+    throw new QuotaExceededError('whoisxml', 'WhoisXML monthly quota exhausted');
+  }
+}
+
+export async function whoisXmlLookup(domain: string): Promise<WhoisXmlResponse> {
+  if (!config.whoisxml.apiKey) {
+    throw new FeatureDisabledError('whoisxml', 'WhoisXML missing API key');
+  }
+
+  resetMonthlyQuotaIfNeeded();
+  assertQuotaAvailable();
+
+  monthlyRequestCount += 1;
+  const remaining = Math.max(0, config.whoisxml.monthlyQuota - monthlyRequestCount);
+  apiQuotaRemainingGauge.labels('whoisxml').set(remaining);
+  apiQuotaStatusGauge.labels('whoisxml').set(remaining > 0 ? 1 : 0);
+  metrics.whoisRequests.inc();
+
+  if (remaining <= config.whoisxml.quotaAlertThreshold) {
+    logger.warn({ remaining }, 'WhoisXML quota nearing exhaustion');
+  }
+
   const url = new URL('https://www.whoisxmlapi.com/whoisserver/WhoisService');
   url.searchParams.set('apiKey', config.whoisxml.apiKey);
   url.searchParams.set('domainName', domain);
@@ -33,9 +87,11 @@ export async function whoisXmlLookup(domain: string): Promise<WhoisXmlResponse> 
     throw err;
   }
   if (res.statusCode === 429) {
-    const err = new Error('WhoisXML rate limited');
-    (err as any).code = 429;
-    throw err;
+    quotaDisabled = true;
+    apiQuotaRemainingGauge.labels('whoisxml').set(0);
+    apiQuotaStatusGauge.labels('whoisxml').set(0);
+    metrics.whoisDisabled.labels('rate_limited').inc();
+    throw new QuotaExceededError('whoisxml', 'WhoisXML rate limited');
   }
   if (res.statusCode >= 500) {
     const err = new Error(`WhoisXML error: ${res.statusCode}`);
@@ -62,4 +118,10 @@ export async function whoisXmlLookup(domain: string): Promise<WhoisXmlResponse> 
       estimatedDomainAgeDays: ageDays
     }
   };
+}
+
+export function disableWhoisXmlForMonth(): void {
+  quotaDisabled = true;
+  apiQuotaRemainingGauge.labels('whoisxml').set(0);
+  apiQuotaStatusGauge.labels('whoisxml').set(0);
 }

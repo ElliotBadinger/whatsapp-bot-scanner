@@ -52,6 +52,53 @@ export const metrics = {
     labelNames: ['verified'],
     registers: [register],
   }),
+  shortenerExpansion: new client.Counter({
+    name: 'wbscanner_shortener_expansions_total',
+    help: 'URL shortener expansion attempts by method and result',
+    labelNames: ['method', 'result'],
+    registers: [register],
+  }),
+  manualOverrideApplied: new client.Counter({
+    name: 'wbscanner_manual_overrides_total',
+    help: 'Manual overrides applied during scoring',
+    labelNames: ['status'],
+    registers: [register],
+  }),
+  rescanRequests: new client.Counter({
+    name: 'wbscanner_rescan_requests_total',
+    help: 'Rescan requests received by source',
+    labelNames: ['source'],
+    registers: [register],
+  }),
+  artifactDownloadFailures: new client.Counter({
+    name: 'wbscanner_artifact_download_failures_total',
+    help: 'Failures when downloading urlscan artifacts',
+    labelNames: ['type', 'reason'],
+    registers: [register],
+  }),
+  homoglyphDetections: new client.Counter({
+    name: 'wbscanner_homoglyph_detections_total',
+    help: 'Homoglyph detections by risk level',
+    labelNames: ['risk_level'],
+    registers: [register],
+  }),
+  whoisRequests: new client.Counter({
+    name: 'wbscanner_whois_requests_total',
+    help: 'WhoisXML lookups executed',
+    registers: [register],
+  }),
+  whoisDisabled: new client.Counter({
+    name: 'wbscanner_whois_disabled_total',
+    help: 'WhoisXML disabled events by reason',
+    labelNames: ['reason'],
+    registers: [register],
+  }),
+  verdictCounter: new client.Counter({
+    name: 'wbscanner_verdicts_total',
+    help: 'Verdicts issued by level',
+    labelNames: ['level'],
+    registers: [register],
+  }),
 };
 
 export const externalLatency = new client.Histogram({
@@ -81,6 +128,48 @@ export const rateLimiterDelay = new client.Histogram({
   help: 'Delay introduced by rate limiters before external API calls',
   buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5],
   labelNames: ['service'],
+  registers: [register],
+});
+
+export const apiQuotaRemainingGauge = new client.Gauge({
+  name: 'wbscanner_api_quota_remaining',
+  help: 'Remaining API quota tokens for external services',
+  labelNames: ['service'],
+  registers: [register],
+});
+
+export const apiQuotaStatusGauge = new client.Gauge({
+  name: 'wbscanner_api_quota_status',
+  help: 'API quota status (1=available,0=exhausted)',
+  labelNames: ['service'],
+  registers: [register],
+});
+
+export const cacheHitRatioGauge = new client.Gauge({
+  name: 'wbscanner_cache_hit_ratio',
+  help: 'Cache hit ratio by cache type',
+  labelNames: ['cache_type'],
+  registers: [register],
+});
+
+export const queueDepthGauge = new client.Gauge({
+  name: 'wbscanner_queue_depth',
+  help: 'Queue depth for BullMQ queues',
+  labelNames: ['queue'],
+  registers: [register],
+});
+
+export const circuitBreakerTransitionCounter = new client.Counter({
+  name: 'wbscanner_circuit_breaker_transitions_total',
+  help: 'Circuit breaker state transitions by service',
+  labelNames: ['service', 'from', 'to'],
+  registers: [register],
+});
+
+export const waSessionStatusGauge = new client.Gauge({
+  name: 'wbscanner_wa_session_status',
+  help: 'WhatsApp session status (1=ready,0=disconnected)',
+  labelNames: ['state'],
   registers: [register],
 });
 

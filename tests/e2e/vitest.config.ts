@@ -7,6 +7,8 @@ const rootDir = dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   test: {
     environment: 'node',
+    globals: true,
+    dir: '.',
     setupFiles: ['./vitest.setup.ts'],
   },
   resolve: {

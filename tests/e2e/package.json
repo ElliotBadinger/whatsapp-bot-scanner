@@ -1,0 +1,13 @@
+{
+  "name": "@wbscanner/e2e-tests",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "typescript": "^5.5.4",
+    "vitest": "^1.6.0"
+  }
+}

@@ -10,11 +10,11 @@ import { RateLimiterRedis } from 'rate-limiter-flexible';
 const redis = new Redis(config.redisUrl);
 const scanRequestQueue = new Queue(config.queues.scanRequest, { connection: redis });
 
-const limiter = new RateLimiterRedis({
+const globalLimiter = new RateLimiterRedis({
   storeClient: redis,
   keyPrefix: 'rate',
-  points: config.wa.globalRatePerMinute,
-  duration: 60,
+  points: config.wa.globalRatePerHour,
+  duration: 3600,
 });
 const groupLimiter = new RateLimiterRedis({
   storeClient: redis,
@@ -22,10 +22,26 @@ const groupLimiter = new RateLimiterRedis({
   points: 1,
   duration: config.wa.perGroupCooldownSeconds
 });
+const groupHourlyLimiter = new RateLimiterRedis({
+  storeClient: redis,
+  keyPrefix: 'group_hour',
+  points: config.wa.perGroupHourlyLimit,
+  duration: 3600,
+});
 
 const processedKey = (chatId: string, messageId: string, urlH: string) => `processed:${chatId}:${messageId}:${urlH}`;
 
+function validateStartupConfig() {
+  const required = ['VT_API_KEY', 'GSB_API_KEY', 'REDIS_URL', 'POSTGRES_HOST'];
+  const missing = required.filter((key) => !process.env[key] || process.env[key]?.trim() === '');
+  if (missing.length > 0) {
+    logger.error({ missing }, 'Missing required environment variables for wa-client');
+    process.exit(1);
+  }
+}
+
 async function main() {
+  validateStartupConfig();
   assertControlPlaneToken();
   const app = Fastify();
   app.get('/healthz', async () => ({ ok: true }));
@@ -67,7 +83,7 @@ async function main() {
         const already = await redis.set(idem, '1', 'EX', 60 * 60 * 24 * 7, 'NX');
         if (already === null) continue; // duplicate
 
-        try { await limiter.consume('global'); } catch { continue; }
+        try { await globalLimiter.consume('global'); } catch { continue; }
 
         const jobOpts: JobsOptions = { removeOnComplete: true, removeOnFail: 1000, attempts: 2, backoff: { type: 'exponential', delay: 1000 } };
         await scanRequestQueue.add('scan', {
@@ -88,7 +104,12 @@ async function main() {
     const delay = Math.floor(800 + Math.random() * 1200);
     setTimeout(async () => {
       // Per-group cooldown and duplicate suppression
-      try { await groupLimiter.consume(chatId); } catch { return; }
+      try {
+        await groupLimiter.consume(chatId);
+        await groupHourlyLimiter.consume(chatId);
+      } catch {
+        return;
+      }
       const key = `verdict:${chatId}:${urlHash}`;
       const nx = await redis.set(key, '1', 'EX', 3600, 'NX');
       if (nx === null) return;
@@ -143,7 +164,16 @@ export async function handleAdminCommand(client: Client, msg: Message) {
     const json = resp && resp.ok ? await resp.json() : {};
     await chat.sendMessage(`Scanner status: scans=${json.scans||0}, malicious=${json.malicious||0}`);
   } else if (cmd === 'rescan' && parts[2]) {
-    await chat.sendMessage('Rescan requested.');
+    const rescanUrl = parts[2];
+    const resp = await fetch(`${base}/rescan`, {
+      method: 'POST',
+      headers: {
+        'authorization': `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ url: rescanUrl }),
+    }).catch(() => null);
+    await chat.sendMessage(resp && resp.ok ? 'Rescan queued.' : 'Rescan failed.');
   } else {
     await chat.sendMessage('Commands: !scanner mute|unmute|status');
   }

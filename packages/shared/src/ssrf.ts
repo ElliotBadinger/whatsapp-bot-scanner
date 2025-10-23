@@ -24,7 +24,10 @@ export async function isPrivateHostname(hostname: string): Promise<boolean> {
 export function isPrivateIp(ip: string): boolean {
   try {
     const addr = ipaddr.parse(ip);
-    return privateCidrs.some(([range, prefix]) => addr.match(range, prefix));
+    return privateCidrs.some(([range, prefix]) => {
+      if (addr.kind() !== range.kind()) return false;
+      return addr.match(range, prefix);
+    });
   } catch {
     return true;
   }
