@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import dotenv from 'dotenv';
 import { logger } from './log';
 
@@ -27,12 +28,33 @@ function ensureQueueName(raw: string, envVar: string): string {
 }
 
 let cachedControlPlaneToken: string | undefined;
+let cachedControlPlaneCsrfSecret: string | undefined;
 
 function getControlPlaneToken(): string {
   if (!cachedControlPlaneToken) {
     cachedControlPlaneToken = ensureNonEmpty(process.env.CONTROL_PLANE_API_TOKEN, 'CONTROL_PLANE_API_TOKEN');
   }
   return cachedControlPlaneToken;
+}
+
+function getControlPlaneCsrfSecret(): string {
+  if (!cachedControlPlaneCsrfSecret) {
+    const provided = (process.env.CONTROL_PLANE_CSRF_SECRET || '').trim();
+    if (!provided) {
+      cachedControlPlaneCsrfSecret = getControlPlaneToken();
+      logger.warn('CONTROL_PLANE_CSRF_SECRET not provided; reusing control plane API token for CSRF validation');
+    } else {
+      cachedControlPlaneCsrfSecret = provided;
+    }
+  }
+  return cachedControlPlaneCsrfSecret;
+}
+
+function parseCsvEnv(value: string | undefined): string[] {
+  return (value || '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
 }
 
 function parsePositiveInt(value: string | undefined, fallback: number, { minimum = 1 }: { minimum?: number } = {}): number {
@@ -134,6 +156,10 @@ export const config = {
     get token(): string {
       return getControlPlaneToken();
     },
+    get csrfSecret(): string {
+      return getControlPlaneCsrfSecret();
+    },
+    allowedOrigins: parseCsvEnv(process.env.CONTROL_PLANE_ALLOWED_ORIGINS),
     enableUi: (process.env.CONTROL_PLANE_ENABLE_UI || 'true') === 'true',
   },
   wa: {
@@ -145,6 +171,11 @@ export const config = {
     globalRatePerHour: parsePositiveInt(process.env.WA_GLOBAL_REPLY_RATE_PER_HOUR, 1000),
     globalTokenBucketKey: process.env.WA_GLOBAL_TOKEN_BUCKET_KEY || 'wa_global_token_bucket',
     perGroupHourlyLimit: parsePositiveInt(process.env.WA_PER_GROUP_HOURLY_LIMIT, 60),
+  },
+  security: {
+    externalFetchAllowlist: parseCsvEnv(
+      process.env.EXTERNAL_FETCH_ALLOWLIST || 'urlscan.io,urlscan-prod.s3.amazonaws.com'
+    ),
   }
 };
 

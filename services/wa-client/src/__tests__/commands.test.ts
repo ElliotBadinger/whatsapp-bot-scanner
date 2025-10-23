@@ -47,7 +47,10 @@ describe('handleAdminCommand', () => {
 
     expect(global.fetch).toHaveBeenCalledWith('http://control-plane.test/groups/group-123/mute', expect.objectContaining({
       method: 'POST',
-      headers: { authorization: 'Bearer secret-token' },
+      headers: expect.objectContaining({
+        authorization: 'Bearer secret-token',
+        'x-csrf-token': 'secret-token',
+      }),
     }));
     expect(sendMessage).toHaveBeenCalledWith('Scanner muted for 60 minutes.');
   });
@@ -78,11 +81,38 @@ describe('handleAdminCommand', () => {
 
     expect(global.fetch).toHaveBeenCalledWith('http://control-plane.test/rescan', expect.objectContaining({
       method: 'POST',
-      headers: expect.objectContaining({ authorization: 'Bearer secret-token' }),
+      headers: expect.objectContaining({
+        authorization: 'Bearer secret-token',
+        'x-csrf-token': 'secret-token',
+        'content-type': 'application/json',
+      }),
     }));
     expect(sendMessage).toHaveBeenCalledWith('Rescan queued. hash=abc123 job=job-1');
   });
 });
+
+  it('blocks rescan commands to private networks', async () => {
+    const sendMessage = jest.fn();
+    const mockChat = {
+      isGroup: true,
+      id: { _serialized: 'group-123' },
+      sendMessage,
+    } as unknown as GroupChat;
+    (mockChat as any).participants = [{ id: { _serialized: 'user-1' }, isAdmin: true, isSuperAdmin: false }];
+
+    const mockMessage = {
+      body: '!scanner rescan http://127.0.0.1/admin',
+      from: 'user-1',
+      author: 'user-1',
+      id: { id: 'msg-3', _serialized: 'msg-3' },
+      getChat: jest.fn().mockResolvedValue(mockChat),
+    } as unknown as Message;
+
+    await handleAdminCommand({} as Client, mockMessage);
+
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(sendMessage).toHaveBeenCalledWith('Rescan blocked: URL is not permitted.');
+  });
 
 describe('formatGroupVerdict', () => {
   it('limits reasons and formats output', () => {

@@ -58,7 +58,7 @@ export async function expandUrl(raw: string, opts: { maxRedirects: number; timeo
       headersTimeout: opts.timeoutMs,
       bodyTimeout: opts.timeoutMs,
       headers: { 'user-agent': 'wbscanner/0.1' }
-    }).catch(() => ({ statusCode: 0, headers: {} as any }));
+    } as any).catch(() => ({ statusCode: 0, headers: {} as any }));
     chain.push(nu);
     if (statusCode && statusCode >= 300 && statusCode < 400) {
       const loc = headers['location'];
