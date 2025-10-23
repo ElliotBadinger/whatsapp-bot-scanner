@@ -1,0 +1,96 @@
+[build]
+builder = "DOCKERFILE"
+
+# Required secrets for this template (create them in the Railway project)
+# - CONTROL_PLANE_API_TOKEN: Bearer token used by wa-client when calling the control-plane.
+# - VT_API_KEY: VirusTotal API key.
+# - GSB_API_KEY: Google Safe Browsing API key.
+# - WHOISXML_API_KEY: WhoisXML API key.
+# - URLSCAN_API_KEY: urlscan.io API key (if URLSCAN_ENABLED=true).
+# - URLSCAN_CALLBACK_SECRET: Shared secret validating urlscan result callbacks.
+# Add optional providers such as PHISHTANK_APP_KEY or OPENAI_API_KEY if you enable the related features.
+
+[env]
+# Shared environment with service to service bindings.
+REDIS_URL = "${{ redis.url }}"
+POSTGRES_HOST = "${{ postgres.host }}"
+POSTGRES_PORT = "${{ postgres.port }}"
+POSTGRES_DB = "${{ postgres.env.POSTGRES_DB }}"
+POSTGRES_USER = "${{ postgres.env.POSTGRES_USER }}"
+POSTGRES_PASSWORD = "${{ postgres.env.POSTGRES_PASSWORD }}"
+CONTROL_PLANE_BASE = "http://control-plane:8080"
+CONTROL_PLANE_API_TOKEN = "${{ secrets.CONTROL_PLANE_API_TOKEN }}"
+VT_API_KEY = "${{ secrets.VT_API_KEY }}"
+GSB_API_KEY = "${{ secrets.GSB_API_KEY }}"
+WHOISXML_API_KEY = "${{ secrets.WHOISXML_API_KEY }}"
+URLSCAN_API_KEY = "${{ secrets.URLSCAN_API_KEY }}"
+URLSCAN_CALLBACK_SECRET = "${{ secrets.URLSCAN_CALLBACK_SECRET }}"
+
+[[services]]
+name = "wa-client"
+source = "services/wa-client"
+[services.env]
+NODE_ENV = "production"
+[services.deploy]
+replicas = 1
+restart_policy_type = "on_failure"
+restart_policy_max_retries = 5
+[services.healthcheck]
+path = "/healthz"
+port = 3000
+interval = 15
+timeout = 5
+grace_period = 10
+retries = 3
+
+[[services]]
+name = "scan-orchestrator"
+source = "services/scan-orchestrator"
+[services.deploy]
+replicas = 2
+restart_policy_type = "on_failure"
+restart_policy_max_retries = 5
+[services.healthcheck]
+path = "/healthz"
+port = 3001
+interval = 15
+timeout = 5
+grace_period = 10
+retries = 3
+
+[[services]]
+name = "control-plane"
+source = "services/control-plane"
+[services.deploy]
+replicas = 1
+restart_policy_type = "on_failure"
+restart_policy_max_retries = 5
+[services.healthcheck]
+path = "/healthz"
+port = 8080
+interval = 15
+timeout = 5
+grace_period = 10
+retries = 3
+
+[[services]]
+name = "postgres"
+image = "postgres:15-alpine"
+[services.env]
+POSTGRES_DB = "wbscanner"
+POSTGRES_USER = "wbscanner"
+POSTGRES_PASSWORD = "wbscanner"
+[services.healthcheck]
+command = "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB -h 127.0.0.1"
+interval = 10
+timeout = 5
+retries = 6
+
+[[services]]
+name = "redis"
+image = "redis:7-alpine"
+[services.healthcheck]
+command = "redis-cli -h 127.0.0.1 ping"
+interval = 10
+timeout = 3
+retries = 6
