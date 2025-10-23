@@ -11,6 +11,6 @@ Auth: `Authorization: Bearer <CONTROL_PLANE_API_TOKEN>`
 - POST `/groups/:chatId/mute` → `{ ok: true, muted_until }`
 - POST `/groups/:chatId/unmute` → `{ ok: true }`
 - POST `/rescan` → `{ ok: true }`
-- GET `/scans/:urlHash/urlscan-artifacts/:type` → binary response for persisted artifacts (`type`: `screenshot` or `dom`)
+- GET `/scans/:urlHash/urlscan-artifacts/:type` → streams persisted artifacts (`type`: `screenshot`|`dom`)
 
 Metrics: `/metrics` (Prometheus format)

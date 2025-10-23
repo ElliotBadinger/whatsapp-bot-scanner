@@ -107,54 +107,63 @@ export async function buildServer(options: BuildOptions = {}) {
     reply.send({ ok: true, message: 'Cache invalidated, rescan queued', urlHash: hash });
   });
 
-  app.get('/artifacts/:urlHash/screenshot', async (req, reply) => {
-    const { urlHash: hash } = req.params as { urlHash: string };
-    const { rows } = await pgClient.query(
-      'SELECT urlscan_screenshot_path FROM scans WHERE url_hash=$1 LIMIT 1',
-      [hash]
-    );
-    const filePath = rows[0]?.urlscan_screenshot_path;
-    if (!filePath) {
-      reply.code(404).send({ error: 'screenshot_not_found' });
-      return;
-    }
-    const resolvedPath = path.resolve(filePath);
-    if (!resolvedPath.startsWith(artifactRoot)) {
-      reply.code(403).send({ error: 'access_denied' });
-      return;
-    }
-    try {
-      await fs.access(resolvedPath);
-    } catch {
-      reply.code(404).send({ error: 'screenshot_not_found' });
-      return;
-    }
-    const stream = createReadStream(resolvedPath);
-    reply.header('Content-Type', 'image/png');
-    reply.send(stream);
-  });
+  function isWithinArtifactRoot(resolvedPath: string): boolean {
+    const relative = path.relative(artifactRoot, resolvedPath);
+    if (!relative) return true;
+    return !relative.startsWith('..') && !path.isAbsolute(relative);
+  }
 
-  app.get('/artifacts/:urlHash/dom', async (req, reply) => {
-    const { urlHash: hash } = req.params as { urlHash: string };
-    const { rows } = await pgClient.query(
-      'SELECT urlscan_dom_path FROM scans WHERE url_hash=$1 LIMIT 1',
-      [hash]
-    );
-    const filePath = rows[0]?.urlscan_dom_path;
-    if (!filePath) {
-      reply.code(404).send({ error: 'dom_not_found' });
+  app.get('/scans/:urlHash/urlscan-artifacts/:type', async (req, reply) => {
+    const { urlHash: hash, type } = req.params as { urlHash: string; type: string };
+    if (type !== 'screenshot' && type !== 'dom') {
+      reply.code(400).send({ error: 'invalid_artifact_type' });
       return;
     }
+
+    const column = type === 'screenshot' ? 'urlscan_screenshot_path' : 'urlscan_dom_path';
+    const { rows } = await pgClient.query(
+      `SELECT ${column} FROM scans WHERE url_hash=$1 LIMIT 1`,
+      [hash]
+    );
+    const filePath = rows[0]?.[column as 'urlscan_screenshot_path' | 'urlscan_dom_path'];
+    if (!filePath) {
+      reply.code(404).send({ error: `${type}_not_found` });
+      return;
+    }
+
     const resolvedPath = path.resolve(filePath);
-    if (!resolvedPath.startsWith(artifactRoot)) {
+    if (!isWithinArtifactRoot(resolvedPath)) {
       reply.code(403).send({ error: 'access_denied' });
       return;
     }
+
+    if (type === 'screenshot') {
+      try {
+        await fs.access(resolvedPath);
+      } catch (error: any) {
+        if (error?.code === 'ENOENT') {
+          reply.code(404).send({ error: 'screenshot_not_found' });
+        } else {
+          reply.code(500).send({ error: 'artifact_unavailable' });
+        }
+        return;
+      }
+      const stream = createReadStream(resolvedPath);
+      reply.header('Content-Type', 'image/png');
+      reply.send(stream);
+      return;
+    }
+
     try {
       const html = await fs.readFile(resolvedPath, 'utf8');
-      reply.type('text/html').send(html);
-    } catch {
-      reply.code(500).send({ error: 'artifact_unavailable' });
+      reply.header('Content-Type', 'text/html; charset=utf-8');
+      reply.send(html);
+    } catch (error: any) {
+      if (error?.code === 'ENOENT') {
+        reply.code(404).send({ error: 'dom_not_found' });
+      } else {
+        reply.code(500).send({ error: 'artifact_unavailable' });
+      }
     }
   });
 

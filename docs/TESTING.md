@@ -20,6 +20,6 @@ Run `npm test --workspaces` before committing to execute all suites.
 
 1. Send benign and malicious URLs in a test group; confirm verdict latency under 15s.
 2. Trigger `!scanner rescan <url>`; verify Control Plane responds `{ ok: true }` and Redis keys removed (`redis-cli keys 'url:*<hash>*'`).
-3. Retrieve urlscan artifacts via `/artifacts/<hash>/screenshot` and `/artifacts/<hash>/dom`; inspect files under `storage/urlscan-artifacts`.
+3. Retrieve urlscan artifacts via `/scans/<hash>/urlscan-artifacts/screenshot` and `/scans/<hash>/urlscan-artifacts/dom`; inspect files under `storage/urlscan-artifacts`.
 4. Inspect Grafana dashboard (Operational) to confirm VT/Whois quota gauges and queue depth panels updating.
 5. Verify Prometheus alerts (`/api/v1/alerts`) include quota exhaustion rules when gauges hit zero.
