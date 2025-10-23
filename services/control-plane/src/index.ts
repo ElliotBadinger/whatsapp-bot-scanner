@@ -102,7 +102,21 @@ export async function buildServer(options: BuildOptions = {}) {
       `url:shortener:${hash}`,
     ];
     await Promise.all(keys.map((key) => redisClient.del(key)));
-    await queue.add('rescan', { url: normalized, urlHash: hash, priority: 10 }, { removeOnComplete: true, removeOnFail: 100 });
+    const { rows: messageRows } = await pgClient.query<{ chat_id: string; message_id: string }>(
+      'SELECT chat_id, message_id FROM messages WHERE url_hash=$1 ORDER BY posted_at DESC LIMIT 1',
+      [hash]
+    );
+    const latestMessage = messageRows[0];
+    const rescanJob = {
+      url: normalized,
+      urlHash: hash,
+      priority: 10,
+      rescan: true,
+      ...(latestMessage?.chat_id && latestMessage?.message_id
+        ? { chatId: latestMessage.chat_id, messageId: latestMessage.message_id }
+        : {}),
+    };
+    await queue.add('rescan', rescanJob, { removeOnComplete: true, removeOnFail: 100, priority: 10 });
     metrics.rescanRequests.labels('control-plane').inc();
     reply.send({ ok: true, message: 'Cache invalidated, rescan queued', urlHash: hash });
   });
