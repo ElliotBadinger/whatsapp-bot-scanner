@@ -1,5 +1,6 @@
 import { isSuspiciousTld } from './url';
 import type { GsbThreatMatch } from './reputation/gsb';
+import { detectHomoglyphs } from './homoglyph';
 import type { HomoglyphResult } from './homoglyph';
 
 export interface Signals {
@@ -87,17 +88,31 @@ export function scoreFromSignals(signals: Signals): RiskVerdict {
   // Heuristics
   const homoglyph = signals.homoglyph;
   if (homoglyph?.detected) {
-    const characters = homoglyph.confusableChars.map(c => c.original).join(', ');
+    const characterPairs = homoglyph.confusableChars.map(c => `${c.original}→${c.confusedWith}`).join(', ');
     if (homoglyph.riskLevel === 'high') {
       score += 5;
-      pushReason(reasons, characters ? `High-risk homoglyph attack detected (${characters})` : 'High-risk homoglyph attack detected');
+      pushReason(
+        reasons,
+        characterPairs
+          ? `High-risk homoglyph attack detected (${characterPairs})`
+          : 'High-risk homoglyph attack detected',
+      );
     } else if (homoglyph.riskLevel === 'medium') {
       score += 3;
-      pushReason(reasons, characters ? `Suspicious characters detected: ${characters}` : 'Suspicious homoglyph characters detected');
+      pushReason(
+        reasons,
+        characterPairs
+          ? `Suspicious homoglyph characters detected (${characterPairs})`
+          : 'Suspicious homoglyph characters detected',
+      );
     } else {
       score += 1;
-      pushReason(reasons, 'Punycode/IDN domain detected');
+      const baseReason = homoglyph.isPunycode ? 'Punycode/IDN hostname detected' : 'Internationalized hostname detected';
+      pushReason(reasons, characterPairs ? `${baseReason} (${characterPairs})` : baseReason);
     }
+    homoglyph.riskReasons
+      .filter(reason => !reason.startsWith('Confusable character'))
+      .forEach(reason => pushReason(reasons, reason));
   }
   if (signals.isIpLiteral) {
     score += 3;
@@ -154,11 +169,13 @@ export function extraHeuristics(u: URL): Partial<Signals> {
   const isIpLiteral = /^(\d+\.\d+\.\d+\.\d+|\[[0-9a-fA-F:]+\])$/.test(u.hostname);
   const hasExecutableExtension = /\.(exe|msi|apk|bat|cmd|ps1|scr|jar|pkg|dmg|iso)$/i.test(u.pathname);
   const hasSuspiciousTld = isSuspiciousTld(u.hostname);
+  const homoglyph = detectHomoglyphs(u.hostname);
   return {
     hasUncommonPort,
     isIpLiteral,
     hasExecutableExtension,
     hasSuspiciousTld,
     urlLength: u.toString().length,
+    homoglyph,
   };
 }
