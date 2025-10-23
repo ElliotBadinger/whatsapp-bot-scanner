@@ -2,12 +2,16 @@ import Bottleneck from 'bottleneck';
 import { fetch } from 'undici';
 import { config } from '../config';
 import { logger } from '../log';
+<<<<<<< HEAD
 import {
   apiQuotaDepletedCounter,
   apiQuotaRemainingGauge,
   apiQuotaStatusGauge,
   rateLimiterDelay,
 } from '../metrics';
+=======
+import { apiQuotaRemainingGauge, apiQuotaStatusGauge, rateLimiterDelay, metrics, rateLimiterQueueDepth } from '../metrics';
+>>>>>>> origin/codex/add-prometheus-metrics-and-dashboards
 import { QuotaExceededError } from '../errors';
 
 export interface VirusTotalAnalysis {
@@ -25,18 +29,46 @@ const vtLimiter = new Bottleneck({
   minTime: Math.ceil(60_000 / VT_REQUESTS_PER_MINUTE),
 });
 
+<<<<<<< HEAD
 let requestsRemaining = VT_REQUESTS_PER_MINUTE;
+=======
+let requestsRemaining = VT_LIMITER_RESERVOIR;
+let lastReservoir = VT_LIMITER_RESERVOIR;
+>>>>>>> origin/codex/add-prometheus-metrics-and-dashboards
 apiQuotaRemainingGauge.labels('virustotal').set(requestsRemaining);
 apiQuotaStatusGauge.labels('virustotal').set(1);
+metrics.apiQuotaUtilization.labels('virustotal').set(0);
+metrics.apiQuotaProjectedDepletion.labels('virustotal').set((requestsRemaining * 60) / VT_LIMITER_RESERVOIR);
 
+<<<<<<< HEAD
 async function updateReservoirMetrics(): Promise<void> {
+=======
+vtLimiter.on('depleted', () => {
+  requestsRemaining = 0;
+  apiQuotaRemainingGauge.labels('virustotal').set(0);
+  apiQuotaStatusGauge.labels('virustotal').set(0);
+  metrics.apiQuotaProjectedDepletion.labels('virustotal').set(0);
+  metrics.apiQuotaUtilization.labels('virustotal').set(1);
+});
+
+const refreshInterval = setInterval(async () => {
+>>>>>>> origin/codex/add-prometheus-metrics-and-dashboards
   try {
     const current = await vtLimiter.currentReservoir();
     if (typeof current === 'number') {
       requestsRemaining = current;
       apiQuotaRemainingGauge.labels('virustotal').set(current);
       apiQuotaStatusGauge.labels('virustotal').set(current > 0 ? 1 : 0);
+      if (current > lastReservoir) {
+        metrics.apiQuotaResets.labels('virustotal').inc();
+      }
+      lastReservoir = current;
+      metrics.apiQuotaUtilization.labels('virustotal').set(
+        Math.min(1, Math.max(0, 1 - current / VT_LIMITER_RESERVOIR))
+      );
+      metrics.apiQuotaProjectedDepletion.labels('virustotal').set((current * 60) / VT_LIMITER_RESERVOIR);
     }
+    rateLimiterQueueDepth.labels('virustotal').set(vtLimiter.queued());
   } catch (err) {
     logger.debug({ err }, 'Failed to read VirusTotal limiter reservoir');
   }
@@ -59,6 +91,7 @@ async function scheduleVtCall<T>(cb: () => Promise<T>): Promise<T> {
     if (waitSeconds > 0) {
       rateLimiterDelay.labels('virustotal').observe(waitSeconds);
     }
+<<<<<<< HEAD
 
     const jitterMs = config.vt.requestJitterMs;
     if (jitterMs > 0) {
@@ -72,6 +105,27 @@ async function scheduleVtCall<T>(cb: () => Promise<T>): Promise<T> {
       return await cb();
     } finally {
       await updateReservoirMetrics();
+=======
+    metrics.apiQuotaConsumption.labels('virustotal').inc();
+    rateLimiterQueueDepth.labels('virustotal').set(vtLimiter.queued());
+    try {
+      return await cb();
+    } finally {
+      const reservoir = await vtLimiter.currentReservoir();
+      if (typeof reservoir === 'number') {
+        requestsRemaining = reservoir;
+        apiQuotaRemainingGauge.labels('virustotal').set(reservoir);
+        apiQuotaStatusGauge.labels('virustotal').set(reservoir > 0 ? 1 : 0);
+        if (reservoir > lastReservoir) {
+          metrics.apiQuotaResets.labels('virustotal').inc();
+        }
+        lastReservoir = reservoir;
+        metrics.apiQuotaUtilization.labels('virustotal').set(
+          Math.min(1, Math.max(0, 1 - reservoir / VT_LIMITER_RESERVOIR))
+        );
+        metrics.apiQuotaProjectedDepletion.labels('virustotal').set((reservoir * 60) / VT_LIMITER_RESERVOIR);
+      }
+>>>>>>> origin/codex/add-prometheus-metrics-and-dashboards
     }
   });
 }

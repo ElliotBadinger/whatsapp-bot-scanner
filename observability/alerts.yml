@@ -71,4 +71,53 @@ groups:
           severity: info
         annotations:
           summary: "Spike in homoglyph detections"
+      - alert: VTQuotaUtilizationHigh
+        expr: wbscanner_api_quota_utilization_ratio{service="virustotal"} > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "VirusTotal quota utilization above 80%"
+      - alert: RateLimiterBacklog
+        expr: wbscanner_rate_limiter_queue_depth{service="virustotal"} > 2
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "VirusTotal limiter queue building up"
+      - alert: CircuitBreakerOpen
+        expr: wbscanner_circuit_breaker_state == 1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Circuit breaker open for external dependency"
+      - alert: QueueWaitHigh
+        expr: histogram_quantile(0.95, sum(rate(wbscanner_queue_job_wait_seconds_bucket[5m])) by (queue, le)) > 10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Queue wait time p95 above 10s"
+      - alert: VerdictLatencyHigh
+        expr: histogram_quantile(0.95, sum(rate(wbscanner_verdict_latency_seconds_bucket[5m])) by (le)) > 30
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Verdict latency p95 above 30s"
+      - alert: CacheStaleBurst
+        expr: increase(wbscanner_cache_stale_total[10m]) > 50
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Stale cache hits rising"
+      - alert: WADropSpike
+        expr: increase(wbscanner_wa_messages_dropped_total[5m]) > 25
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "WhatsApp drops exceeding threshold"
 

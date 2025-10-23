@@ -4,7 +4,21 @@ import QRCode from 'qrcode-terminal';
 import { Queue, Worker, JobsOptions } from 'bullmq';
 import { createHash } from 'node:crypto';
 import Redis from 'ioredis';
+<<<<<<< HEAD
 import { config, logger, extractUrls, normalizeUrl, urlHash, metrics, register, assertControlPlaneToken, assertEssentialConfig } from '@wbscanner/shared';
+=======
+import {
+  config,
+  logger,
+  extractUrls,
+  normalizeUrl,
+  urlHash,
+  metrics,
+  register,
+  assertControlPlaneToken,
+  waSessionStatusGauge,
+} from '@wbscanner/shared';
+>>>>>>> origin/codex/add-prometheus-metrics-and-dashboards
 import { RateLimiterRedis } from 'rate-limiter-flexible';
 import { createGlobalTokenBucket, GLOBAL_TOKEN_BUCKET_ID } from './limiters';
 
@@ -42,35 +56,76 @@ async function main() {
     authStrategy: new LocalAuth({ dataPath: './data/session' })
   });
 
-  client.on('qr', qr => { if (config.wa.qrTerminal) QRCode.generate(qr, { small: true }); });
-  client.on('ready', () => logger.info('WhatsApp client ready'));
-  client.on('auth_failure', (m) => logger.error({ m }, 'Auth failure'));
-  client.on('disconnected', (r) => logger.warn({ r }, 'Disconnected'));
+  client.on('qr', qr => {
+    if (config.wa.qrTerminal) QRCode.generate(qr, { small: true });
+    metrics.waQrCodesGenerated.inc();
+  });
+  client.on('ready', () => {
+    logger.info('WhatsApp client ready');
+    waSessionStatusGauge.labels('ready').set(1);
+    waSessionStatusGauge.labels('disconnected').set(0);
+    metrics.waSessionReconnects.labels('ready').inc();
+  });
+  client.on('auth_failure', (m) => {
+    logger.error({ m }, 'Auth failure');
+    waSessionStatusGauge.labels('ready').set(0);
+    metrics.waSessionReconnects.labels('auth_failure').inc();
+  });
+  client.on('disconnected', (r) => {
+    logger.warn({ r }, 'Disconnected');
+    waSessionStatusGauge.labels('ready').set(0);
+    waSessionStatusGauge.labels('disconnected').set(1);
+    metrics.waSessionReconnects.labels('disconnected').inc();
+  });
 
   client.on('message_create', async (msg: Message) => {
     try {
       if (!msg.from) return;
+      const chat = await msg.getChat();
+      const chatType = (chat as GroupChat).isGroup ? 'group' : 'direct';
+      metrics.waMessagesReceived.labels(chatType).inc();
       // Admin commands
       if ((msg.body || '').startsWith('!scanner')) {
-        await handleAdminCommand(client, msg);
+        await handleAdminCommand(client, msg, chat as GroupChat);
         return;
       }
       const urls = extractUrls((msg.body || ''));
       metrics.ingestionRate.inc();
       metrics.urlsPerMessage.observe(urls.length);
-      if (urls.length === 0) return;
-      const chat = await msg.getChat();
-      if (!chat.isGroup) return; // Only groups per spec
+      if (urls.length === 0) {
+        metrics.waMessagesDropped.labels('no_url').inc();
+        return;
+      }
+      metrics.waMessagesWithUrls.labels(chatType).inc(urls.length);
+      if (!chat.isGroup) {
+        metrics.waMessagesDropped.labels('non_group').inc();
+        return; // Only groups per spec
+      }
 
       for (const raw of urls) {
         const norm = normalizeUrl(raw);
-        if (!norm) continue;
+        if (!norm) {
+          metrics.waMessagesDropped.labels('invalid_url').inc();
+          continue;
+        }
         const h = urlHash(norm);
         const idem = processedKey(chat.id._serialized, msg.id.id || msg.id._serialized, h);
         const already = await redis.set(idem, '1', 'EX', 60 * 60 * 24 * 7, 'NX');
-        if (already === null) continue; // duplicate
+        if (already === null) {
+          metrics.waMessagesDropped.labels('duplicate').inc();
+          continue; // duplicate
+        }
 
+<<<<<<< HEAD
         try { await globalLimiter.consume(GLOBAL_TOKEN_BUCKET_ID); } catch { continue; }
+=======
+        try {
+          await globalLimiter.consume('global');
+        } catch {
+          metrics.waMessagesDropped.labels('rate_limited_global').inc();
+          continue;
+        }
+>>>>>>> origin/codex/add-prometheus-metrics-and-dashboards
 
         const jobOpts: JobsOptions = { removeOnComplete: true, removeOnFail: 1000, attempts: 2, backoff: { type: 'exponential', delay: 1000 } };
         await scanRequestQueue.add('scan', {
@@ -86,23 +141,68 @@ async function main() {
 
   // Consume verdicts
   new Worker(config.queues.scanVerdict, async (job) => {
-    const { chatId, messageId, verdict, reasons, url, urlHash } = job.data;
-    const chat = await client.getChatById(chatId);
-    const delay = Math.floor(800 + Math.random() * 1200);
-    setTimeout(async () => {
-      // Per-group cooldown and duplicate suppression
-      try {
-        await groupLimiter.consume(chatId);
-        await groupHourlyLimiter.consume(chatId);
-      } catch {
-        return;
-      }
-      const key = `verdict:${chatId}:${urlHash}`;
-      const nx = await redis.set(key, '1', 'EX', 3600, 'NX');
-      if (nx === null) return;
-      const msg = formatGroupVerdict(verdict, reasons, url);
-      await chat.sendMessage(msg, { quotedMessageId: messageId }).catch(() => undefined);
-    }, delay);
+    const queueName = config.queues.scanVerdict;
+    const started = Date.now();
+    const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
+    metrics.queueJobWait.labels(queueName).observe(waitSeconds);
+    const { chatId, messageId, verdict, reasons, url, urlHash, decidedAt } = job.data as {
+      chatId: string;
+      messageId: string;
+      verdict: string;
+      reasons: string[];
+      url: string;
+      urlHash: string;
+      decidedAt?: number;
+    };
+    try {
+      const chat = await client.getChatById(chatId);
+      const delay = Math.floor(800 + Math.random() * 1200);
+      await new Promise<void>((resolve) => {
+        setTimeout(async () => {
+          let delivered = false;
+          try {
+            try {
+              await groupLimiter.consume(chatId);
+              await groupHourlyLimiter.consume(chatId);
+            } catch {
+              metrics.waMessagesDropped.labels('verdict_rate_limited').inc();
+              return;
+            }
+            const key = `verdict:${chatId}:${urlHash}`;
+            const nx = await redis.set(key, '1', 'EX', 3600, 'NX');
+            if (nx === null) {
+              metrics.waMessagesDropped.labels('verdict_duplicate').inc();
+              return;
+            }
+            const text = formatGroupVerdict(verdict, reasons, url);
+            try {
+              await chat.sendMessage(text, { quotedMessageId: messageId });
+              delivered = true;
+            } catch (err) {
+              metrics.waVerdictFailures.inc();
+              logger.warn({ err }, 'Failed to send verdict message');
+            }
+          } finally {
+            if (delivered) {
+              metrics.waVerdictsSent.inc();
+            }
+            const verdictLatencySeconds = Math.max(0, (Date.now() - (decidedAt ?? started)) / 1000);
+            metrics.waVerdictLatency.observe(verdictLatencySeconds);
+            const processingSeconds = (Date.now() - started) / 1000;
+            metrics.queueProcessingDuration.labels(queueName).observe(processingSeconds);
+            metrics.queueCompleted.labels(queueName).inc();
+            if (job.attemptsMade > 0) {
+              metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
+            }
+            resolve();
+          }
+        }, delay);
+      });
+    } catch (err) {
+      metrics.queueFailures.labels(queueName).inc();
+      metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
+      throw err;
+    }
   }, { connection: redis });
 
   await client.initialize();
@@ -125,8 +225,8 @@ export function formatGroupVerdict(verdict: string, reasons: string[], url: stri
   return `Link scan: ${level}\nDomain: ${domain}\n${advice}${reasonsStr ? `\nWhy: ${reasonsStr}` : ''}`;
 }
 
-export async function handleAdminCommand(client: Client, msg: Message) {
-  const chat = await msg.getChat();
+export async function handleAdminCommand(client: Client, msg: Message, existingChat?: GroupChat) {
+  const chat = existingChat ?? (await msg.getChat());
   if (!(chat as GroupChat).isGroup) return;
   const gc = chat as GroupChat;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
