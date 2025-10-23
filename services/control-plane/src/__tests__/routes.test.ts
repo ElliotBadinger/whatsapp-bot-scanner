@@ -1,5 +1,6 @@
 process.env.NODE_ENV = 'test';
 process.env.CONTROL_PLANE_API_TOKEN = 'test-token';
+process.env.CONTROL_PLANE_CSRF_TOKEN = 'test-token';
 
 jest.mock('url-expand', () => ({
   __esModule: true,
@@ -69,7 +70,7 @@ describe('control-plane routes', () => {
       method: 'POST',
       url: '/rescan',
       payload: { url: 'https://example.com/test?utm_source=newsletter' },
-      headers: { authorization: 'Bearer test-token', 'content-type': 'application/json' },
+      headers: { authorization: 'Bearer test-token', 'x-csrf-token': 'test-token', 'content-type': 'application/json' },
     });
 
     expect(response.statusCode).toBe(200);
@@ -94,6 +95,18 @@ describe('control-plane routes', () => {
     );
   });
 
+  it('rejects rescan requests targeting internal hosts', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/rescan',
+      payload: { url: 'http://127.0.0.1/secret' },
+      headers: { authorization: 'Bearer test-token', 'x-csrf-token': 'test-token', 'content-type': 'application/json' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: 'disallowed_host' });
+  });
+
   it('fails to start when control plane token missing', async () => {
     delete process.env.CONTROL_PLANE_API_TOKEN;
     let buildPromise: Promise<unknown> | undefined;
@@ -115,6 +128,17 @@ describe('control-plane routes', () => {
     expect(response.statusCode).toBe(401);
   });
 
+  it('rejects state-changing requests missing csrf token', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/overrides',
+      payload: { status: 'allow' },
+      headers: { authorization: 'Bearer test-token' },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({ error: 'csrf_invalid' });
+  });
+
   it('returns status metrics when authorized', async () => {
     pgClient.query.mockResolvedValueOnce({ rows: [{ scans: '3', malicious: '1' }] });
     const response = await app.inject({
@@ -131,13 +155,13 @@ describe('control-plane routes', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/overrides',
-      headers: { authorization: 'Bearer test-token' },
-      payload: { status: 'allow', reason: 'testing' },
+      headers: { authorization: 'Bearer test-token', 'x-csrf-token': 'test-token' },
+      payload: { status: 'allow', reason: 'testing', url_hash: 'a'.repeat(64) },
     });
     expect(response.statusCode).toBe(201);
     expect(pgClient.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO overrides'),
-      expect.arrayContaining([null, null, 'allow', 'global', null, 'admin', 'testing', null])
+      expect.arrayContaining(['a'.repeat(64), null, 'allow', 'global', null, 'admin', 'testing', null])
     );
   });
 
@@ -150,7 +174,7 @@ describe('control-plane routes', () => {
 
     const response = await app.inject({
       method: 'GET',
-      url: '/scans/hash-123/urlscan-artifacts/screenshot',
+      url: `/scans/${'b'.repeat(64)}/urlscan-artifacts/screenshot`,
       headers: { authorization: 'Bearer test-token' },
     });
 
@@ -192,7 +216,7 @@ describe('control-plane routes', () => {
     pgClient.query.mockResolvedValueOnce({ rows: [] });
     const response = await app.inject({
       method: 'GET',
-      url: '/scans/missing/urlscan-artifacts/screenshot',
+      url: `/scans/${'c'.repeat(64)}/urlscan-artifacts/screenshot`,
       headers: { authorization: 'Bearer test-token' },
     });
     expect(response.statusCode).toBe(404);

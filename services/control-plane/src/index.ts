@@ -4,7 +4,8 @@ import { createReadStream } from 'node:fs';
 import path from 'node:path';
 import Redis from 'ioredis';
 import { Queue } from 'bullmq';
-import { register, metrics, config, logger, assertControlPlaneToken, normalizeUrl, urlHash, assertEssentialConfig } from '@wbscanner/shared';
+import { z } from 'zod';
+import { register, metrics, config, logger, assertControlPlaneToken, normalizeUrl, urlHash, assertEssentialConfig, isForbiddenHostname } from '@wbscanner/shared';
 import { Client as PgClient } from 'pg';
 
 const artifactRoot = path.resolve(process.env.URLSCAN_ARTIFACT_DIR || 'storage/urlscan-artifacts');
@@ -22,6 +23,78 @@ function createAuthHook(expectedToken: string) {
     done();
   };
 }
+
+function normalizeOriginHeader(value: unknown): string | null {
+  const header = Array.isArray(value) ? value[0] : value;
+  if (typeof header !== 'string' || !header.trim()) {
+    return null;
+  }
+  try {
+    const parsed = new URL(header);
+    return `${parsed.protocol}//${parsed.host}`.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function createCsrfHook(expectedToken: string, allowedOrigins: Set<string>) {
+  return function csrfHook(req: any, reply: any, done: any) {
+    if (['GET', 'HEAD', 'OPTIONS'].includes((req.method || '').toUpperCase())) {
+      done();
+      return;
+    }
+
+    const tokenHeader = req.headers['x-csrf-token'];
+    const token = Array.isArray(tokenHeader) ? tokenHeader[0] : tokenHeader;
+    if (typeof token !== 'string' || token !== expectedToken) {
+      reply.code(403).send({ error: 'csrf_invalid' });
+      return;
+    }
+
+    const origin = normalizeOriginHeader(req.headers['origin']);
+    const referer = normalizeOriginHeader(req.headers['referer']);
+    const originsToValidate = [origin, referer].filter((value): value is string => Boolean(value));
+    const hasAllowedOrigins = originsToValidate.every((value) => {
+      if (allowedOrigins.size === 0) {
+        return true;
+      }
+      return allowedOrigins.has(value);
+    });
+
+    if (!hasAllowedOrigins) {
+      reply.code(403).send({ error: 'origin_not_allowed' });
+      return;
+    }
+
+    done();
+  };
+}
+
+function createSecurityHeadersHook() {
+  return function securityHeaders(_req: any, reply: any, payload: unknown, done: any) {
+    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('X-Frame-Options', 'DENY');
+    reply.header('Referrer-Policy', 'no-referrer');
+    reply.header('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
+    done(null, payload);
+  };
+}
+
+const chatIdSchema = z.string().regex(/^[A-Za-z0-9@._:\-]{3,256}$/);
+const rescanSchema = z.object({ url: z.string().trim().min(1) });
+const overrideSchema = z.object({
+  url_hash: z.string().regex(/^[0-9a-f]{64}$/).optional().nullable(),
+  pattern: z.string().max(255).optional().nullable(),
+  status: z.string().trim().min(1).max(32),
+  scope: z.string().trim().min(1).max(32).optional().default('global'),
+  scope_id: z.string().trim().max(255).optional().nullable(),
+  reason: z.string().trim().max(500).optional().nullable(),
+  expires_at: z.string().trim().max(64).optional().nullable(),
+});
+const artifactParamsSchema = z.object({
+  urlHash: z.string().regex(/^[0-9a-f]{64}$/),
+  type: z.enum(['screenshot', 'dom']),
+});
 export interface BuildOptions {
   pgClient?: PgClient;
   redisClient?: Redis;
@@ -45,10 +118,16 @@ export async function buildServer(options: BuildOptions = {}) {
 
   const app = Fastify();
 
+  const csrfToken = config.controlPlane.csrfToken;
+  const allowedOrigins = new Set(config.controlPlane.allowedOrigins);
+
+  app.addHook('onSend', createSecurityHeadersHook());
+
   app.get('/healthz', async () => ({ ok: true }));
   app.get('/metrics', async (_req, reply) => { reply.header('Content-Type', register.contentType); return register.metrics(); });
 
   app.addHook('preHandler', createAuthHook(requiredToken));
+  app.addHook('preHandler', createCsrfHook(csrfToken, allowedOrigins));
 
   app.get('/status', async () => {
     const { rows } = await pgClient.query('SELECT COUNT(*) AS scans, SUM((verdict = $1)::int) AS malicious FROM scans', ['malicious']);
@@ -56,9 +135,28 @@ export async function buildServer(options: BuildOptions = {}) {
   });
 
   app.post('/overrides', async (req, reply) => {
-    const body = req.body as any;
-    await pgClient.query(`INSERT INTO overrides (url_hash, pattern, status, scope, scope_id, created_by, reason, expires_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, [body.url_hash || null, body.pattern || null, body.status, body.scope || 'global', body.scope_id || null, 'admin', body.reason || null, body.expires_at || null]);
+    const parsed = overrideSchema.safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400).send({ error: 'invalid_payload' });
+      return;
+    }
+
+    const body = parsed.data;
+    const normalized = {
+      url_hash: body.url_hash ?? null,
+      pattern: body.pattern?.trim() ? body.pattern.trim() : null,
+      status: body.status.trim(),
+      scope: body.scope?.trim() || 'global',
+      scope_id: body.scope_id?.trim() ? body.scope_id.trim() : null,
+      reason: body.reason?.trim() ? body.reason.trim() : null,
+      expires_at: body.expires_at?.trim() ? body.expires_at.trim() : null,
+    } as const;
+
+    await pgClient.query(
+      `INSERT INTO overrides (url_hash, pattern, status, scope, scope_id, created_by, reason, expires_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [normalized.url_hash, normalized.pattern, normalized.status, normalized.scope, normalized.scope_id, 'admin', normalized.reason, normalized.expires_at]
+    );
     reply.code(201).send({ ok: true });
   });
 
@@ -68,28 +166,56 @@ export async function buildServer(options: BuildOptions = {}) {
   });
 
   app.post('/groups/:chatId/mute', async (req, reply) => {
-    const { chatId } = req.params as any;
+    const chatIdResult = chatIdSchema.safeParse((req.params as any).chatId);
+    if (!chatIdResult.success) {
+      reply.code(400).send({ error: 'invalid_chat_id' });
+      return;
+    }
+    const chatId = chatIdResult.data;
     const until = new Date(Date.now() + 60 * 60 * 1000).toISOString();
     await pgClient.query('UPDATE groups SET muted_until=$1 WHERE chat_id=$2', [until, chatId]);
     reply.send({ ok: true, muted_until: until });
   });
 
   app.post('/groups/:chatId/unmute', async (req, reply) => {
-    const { chatId } = req.params as any;
+    const chatIdResult = chatIdSchema.safeParse((req.params as any).chatId);
+    if (!chatIdResult.success) {
+      reply.code(400).send({ error: 'invalid_chat_id' });
+      return;
+    }
+    const chatId = chatIdResult.data;
     await pgClient.query('UPDATE groups SET muted_until=NULL WHERE chat_id=$1', [chatId]);
     reply.send({ ok: true });
   });
 
   app.post('/rescan', async (req, reply) => {
-    const { url } = req.body as { url?: string };
-    if (!url) {
-      reply.code(400).send({ error: 'url_required' });
+    const parsed = rescanSchema.safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400).send({ error: 'invalid_payload' });
       return;
     }
-    const normalized = normalizeUrl(url);
+    const normalized = normalizeUrl(parsed.data.url);
     if (!normalized) {
       reply.code(400).send({ error: 'invalid_url' });
       return;
+    }
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(normalized);
+    } catch {
+      reply.code(400).send({ error: 'invalid_url' });
+      return;
+    }
+    if (await isForbiddenHostname(parsedUrl.hostname)) {
+      reply.code(400).send({ error: 'disallowed_host' });
+      return;
+    }
+    if (parsedUrl.port) {
+      const port = Number.parseInt(parsedUrl.port, 10);
+      if (!Number.isFinite(port) || port <= 0 || port > 65535) {
+        reply.code(400).send({ error: 'invalid_port' });
+        return;
+      }
     }
     const hash = urlHash(normalized);
     const keys = [
@@ -119,11 +245,12 @@ export async function buildServer(options: BuildOptions = {}) {
   }
 
   app.get('/scans/:urlHash/urlscan-artifacts/:type', async (req, reply) => {
-    const { urlHash: hash, type } = req.params as { urlHash: string; type: string };
-    if (type !== 'screenshot' && type !== 'dom') {
-      reply.code(400).send({ error: 'invalid_artifact_type' });
+    const paramsResult = artifactParamsSchema.safeParse(req.params);
+    if (!paramsResult.success) {
+      reply.code(400).send({ error: 'invalid_request' });
       return;
     }
+    const { urlHash: hash, type } = paramsResult.data;
 
     const column = type === 'screenshot' ? 'urlscan_screenshot_path' : 'urlscan_dom_path';
     const { rows } = await pgClient.query(
@@ -154,6 +281,7 @@ export async function buildServer(options: BuildOptions = {}) {
         return;
       }
       const stream = createReadStream(resolvedPath);
+      reply.header('Content-Disposition', `attachment; filename="screenshot-${hash.slice(0, 16)}.png"`);
       reply.header('Content-Type', 'image/png');
       reply.send(stream);
       return;
@@ -162,6 +290,8 @@ export async function buildServer(options: BuildOptions = {}) {
     try {
       const html = await fs.readFile(resolvedPath, 'utf8');
       reply.header('Content-Type', 'text/html; charset=utf-8');
+      reply.header('Content-Disposition', `attachment; filename="dom-${hash.slice(0, 16)}.html"`);
+      reply.header('Content-Security-Policy', "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src 'none'; sandbox");
       reply.send(html);
     } catch (error: any) {
       if (error?.code === 'ENOENT') {
@@ -177,7 +307,9 @@ export async function buildServer(options: BuildOptions = {}) {
       try {
         await pgClient.query("DELETE FROM scans WHERE last_seen_at < now() - interval '30 days'");
         await pgClient.query("DELETE FROM messages WHERE posted_at < now() - interval '30 days'");
-      } catch (e) { logger.error(e, 'purge job failed'); }
+      } catch (e) {
+        logger.error({ err: e }, 'purge job failed');
+      }
     }, 24 * 60 * 60 * 1000);
   }
 
@@ -191,5 +323,8 @@ async function main() {
 }
 
 if (process.env.NODE_ENV !== 'test') {
-  main().catch(err => { logger.error(err, 'Fatal in control-plane'); process.exit(1); });
+  main().catch(err => {
+    logger.error({ err }, 'Fatal in control-plane');
+    process.exit(1);
+  });
 }

@@ -1,6 +1,17 @@
 import dns from 'node:dns/promises';
 import ipaddr from 'ipaddr.js';
 
+const blockedHostnames = new Set([
+  'localhost',
+  '127.0.0.1',
+  '::1',
+  '0.0.0.0',
+  '169.254.169.254',
+  'metadata.google.internal',
+]);
+
+const blockedHostnameSuffixes = ['.localhost', '.local', '.internal'];
+
 const privateCidrs = [
   '10.0.0.0/8',
   '172.16.0.0/12',
@@ -31,5 +42,43 @@ export function isPrivateIp(ip: string): boolean {
   } catch {
     return true;
   }
+}
+
+export async function isForbiddenHostname(hostname: string): Promise<boolean> {
+  const normalized = hostname.trim().toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+
+  if (blockedHostnames.has(normalized)) {
+    return true;
+  }
+
+  if (blockedHostnameSuffixes.some((suffix) => normalized.endsWith(suffix))) {
+    return true;
+  }
+
+  if (ipaddr.isValid(normalized) && isPrivateIp(normalized)) {
+    return true;
+  }
+
+  return isPrivateHostname(normalized);
+}
+
+export function isHostnameAllowListed(hostname: string, allowList: readonly string[]): boolean {
+  if (allowList.length === 0) {
+    return false;
+  }
+  const normalized = hostname.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  return allowList.some((allowed) => {
+    const candidate = allowed.trim().toLowerCase();
+    if (!candidate) {
+      return false;
+    }
+    return normalized === candidate || normalized.endsWith(`.${candidate}`);
+  });
 }
 

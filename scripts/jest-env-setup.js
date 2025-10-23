@@ -12,7 +12,39 @@ process.env.POSTGRES_USER = process.env.POSTGRES_USER || 'wbscanner';
 process.env.POSTGRES_PASSWORD = process.env.POSTGRES_PASSWORD || 'wbscanner';
 
 jest.mock('ioredis', () => {
-  const Redis = require('ioredis-mock');
+  let Redis;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    Redis = require('ioredis-mock');
+  } catch {
+    Redis = class RedisMock {
+      constructor() {
+        this.store = new Map();
+      }
+
+      async set(key, value) {
+        this.store.set(key, value);
+        return 'OK';
+      }
+
+      async get(key) {
+        return this.store.get(key);
+      }
+
+      async del() {
+        return 1;
+      }
+
+      duplicate() {
+        return new RedisMock();
+      }
+
+      on() {}
+
+      quit() {}
+    };
+  }
+
   return {
     __esModule: true,
     default: Redis,
