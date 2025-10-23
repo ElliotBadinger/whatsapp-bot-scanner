@@ -1,0 +1,208 @@
+whatsapp-web.js 1.34.1 &raquo; Class: InterfaceController
+
+        [whatsapp-web.js 1.34.1](index.html)
+
+            class
+            # InterfaceController
+
+            Source: [util/InterfaceController.js:6](util_InterfaceController.js.html#source-line-6)
+
+              Interface Controller
+
+              ## Methods
+
+                    [checkFeatureStatus(feature)](InterfaceController.html#checkFeatureStatus)
+
+                    [closeRightDrawer()](InterfaceController.html#closeRightDrawer)
+
+                    [disableFeatures(features)](InterfaceController.html#disableFeatures)
+
+                    [enableFeatures(features)](InterfaceController.html#enableFeatures)
+
+                    [getFeatures()](InterfaceController.html#getFeatures)
+
+                    [openChatDrawer(chatId)](InterfaceController.html#openChatDrawer)
+
+                    [openChatSearch(chatId)](InterfaceController.html#openChatSearch)
+
+                    [openChatWindow(chatId)](InterfaceController.html#openChatWindow)
+
+                    [openChatWindowAt(msgId)](InterfaceController.html#openChatWindowAt)
+
+                    [openMessageDrawer(msgId)](InterfaceController.html#openMessageDrawer)
+
+            ## new&nbsp;InterfaceController()
+
+            ## Methods
+
+              async
+              ### checkFeatureStatus(feature)
+
+              Check if Feature is enabled
+
+                #### Parameter
+
+                      Name
+                      Type
+                      Optional
+                      Description
+
+                        feature
+
+                        string
+
+                        &nbsp;
+
+                        status to check
+
+              async
+              ### closeRightDrawer()
+
+              Closes the Right Drawer
+
+              async
+              ### disableFeatures(features)
+
+              Disable Features
+
+                #### Parameter
+
+                      Name
+                      Type
+                      Optional
+                      Description
+
+                        features
+
+                        Array of string
+
+                        &nbsp;
+
+                        to be disabled
+
+              async
+              ### enableFeatures(features)
+
+              Enable Features
+
+                #### Parameter
+
+                      Name
+                      Type
+                      Optional
+                      Description
+
+                        features
+
+                        Array of string
+
+                        &nbsp;
+
+                        to be enabled
+
+              async
+              ### getFeatures()
+
+              Get all Features
+
+              async
+              ### openChatDrawer(chatId)
+
+              Opens the Chat Drawer
+
+                #### Parameter
+
+                      Name
+                      Type
+                      Optional
+                      Description
+
+                        chatId
+
+                        string
+
+                        &nbsp;
+
+                        ID of the chat drawer that will be opened
+
+              async
+              ### openChatSearch(chatId)
+
+              Opens the Chat Search
+
+                #### Parameter
+
+                      Name
+                      Type
+                      Optional
+                      Description
+
+                        chatId
+
+                        string
+
+                        &nbsp;
+
+                        ID of the chat search that will be opened
+
+              async
+              ### openChatWindow(chatId)
+
+              Opens the Chat Window
+
+                #### Parameter
+
+                      Name
+                      Type
+                      Optional
+                      Description
+
+                        chatId
+
+                        string
+
+                        &nbsp;
+
+                        ID of the chat window that will be opened
+
+              async
+              ### openChatWindowAt(msgId)
+
+              Opens or Scrolls the Chat Window to the position of the message
+
+                #### Parameter
+
+                      Name
+                      Type
+                      Optional
+                      Description
+
+                        msgId
+
+                        string
+
+                        &nbsp;
+
+                        ID of the message that will be scrolled to
+
+              async
+              ### openMessageDrawer(msgId)
+
+              Opens the Message Drawer
+
+                #### Parameter
+
+                      Name
+                      Type
+                      Optional
+                      Description
+
+                        msgId
+
+                        string
+
+                        &nbsp;
+
+                        ID of the message drawer that will be opened
+
+        Generated by [JSDoc](https://github.com/jsdoc3/jsdoc) 3.6.11 on October 23, 2025.

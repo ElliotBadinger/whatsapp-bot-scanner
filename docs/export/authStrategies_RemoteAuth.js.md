@@ -1,0 +1,221 @@
+whatsapp-web.js 1.34.1 &raquo; Source: authStrategies/RemoteAuth.js
+
+        [whatsapp-web.js 1.34.1](index.html)
+
+            # Source: authStrategies/RemoteAuth.js
+
+            ```
+&#x27;use strict&#x27;;
+
+/* Require Optional Dependencies */
+try {
+    var fs &#x3D; require(&#x27;fs-extra&#x27;);
+    var unzipper &#x3D; require(&#x27;unzipper&#x27;);
+    var archiver &#x3D; require(&#x27;archiver&#x27;);
+} catch {
+    fs &#x3D; undefined;
+    unzipper &#x3D; undefined;
+    archiver &#x3D; undefined;
+}
+
+const path &#x3D; require(&#x27;path&#x27;);
+const { Events } &#x3D; require(&#x27;./../util/Constants&#x27;);
+const BaseAuthStrategy &#x3D; require(&#x27;./BaseAuthStrategy&#x27;);
+
+/**
+ * Remote-based authentication
+ * @param {object} options - options
+ * @param {object} options.store - Remote database store instance
+ * @param {string} options.clientId - Client id to distinguish instances if you are using multiple, otherwise keep null if you are using only one instance
+ * @param {string} options.dataPath - Change the default path for saving session files, default is: &quot;./.wwebjs_auth/&quot; 
+ * @param {number} options.backupSyncIntervalMs - Sets the time interval for periodic session backups. Accepts values starting from 60000ms {1 minute}
+ * @param {number} options.rmMaxRetries - Sets the maximum number of retries for removing the session directory
+ */
+class RemoteAuth extends BaseAuthStrategy {
+    constructor({ clientId, dataPath, store, backupSyncIntervalMs, rmMaxRetries } &#x3D; {}) {
+        if (!fs &amp;&amp; !unzipper &amp;&amp; !archiver) throw new Error(&#x27;Optional Dependencies [fs-extra, unzipper, archiver] are required to use RemoteAuth. Make sure to run npm install correctly and remove the --no-optional flag&#x27;);
+        super();
+
+        const idRegex &#x3D; /^[-_\w]+$/i;
+        if (clientId &amp;&amp; !idRegex.test(clientId)) {
+            throw new Error(&#x27;Invalid clientId. Only alphanumeric characters, underscores and hyphens are allowed.&#x27;);
+        }
+        if (!backupSyncIntervalMs || backupSyncIntervalMs &lt; 60000) {
+            throw new Error(&#x27;Invalid backupSyncIntervalMs. Accepts values starting from 60000ms {1 minute}.&#x27;);
+        }
+        if(!store) throw new Error(&#x27;Remote database store is required.&#x27;);
+
+        this.store &#x3D; store;
+        this.clientId &#x3D; clientId;
+        this.backupSyncIntervalMs &#x3D; backupSyncIntervalMs;
+        this.dataPath &#x3D; path.resolve(dataPath || &#x27;./.wwebjs_auth/&#x27;);
+        this.tempDir &#x3D; &#x60;${this.dataPath}/wwebjs_temp_session_${this.clientId}&#x60;;
+        this.requiredDirs &#x3D; [&#x27;Default&#x27;, &#x27;IndexedDB&#x27;, &#x27;Local Storage&#x27;]; /* &#x3D;> Required Files &amp; Dirs in WWebJS to restore session */
+        this.rmMaxRetries &#x3D; rmMaxRetries ?? 4;
+    }
+
+    async beforeBrowserInitialized() {
+        const puppeteerOpts &#x3D; this.client.options.puppeteer;
+        const sessionDirName &#x3D; this.clientId ? &#x60;RemoteAuth-${this.clientId}&#x60; : &#x27;RemoteAuth&#x27;;
+        const dirPath &#x3D; path.join(this.dataPath, sessionDirName);
+
+        if (puppeteerOpts.userDataDir &amp;&amp; puppeteerOpts.userDataDir !&#x3D;&#x3D; dirPath) {
+            throw new Error(&#x27;RemoteAuth is not compatible with a user-supplied userDataDir.&#x27;);
+        }
+
+        this.userDataDir &#x3D; dirPath;
+        this.sessionName &#x3D; sessionDirName;
+
+        await this.extractRemoteSession();
+
+        this.client.options.puppeteer &#x3D; {
+            ...puppeteerOpts,
+            userDataDir: dirPath
+        };
+    }
+
+    async logout() {
+        await this.disconnect();
+    }
+
+    async destroy() {
+        clearInterval(this.backupSync);
+    }
+
+    async disconnect() {
+        await this.deleteRemoteSession();
+
+        let pathExists &#x3D; await this.isValidPath(this.userDataDir);
+        if (pathExists) {
+            await fs.promises.rm(this.userDataDir, {
+                recursive: true,
+                force: true,
+                maxRetries: this.rmMaxRetries,
+            }).catch(() &#x3D;> {});
+        }
+        clearInterval(this.backupSync);
+    }
+
+    async afterAuthReady() {
+        const sessionExists &#x3D; await this.store.sessionExists({session: this.sessionName});
+        if(!sessionExists) {
+            await this.delay(60000); /* Initial delay sync required for session to be stable enough to recover */
+            await this.storeRemoteSession({emit: true});
+        }
+        var self &#x3D; this;
+        this.backupSync &#x3D; setInterval(async function () {
+            await self.storeRemoteSession();
+        }, this.backupSyncIntervalMs);
+    }
+
+    async storeRemoteSession(options) {
+        /* Compress &amp; Store Session */
+        const pathExists &#x3D; await this.isValidPath(this.userDataDir);
+        if (pathExists) {
+            await this.compressSession();
+            await this.store.save({session: this.sessionName});
+            await fs.promises.unlink(&#x60;${this.sessionName}.zip&#x60;);
+            await fs.promises.rm(&#x60;${this.tempDir}&#x60;, {
+                recursive: true,
+                force: true,
+                maxRetries: this.rmMaxRetries,
+            }).catch(() &#x3D;> {});
+            if(options &amp;&amp; options.emit) this.client.emit(Events.REMOTE_SESSION_SAVED);
+        }
+    }
+
+    async extractRemoteSession() {
+        const pathExists &#x3D; await this.isValidPath(this.userDataDir);
+        const compressedSessionPath &#x3D; &#x60;${this.sessionName}.zip&#x60;;
+        const sessionExists &#x3D; await this.store.sessionExists({session: this.sessionName});
+        if (pathExists) {
+            await fs.promises.rm(this.userDataDir, {
+                recursive: true,
+                force: true,
+                maxRetries: this.rmMaxRetries,
+            }).catch(() &#x3D;> {});
+        }
+        if (sessionExists) {
+            await this.store.extract({session: this.sessionName, path: compressedSessionPath});
+            await this.unCompressSession(compressedSessionPath);
+        } else {
+            fs.mkdirSync(this.userDataDir, { recursive: true });
+        }
+    }
+
+    async deleteRemoteSession() {
+        const sessionExists &#x3D; await this.store.sessionExists({session: this.sessionName});
+        if (sessionExists) await this.store.delete({session: this.sessionName});
+    }
+
+    async compressSession() {
+        const archive &#x3D; archiver(&#x27;zip&#x27;);
+        const stream &#x3D; fs.createWriteStream(&#x60;${this.sessionName}.zip&#x60;);
+
+        await fs.copy(this.userDataDir, this.tempDir).catch(() &#x3D;> {});
+        await this.deleteMetadata();
+        return new Promise((resolve, reject) &#x3D;> {
+            archive
+                .directory(this.tempDir, false)
+                .on(&#x27;error&#x27;, err &#x3D;> reject(err))
+                .pipe(stream);
+
+            stream.on(&#x27;close&#x27;, () &#x3D;> resolve());
+            archive.finalize();
+        });
+    }
+
+    async unCompressSession(compressedSessionPath) {
+        var stream &#x3D; fs.createReadStream(compressedSessionPath);
+        await new Promise((resolve, reject) &#x3D;> {
+            stream.pipe(unzipper.Extract({
+                path: this.userDataDir
+            }))
+                .on(&#x27;error&#x27;, err &#x3D;> reject(err))
+                .on(&#x27;finish&#x27;, () &#x3D;> resolve());
+        });
+        await fs.promises.unlink(compressedSessionPath);
+    }
+
+    async deleteMetadata() {
+        const sessionDirs &#x3D; [this.tempDir, path.join(this.tempDir, &#x27;Default&#x27;)];
+        for (const dir of sessionDirs) {
+            const sessionFiles &#x3D; await fs.promises.readdir(dir);
+            for (const element of sessionFiles) {
+                if (!this.requiredDirs.includes(element)) {
+                    const dirElement &#x3D; path.join(dir, element);
+                    const stats &#x3D; await fs.promises.lstat(dirElement);
+    
+                    if (stats.isDirectory()) {
+                        await fs.promises.rm(dirElement, {
+                            recursive: true,
+                            force: true,
+                            maxRetries: this.rmMaxRetries,
+                        }).catch(() &#x3D;> {});
+                    } else {
+                        await fs.promises.unlink(dirElement).catch(() &#x3D;> {});
+                    }
+                }
+            }
+        }
+    }
+
+    async isValidPath(path) {
+        try {
+            await fs.promises.access(path);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    async delay(ms) {
+        return new Promise(resolve &#x3D;> setTimeout(resolve, ms));
+    }
+}
+
+module.exports &#x3D; RemoteAuth;
+
+```
+
+        Generated by [JSDoc](https://github.com/jsdoc3/jsdoc) 3.6.11 on October 23, 2025.
