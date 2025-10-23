@@ -23,12 +23,19 @@ let monthlyRequestCount = 0;
 let currentMonth = new Date().getMonth();
 let quotaDisabled = false;
 
+<<<<<<< HEAD
 function updateQuotaGauges(remaining: number, available: boolean): void {
   apiQuotaRemainingGauge.labels(SERVICE_LABEL).set(Math.max(0, remaining));
   apiQuotaStatusGauge.labels(SERVICE_LABEL).set(available ? 1 : 0);
 }
 
 updateQuotaGauges(config.whoisxml.enabled ? config.whoisxml.monthlyQuota : 0, config.whoisxml.enabled);
+=======
+apiQuotaRemainingGauge.labels('whoisxml').set(config.whoisxml.monthlyQuota);
+apiQuotaStatusGauge.labels('whoisxml').set(config.whoisxml.enabled ? 1 : 0);
+metrics.apiQuotaUtilization.labels('whoisxml').set(0);
+metrics.apiQuotaProjectedDepletion.labels('whoisxml').set(config.whoisxml.monthlyQuota * 3600);
+>>>>>>> origin/codex/add-prometheus-metrics-and-dashboards
 
 function resetMonthlyQuotaIfNeeded(): void {
   const now = new Date();
@@ -37,7 +44,15 @@ function resetMonthlyQuotaIfNeeded(): void {
     monthlyRequestCount = 0;
     currentMonth = now.getMonth();
     quotaDisabled = false;
+<<<<<<< HEAD
     updateQuotaGauges(config.whoisxml.enabled ? config.whoisxml.monthlyQuota : 0, config.whoisxml.enabled);
+=======
+    apiQuotaRemainingGauge.labels('whoisxml').set(config.whoisxml.monthlyQuota);
+    apiQuotaStatusGauge.labels('whoisxml').set(config.whoisxml.enabled ? 1 : 0);
+    metrics.apiQuotaResets.labels('whoisxml').inc();
+    metrics.apiQuotaUtilization.labels('whoisxml').set(0);
+    metrics.apiQuotaProjectedDepletion.labels('whoisxml').set(config.whoisxml.monthlyQuota * 3600);
+>>>>>>> origin/codex/add-prometheus-metrics-and-dashboards
   }
 }
 
@@ -55,7 +70,12 @@ function assertQuotaAvailable(): void {
     quotaDisabled = true;
     updateQuotaGauges(0, false);
     metrics.whoisDisabled.labels('quota').inc();
+<<<<<<< HEAD
     metrics.whoisResults.labels('quota_exhausted').inc();
+=======
+    metrics.apiQuotaProjectedDepletion.labels('whoisxml').set(0);
+    metrics.apiQuotaUtilization.labels('whoisxml').set(1);
+>>>>>>> origin/codex/add-prometheus-metrics-and-dashboards
     throw new QuotaExceededError('whoisxml', 'WhoisXML monthly quota exhausted');
   }
 }
@@ -69,9 +89,14 @@ export async function whoisXmlLookup(domain: string): Promise<WhoisXmlResponse> 
   assertQuotaAvailable();
 
   monthlyRequestCount += 1;
+  metrics.apiQuotaConsumption.labels('whoisxml').inc();
   const remaining = Math.max(0, config.whoisxml.monthlyQuota - monthlyRequestCount);
   updateQuotaGauges(remaining, remaining > 0);
   metrics.whoisRequests.inc();
+  metrics.apiQuotaUtilization.labels('whoisxml').set(
+    Math.min(1, Math.max(0, monthlyRequestCount / Math.max(1, config.whoisxml.monthlyQuota)))
+  );
+  metrics.apiQuotaProjectedDepletion.labels('whoisxml').set(remaining * 3600);
 
   if (remaining <= config.whoisxml.quotaAlertThreshold) {
     logger.warn({ remaining }, 'WhoisXML quota nearing exhaustion');
@@ -102,8 +127,13 @@ export async function whoisXmlLookup(domain: string): Promise<WhoisXmlResponse> 
     quotaDisabled = true;
     updateQuotaGauges(0, false);
     metrics.whoisDisabled.labels('rate_limited').inc();
+<<<<<<< HEAD
     metrics.whoisResults.labels('rate_limited').inc();
     metrics.whoisResults.labels('quota_exhausted').inc();
+=======
+    metrics.apiQuotaProjectedDepletion.labels('whoisxml').set(0);
+    metrics.apiQuotaUtilization.labels('whoisxml').set(1);
+>>>>>>> origin/codex/add-prometheus-metrics-and-dashboards
     throw new QuotaExceededError('whoisxml', 'WhoisXML rate limited');
   }
   if (res.statusCode >= 400 && res.statusCode < 500) {
@@ -143,5 +173,12 @@ export async function whoisXmlLookup(domain: string): Promise<WhoisXmlResponse> 
 
 export function disableWhoisXmlForMonth(): void {
   quotaDisabled = true;
+<<<<<<< HEAD
   updateQuotaGauges(0, false);
+=======
+  apiQuotaRemainingGauge.labels('whoisxml').set(0);
+  apiQuotaStatusGauge.labels('whoisxml').set(0);
+  metrics.apiQuotaProjectedDepletion.labels('whoisxml').set(0);
+  metrics.apiQuotaUtilization.labels('whoisxml').set(1);
+>>>>>>> origin/codex/add-prometheus-metrics-and-dashboards
 }

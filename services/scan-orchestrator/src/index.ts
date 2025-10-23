@@ -12,7 +12,10 @@ import {
   circuitStates,
   rateLimiterDelay,
   circuitBreakerTransitionCounter,
+  circuitBreakerRejections,
+  circuitBreakerOpenDuration,
   queueDepthGauge,
+  cacheHitRatioGauge,
   normalizeUrl,
   expandUrl,
   urlHash,
@@ -52,6 +55,13 @@ const scanRequestQueue = new Queue(config.queues.scanRequest, { connection: redi
 const scanVerdictQueue = new Queue(config.queues.scanVerdict, { connection: redis });
 const urlscanQueue = new Queue(config.queues.urlscan, { connection: redis });
 
+const queueMetricsInterval = setInterval(() => {
+  refreshQueueMetrics(scanRequestQueue, config.queues.scanRequest).catch(() => undefined);
+  refreshQueueMetrics(scanVerdictQueue, config.queues.scanVerdict).catch(() => undefined);
+  refreshQueueMetrics(urlscanQueue, config.queues.urlscan).catch(() => undefined);
+}, 10_000);
+queueMetricsInterval.unref();
+
 const ANALYSIS_TTLS = {
   gsb: 60 * 60,
   phishtank: 60 * 60,
@@ -66,6 +76,16 @@ const URLSCAN_QUEUED_PREFIX = 'urlscan:queued:';
 const URLSCAN_SUBMITTED_PREFIX = 'urlscan:submitted:';
 const URLSCAN_RESULT_PREFIX = 'urlscan:result:';
 const SHORTENER_CACHE_PREFIX = 'url:shortener:';
+
+const CACHE_LABELS = {
+  gsb: 'gsb_analysis',
+  phishtank: 'phishtank_analysis',
+  vt: 'virustotal_analysis',
+  urlhaus: 'urlhaus_analysis',
+  shortener: 'shortener_resolution',
+  whois: 'whois_analysis',
+  verdict: 'scan_result',
+} as const;
 
 const CIRCUIT_DEFAULTS = {
   failureThreshold: 5,
@@ -83,6 +103,109 @@ const CIRCUIT_LABELS = {
   whoisxml: 'whoisxml',
 } as const;
 
+const cacheRatios = new Map<string, { hits: number; misses: number }>();
+const circuitOpenSince = new Map<string, number>();
+
+const VERDICT_REASON_OTHER_LABEL = 'other';
+
+function normalizeVerdictReason(reason: string): string {
+  if (reason === 'Manually allowed') {
+    return 'manual_allow';
+  }
+  if (reason === 'Manually blocked') {
+    return 'manual_deny';
+  }
+  if (reason.startsWith('Google Safe Browsing')) {
+    if (reason.includes('MALWARE')) {
+      return 'gsb_malware';
+    }
+    if (reason.includes('SOCIAL_ENGINEERING')) {
+      return 'gsb_social_engineering';
+    }
+    return 'gsb_threat';
+  }
+  if (reason === 'Verified phishing (Phishtank)') {
+    return 'phishtank_verified';
+  }
+  if (reason === 'Known malware distribution (URLhaus)') {
+    return 'urlhaus_listed';
+  }
+  if (reason.includes('VT engine')) {
+    return 'vt_malicious';
+  }
+  if (reason.startsWith('Domain registered')) {
+    if (reason.includes('<7')) {
+      return 'domain_age_lt7';
+    }
+    if (reason.includes('<14')) {
+      return 'domain_age_lt14';
+    }
+    if (reason.includes('<30')) {
+      return 'domain_age_lt30';
+    }
+    return 'domain_age';
+  }
+  if (reason.startsWith('High-risk homoglyph attack detected')) {
+    return 'homoglyph_high';
+  }
+  if (
+    reason.startsWith('Suspicious characters detected') ||
+    reason === 'Suspicious homoglyph characters detected'
+  ) {
+    return 'homoglyph_medium';
+  }
+  if (reason === 'Punycode/IDN domain detected') {
+    return 'homoglyph_low';
+  }
+  if (reason === 'URL uses IP address') {
+    return 'ip_literal';
+  }
+  if (reason === 'Suspicious TLD') {
+    return 'suspicious_tld';
+  }
+  if (reason.startsWith('Multiple redirects')) {
+    return 'multiple_redirects';
+  }
+  if (reason === 'Uncommon port') {
+    return 'uncommon_port';
+  }
+  if (reason.startsWith('Long URL')) {
+    return 'long_url';
+  }
+  if (reason === 'Executable file extension') {
+    return 'executable_extension';
+  }
+  if (reason === 'Shortened URL expanded') {
+    return 'shortener_expanded';
+  }
+  if (reason === 'Redirect leads to mismatched domain/brand') {
+    return 'redirect_mismatch';
+  }
+  return VERDICT_REASON_OTHER_LABEL;
+}
+
+function recordCacheOutcome(cacheType: string, outcome: 'hit' | 'miss'): void {
+  const state = cacheRatios.get(cacheType) ?? { hits: 0, misses: 0 };
+  if (outcome === 'hit') {
+    state.hits += 1;
+  } else {
+    state.misses += 1;
+  }
+  cacheRatios.set(cacheType, state);
+  const total = state.hits + state.misses;
+  if (total > 0) {
+    cacheHitRatioGauge.labels(cacheType).set(state.hits / total);
+  }
+}
+
+async function refreshQueueMetrics(queue: Queue, name: string): Promise<void> {
+  const counts = await queue.getJobCounts('waiting', 'active', 'delayed', 'failed');
+  queueDepthGauge.labels(name).set(counts.waiting ?? 0);
+  metrics.queueActive.labels(name).set(counts.active ?? 0);
+  metrics.queueDelayed.labels(name).set(counts.delayed ?? 0);
+  metrics.queueFailedGauge.labels(name).set(counts.failed ?? 0);
+}
+
 function makeCircuit(name: string) {
   const breaker = new CircuitBreaker({
     ...CIRCUIT_DEFAULTS,
@@ -90,6 +213,16 @@ function makeCircuit(name: string) {
     onStateChange: (state, from) => {
       circuitStates.labels(name).set(state);
       circuitBreakerTransitionCounter.labels(name, String(from ?? ''), String(state)).inc();
+      const now = Date.now();
+      if (state === CircuitState.OPEN) {
+        circuitOpenSince.set(name, now);
+      } else if (from === CircuitState.OPEN) {
+        const openedAt = circuitOpenSince.get(name);
+        if (openedAt) {
+          circuitBreakerOpenDuration.labels(name).observe((now - openedAt) / 1000);
+          circuitOpenSince.delete(name);
+        }
+      }
       logger.debug({ name, from, to: state }, 'Circuit state change');
     }
   });
@@ -124,7 +257,11 @@ function classifyError(err: unknown): string {
 }
 
 function recordError(service: string, err: unknown) {
-  externalErrors.labels(service, classifyError(err)).inc();
+  const reason = classifyError(err);
+  if (reason === 'circuit_open') {
+    circuitBreakerRejections.labels(service).inc();
+  }
+  externalErrors.labels(service, reason).inc();
 }
 
 function shouldRetry(err: unknown): boolean {
@@ -137,18 +274,40 @@ function shouldRetry(err: unknown): boolean {
   return !codeNum;
 }
 
-async function getJsonCache<T>(key: string): Promise<T | null> {
+async function getJsonCache<T>(cacheType: string, key: string, ttlSeconds: number): Promise<T | null> {
+  const stop = metrics.cacheLookupDuration.labels(cacheType).startTimer();
   const raw = await redis.get(key);
-  if (!raw) return null;
+  stop();
+  if (!raw) {
+    recordCacheOutcome(cacheType, 'miss');
+    metrics.cacheEntryTtl.labels(cacheType).set(0);
+    return null;
+  }
+  recordCacheOutcome(cacheType, 'hit');
+  metrics.cacheEntryBytes.labels(cacheType).set(Buffer.byteLength(raw));
+  const ttlRemaining = await redis.ttl(key);
+  if (ttlRemaining >= 0) {
+    metrics.cacheEntryTtl.labels(cacheType).set(ttlRemaining);
+    if (ttlSeconds > 0 && ttlRemaining < Math.max(1, Math.floor(ttlSeconds * 0.2))) {
+      metrics.cacheStaleTotal.labels(cacheType).inc();
+    }
+  }
   try {
     return JSON.parse(raw) as T;
   } catch {
+    metrics.cacheStaleTotal.labels(cacheType).inc();
     return null;
   }
 }
 
-async function setJsonCache(key: string, value: unknown, ttlSeconds: number): Promise<void> {
-  await redis.set(key, JSON.stringify(value), 'EX', ttlSeconds);
+async function setJsonCache(cacheType: string, key: string, value: unknown, ttlSeconds: number): Promise<void> {
+  const payload = JSON.stringify(value);
+  const stop = metrics.cacheWriteDuration.labels(cacheType).startTimer();
+  await redis.set(key, payload, 'EX', ttlSeconds);
+  stop();
+  metrics.cacheRefreshTotal.labels(cacheType).inc();
+  metrics.cacheEntryBytes.labels(cacheType).set(Buffer.byteLength(payload));
+  metrics.cacheEntryTtl.labels(cacheType).set(ttlSeconds);
 }
 
 function escapeForRegex(input: string): string {
@@ -298,7 +457,7 @@ function extractUrlscanArtifactCandidates(uuid: string, payload: any): ArtifactC
 
 async function fetchGsbAnalysis(finalUrl: string, hash: string): Promise<GsbFetchResult> {
   const cacheKey = `url:analysis:${hash}:gsb`;
-  const cached = await getJsonCache<GsbMatch[]>(cacheKey);
+  const cached = await getJsonCache<GsbMatch[]>(CACHE_LABELS.gsb, cacheKey, ANALYSIS_TTLS.gsb);
   if (cached) {
     return { matches: cached, fromCache: true, durationMs: 0, error: null };
   }
@@ -312,7 +471,7 @@ async function fetchGsbAnalysis(finalUrl: string, hash: string): Promise<GsbFetc
       })
     );
     recordLatency(CIRCUIT_LABELS.gsb, result.latencyMs);
-    await setJsonCache(cacheKey, result.matches, ANALYSIS_TTLS.gsb);
+    await setJsonCache(CACHE_LABELS.gsb, cacheKey, result.matches, ANALYSIS_TTLS.gsb);
     return {
       matches: result.matches,
       fromCache: false,
@@ -331,7 +490,7 @@ async function fetchPhishtank(finalUrl: string, hash: string): Promise<Phishtank
     return { result: null, fromCache: true, error: null };
   }
   const cacheKey = `url:analysis:${hash}:phishtank`;
-  const cached = await getJsonCache<PhishtankResult>(cacheKey);
+  const cached = await getJsonCache<PhishtankResult>(CACHE_LABELS.phishtank, cacheKey, ANALYSIS_TTLS.phishtank);
   if (cached) {
     return { result: cached, fromCache: true, error: null };
   }
@@ -345,7 +504,7 @@ async function fetchPhishtank(finalUrl: string, hash: string): Promise<Phishtank
       })
     );
     recordLatency(CIRCUIT_LABELS.phishtank, result.latencyMs);
-    await setJsonCache(cacheKey, result, ANALYSIS_TTLS.phishtank);
+    await setJsonCache(CACHE_LABELS.phishtank, cacheKey, result, ANALYSIS_TTLS.phishtank);
     return { result, fromCache: false, error: null };
   } catch (err) {
     recordError(CIRCUIT_LABELS.phishtank, err);
@@ -366,7 +525,7 @@ async function fetchVirusTotal(finalUrl: string, hash: string): Promise<VirusTot
     return { stats: undefined, fromCache: true, quotaExceeded: false, error: null };
   }
   const cacheKey = `url:analysis:${hash}:vt`;
-  const cached = await getJsonCache<VtStats>(cacheKey);
+  const cached = await getJsonCache<VtStats>(CACHE_LABELS.vt, cacheKey, ANALYSIS_TTLS.vt);
   if (cached) {
     return { stats: cached, fromCache: true, quotaExceeded: false, error: null };
   }
@@ -382,7 +541,7 @@ async function fetchVirusTotal(finalUrl: string, hash: string): Promise<VirusTot
     recordLatency(CIRCUIT_LABELS.vt, analysis.latencyMs);
     const stats = vtVerdictStats(analysis as VirusTotalAnalysis);
     if (stats) {
-      await setJsonCache(cacheKey, stats, ANALYSIS_TTLS.vt);
+      await setJsonCache(CACHE_LABELS.vt, cacheKey, stats, ANALYSIS_TTLS.vt);
     }
     return { stats, fromCache: false, quotaExceeded: false, error: null };
   } catch (err) {
@@ -406,7 +565,7 @@ async function fetchUrlhaus(finalUrl: string, hash: string): Promise<UrlhausFetc
     return { result: null, fromCache: true, error: null };
   }
   const cacheKey = `url:analysis:${hash}:urlhaus`;
-  const cached = await getJsonCache<UrlhausResult>(cacheKey);
+  const cached = await getJsonCache<UrlhausResult>(CACHE_LABELS.urlhaus, cacheKey, ANALYSIS_TTLS.urlhaus);
   if (cached) {
     return { result: cached, fromCache: true, error: null };
   }
@@ -420,7 +579,7 @@ async function fetchUrlhaus(finalUrl: string, hash: string): Promise<UrlhausFetc
       })
     );
     recordLatency(CIRCUIT_LABELS.urlhaus, result.latencyMs);
-    await setJsonCache(cacheKey, result, ANALYSIS_TTLS.urlhaus);
+    await setJsonCache(CACHE_LABELS.urlhaus, cacheKey, result, ANALYSIS_TTLS.urlhaus);
     return { result, fromCache: false, error: null };
   } catch (err) {
     recordError(CIRCUIT_LABELS.urlhaus, err);
@@ -438,7 +597,7 @@ interface ShortenerCacheEntry {
 
 async function resolveShortenerWithCache(url: string, hash: string): Promise<ShortenerCacheEntry | null> {
   const cacheKey = `${SHORTENER_CACHE_PREFIX}${hash}`;
-  const cached = await getJsonCache<ShortenerCacheEntry>(cacheKey);
+  const cached = await getJsonCache<ShortenerCacheEntry>(CACHE_LABELS.shortener, cacheKey, config.shortener.cacheTtlSeconds);
   if (cached) return cached;
   try {
     const start = Date.now();
@@ -451,7 +610,7 @@ async function resolveShortenerWithCache(url: string, hash: string): Promise<Sho
         chain: resolved.chain,
         wasShortened: true,
       };
-      await setJsonCache(cacheKey, payload, config.shortener.cacheTtlSeconds);
+      await setJsonCache(CACHE_LABELS.shortener, cacheKey, payload, config.shortener.cacheTtlSeconds);
       return payload;
     }
     return null;
@@ -478,7 +637,11 @@ async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainI
     return { ageDays: undefined, source: 'none' };
   }
   const cacheKey = `url:analysis:${hash}:whois`;
-  const cached = await getJsonCache<{ ageDays?: number; registrar?: string }>(cacheKey);
+  const cached = await getJsonCache<{ ageDays?: number; registrar?: string }>(
+    CACHE_LABELS.whois,
+    cacheKey,
+    ANALYSIS_TTLS.whois
+  );
   if (cached) {
     return { ageDays: cached.ageDays, registrar: cached.registrar, source: 'whoisxml' };
   }
@@ -495,7 +658,7 @@ async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainI
     recordLatency(CIRCUIT_LABELS.whoisxml, Date.now() - start);
     const ageDays = response?.record?.estimatedDomainAgeDays;
     const registrar = response?.record?.registrarName;
-    await setJsonCache(cacheKey, { ageDays, registrar }, ANALYSIS_TTLS.whois);
+    await setJsonCache(CACHE_LABELS.whois, cacheKey, { ageDays, registrar }, ANALYSIS_TTLS.whois);
     return { ageDays, registrar, source: 'whoisxml' };
   } catch (err) {
     recordError(CIRCUIT_LABELS.whoisxml, err);
@@ -618,21 +781,76 @@ async function main() {
   });
 
   new Worker(config.queues.scanRequest, async (job) => {
-    const start = Date.now();
-    const { chatId, messageId, url } = job.data as { chatId: string; messageId: string; url: string };
+    const queueName = config.queues.scanRequest;
+    const started = Date.now();
+    const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
+    metrics.queueJobWait.labels(queueName).observe(waitSeconds);
+    const { chatId, messageId, url, timestamp } = job.data as {
+      chatId: string;
+      messageId: string;
+      url: string;
+      timestamp?: number;
+    };
+    const ingestionTimestamp = typeof timestamp === 'number' ? timestamp : job.timestamp ?? started;
     try {
       const norm = normalizeUrl(url);
-      if (!norm) return;
-      const h = urlHash(norm);
-      const cacheKey = `scan:${h}`;
-      const cached = await redis.get(cacheKey);
-      if (cached) {
-        metrics.cacheHit.inc();
-        const data = JSON.parse(cached);
-        await scanVerdictQueue.add('verdict', { chatId, messageId, ...data }, { removeOnComplete: true });
+      if (!norm) {
+        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
+        metrics.queueCompleted.labels(queueName).inc();
+        if (job.attemptsMade > 0) {
+          metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
+        }
         return;
       }
-      metrics.cacheMiss.inc();
+      const h = urlHash(norm);
+      const cacheKey = `scan:${h}`;
+      let cachedVerdict: any | null = null;
+      let cachedTtl = -1;
+      const cacheStop = metrics.cacheLookupDuration.labels(CACHE_LABELS.verdict).startTimer();
+      const cachedRaw = await redis.get(cacheKey);
+      cacheStop();
+      if (cachedRaw) {
+        recordCacheOutcome(CACHE_LABELS.verdict, 'hit');
+        metrics.cacheHit.inc();
+        metrics.cacheEntryBytes.labels(CACHE_LABELS.verdict).set(Buffer.byteLength(cachedRaw));
+        cachedTtl = await redis.ttl(cacheKey);
+        if (cachedTtl >= 0) {
+          metrics.cacheEntryTtl.labels(CACHE_LABELS.verdict).set(cachedTtl);
+        }
+        try {
+          cachedVerdict = JSON.parse(cachedRaw);
+        } catch {
+          metrics.cacheStaleTotal.labels(CACHE_LABELS.verdict).inc();
+        }
+        if (
+          cachedVerdict &&
+          typeof cachedVerdict.cacheTtl === 'number' &&
+          cachedTtl >= 0 &&
+          cachedTtl < Math.max(1, Math.floor(cachedVerdict.cacheTtl * 0.2))
+        ) {
+          metrics.cacheStaleTotal.labels(CACHE_LABELS.verdict).inc();
+        }
+      } else {
+        recordCacheOutcome(CACHE_LABELS.verdict, 'miss');
+        metrics.cacheMiss.inc();
+        metrics.cacheEntryTtl.labels(CACHE_LABELS.verdict).set(0);
+      }
+
+      if (cachedVerdict) {
+        const verdictLatencySeconds = Math.max(0, (Date.now() - ingestionTimestamp) / 1000);
+        metrics.verdictLatency.observe(verdictLatencySeconds);
+        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
+        metrics.queueCompleted.labels(queueName).inc();
+        if (job.attemptsMade > 0) {
+          metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
+        }
+        await scanVerdictQueue.add(
+          'verdict',
+          { chatId, messageId, ...cachedVerdict, decidedAt: cachedVerdict.decidedAt ?? Date.now() },
+          { removeOnComplete: true }
+        );
+        return;
+      }
 
       const shortenerInfo = await resolveShortenerWithCache(norm, h);
       const preExpansionUrl = shortenerInfo?.finalUrl ?? norm;
@@ -763,10 +981,56 @@ async function main() {
       };
       const verdictResult = scoreFromSignals(signals);
       const verdict = verdictResult.level;
+<<<<<<< HEAD
       const score = verdictResult.score;
       const reasonsWithOverride = manualOverrideReason
         ? Array.from(new Set([...verdictResult.reasons, `Override reason: ${manualOverrideReason}`]))
         : [...verdictResult.reasons];
+=======
+      const { score, reasons } = verdictResult;
+      const baselineVerdict = scoreFromSignals({ ...signals, manualOverride: null }).level;
+
+      metrics.verdictScore.observe(score);
+      for (const reason of reasons) {
+        metrics.verdictReasons.labels(normalizeVerdictReason(reason)).inc();
+      }
+      if (baselineVerdict !== verdict) {
+        metrics.verdictEscalations.labels(baselineVerdict, verdict).inc();
+      }
+      if (gsbMatches.length > 0) {
+        metrics.verdictSignals.labels('gsb_match').inc(gsbMatches.length);
+      }
+      if (phishtankHit) {
+        metrics.verdictSignals.labels('phishtank_verified').inc();
+      }
+      if (urlhausResult?.listed) {
+        metrics.verdictSignals.labels('urlhaus_listed').inc();
+      }
+      if ((vtStats?.malicious ?? 0) > 0) {
+        metrics.verdictSignals.labels('vt_malicious').inc(vtStats?.malicious ?? 0);
+      }
+      if ((vtStats?.suspicious ?? 0) > 0) {
+        metrics.verdictSignals.labels('vt_suspicious').inc(vtStats?.suspicious ?? 0);
+      }
+      if (wasShortened) {
+        metrics.verdictSignals.labels('shortener').inc();
+      }
+      if (finalUrlMismatch) {
+        metrics.verdictSignals.labels('redirect_mismatch').inc();
+      }
+      if (redirectChain.length > 0) {
+        metrics.verdictSignals.labels('redirect_chain').inc(redirectChain.length);
+      }
+      if (homoglyphResult.detected) {
+        metrics.verdictSignals.labels(`homoglyph_${homoglyphResult.riskLevel}`).inc();
+      }
+      if (typeof domainAgeDays === 'number') {
+        metrics.verdictSignals.labels('domain_age').inc();
+      }
+      if (signals.manualOverride) {
+        metrics.verdictSignals.labels(`override_${signals.manualOverride}`).inc();
+      }
+>>>>>>> origin/codex/add-prometheus-metrics-and-dashboards
 
       const blocklistHit = gsbHit || phishtankHit || Boolean(urlhausResult?.listed);
 
@@ -799,10 +1063,16 @@ async function main() {
       const ttlByLevel = config.orchestrator.cacheTtl as Record<string, number>;
       const ttl = ttlByLevel[verdict] ?? verdictResult.cacheTtl ?? 3600;
 
+<<<<<<< HEAD
       const overrideInfo = manualOverride
         ? { status: manualOverride, reason: manualOverrideReason }
         : undefined;
 
+=======
+      metrics.verdictCacheTtl.observe(ttl);
+
+      const decidedAt = Date.now();
+>>>>>>> origin/codex/add-prometheus-metrics-and-dashboards
       const res = {
         messageId,
         chatId,
@@ -825,8 +1095,9 @@ async function main() {
         cacheTtl: ttl,
         shortener: shortenerInfo ? { provider: shortenerInfo.provider, chain: shortenerInfo.chain } : undefined,
         finalUrlMismatch,
+        decidedAt,
       };
-      await redis.set(cacheKey, JSON.stringify(res), 'EX', ttl);
+      await setJsonCache(CACHE_LABELS.verdict, cacheKey, res, ttl);
 
       await pg.query(`INSERT INTO scans (url_hash, normalized_url, verdict, score, reasons, vt_stats, gsafebrowsing_hit, domain_age_days, redirect_chain_summary, cache_ttl, source_kind, urlscan_status, whois_source, whois_registrar, shortener_provider)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
@@ -857,16 +1128,29 @@ async function main() {
 
       await scanVerdictQueue.add('verdict', res, { removeOnComplete: true });
       metrics.verdictCounter.labels(verdict).inc();
-      metrics.scanLatency.observe((Date.now() - start) / 1000);
+      const totalProcessingSeconds = (Date.now() - started) / 1000;
+      metrics.verdictLatency.observe(Math.max(0, (Date.now() - ingestionTimestamp) / 1000));
+      metrics.scanLatency.observe(totalProcessingSeconds);
+      metrics.queueProcessingDuration.labels(queueName).observe(totalProcessingSeconds);
+      metrics.queueCompleted.labels(queueName).inc();
+      if (job.attemptsMade > 0) {
+        metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
+      }
     } catch (e) {
+      metrics.queueFailures.labels(queueName).inc();
+      metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
       logger.error(e, 'scan worker error');
     } finally {
-      queueDepthGauge.labels(config.queues.scanRequest).set(await scanRequestQueue.getWaitingCount());
+      await refreshQueueMetrics(scanRequestQueue, queueName).catch(() => undefined);
     }
   }, { connection: redis, concurrency: config.orchestrator.concurrency });
 
   if (config.urlscan.enabled && config.urlscan.apiKey) {
     new Worker(config.queues.urlscan, async (job) => {
+      const queueName = config.queues.urlscan;
+      const started = Date.now();
+      const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
+      metrics.queueJobWait.labels(queueName).observe(waitSeconds);
       const { url, urlHash: urlHashValue } = job.data as { url: string; urlHash: string };
       try {
         const submission: UrlscanSubmissionResponse = await urlscanCircuit.execute(() =>
@@ -904,6 +1188,11 @@ async function main() {
             [submission.uuid, 'submitted', submission.result ?? null, urlHashValue]
           );
         }
+        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
+        metrics.queueCompleted.labels(queueName).inc();
+        if (job.attemptsMade > 0) {
+          metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
+        }
       } catch (err) {
         recordError(CIRCUIT_LABELS.urlscan, err);
         logger.error({ err, url }, 'urlscan submission failed');
@@ -911,9 +1200,11 @@ async function main() {
           `UPDATE scans SET urlscan_status=$1, urlscan_completed_at=now() WHERE url_hash=$2`,
           ['failed', urlHashValue]
         ).catch(() => undefined);
+        metrics.queueFailures.labels(queueName).inc();
+        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
         throw err;
       } finally {
-        queueDepthGauge.labels(config.queues.urlscan).set(await urlscanQueue.getWaitingCount());
+        await refreshQueueMetrics(urlscanQueue, queueName).catch(() => undefined);
       }
     }, { connection: redis, concurrency: config.urlscan.concurrency });
   }
