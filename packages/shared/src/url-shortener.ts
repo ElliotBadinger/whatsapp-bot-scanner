@@ -1,5 +1,6 @@
 import { request, fetch as undiciFetch } from 'undici';
-import { expand as urlExpanderExpand } from 'url-expand';
+import urlExpandModuleRaw from 'url-expand';
+import { promisify } from 'node:util';
 import { config } from './config';
 import { normalizeUrl } from './url';
 import { isPrivateHostname } from './ssrf';
@@ -138,21 +139,68 @@ function createGuardedFetch(
 
 async function resolveWithUrlExpand(url: string): Promise<{ finalUrl: string; chain: string[] }> {
   const { maxRedirects, timeoutMs, maxContentLength } = config.orchestrator.expansion;
-  const chain: string[] = [];
-  const fetchWithGuards = createGuardedFetch(chain, maxRedirects, timeoutMs, maxContentLength);
+  const normalizedInput = normalizeUrl(url) || url;
+  const chain: string[] = [normalizedInput];
+  const moduleAny = urlExpandModuleRaw as any;
+  const modernExpand: ((shortUrl: string, options: { fetch: SafeFetch; maxRedirects: number; timeoutMs: number }) => Promise<{ url: string; redirects?: string[] }>) | undefined =
+    typeof moduleAny?.expand === 'function' ? moduleAny.expand.bind(moduleAny) : undefined;
 
-  const result = await urlExpanderExpand(url, {
-    fetch: fetchWithGuards,
-    maxRedirects,
-    timeoutMs,
-  });
+  if (modernExpand) {
+    const fetchWithGuards = createGuardedFetch(chain, maxRedirects, timeoutMs, maxContentLength);
+    const result = await modernExpand(normalizedInput, {
+      fetch: fetchWithGuards,
+      maxRedirects,
+      timeoutMs,
+    });
 
-  const finalUrl = normalizeUrl(result.url) || result.url;
-  if (!chain.length || chain[chain.length - 1] !== finalUrl) {
-    chain.push(finalUrl);
+    if (Array.isArray(result.redirects)) {
+      for (const redirect of result.redirects) {
+        const normalizedRedirect = normalizeUrl(redirect) || redirect;
+        if (chain[chain.length - 1] !== normalizedRedirect) {
+          chain.push(normalizedRedirect);
+        }
+      }
+    }
+
+    const finalUrl = normalizeUrl(result.url) || result.url;
+    if (chain[chain.length - 1] !== finalUrl) {
+      chain.push(finalUrl);
+    }
+
+    return { finalUrl, chain };
   }
 
-  return { finalUrl, chain };
+  const legacyExpand = typeof moduleAny === 'function'
+    ? promisify(moduleAny as (shortUrl: string, callback: (error: unknown, expandedUrl?: string | null) => void) => void)
+    : undefined;
+
+  if (!legacyExpand) {
+    throw new Error('url-expand module does not expose a supported interface');
+  }
+
+  const expandedUrl = await legacyExpand(normalizedInput) as string;
+  if (!expandedUrl) {
+    throw new Error('url-expand returned empty response');
+  }
+
+  const normalizedFinal = normalizeUrl(expandedUrl) || expandedUrl;
+
+  let parsedFinal: URL;
+  try {
+    parsedFinal = new URL(normalizedFinal);
+  } catch {
+    throw new Error('url-expand returned invalid URL');
+  }
+
+  if (await isPrivateHostname(parsedFinal.hostname)) {
+    throw new Error('SSRF protection: Private host blocked');
+  }
+
+  if (chain[chain.length - 1] !== normalizedFinal) {
+    chain.push(normalizedFinal);
+  }
+
+  return { finalUrl: normalizedFinal, chain };
 }
 
 export async function resolveShortener(url: string): Promise<ShortenerResolution> {
