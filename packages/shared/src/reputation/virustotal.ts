@@ -2,7 +2,7 @@ import Bottleneck from 'bottleneck';
 import { fetch } from 'undici';
 import { config } from '../config';
 import { logger } from '../log';
-import { apiQuotaRemainingGauge, apiQuotaStatusGauge, rateLimiterDelay } from '../metrics';
+import { apiQuotaRemainingGauge, apiQuotaStatusGauge, rateLimiterDelay, metrics, rateLimiterQueueDepth } from '../metrics';
 import { QuotaExceededError } from '../errors';
 
 export interface VirusTotalAnalysis {
@@ -22,13 +22,18 @@ const vtLimiter = new Bottleneck({
 });
 
 let requestsRemaining = VT_LIMITER_RESERVOIR;
+let lastReservoir = VT_LIMITER_RESERVOIR;
 apiQuotaRemainingGauge.labels('virustotal').set(requestsRemaining);
 apiQuotaStatusGauge.labels('virustotal').set(1);
+metrics.apiQuotaUtilization.labels('virustotal').set(0);
+metrics.apiQuotaProjectedDepletion.labels('virustotal').set((requestsRemaining * 60) / VT_LIMITER_RESERVOIR);
 
 vtLimiter.on('depleted', () => {
   requestsRemaining = 0;
   apiQuotaRemainingGauge.labels('virustotal').set(0);
   apiQuotaStatusGauge.labels('virustotal').set(0);
+  metrics.apiQuotaProjectedDepletion.labels('virustotal').set(0);
+  metrics.apiQuotaUtilization.labels('virustotal').set(1);
 });
 
 const refreshInterval = setInterval(async () => {
@@ -38,7 +43,16 @@ const refreshInterval = setInterval(async () => {
       requestsRemaining = current;
       apiQuotaRemainingGauge.labels('virustotal').set(current);
       apiQuotaStatusGauge.labels('virustotal').set(current > 0 ? 1 : 0);
+      if (current > lastReservoir) {
+        metrics.apiQuotaResets.labels('virustotal').inc();
+      }
+      lastReservoir = current;
+      metrics.apiQuotaUtilization.labels('virustotal').set(
+        Math.min(1, Math.max(0, 1 - current / VT_LIMITER_RESERVOIR))
+      );
+      metrics.apiQuotaProjectedDepletion.labels('virustotal').set((current * 60) / VT_LIMITER_RESERVOIR);
     }
+    rateLimiterQueueDepth.labels('virustotal').set(vtLimiter.queued());
   } catch (err) {
     logger.debug({ err }, 'Failed to poll VT limiter reservoir');
   }
@@ -52,6 +66,8 @@ async function scheduleVtCall<T>(cb: () => Promise<T>): Promise<T> {
     if (waitSeconds > 0) {
       rateLimiterDelay.labels('virustotal').observe(waitSeconds);
     }
+    metrics.apiQuotaConsumption.labels('virustotal').inc();
+    rateLimiterQueueDepth.labels('virustotal').set(vtLimiter.queued());
     try {
       return await cb();
     } finally {
@@ -60,6 +76,14 @@ async function scheduleVtCall<T>(cb: () => Promise<T>): Promise<T> {
         requestsRemaining = reservoir;
         apiQuotaRemainingGauge.labels('virustotal').set(reservoir);
         apiQuotaStatusGauge.labels('virustotal').set(reservoir > 0 ? 1 : 0);
+        if (reservoir > lastReservoir) {
+          metrics.apiQuotaResets.labels('virustotal').inc();
+        }
+        lastReservoir = reservoir;
+        metrics.apiQuotaUtilization.labels('virustotal').set(
+          Math.min(1, Math.max(0, 1 - reservoir / VT_LIMITER_RESERVOIR))
+        );
+        metrics.apiQuotaProjectedDepletion.labels('virustotal').set((reservoir * 60) / VT_LIMITER_RESERVOIR);
       }
     }
   });

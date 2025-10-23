@@ -23,6 +23,8 @@ let quotaDisabled = false;
 
 apiQuotaRemainingGauge.labels('whoisxml').set(config.whoisxml.monthlyQuota);
 apiQuotaStatusGauge.labels('whoisxml').set(config.whoisxml.enabled ? 1 : 0);
+metrics.apiQuotaUtilization.labels('whoisxml').set(0);
+metrics.apiQuotaProjectedDepletion.labels('whoisxml').set(config.whoisxml.monthlyQuota * 3600);
 
 function resetMonthlyQuotaIfNeeded(): void {
   const now = new Date();
@@ -33,6 +35,9 @@ function resetMonthlyQuotaIfNeeded(): void {
     quotaDisabled = false;
     apiQuotaRemainingGauge.labels('whoisxml').set(config.whoisxml.monthlyQuota);
     apiQuotaStatusGauge.labels('whoisxml').set(config.whoisxml.enabled ? 1 : 0);
+    metrics.apiQuotaResets.labels('whoisxml').inc();
+    metrics.apiQuotaUtilization.labels('whoisxml').set(0);
+    metrics.apiQuotaProjectedDepletion.labels('whoisxml').set(config.whoisxml.monthlyQuota * 3600);
   }
 }
 
@@ -50,6 +55,8 @@ function assertQuotaAvailable(): void {
     apiQuotaRemainingGauge.labels('whoisxml').set(0);
     apiQuotaStatusGauge.labels('whoisxml').set(0);
     metrics.whoisDisabled.labels('quota').inc();
+    metrics.apiQuotaProjectedDepletion.labels('whoisxml').set(0);
+    metrics.apiQuotaUtilization.labels('whoisxml').set(1);
     throw new QuotaExceededError('whoisxml', 'WhoisXML monthly quota exhausted');
   }
 }
@@ -63,10 +70,15 @@ export async function whoisXmlLookup(domain: string): Promise<WhoisXmlResponse> 
   assertQuotaAvailable();
 
   monthlyRequestCount += 1;
+  metrics.apiQuotaConsumption.labels('whoisxml').inc();
   const remaining = Math.max(0, config.whoisxml.monthlyQuota - monthlyRequestCount);
   apiQuotaRemainingGauge.labels('whoisxml').set(remaining);
   apiQuotaStatusGauge.labels('whoisxml').set(remaining > 0 ? 1 : 0);
   metrics.whoisRequests.inc();
+  metrics.apiQuotaUtilization.labels('whoisxml').set(
+    Math.min(1, Math.max(0, monthlyRequestCount / Math.max(1, config.whoisxml.monthlyQuota)))
+  );
+  metrics.apiQuotaProjectedDepletion.labels('whoisxml').set(remaining * 3600);
 
   if (remaining <= config.whoisxml.quotaAlertThreshold) {
     logger.warn({ remaining }, 'WhoisXML quota nearing exhaustion');
@@ -91,6 +103,8 @@ export async function whoisXmlLookup(domain: string): Promise<WhoisXmlResponse> 
     apiQuotaRemainingGauge.labels('whoisxml').set(0);
     apiQuotaStatusGauge.labels('whoisxml').set(0);
     metrics.whoisDisabled.labels('rate_limited').inc();
+    metrics.apiQuotaProjectedDepletion.labels('whoisxml').set(0);
+    metrics.apiQuotaUtilization.labels('whoisxml').set(1);
     throw new QuotaExceededError('whoisxml', 'WhoisXML rate limited');
   }
   if (res.statusCode >= 500) {
@@ -124,4 +138,6 @@ export function disableWhoisXmlForMonth(): void {
   quotaDisabled = true;
   apiQuotaRemainingGauge.labels('whoisxml').set(0);
   apiQuotaStatusGauge.labels('whoisxml').set(0);
+  metrics.apiQuotaProjectedDepletion.labels('whoisxml').set(0);
+  metrics.apiQuotaUtilization.labels('whoisxml').set(1);
 }

@@ -10,7 +10,9 @@ Components:
 -   `/rescan` now invalidates Redis cache keys (`scan`, `analysis`, `shortener`) and requeues high-priority jobs. `/artifacts/:urlHash/(screenshot|dom)` streams urlscan evidence from disk with path whitelisting.
 - Data Stores: Redis (queues + caching), Postgres (persistent records), volumes (WA session).
 - Observability: Prometheus scraping, Grafana dashboard.
--   Custom metrics track API quota, queue depth, homoglyph detections, manual overrides, and verdict distribution. Grafana dashboard adds quota gauges, queue depth, homoglyph stats, and verdict trends; Prometheus alerts cover quota exhaustion, queue backlogs, shortener failures, and homoglyph spikes.
+-   Metrics now span API quota health (remaining tokens, utilization %, reset counters, limiter queue depth), cache efficiency (lookup/write latency, stale hit counters, entry TTL), queue behaviour (wait/processing histograms, active/delayed gauges, failure counters), verdict quality (score distribution, latency, override transitions), and WhatsApp session health (drops, session state, verdict delivery latency).
+-   The "WBScanner Operational" Grafana dashboard was expanded with panels for quota utilization + depletion ETA, queue wait/processing p95 trends, cache latency + stale hit surfacing, verdict latency/score traces, WA delivery health, and circuit breaker states alongside the original throughput panels.
+-   Prometheus alerts were extended to fire on high quota utilization, limiter backlogs, sustained circuit opens, queue wait regression, verdict latency spikes, cache stale bursts, and WhatsApp drop anomalies in addition to the existing latency/quota/depth monitors.
 - Reverse Proxy: Nginx ingress for control-plane.
 
 Data flow:
