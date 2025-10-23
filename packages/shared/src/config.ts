@@ -42,6 +42,14 @@ function parsePositiveInt(value: string | undefined, fallback: number, { minimum
   return fallback;
 }
 
+function parseNonNegativeInt(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(value ?? '', 10);
+  if (Number.isFinite(parsed) && parsed >= 0) {
+    return parsed;
+  }
+  return fallback;
+}
+
 export const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
   redisUrl: process.env.REDIS_URL || 'redis://localhost:6379/0',
@@ -64,6 +72,8 @@ export const config = {
   vt: {
     apiKey: process.env.VT_API_KEY || '',
     timeoutMs: parseInt(process.env.VT_REQUEST_TIMEOUT_MS || '8000', 10),
+    requestsPerMinute: parsePositiveInt(process.env.VT_REQUESTS_PER_MINUTE, 4),
+    requestJitterMs: parseNonNegativeInt(process.env.VT_REQUEST_JITTER_MS, 0),
   },
   gsb: {
     apiKey: process.env.GSB_API_KEY || '',

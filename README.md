@@ -32,6 +32,7 @@ Operational notes:
 - Metrics are Prometheus-compatible under `/metrics` per service.
 
 Documentation located in `docs/` covers architecture, security, operations, and runbooks.
+See [`docs/COST_MODEL.md`](docs/COST_MODEL.md) for VirusTotal quota guidance and observability metrics.
 
 ## Deploying with Railway
 
@@ -43,5 +44,3 @@ The repository ships with a production-ready `railway.toml` that provisions the 
 4. After the build finishes, confirm every service reports healthy by curling their `/healthz` endpoints (`railway logs --service <name>` shows the public URL for each service). For example, `curl https://<wa-client-domain>/healthz` should return `{ "ok": true }`.
 
 See `docs/DEPLOYMENT.md` for detailed environment variable mappings, smoke-test automation, and troubleshooting tips.
-See [`docs/COST_MODEL.md`](docs/COST_MODEL.md) for VirusTotal quota guidance and
-observability metrics.
