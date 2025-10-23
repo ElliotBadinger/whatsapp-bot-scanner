@@ -1,4 +1,5 @@
 process.env.NODE_ENV = 'test';
+process.env.URLSCAN_CALLBACK_SECRET = 'test-secret';
 
 jest.mock('ioredis', () => {
   return jest.fn().mockImplementation(() => ({
@@ -167,13 +168,40 @@ describe('shouldQueryPhishtank helper', () => {
 describe('extractUrlscanArtifactCandidates', () => {
   it('returns unique screenshot and dom candidates with defaults', () => {
     const candidates = __testables.extractUrlscanArtifactCandidates('abc', {
-      screenshotURL: 'https://custom/snap.png',
+      screenshotURL: 'https://urlscan.io/screenshots/custom.png',
       task: { screenshotURL: '/screens/custom.png', domURL: '/dom/custom.json' },
       domURL: '/dom/abc.json',
     });
 
-    expect(candidates.some(c => c.type === 'screenshot' && c.url === 'https://custom/snap.png')).toBe(true);
+    expect(candidates.some(c => c.type === 'screenshot' && c.url === 'https://urlscan.io/screenshots/custom.png')).toBe(true);
     expect(candidates.some(c => c.type === 'screenshot' && c.url.endsWith('/screenshots/abc.png'))).toBe(true);
     expect(candidates.some(c => c.type === 'dom' && c.url.endsWith('/dom/abc.json'))).toBe(true);
+    expect(candidates.every(c => new URL(c.url).hostname.endsWith('urlscan.io'))).toBe(true);
+  });
+
+  it('omits artifact candidates outside the trusted host', () => {
+    const candidates = __testables.extractUrlscanArtifactCandidates('abc', {
+      screenshotURL: 'https://evil.example/snap.png',
+      domURL: 'https://malicious.invalid/dom.json',
+    });
+
+    expect(candidates.length).toBeGreaterThan(0);
+    expect(candidates.every(c => !c.url.includes('evil.example') && !c.url.includes('malicious.invalid'))).toBe(true);
+  });
+});
+
+describe('normalizeUrlscanArtifactCandidate', () => {
+  const baseUrl = (config.urlscan.baseUrl || 'https://urlscan.io').replace(/\/+$/, '');
+
+  it('normalizes relative artifact paths to the base domain', () => {
+    const result = __testables.normalizeUrlscanArtifactCandidate('/screenshots/foo.png', baseUrl);
+    expect(result.invalid).toBe(false);
+    expect(result.url).toBe(`${baseUrl}/screenshots/foo.png`);
+  });
+
+  it('flags artifacts targeting other hosts', () => {
+    const result = __testables.normalizeUrlscanArtifactCandidate('https://attacker.invalid/payload.png', baseUrl);
+    expect(result.invalid).toBe(true);
+    expect(result.url).toBeUndefined();
   });
 });
