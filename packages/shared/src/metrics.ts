@@ -87,12 +87,6 @@ export const metrics = {
     help: 'WhoisXML lookups executed',
     registers: [register],
   }),
-  whoisResults: new client.Counter({
-    name: 'wbscanner_whois_results_total',
-    help: 'WhoisXML lookup outcomes by result',
-    labelNames: ['result'],
-    registers: [register],
-  }),
   whoisDisabled: new client.Counter({
     name: 'wbscanner_whois_disabled_total',
     help: 'WhoisXML disabled events by reason',
@@ -147,13 +141,6 @@ export const apiQuotaRemainingGauge = new client.Gauge({
 export const apiQuotaStatusGauge = new client.Gauge({
   name: 'wbscanner_api_quota_status',
   help: 'API quota status (1=available,0=exhausted)',
-  labelNames: ['service'],
-  registers: [register],
-});
-
-export const apiQuotaDepletedCounter = new client.Counter({
-  name: 'wbscanner_api_quota_depleted_total',
-  help: 'Total number of times an external service quota was depleted',
   labelNames: ['service'],
   registers: [register],
 });

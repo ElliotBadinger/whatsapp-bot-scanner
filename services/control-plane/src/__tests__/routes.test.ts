@@ -99,7 +99,7 @@ describe('control-plane routes', () => {
 
     const response = await app.inject({
       method: 'GET',
-      url: '/scans/hash-123/urlscan-artifacts/screenshot',
+      url: '/artifacts/hash-123/screenshot',
       headers: { authorization: 'Bearer test-token' },
     });
 
@@ -141,7 +141,7 @@ describe('control-plane routes', () => {
     pgClient.query.mockResolvedValueOnce({ rows: [] });
     const response = await app.inject({
       method: 'GET',
-      url: '/scans/missing/urlscan-artifacts/screenshot',
+      url: '/artifacts/missing/screenshot',
       headers: { authorization: 'Bearer test-token' },
     });
     expect(response.statusCode).toBe(404);

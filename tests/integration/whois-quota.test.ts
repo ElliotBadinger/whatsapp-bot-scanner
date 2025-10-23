@@ -34,7 +34,5 @@ describe('WhoisXML quota enforcement', () => {
 
     const metrics = await register.metrics();
     expect(metrics).toMatch(/wbscanner_api_quota_status\{service="whoisxml"\} 0/);
-    expect(metrics).toMatch(/wbscanner_whois_results_total\{result="success"\} 1/);
-    expect(metrics).toMatch(/wbscanner_whois_results_total\{result="quota_exhausted"\} 1/);
   });
 });

@@ -42,14 +42,6 @@ function parsePositiveInt(value: string | undefined, fallback: number, { minimum
   return fallback;
 }
 
-function parseNonNegativeInt(value: string | undefined, fallback: number): number {
-  const parsed = Number.parseInt(value ?? '', 10);
-  if (Number.isFinite(parsed) && parsed >= 0) {
-    return parsed;
-  }
-  return fallback;
-}
-
 export const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
   redisUrl: process.env.REDIS_URL || 'redis://localhost:6379/0',
@@ -68,8 +60,6 @@ export const config = {
   vt: {
     apiKey: process.env.VT_API_KEY || '',
     timeoutMs: parseInt(process.env.VT_REQUEST_TIMEOUT_MS || '8000', 10),
-    requestsPerMinute: parsePositiveInt(process.env.VT_REQUESTS_PER_MINUTE, 4),
-    requestJitterMs: parseNonNegativeInt(process.env.VT_REQUEST_JITTER_MS, 0),
   },
   gsb: {
     apiKey: process.env.GSB_API_KEY || '',
@@ -143,24 +133,9 @@ export const config = {
     perGroupCooldownSeconds: parseInt(process.env.WA_PER_GROUP_REPLY_COOLDOWN_SECONDS || '60', 10),
     globalRatePerHour: parsePositiveInt(process.env.WA_GLOBAL_REPLY_RATE_PER_HOUR, 1000),
     perGroupHourlyLimit: parsePositiveInt(process.env.WA_PER_GROUP_HOURLY_LIMIT, 60),
-    verdictAckTimeoutSeconds: parseInt(process.env.WA_VERDICT_ACK_TIMEOUT_SECONDS || '30', 10),
-    verdictAckMaxRetries: parseInt(process.env.WA_VERDICT_ACK_MAX_RETRIES || '3', 10),
-  },
-  features: {
-    attachMediaToVerdicts: (process.env.FEATURE_ATTACH_MEDIA_TO_VERDICTS || 'false') === 'true',
   }
 };
 
 export function assertControlPlaneToken(): string {
   return getControlPlaneToken();
 }
-
-
-export function assertControlPlaneToken(): string {
-  return getControlPlaneToken();
-}
-
-
-  return getControlPlaneToken();
-}
-

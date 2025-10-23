@@ -17,18 +17,12 @@ export interface WhoisXmlResponse {
   record?: WhoisXmlRecord;
 }
 
-const SERVICE_LABEL = 'whoisxml';
-
 let monthlyRequestCount = 0;
 let currentMonth = new Date().getMonth();
 let quotaDisabled = false;
 
-function updateQuotaGauges(remaining: number, available: boolean): void {
-  apiQuotaRemainingGauge.labels(SERVICE_LABEL).set(Math.max(0, remaining));
-  apiQuotaStatusGauge.labels(SERVICE_LABEL).set(available ? 1 : 0);
-}
-
-updateQuotaGauges(config.whoisxml.enabled ? config.whoisxml.monthlyQuota : 0, config.whoisxml.enabled);
+apiQuotaRemainingGauge.labels('whoisxml').set(config.whoisxml.monthlyQuota);
+apiQuotaStatusGauge.labels('whoisxml').set(config.whoisxml.enabled ? 1 : 0);
 
 function resetMonthlyQuotaIfNeeded(): void {
   const now = new Date();
@@ -37,25 +31,25 @@ function resetMonthlyQuotaIfNeeded(): void {
     monthlyRequestCount = 0;
     currentMonth = now.getMonth();
     quotaDisabled = false;
-    updateQuotaGauges(config.whoisxml.enabled ? config.whoisxml.monthlyQuota : 0, config.whoisxml.enabled);
+    apiQuotaRemainingGauge.labels('whoisxml').set(config.whoisxml.monthlyQuota);
+    apiQuotaStatusGauge.labels('whoisxml').set(config.whoisxml.enabled ? 1 : 0);
   }
 }
 
 function assertQuotaAvailable(): void {
   if (!config.whoisxml.enabled) {
-    updateQuotaGauges(0, false);
-    metrics.whoisResults.labels('disabled').inc();
+    apiQuotaStatusGauge.labels('whoisxml').set(0);
     throw new FeatureDisabledError('whoisxml', 'WhoisXML disabled');
   }
   if (quotaDisabled) {
-    updateQuotaGauges(0, false);
+    apiQuotaStatusGauge.labels('whoisxml').set(0);
     throw new QuotaExceededError('whoisxml', 'WhoisXML monthly quota exhausted');
   }
   if (monthlyRequestCount >= config.whoisxml.monthlyQuota) {
     quotaDisabled = true;
-    updateQuotaGauges(0, false);
+    apiQuotaRemainingGauge.labels('whoisxml').set(0);
+    apiQuotaStatusGauge.labels('whoisxml').set(0);
     metrics.whoisDisabled.labels('quota').inc();
-    metrics.whoisResults.labels('quota_exhausted').inc();
     throw new QuotaExceededError('whoisxml', 'WhoisXML monthly quota exhausted');
   }
 }
@@ -70,7 +64,8 @@ export async function whoisXmlLookup(domain: string): Promise<WhoisXmlResponse> 
 
   monthlyRequestCount += 1;
   const remaining = Math.max(0, config.whoisxml.monthlyQuota - monthlyRequestCount);
-  updateQuotaGauges(remaining, remaining > 0);
+  apiQuotaRemainingGauge.labels('whoisxml').set(remaining);
+  apiQuotaStatusGauge.labels('whoisxml').set(remaining > 0 ? 1 : 0);
   metrics.whoisRequests.inc();
 
   if (remaining <= config.whoisxml.quotaAlertThreshold) {
@@ -81,46 +76,30 @@ export async function whoisXmlLookup(domain: string): Promise<WhoisXmlResponse> 
   url.searchParams.set('apiKey', config.whoisxml.apiKey);
   url.searchParams.set('domainName', domain);
   url.searchParams.set('outputFormat', 'JSON');
-  let res: Awaited<ReturnType<typeof request>>;
-  try {
-    res = await request(url.toString(), {
-      method: 'GET',
-      headersTimeout: config.whoisxml.timeoutMs,
-      bodyTimeout: config.whoisxml.timeoutMs
-    });
-  } catch (err) {
-    metrics.whoisResults.labels('error').inc();
-    throw err;
-  }
+  const res = await request(url.toString(), {
+    method: 'GET',
+    headersTimeout: config.whoisxml.timeoutMs,
+    bodyTimeout: config.whoisxml.timeoutMs
+  });
   if (res.statusCode === 401 || res.statusCode === 403) {
-    metrics.whoisResults.labels('unauthorized').inc();
     const err = new Error('WhoisXML unauthorized');
     (err as any).code = res.statusCode;
     throw err;
   }
   if (res.statusCode === 429) {
     quotaDisabled = true;
-    updateQuotaGauges(0, false);
+    apiQuotaRemainingGauge.labels('whoisxml').set(0);
+    apiQuotaStatusGauge.labels('whoisxml').set(0);
     metrics.whoisDisabled.labels('rate_limited').inc();
-    metrics.whoisResults.labels('rate_limited').inc();
-    metrics.whoisResults.labels('quota_exhausted').inc();
     throw new QuotaExceededError('whoisxml', 'WhoisXML rate limited');
   }
-  if (res.statusCode >= 400 && res.statusCode < 500) {
-    metrics.whoisResults.labels('error').inc();
-    const err = new Error(`WhoisXML error: ${res.statusCode}`);
-    (err as any).statusCode = res.statusCode;
-    throw err;
-  }
   if (res.statusCode >= 500) {
-    metrics.whoisResults.labels('error').inc();
     const err = new Error(`WhoisXML error: ${res.statusCode}`);
     (err as any).statusCode = res.statusCode;
     throw err;
   }
   const json: any = await res.body.json();
   const record = json?.WhoisRecord;
-  metrics.whoisResults.labels('success').inc();
   if (!record) return { record: undefined };
   const created = record.createdDateNormalized || record.registryData?.createdDateNormalized || record.createdDate;
   const createdDate = created ? new Date(created) : undefined;
@@ -143,5 +122,6 @@ export async function whoisXmlLookup(domain: string): Promise<WhoisXmlResponse> 
 
 export function disableWhoisXmlForMonth(): void {
   quotaDisabled = true;
-  updateQuotaGauges(0, false);
+  apiQuotaRemainingGauge.labels('whoisxml').set(0);
+  apiQuotaStatusGauge.labels('whoisxml').set(0);
 }

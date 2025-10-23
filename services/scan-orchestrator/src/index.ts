@@ -32,6 +32,7 @@ import {
   CircuitState,
   withRetry,
   QuotaExceededError,
+  detectHomoglyphs,
 } from '@wbscanner/shared';
 import {
   checkBlocklistsWithRedundancy,
@@ -42,15 +43,10 @@ import {
 import type { GsbThreatMatch, UrlhausLookupResult, PhishtankLookupResult, VirusTotalAnalysis, UrlscanSubmissionResponse, WhoisXmlResponse } from '@wbscanner/shared';
 import { downloadUrlscanArtifacts } from './urlscan-artifacts';
 
-const redisOptions = {
-  maxRetriesPerRequest: null,
-  enableReadyCheck: false,
-} as const;
-
-const redis = new Redis(config.redisUrl, redisOptions);
-const scanRequestQueue = new Queue(config.queues.scanRequest, { connection: new Redis(config.redisUrl, redisOptions) });
-const scanVerdictQueue = new Queue(config.queues.scanVerdict, { connection: new Redis(config.redisUrl, redisOptions) });
-const urlscanQueue = new Queue(config.queues.urlscan, { connection: new Redis(config.redisUrl, redisOptions) });
+const redis = new Redis(config.redisUrl);
+const scanRequestQueue = new Queue(config.queues.scanRequest, { connection: redis });
+const scanVerdictQueue = new Queue(config.queues.scanVerdict, { connection: redis });
+const urlscanQueue = new Queue(config.queues.urlscan, { connection: redis });
 
 const ANALYSIS_TTLS = {
   gsb: 60 * 60,
@@ -415,7 +411,6 @@ async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainI
     return { ageDays: rdapAge, source: 'rdap' };
   }
   if (!config.whoisxml.enabled || !config.whoisxml.apiKey) {
-    metrics.whoisResults.labels('disabled').inc();
     return { ageDays: undefined, source: 'none' };
   }
   const cacheKey = `url:analysis:${hash}:whois`;
@@ -440,7 +435,6 @@ async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainI
     return { ageDays, registrar, source: 'whoisxml' };
   } catch (err) {
     recordError(CIRCUIT_LABELS.whoisxml, err);
-    metrics.whoisResults.labels('fallback').inc();
     if (err instanceof QuotaExceededError) {
       logger.warn({ hostname }, 'WhoisXML quota exhausted, disabling for remainder of month');
       disableWhoisXmlForMonth();
@@ -581,26 +575,15 @@ async function main() {
       const finalUrlObj = new URL(finalUrl);
       const redirectChain = [...(shortenerInfo?.chain ?? []), ...exp.chain.filter(item => !(shortenerInfo?.chain ?? []).includes(item))];
       const heurSignals = extraHeuristics(finalUrlObj);
-      const homoglyphResult = heurSignals.homoglyph;
       const domainIntel = await fetchDomainIntel(finalUrlObj.hostname, h);
       const domainAgeDays = domainIntel.ageDays;
       const wasShortened = Boolean(shortenerInfo?.wasShortened);
       const finalUrlMismatch = wasShortened && new URL(norm).hostname !== finalUrlObj.hostname;
 
-      if (homoglyphResult?.detected) {
+      const homoglyphResult = detectHomoglyphs(finalUrlObj.hostname);
+      if (homoglyphResult.detected) {
         metrics.homoglyphDetections.labels(homoglyphResult.riskLevel).inc();
-        const confusablePairs = homoglyphResult.confusableChars.map(c => `${c.original}→${c.confusedWith}`);
-        logger.info(
-          {
-            hostname: finalUrlObj.hostname,
-            risk: homoglyphResult.riskLevel,
-            confusables: confusablePairs,
-            reasons: homoglyphResult.riskReasons,
-            mixedScript: homoglyphResult.mixedScript,
-            isPunycode: homoglyphResult.isPunycode,
-          },
-          'Homoglyph detection',
-        );
+        logger.info({ hostname: finalUrlObj.hostname, risk: homoglyphResult.riskLevel, confusables: homoglyphResult.confusableChars }, 'Homoglyph detection');
       }
 
       let manualOverride: 'allow' | 'deny' | null = null;
@@ -675,6 +658,7 @@ async function main() {
         wasShortened,
         finalUrlMismatch,
         manualOverride,
+        homoglyph: homoglyphResult,
         ...heurSignals,
       };
       const verdictResult = scoreFromSignals(signals);

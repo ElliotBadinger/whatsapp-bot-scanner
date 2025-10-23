@@ -2,10 +2,10 @@
 
 Prefix: `!scanner`
 
-- `!scanner mute` – silence automated replies to the group for 60 minutes. Replies acknowledge success (`'Scanner muted for 60 minutes.'`) or failure.
-- `!scanner unmute` – immediately lift the mute window so verdicts resume.
-- `!scanner status` – fetch aggregate scan counts from the control-plane and post `scans=<count>, malicious=<count>` to the chat.
-- `!scanner rescan <url>` – trigger an immediate rescan by POSTing to `/rescan`; clears Redis caches and enqueues a high-priority job for the supplied URL.
+- `!scanner mute 60` – mute group responses for 60 minutes.
+- `!scanner unmute` – unmute group.
+- `!scanner rescan <url>` – enqueue immediate rescan.
+- `!scanner status` – current status and recent stats.
 
-Commands are group-admin only. Unknown variations fall back to `Commands: !scanner mute|unmute|status|rescan <url>` so operators can discover the supported verbs.
+`rescan` calls the control-plane API to invalidate caches and queue a high-priority scan for the provided URL. Commands are admin-only.
 
