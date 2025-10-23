@@ -5,6 +5,7 @@ vi.mock('undici', () => ({
   request: vi.fn(),
   fetch: vi.fn(),
 }));
+
 const legacyExpandMock = vi.fn();
 const modernExpandMock = vi.fn();
 let useModernExpand = false;
@@ -12,6 +13,7 @@ let useModernExpand = false;
 vi.mock('url-expand', () => {
   const legacyWrapper = (shortUrl: string, callback: (error: unknown, expanded?: string | null) => void) =>
     legacyExpandMock(shortUrl, callback);
+
   Object.defineProperty(legacyWrapper, 'expand', {
     get() {
       return useModernExpand ? modernExpandMock : undefined;
@@ -41,6 +43,9 @@ const buildResponse = (status: number, headers: Record<string, string> = {}) => 
       return headers[name.toLowerCase()] ?? null;
     },
   },
+  body: {
+    cancel: vi.fn().mockResolvedValue(undefined),
+  },
 });
 
 beforeEach(() => {
@@ -63,6 +68,7 @@ describe('Shortener fallback chain (legacy url-expand API)', () => {
     const undici = await import('undici');
 
     vi.mocked(undici.request).mockResolvedValue({ statusCode: 500 } as any);
+    vi.mocked(undici.fetch).mockResolvedValue(buildResponse(404) as any);
     legacyExpandMock.mockImplementation((_shortUrl: string, callback: (error: Error) => void) => {
       callback(new Error('Service unavailable'));
     });
@@ -71,6 +77,8 @@ describe('Shortener fallback chain (legacy url-expand API)', () => {
 
     const result = await resolveShortener('http://bit.ly/down');
     expect(result.provider).toBe('original');
+    expect(result.expanded).toBe(false);
+    expect(result.reason).toBe('library-error');
     expect(result.error).toContain('Service unavailable');
   });
 
@@ -78,6 +86,7 @@ describe('Shortener fallback chain (legacy url-expand API)', () => {
     const undici = await import('undici');
 
     vi.mocked(undici.request).mockResolvedValue({ statusCode: 500 } as any);
+    vi.mocked(undici.fetch).mockResolvedValue(buildResponse(500) as any);
     legacyExpandMock.mockImplementation((_shortUrl: string, callback: (error: null, expanded: string) => void) => {
       callback(null, 'https://expanded.example/path');
     });
@@ -85,25 +94,31 @@ describe('Shortener fallback chain (legacy url-expand API)', () => {
     const { resolveShortener } = await import('@wbscanner/shared');
 
     const result = await resolveShortener('http://bit.ly/demo');
-    expect(result.provider).toBe('url_expand');
+    expect(result.provider).toBe('urlexpander');
     expect(result.finalUrl).toBe('https://expanded.example/path');
     expect(result.chain).toContain('https://expanded.example/path');
+    expect(result.expanded).toBe(true);
+    expect(result.reason).toBeUndefined();
   });
 
   it('blocks url-expand results that resolve to private addresses', async () => {
     const undici = await import('undici');
 
     vi.mocked(undici.request).mockResolvedValue({ statusCode: 500 } as any);
+    vi.mocked(undici.fetch).mockResolvedValue(buildResponse(500) as any);
     legacyExpandMock.mockImplementation((_shortUrl: string, callback: (error: null, expanded: string) => void) => {
       callback(null, 'http://127.0.0.1/admin');
     });
 
+    dnsLookup.mockResolvedValueOnce([{ address: '93.184.216.34' }]);
     dnsLookup.mockResolvedValueOnce([{ address: '127.0.0.1' }]);
 
     const { resolveShortener } = await import('@wbscanner/shared');
 
     const result = await resolveShortener('http://bit.ly/private');
     expect(result.provider).toBe('original');
+    expect(result.expanded).toBe(false);
+    expect(result.reason).toBe('ssrf-blocked');
     expect(result.error).toContain('SSRF protection');
   });
 });
@@ -118,6 +133,7 @@ describe('Shortener fallback chain (modern url-expand API)', () => {
 
     vi.mocked(undici.request).mockResolvedValue({ statusCode: 500 } as any);
     vi.mocked(undici.fetch)
+      .mockResolvedValueOnce(buildResponse(500) as any)
       .mockResolvedValueOnce(buildResponse(301, { location: 'https://expanded.example/path' }) as any)
       .mockResolvedValueOnce(buildResponse(200) as any);
 
@@ -137,9 +153,10 @@ describe('Shortener fallback chain (modern url-expand API)', () => {
     const { resolveShortener } = await import('@wbscanner/shared');
 
     const result = await resolveShortener('http://bit.ly/demo');
-    expect(result.provider).toBe('url_expand');
+    expect(result.provider).toBe('urlexpander');
     expect(result.finalUrl).toBe('https://expanded.example/path');
     expect(result.chain).toContain('https://expanded.example/path');
+    expect(result.expanded).toBe(true);
     expect(modernExpandMock).toHaveBeenCalled();
   });
 
@@ -147,7 +164,9 @@ describe('Shortener fallback chain (modern url-expand API)', () => {
     const undici = await import('undici');
 
     vi.mocked(undici.request).mockResolvedValue({ statusCode: 500 } as any);
-    vi.mocked(undici.fetch).mockResolvedValue(buildResponse(301, { location: 'http://127.0.0.1/admin' }) as any);
+    vi.mocked(undici.fetch)
+      .mockResolvedValueOnce(buildResponse(500) as any)
+      .mockResolvedValueOnce(buildResponse(301, { location: 'http://127.0.0.1/admin' }) as any);
 
     modernExpandMock.mockImplementation(async (shortUrl: string, options: any) => {
       await options.fetch(shortUrl);
@@ -169,6 +188,50 @@ describe('Shortener fallback chain (modern url-expand API)', () => {
 
     const result = await resolveShortener('http://bit.ly/private');
     expect(result.provider).toBe('original');
+    expect(result.expanded).toBe(false);
+    expect(result.reason).toBe('ssrf-blocked');
     expect(result.error).toContain('SSRF protection');
+  });
+
+  it('flags responses above the content-length cap', async () => {
+    const undici = await import('undici');
+
+    vi.mocked(undici.request).mockResolvedValue({ statusCode: 500 } as any);
+    vi.mocked(undici.fetch)
+      .mockResolvedValueOnce(buildResponse(200, { 'content-length': '2097152' }) as any)
+      .mockResolvedValueOnce(buildResponse(200, { 'content-length': '2097152' }) as any);
+    modernExpandMock.mockImplementation((_shortUrl: string, options: any) => options.fetch('http://bit.ly/oversized'));
+    legacyExpandMock.mockImplementation((_shortUrl: string, callback: (error: Error) => void) => {
+      callback(new Error('library failure'));
+    });
+
+    const { resolveShortener } = await import('@wbscanner/shared');
+
+    const result = await resolveShortener('http://bit.ly/oversized');
+    expect(result.provider).toBe('original');
+    expect(result.expanded).toBe(false);
+    expect(result.reason).toBe('max-content-length');
+    expect(result.error).toContain('Content too large');
+  });
+
+  it('reports timeouts from the direct fetch fallback', async () => {
+    const undici = await import('undici');
+
+    vi.mocked(undici.request).mockResolvedValue({ statusCode: 500 } as any);
+    const abortError = new Error('Aborted');
+    abortError.name = 'AbortError';
+    vi.mocked(undici.fetch).mockRejectedValue(abortError);
+    modernExpandMock.mockImplementation((_shortUrl: string, options: any) => options.fetch('http://bit.ly/timeout'));
+    legacyExpandMock.mockImplementation((_shortUrl: string, callback: (error: Error) => void) => {
+      callback(new Error('library failure'));
+    });
+
+    const { resolveShortener } = await import('@wbscanner/shared');
+
+    const result = await resolveShortener('http://bit.ly/timeout');
+    expect(result.provider).toBe('original');
+    expect(result.expanded).toBe(false);
+    expect(result.reason).toBe('timeout');
+    expect(result.error).toContain('timed out');
   });
 });

@@ -34,12 +34,61 @@ export function isKnownShortener(hostname: string): boolean {
   return SHORTENER_HOSTS.has(hostname.toLowerCase());
 }
 
+export type ExpansionFailureReason =
+  | 'timeout'
+  | 'max-content-length'
+  | 'http-error'
+  | 'library-error'
+  | 'ssrf-blocked'
+  | 'expansion-failed';
+
 export interface ShortenerResolution {
   finalUrl: string;
-  provider: 'unshorten_me' | 'url_expand' | 'original';
+  provider: 'unshorten_me' | 'direct' | 'urlexpander' | 'original';
   chain: string[];
   wasShortened: boolean;
+  expanded: boolean;
+  reason?: ExpansionFailureReason;
   error?: string;
+}
+
+class DirectExpansionError extends Error {
+  constructor(public reason: ExpansionFailureReason, message?: string) {
+    super(message ?? reason);
+    this.name = 'DirectExpansionError';
+  }
+}
+
+function failureReasonFrom(
+  urlExpanderError: unknown,
+  directError: unknown,
+): ExpansionFailureReason {
+  if (urlExpanderError instanceof Error && urlExpanderError.message.includes('SSRF protection')) {
+    return 'ssrf-blocked';
+  }
+  if (directError instanceof DirectExpansionError) {
+    return directError.reason;
+  }
+  if (urlExpanderError) {
+    return 'library-error';
+  }
+  return 'expansion-failed';
+}
+
+function failureMessageFrom(urlExpanderError: unknown, directError: unknown): string {
+  if (urlExpanderError instanceof Error && urlExpanderError.message.includes('SSRF protection')) {
+    return urlExpanderError.message;
+  }
+  if (directError instanceof DirectExpansionError) {
+    return directError.message;
+  }
+  if (urlExpanderError instanceof Error) {
+    return urlExpanderError.message;
+  }
+  if (directError instanceof Error) {
+    return directError.message;
+  }
+  return 'Expansion failed';
 }
 
 interface UnshortenResponse {
@@ -91,17 +140,17 @@ function createGuardedFetch(
             : undefined;
 
     if (!rawTarget) {
-      throw new Error('Expansion failed: Missing target URL');
+      throw new DirectExpansionError('expansion-failed', 'Expansion failed: Missing target URL');
     }
 
     const normalizedTarget = normalizeUrl(rawTarget) || rawTarget;
     const parsed = new URL(normalizedTarget);
     if (await isPrivateHostname(parsed.hostname)) {
-      throw new Error('SSRF protection: Private host blocked');
+      throw new DirectExpansionError('ssrf-blocked', 'SSRF protection: Private host blocked');
     }
 
     if (attempts >= maxRedirects) {
-      throw new Error(`Redirect limit exceeded (${maxRedirects})`);
+      throw new DirectExpansionError('expansion-failed', `Redirect limit exceeded (${maxRedirects})`);
     }
     attempts += 1;
 
@@ -109,34 +158,108 @@ function createGuardedFetch(
       chain.push(normalizedTarget);
     }
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-
     try {
       const response = await undiciFetch(normalizedTarget, {
         ...init,
         redirect: 'manual',
-        signal: controller.signal,
+        signal: AbortSignal.timeout(timeoutMs),
       });
 
       const contentLengthHeader = response.headers?.get?.('content-length');
       if (contentLengthHeader) {
         const contentLength = Number.parseInt(contentLengthHeader, 10);
         if (Number.isFinite(contentLength) && contentLength > maxContentLength) {
-          throw new Error(`Content too large: ${contentLength} bytes`);
+          void response.body?.cancel?.();
+          throw new DirectExpansionError('max-content-length', `Content too large: ${contentLength} bytes`);
         }
       }
 
       return response;
     } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error(`Expansion timed out after ${timeoutMs}ms`);
+      if (error instanceof DirectExpansionError) {
+        throw error;
       }
-      throw error;
-    } finally {
-      clearTimeout(timer);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new DirectExpansionError('timeout', `Expansion timed out after ${timeoutMs}ms`);
+      }
+      throw new DirectExpansionError(
+        'http-error',
+        error instanceof Error ? error.message : 'Expansion failed',
+      );
     }
   };
+}
+
+async function resolveDirectly(url: string): Promise<{ finalUrl: string; chain: string[] } | null> {
+  const { maxRedirects, timeoutMs, maxContentLength } = config.orchestrator.expansion;
+  let current = url;
+  const chain: string[] = [];
+
+  for (let i = 0; i < maxRedirects; i += 1) {
+    const normalized = normalizeUrl(current) || current;
+    if (!normalized) break;
+
+    const parsed = new URL(normalized);
+    if (await isPrivateHostname(parsed.hostname)) {
+      throw new DirectExpansionError('ssrf-blocked', 'SSRF protection: Private host blocked');
+    }
+
+    if (!chain.length || chain[chain.length - 1] !== normalized) {
+      chain.push(normalized);
+    }
+
+    try {
+      const response = await undiciFetch(normalized, {
+        method: 'GET',
+        redirect: 'manual',
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+
+      const contentLengthHeader = response.headers?.get?.('content-length');
+      if (contentLengthHeader) {
+        const contentLength = Number.parseInt(contentLengthHeader, 10);
+        if (Number.isFinite(contentLength) && contentLength > maxContentLength) {
+          void response.body?.cancel?.();
+          throw new DirectExpansionError('max-content-length', `Content too large: ${contentLength} bytes`);
+        }
+      }
+
+      if (response.status >= 400) {
+        if (response.status >= 500) {
+          void response.body?.cancel?.();
+          throw new DirectExpansionError('http-error', `Expansion request failed with status ${response.status}`);
+        }
+        return null;
+      }
+
+      const location = response.headers?.get?.('location');
+      if (response.status >= 300 && response.status < 400) {
+        if (!location) {
+          void response.body?.cancel?.();
+          return { finalUrl: normalized, chain };
+        }
+        void response.body?.cancel?.();
+        current = new URL(location, normalized).toString();
+        continue;
+      }
+
+      void response.body?.cancel?.();
+      return { finalUrl: normalized, chain };
+    } catch (error) {
+      if (error instanceof DirectExpansionError) {
+        throw error;
+      }
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new DirectExpansionError('timeout', `Expansion timed out after ${timeoutMs}ms`);
+      }
+      throw new DirectExpansionError(
+        'http-error',
+        error instanceof Error ? error.message : 'Expansion failed',
+      );
+    }
+  }
+
+  return chain.length ? { finalUrl: chain[chain.length - 1], chain } : null;
 }
 
 async function resolveWithUrlExpand(url: string): Promise<{ finalUrl: string; chain: string[] }> {
@@ -195,7 +318,7 @@ async function resolveWithUrlExpand(url: string): Promise<{ finalUrl: string; ch
   }
 
   if (await isPrivateHostname(parsedFinal.hostname)) {
-    throw new Error('SSRF protection: Private host blocked');
+    throw new DirectExpansionError('ssrf-blocked', 'SSRF protection: Private host blocked');
   }
 
   if (chain[chain.length - 1] !== normalizedFinal) {
@@ -209,11 +332,11 @@ export async function resolveShortener(url: string): Promise<ShortenerResolution
   const normalized = normalizeUrl(url);
   const chain: string[] = [];
   if (!normalized) {
-    return { finalUrl: url, provider: 'original', chain, wasShortened: false };
+    return { finalUrl: url, provider: 'original', chain, wasShortened: false, expanded: false };
   }
   const hostname = new URL(normalized).hostname.toLowerCase();
   if (!isKnownShortener(hostname)) {
-    return { finalUrl: normalized, provider: 'original', chain, wasShortened: false };
+    return { finalUrl: normalized, provider: 'original', chain, wasShortened: false, expanded: false };
   }
 
   const tries = Math.max(1, config.shortener.unshortenRetries);
@@ -226,27 +349,52 @@ export async function resolveShortener(url: string): Promise<ShortenerResolution
         provider: 'unshorten_me',
         chain: [normalized, resolved],
         wasShortened: true,
+        expanded: normalized !== resolved,
       };
     }
   }
   metrics.shortenerExpansion.labels('unshorten.me', 'error').inc();
+
+  let directResult: { finalUrl: string; chain: string[] } | null = null;
+  let directError: unknown;
+  try {
+    directResult = await resolveDirectly(normalized);
+  } catch (error) {
+    directError = error;
+    metrics.shortenerExpansion.labels('direct', 'error').inc();
+  }
+
+  if (directResult) {
+    metrics.shortenerExpansion.labels('direct', 'success').inc();
+    return {
+      finalUrl: directResult.finalUrl,
+      provider: 'direct',
+      chain: directResult.chain,
+      wasShortened: true,
+      expanded: directResult.chain.length > 1 || directResult.finalUrl !== normalized,
+    };
+  }
+
   try {
     const expanded = await resolveWithUrlExpand(normalized);
-    metrics.shortenerExpansion.labels('url-expand', 'success').inc();
+    metrics.shortenerExpansion.labels('urlexpander', 'success').inc();
     return {
       finalUrl: expanded.finalUrl,
-      provider: 'url_expand',
+      provider: 'urlexpander',
       chain: expanded.chain,
       wasShortened: true,
+      expanded: expanded.chain.length > 1 || expanded.finalUrl !== normalized,
     };
   } catch (error) {
-    metrics.shortenerExpansion.labels('url-expand', 'error').inc();
+    metrics.shortenerExpansion.labels('urlexpander', 'error').inc();
     return {
       finalUrl: normalized,
       provider: 'original',
       chain: [normalized],
       wasShortened: true,
-      error: error instanceof Error ? error.message : 'Expansion failed',
+      expanded: false,
+      reason: failureReasonFrom(error, directError),
+      error: failureMessageFrom(error, directError),
     };
   }
 }
