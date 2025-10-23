@@ -32,3 +32,14 @@ Operational notes:
 - Metrics are Prometheus-compatible under `/metrics` per service.
 
 Documentation located in `docs/` covers architecture, security, operations, and runbooks.
+
+## Deploying with Railway
+
+The repository ships with a production-ready `railway.toml` that provisions the WhatsApp client, scan orchestrator, control plane, PostgreSQL, and Redis services in a single Railway project. To deploy:
+
+1. Create a new Railway project and import this repository.
+2. Add the required secrets listed at the top of `railway.toml` (VirusTotal, Google Safe Browsing, WhoisXML, urlscan.io, and the control-plane token). Optional providers—such as PhishTank or OpenAI—can be added if you plan to enable them.
+3. Run `railway up` or trigger a deploy from the dashboard. Railway automatically binds `redis` and `postgres` service URLs to the application containers.
+4. After the build finishes, confirm every service reports healthy by curling their `/healthz` endpoints (`railway logs --service <name>` shows the public URL for each service). For example, `curl https://<wa-client-domain>/healthz` should return `{ "ok": true }`.
+
+See `docs/DEPLOYMENT.md` for detailed environment variable mappings, smoke-test automation, and troubleshooting tips.
