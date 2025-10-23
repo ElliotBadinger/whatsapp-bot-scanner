@@ -1,5 +1,9 @@
-import { request } from 'undici';
+import Bottleneck from 'bottleneck';
+import { fetch } from 'undici';
 import { config } from '../config';
+import { logger } from '../log';
+import { apiQuotaRemainingGauge, apiQuotaStatusGauge, rateLimiterDelay } from '../metrics';
+import { QuotaExceededError } from '../errors';
 
 export interface VirusTotalAnalysis {
   data?: any;
@@ -7,45 +11,109 @@ export interface VirusTotalAnalysis {
   disabled?: boolean;
 }
 
+const VT_LIMITER_RESERVOIR = 4;
+
+const vtLimiter = new Bottleneck({
+  reservoir: VT_LIMITER_RESERVOIR,
+  reservoirRefreshAmount: VT_LIMITER_RESERVOIR,
+  reservoirRefreshInterval: 60 * 1000,
+  maxConcurrent: 1,
+  minTime: 250,
+});
+
+let requestsRemaining = VT_LIMITER_RESERVOIR;
+apiQuotaRemainingGauge.labels('virustotal').set(requestsRemaining);
+apiQuotaStatusGauge.labels('virustotal').set(1);
+
+vtLimiter.on('depleted', () => {
+  requestsRemaining = 0;
+  apiQuotaRemainingGauge.labels('virustotal').set(0);
+  apiQuotaStatusGauge.labels('virustotal').set(0);
+});
+
+const refreshInterval = setInterval(async () => {
+  try {
+    const current = await vtLimiter.currentReservoir();
+    if (typeof current === 'number') {
+      requestsRemaining = current;
+      apiQuotaRemainingGauge.labels('virustotal').set(current);
+      apiQuotaStatusGauge.labels('virustotal').set(current > 0 ? 1 : 0);
+    }
+  } catch (err) {
+    logger.debug({ err }, 'Failed to poll VT limiter reservoir');
+  }
+}, 10_000);
+refreshInterval.unref();
+
+async function scheduleVtCall<T>(cb: () => Promise<T>): Promise<T> {
+  const queuedAt = Date.now();
+  return vtLimiter.schedule(async () => {
+    const waitSeconds = (Date.now() - queuedAt) / 1000;
+    if (waitSeconds > 0) {
+      rateLimiterDelay.labels('virustotal').observe(waitSeconds);
+    }
+    try {
+      return await cb();
+    } finally {
+      const reservoir = await vtLimiter.currentReservoir();
+      if (typeof reservoir === 'number') {
+        requestsRemaining = reservoir;
+        apiQuotaRemainingGauge.labels('virustotal').set(reservoir);
+        apiQuotaStatusGauge.labels('virustotal').set(reservoir > 0 ? 1 : 0);
+      }
+    }
+  });
+}
+
 export async function vtAnalyzeUrl(url: string): Promise<VirusTotalAnalysis> {
   if (!config.vt.apiKey) return { disabled: true };
-  const submit = await request('https://www.virustotal.com/api/v3/urls', {
-    method: 'POST',
-    headers: {
-      'x-apikey': config.vt.apiKey,
-      'content-type': 'application/x-www-form-urlencoded'
-    },
-    body: new URLSearchParams({ url }).toString()
-  });
-  if (submit.statusCode === 429) {
-    const err = new Error('VirusTotal quota exceeded');
-    (err as any).code = 429;
+  const submitResponse = await scheduleVtCall(() =>
+    fetch('https://www.virustotal.com/api/v3/urls', {
+      method: 'POST',
+      headers: {
+        'x-apikey': config.vt.apiKey,
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ url }).toString(),
+    })
+  );
+
+  if (submitResponse.status === 429) {
+    logger.warn('VirusTotal quota exceeded during submission');
+    apiQuotaStatusGauge.labels('virustotal').set(0);
+    apiQuotaRemainingGauge.labels('virustotal').set(0);
+    throw new QuotaExceededError('virustotal', 'VirusTotal quota exhausted');
+  }
+
+  if (submitResponse.status >= 400) {
+    const err = new Error(`VirusTotal submission failed: ${submitResponse.status}`);
+    (err as any).statusCode = submitResponse.status;
     throw err;
   }
-  if (submit.statusCode >= 400) {
-    const err = new Error(`VirusTotal submission failed: ${submit.statusCode}`);
-    (err as any).statusCode = submit.statusCode;
-    throw err;
-  }
-  const body: any = await submit.body.json();
+
+  const body: any = await submitResponse.json();
   const analysisId = body.data?.id;
   const started = Date.now();
   let analysis: any;
   while (Date.now() - started < 50000) {
-    const res = await request(`https://www.virustotal.com/api/v3/analyses/${analysisId}`, {
-      headers: { 'x-apikey': config.vt.apiKey }
-    });
-    if (res.statusCode === 429) {
-      const err = new Error('VirusTotal quota exceeded');
-      (err as any).code = 429;
+    const res = await scheduleVtCall(() =>
+      fetch(`https://www.virustotal.com/api/v3/analyses/${analysisId}`, {
+        headers: { 'x-apikey': config.vt.apiKey },
+      })
+    );
+
+    if (res.status === 429) {
+      logger.warn('VirusTotal quota exceeded while polling analysis');
+      apiQuotaStatusGauge.labels('virustotal').set(0);
+      apiQuotaRemainingGauge.labels('virustotal').set(0);
+      throw new QuotaExceededError('virustotal', 'VirusTotal quota exhausted');
+    }
+    if (res.status >= 500) {
+      const err = new Error(`VirusTotal analysis failed: ${res.status}`);
+      (err as any).statusCode = res.status;
       throw err;
     }
-    if (res.statusCode >= 500) {
-      const err = new Error(`VirusTotal analysis failed: ${res.statusCode}`);
-      (err as any).statusCode = res.statusCode;
-      throw err;
-    }
-    analysis = await res.body.json();
+    analysis = await res.json();
     const status = analysis.data?.attributes?.status;
     if (status !== 'queued') break;
     await new Promise(r => setTimeout(r, 2000));

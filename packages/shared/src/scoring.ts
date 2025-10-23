@@ -1,5 +1,6 @@
 import { isSuspiciousTld } from './url';
 import type { GsbThreatMatch } from './reputation/gsb';
+import type { HomoglyphResult } from './homoglyph';
 
 export interface Signals {
   gsbThreatTypes?: string[];
@@ -9,8 +10,6 @@ export interface Signals {
   urlhausListed?: boolean;
   phishtankVerified?: boolean;
   domainAgeDays?: number;
-  hasHomoglyph?: boolean;
-  homoglyphNote?: string;
   isIpLiteral?: boolean;
   hasSuspiciousTld?: boolean;
   redirectCount?: number;
@@ -20,6 +19,7 @@ export interface Signals {
   wasShortened?: boolean;
   manualOverride?: 'allow' | 'deny' | null;
   finalUrlMismatch?: boolean;
+  homoglyph?: HomoglyphResult;
 }
 
 export interface RiskVerdict {
@@ -85,9 +85,19 @@ export function scoreFromSignals(signals: Signals): RiskVerdict {
   }
 
   // Heuristics
-  if (signals.hasHomoglyph) {
-    score += 3;
-    pushReason(reasons, signals.homoglyphNote ? `Homoglyph detected: ${signals.homoglyphNote}` : 'Homoglyph/confusable characters');
+  const homoglyph = signals.homoglyph;
+  if (homoglyph?.detected) {
+    const characters = homoglyph.confusableChars.map(c => c.original).join(', ');
+    if (homoglyph.riskLevel === 'high') {
+      score += 5;
+      pushReason(reasons, characters ? `High-risk homoglyph attack detected (${characters})` : 'High-risk homoglyph attack detected');
+    } else if (homoglyph.riskLevel === 'medium') {
+      score += 3;
+      pushReason(reasons, characters ? `Suspicious characters detected: ${characters}` : 'Suspicious homoglyph characters detected');
+    } else {
+      score += 1;
+      pushReason(reasons, 'Punycode/IDN domain detected');
+    }
   }
   if (signals.isIpLiteral) {
     score += 3;
@@ -144,15 +154,11 @@ export function extraHeuristics(u: URL): Partial<Signals> {
   const isIpLiteral = /^(\d+\.\d+\.\d+\.\d+|\[[0-9a-fA-F:]+\])$/.test(u.hostname);
   const hasExecutableExtension = /\.(exe|msi|apk|bat|cmd|ps1|scr|jar|pkg|dmg|iso)$/i.test(u.pathname);
   const hasSuspiciousTld = isSuspiciousTld(u.hostname);
-  const hasHomoglyph = /xn--/.test(u.hostname);
-  const homoglyphNote = hasHomoglyph ? 'IDN punycode detected' : undefined;
   return {
     hasUncommonPort,
     isIpLiteral,
     hasExecutableExtension,
     hasSuspiciousTld,
-    hasHomoglyph,
-    homoglyphNote,
     urlLength: u.toString().length,
   };
 }

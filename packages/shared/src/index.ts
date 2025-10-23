@@ -14,3 +14,5 @@ export * from './reputation/whoisxml';
 export * from './circuit-breaker';
 export * from './url-shortener';
 export * from './types';
+export * from './errors';
+export * from './homoglyph';

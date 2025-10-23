@@ -9,7 +9,8 @@
     "resolveJsonModule": true,
     "strict": true,
     "outDir": "dist",
-    "sourceMap": true
+    "sourceMap": true,
+    "typeRoots": ["./types", "./node_modules/@types"]
   }
 }
 
