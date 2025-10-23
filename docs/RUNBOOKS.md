@@ -22,6 +22,7 @@ Incident Response:
 - Shortener expansion failures: delete Redis key `url:shortener:{hash}` and rescan; verify `UNSHORTEN_ENDPOINT` is accessible.
 
 Urlscan Deep Scan Workflow:
+- Queue renames must follow [Queue Naming Constraints](./DEPLOYMENT.md#queue-naming-constraints) when adjusting `SCAN_*_QUEUE` values.
 - Suspicious verdicts (score 4–7) enqueue BullMQ jobs on `scan-urlscan`. Submission state lands in Postgres (`scans.urlscan_status`) and Redis (`urlscan:submitted:{hash}`).
 - urlscan callbacks POST to `/urlscan/callback` (reverse proxy path `/urlscan/callback`), authenticated via `URLSCAN_CALLBACK_SECRET`. Callback payload stored in `scans.urlscan_result`.
 - Manual rescan: delete `url:analysis:{hash}:*`, `url:shortener:{hash}`, and `urlscan:*:{hash}` keys then add a new `scan-request` job.
