@@ -43,10 +43,15 @@ import {
 import type { GsbThreatMatch, UrlhausLookupResult, PhishtankLookupResult, VirusTotalAnalysis, UrlscanSubmissionResponse, WhoisXmlResponse } from '@wbscanner/shared';
 import { downloadUrlscanArtifacts } from './urlscan-artifacts';
 
-const redis = new Redis(config.redisUrl);
-const scanRequestQueue = new Queue(config.queues.scanRequest, { connection: redis });
-const scanVerdictQueue = new Queue(config.queues.scanVerdict, { connection: redis });
-const urlscanQueue = new Queue(config.queues.urlscan, { connection: redis });
+const redisOptions = {
+  maxRetriesPerRequest: null,
+  enableReadyCheck: false,
+} as const;
+
+const redis = new Redis(config.redisUrl, redisOptions);
+const scanRequestQueue = new Queue(config.queues.scanRequest, { connection: new Redis(config.redisUrl, redisOptions) });
+const scanVerdictQueue = new Queue(config.queues.scanVerdict, { connection: new Redis(config.redisUrl, redisOptions) });
+const urlscanQueue = new Queue(config.queues.urlscan, { connection: new Redis(config.redisUrl, redisOptions) });
 
 const ANALYSIS_TTLS = {
   gsb: 60 * 60,

@@ -7,28 +7,6 @@ import Redis from 'ioredis';
 import { config, logger, extractUrls, normalizeUrl, urlHash, metrics, register, assertControlPlaneToken } from '@wbscanner/shared';
 import { RateLimiterRedis } from 'rate-limiter-flexible';
 
-const redis = new Redis(config.redisUrl);
-const scanRequestQueue = new Queue(config.queues.scanRequest, { connection: redis });
-
-const globalLimiter = new RateLimiterRedis({
-  storeClient: redis,
-  keyPrefix: 'rate',
-  points: config.wa.globalRatePerHour,
-  duration: 3600,
-});
-const groupLimiter = new RateLimiterRedis({
-  storeClient: redis,
-  keyPrefix: 'group_cooldown',
-  points: 1,
-  duration: config.wa.perGroupCooldownSeconds
-});
-const groupHourlyLimiter = new RateLimiterRedis({
-  storeClient: redis,
-  keyPrefix: 'group_hour',
-  points: config.wa.perGroupHourlyLimit,
-  duration: 3600,
-});
-
 const processedKey = (chatId: string, messageId: string, urlH: string) => `processed:${chatId}:${messageId}:${urlH}`;
 
 function validateStartupConfig() {
@@ -43,6 +21,28 @@ function validateStartupConfig() {
 async function main() {
   validateStartupConfig();
   assertControlPlaneToken();
+
+  const redis = new Redis(config.redisUrl);
+  const scanRequestQueue = new Queue(config.queues.scanRequest, { connection: redis });
+  const globalLimiter = new RateLimiterRedis({
+    storeClient: redis,
+    keyPrefix: 'wa_global_hour',
+    points: config.wa.globalRatePerHour,
+    duration: 3600,
+  });
+  const groupLimiter = new RateLimiterRedis({
+    storeClient: redis,
+    keyPrefix: 'group_cooldown',
+    points: 1,
+    duration: config.wa.perGroupCooldownSeconds
+  });
+  const groupHourlyLimiter = new RateLimiterRedis({
+    storeClient: redis,
+    keyPrefix: 'group_hour',
+    points: config.wa.perGroupHourlyLimit,
+    duration: 3600,
+  });
+
   const app = Fastify();
   app.get('/healthz', async () => ({ ok: true }));
   app.get('/metrics', async (_req, reply) => {
@@ -60,7 +60,7 @@ async function main() {
   client.on('auth_failure', (m) => logger.error({ m }, 'Auth failure'));
   client.on('disconnected', (r) => logger.warn({ r }, 'Disconnected'));
 
-  client.on('message_create', async (msg: Message) => {
+  const handleMessageCreate = async (msg: Message) => {
     try {
       if (!msg.from) return;
       // Admin commands
@@ -95,7 +95,7 @@ async function main() {
         }, jobOpts);
       }
     } catch (e) { logger.error(e); }
-  });
+  };
 
   // Consume verdicts
   new Worker(config.queues.scanVerdict, async (job) => {
@@ -117,6 +117,8 @@ async function main() {
       await chat.sendMessage(msg, { quotedMessageId: messageId }).catch(() => undefined);
     }, delay);
   }, { connection: redis });
+
+  client.on('message_create', handleMessageCreate);
 
   await client.initialize();
   await app.listen({ host: '0.0.0.0', port: 3000 });

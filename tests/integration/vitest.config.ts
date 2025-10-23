@@ -8,6 +8,10 @@ export default defineConfig({
   test: {
     environment: 'node',
     setupFiles: ['./vitest.setup.ts'],
+    env: {
+      URLSCAN_ENABLED: 'false',
+      CONTROL_PLANE_API_TOKEN: 'integration-test-token',
+    },
   },
   resolve: {
     alias: {
