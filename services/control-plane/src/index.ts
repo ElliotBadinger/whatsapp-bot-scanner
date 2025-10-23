@@ -107,6 +107,19 @@ export async function buildServer(options: BuildOptions = {}) {
     reply.send({ ok: true, message: 'Cache invalidated, rescan queued', urlHash: hash });
   });
 
+  app.get('/scans/:urlHash/urlscan-artifacts/:artifactType', async (req, reply) => {
+    const { artifactType } = req.params as { artifactType: string };
+    if (artifactType === 'screenshot') {
+      reply.redirect(307, `/artifacts/${(req.params as { urlHash: string }).urlHash}/screenshot`);
+      return;
+    }
+    if (artifactType === 'dom') {
+      reply.redirect(307, `/artifacts/${(req.params as { urlHash: string }).urlHash}/dom`);
+      return;
+    }
+    reply.code(400).send({ error: 'unsupported_artifact_type' });
+  });
+
   app.get('/artifacts/:urlHash/screenshot', async (req, reply) => {
     const { urlHash: hash } = req.params as { urlHash: string };
     const { rows } = await pgClient.query(

@@ -9,5 +9,4 @@ module.exports = {
     '^@wbscanner/shared$': '<rootDir>/../../packages/shared/src/index.ts',
     '^@wbscanner/shared/(.*)$': '<rootDir>/../../packages/shared/src/$1',
   },
-  setupFiles: ['<rootDir>/../../jest.env-setup.js'],
 };

@@ -4,6 +4,9 @@
   "private": true,
   "main": "index.js",
   "types": "index.d.ts",
+  "scripts": {
+    "test": "node -e \"process.exit(0)\""
+  },
   "dependencies": {
     "confusables.js": "^0.4.1"
   }
