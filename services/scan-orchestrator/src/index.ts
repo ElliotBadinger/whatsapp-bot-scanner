@@ -33,6 +33,7 @@ import {
   withRetry,
   QuotaExceededError,
   detectHomoglyphs,
+  assertEssentialConfig,
 } from '@wbscanner/shared';
 import {
   checkBlocklistsWithRedundancy,
@@ -454,6 +455,7 @@ const pg = new PgClient({
 });
 
 async function main() {
+  assertEssentialConfig('scan-orchestrator');
   await pg.connect();
   const app = Fastify();
   app.get('/healthz', async () => ({ ok: true }));
