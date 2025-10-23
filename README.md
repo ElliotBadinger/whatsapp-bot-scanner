@@ -15,6 +15,7 @@ Quick start:
 - Copy `.env.example` to `.env` and fill in API keys.
 - `make build && make up`
 - Open Grafana at `http://localhost:3002` (admin/admin) for dashboards.
+- (Optional) `make test-load` to exercise `/healthz` endpoints; tune with `LOAD_TARGET_URL`, `LOAD_CONCURRENCY`, and `LOAD_DURATION_SECONDS`.
 
 Services:
 
@@ -31,4 +32,3 @@ Operational notes:
 - Metrics are Prometheus-compatible under `/metrics` per service.
 
 Documentation located in `docs/` covers architecture, security, operations, and runbooks.
-

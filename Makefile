@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: build up down logs test migrate seed fmt lint
+.PHONY: build up down logs test migrate seed fmt lint test-load
 
 build:
 	docker compose build --parallel
@@ -23,3 +23,5 @@ migrate:
 seed:
 	npm run seed
 
+test-load:
+	npm run test:load

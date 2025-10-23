@@ -12,7 +12,7 @@
     "test": "npm -ws --if-present test",
     "lint": "npm -ws --if-present run lint",
     "migrate": "node scripts/run-migrations.js",
-    "seed": "node scripts/run-seeds.js"
+    "seed": "node scripts/run-seeds.js",
+    "test:load": "node tests/load/http-load.js"
   }
 }
-

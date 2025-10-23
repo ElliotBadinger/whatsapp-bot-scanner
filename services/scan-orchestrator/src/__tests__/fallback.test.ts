@@ -26,7 +26,32 @@ jest.mock('pg', () => {
   };
 });
 
+const consumeMock = jest.fn().mockResolvedValue(undefined);
+
+jest.mock('rate-limiter-flexible', () => {
+  class RateLimiterResMock {
+    msBeforeNext: number;
+    constructor(msBeforeNext = 0) {
+      this.msBeforeNext = msBeforeNext;
+    }
+  }
+
+  class RateLimiterRedisMock {
+    consume = consumeMock;
+  }
+
+  return {
+    RateLimiterRedis: RateLimiterRedisMock,
+    RateLimiterRes: RateLimiterResMock,
+  };
+});
+
 import { __testables } from '../index';
+import { config } from '@wbscanner/shared';
+// eslint-disable-next-line import/no-commonjs
+const rateLimiterModule = require('rate-limiter-flexible');
+
+const originalVtConfig = { ...config.vt };
 
 describe('error classification helpers', () => {
   it('classifies rate limit errors', () => {
@@ -47,5 +72,108 @@ describe('retry policy', () => {
 
   it('does not retry on rate-limit errors', () => {
     expect(__testables.shouldRetry({ code: 429 })).toBe(false);
+  });
+});
+
+describe('applyVtRateLimit', () => {
+  beforeEach(() => {
+    consumeMock.mockReset().mockResolvedValue(undefined);
+    config.vt.apiKey = 'test-key';
+    config.vt.requestJitterMs = 0;
+    __testables.setVtRateLimiterForTest({ consume: consumeMock } as any);
+  });
+
+  afterEach(() => {
+    Object.assign(config.vt, originalVtConfig);
+    __testables.resetVtRateLimiterForTest();
+  });
+
+  it('invokes limiter consume for each call', async () => {
+    await __testables.applyVtRateLimit();
+    expect(consumeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits and retries when limiter signals delay', async () => {
+    const { RateLimiterRes } = rateLimiterModule;
+    consumeMock
+      .mockRejectedValueOnce(new RateLimiterRes(5))
+      .mockResolvedValueOnce(undefined);
+
+    await __testables.applyVtRateLimit();
+    expect(consumeMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('shouldQueryPhishtank helper', () => {
+  const baseInput = {
+    gsbHit: false,
+    gsbError: null as Error | null,
+    gsbDurationMs: 100,
+    gsbFromCache: false,
+    fallbackLatencyMs: 500,
+    gsbApiKeyPresent: true,
+    phishtankEnabled: true,
+  };
+
+  it('returns true when GSB has no matches', () => {
+    expect(__testables.shouldQueryPhishtank(baseInput)).toBe(true);
+  });
+
+  it('returns false when disabled', () => {
+    expect(__testables.shouldQueryPhishtank({ ...baseInput, phishtankEnabled: false })).toBe(false);
+  });
+
+  it('returns true when GSB hit exists but request errored', () => {
+    const err = new Error('timeout');
+    expect(
+      __testables.shouldQueryPhishtank({
+        ...baseInput,
+        gsbHit: true,
+        gsbError: err,
+      })
+    ).toBe(true);
+  });
+
+  it('returns true when latency threshold exceeded', () => {
+    expect(
+      __testables.shouldQueryPhishtank({
+        ...baseInput,
+        gsbHit: true,
+        gsbDurationMs: 600,
+      })
+    ).toBe(true);
+  });
+
+  it('returns true when GSB API key missing', () => {
+    expect(
+      __testables.shouldQueryPhishtank({
+        ...baseInput,
+        gsbHit: true,
+        gsbApiKeyPresent: false,
+      })
+    ).toBe(true);
+  });
+
+  it('returns false when GSB hit exists and no fallback conditions met', () => {
+    expect(
+      __testables.shouldQueryPhishtank({
+        ...baseInput,
+        gsbHit: true,
+      })
+    ).toBe(false);
+  });
+});
+
+describe('extractUrlscanArtifactCandidates', () => {
+  it('returns unique screenshot and dom candidates with defaults', () => {
+    const candidates = __testables.extractUrlscanArtifactCandidates('abc', {
+      screenshotURL: 'https://custom/snap.png',
+      task: { screenshotURL: '/screens/custom.png', domURL: '/dom/custom.json' },
+      domURL: '/dom/abc.json',
+    });
+
+    expect(candidates.some(c => c.type === 'screenshot' && c.url === 'https://custom/snap.png')).toBe(true);
+    expect(candidates.some(c => c.type === 'screenshot' && c.url.endsWith('/screenshots/abc.png'))).toBe(true);
+    expect(candidates.some(c => c.type === 'dom' && c.url.endsWith('/dom/abc.json'))).toBe(true);
   });
 });

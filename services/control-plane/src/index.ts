@@ -67,6 +67,21 @@ export async function buildServer(options: BuildOptions = {}) {
     reply.send({ ok: true });
   });
 
+  app.get('/scans/:urlHash/urlscan-artifacts/:type', async (req, reply) => {
+    const { urlHash, type } = req.params as { urlHash: string; type: string };
+    const { rows } = await pgClient.query(
+      'SELECT content, content_type FROM urlscan_artifacts WHERE url_hash=$1 AND artifact_type=$2',
+      [urlHash, type]
+    );
+    if (!rows.length) {
+      reply.code(404).send({ error: 'artifact_not_found' });
+      return;
+    }
+    const row = rows[0];
+    reply.header('Content-Type', row.content_type);
+    reply.send(row.content);
+  });
+
   if (process.env.NODE_ENV !== 'test') {
     setInterval(async () => {
       try {

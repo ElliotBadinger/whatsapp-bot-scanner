@@ -1,6 +1,25 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+function ensureQueueName(raw: string, envVar: string): string {
+  const value = raw.trim();
+  if (!value) {
+    throw new Error(`${envVar} must not be empty`);
+  }
+  if (value.includes(':')) {
+    throw new Error(`${envVar} must not contain ':' characters. Use hyphen-separated names (e.g., scan-request).`);
+  }
+  return value;
+}
+
+function parsePositiveInt(value: string | undefined, fallback: number, { minimum = 1 }: { minimum?: number } = {}): number {
+  const parsed = Number.parseInt(value ?? '', 10);
+  if (Number.isFinite(parsed) && parsed >= minimum) {
+    return parsed;
+  }
+  return fallback;
+}
+
 export const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
   redisUrl: process.env.REDIS_URL || 'redis://localhost:6379/0',
@@ -12,13 +31,15 @@ export const config = {
     password: process.env.POSTGRES_PASSWORD || 'wbscanner',
   },
   queues: {
-    scanRequest: process.env.SCAN_REQUEST_QUEUE || 'scan:request',
-    scanVerdict: process.env.SCAN_VERDICT_QUEUE || 'scan:verdict',
-    urlscan: process.env.SCAN_URLSCAN_QUEUE || 'scan:urlscan',
+    scanRequest: ensureQueueName(process.env.SCAN_REQUEST_QUEUE || 'scan-request', 'SCAN_REQUEST_QUEUE'),
+    scanVerdict: ensureQueueName(process.env.SCAN_VERDICT_QUEUE || 'scan-verdict', 'SCAN_VERDICT_QUEUE'),
+    urlscan: ensureQueueName(process.env.SCAN_URLSCAN_QUEUE || 'scan-urlscan', 'SCAN_URLSCAN_QUEUE'),
   },
   vt: {
     apiKey: process.env.VT_API_KEY || '',
     timeoutMs: parseInt(process.env.VT_REQUEST_TIMEOUT_MS || '8000', 10),
+    requestsPerMinute: parsePositiveInt(process.env.VT_REQUESTS_PER_MINUTE, 4),
+    requestJitterMs: parsePositiveInt(process.env.VT_REQUEST_JITTER_MS, 500, { minimum: 0 }),
   },
   gsb: {
     apiKey: process.env.GSB_API_KEY || '',

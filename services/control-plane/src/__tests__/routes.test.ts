@@ -52,4 +52,26 @@ describe('control-plane routes', () => {
       expect.arrayContaining([null, null, 'allow', 'global', null, 'admin', 'testing', null])
     );
   });
+
+  it('serves stored urlscan artifact bytes', async () => {
+    pgClient.query.mockResolvedValueOnce({ rows: [{ content: Buffer.from('hello'), content_type: 'text/plain' }] });
+    const response = await app.inject({
+      method: 'GET',
+      url: '/scans/hash-123/urlscan-artifacts/screenshot',
+      headers: { authorization: 'Bearer test-token' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toBe('text/plain');
+    expect(response.body).toBe('hello');
+  });
+
+  it('returns 404 when artifact missing', async () => {
+    pgClient.query.mockResolvedValueOnce({ rows: [] });
+    const response = await app.inject({
+      method: 'GET',
+      url: '/scans/missing/urlscan-artifacts/screenshot',
+      headers: { authorization: 'Bearer test-token' },
+    });
+    expect(response.statusCode).toBe(404);
+  });
 });

@@ -2,6 +2,8 @@ import Fastify from 'fastify';
 import Redis from 'ioredis';
 import { Queue, Worker } from 'bullmq';
 import { Client as PgClient } from 'pg';
+import { RateLimiterRedis, RateLimiterRes } from 'rate-limiter-flexible';
+import { request as undiciRequest } from 'undici';
 import {
   config,
   logger,
@@ -10,6 +12,7 @@ import {
   externalLatency,
   externalErrors,
   circuitStates,
+  rateLimiterDelay,
   normalizeUrl,
   expandUrl,
   urlHash,
@@ -34,6 +37,17 @@ const redis = new Redis(config.redisUrl);
 const scanRequestQueue = new Queue(config.queues.scanRequest, { connection: redis });
 const scanVerdictQueue = new Queue(config.queues.scanVerdict, { connection: redis });
 const urlscanQueue = new Queue(config.queues.urlscan, { connection: redis });
+
+let vtRateLimiter: RateLimiterRedis | null = config.vt.requestsPerMinute > 0
+  ? new RateLimiterRedis({
+      storeClient: redis,
+      keyPrefix: 'vt_rate',
+      points: config.vt.requestsPerMinute,
+      duration: 60,
+      blockDuration: 60,
+    })
+  : null;
+const defaultVtRateLimiter = vtRateLimiter;
 
 const ANALYSIS_TTLS = {
   gsb: 60 * 60,
@@ -119,6 +133,40 @@ function shouldRetry(err: unknown): boolean {
   return !codeNum;
 }
 
+async function applyVtRateLimit(): Promise<void> {
+  if (!config.vt.apiKey || !vtRateLimiter) return;
+  let totalDelayMs = 0;
+  while (true) {
+    try {
+      await vtRateLimiter.consume('global');
+      break;
+    } catch (err) {
+      const res = err as RateLimiterRes;
+      if (res && typeof res.msBeforeNext === 'number') {
+        const wait = Math.max(0, Math.ceil(res.msBeforeNext));
+        if (wait > 0) {
+          totalDelayMs += wait;
+          await new Promise(resolve => setTimeout(resolve, wait));
+        }
+      } else {
+        logger.warn({ err }, 'vt rate limiter failure, proceeding without delay');
+        break;
+      }
+    }
+  }
+
+  const jitter = config.vt.requestJitterMs > 0
+    ? Math.floor(Math.random() * config.vt.requestJitterMs)
+    : 0;
+  if (jitter > 0) {
+    totalDelayMs += jitter;
+    await new Promise(resolve => setTimeout(resolve, jitter));
+  }
+  if (totalDelayMs > 0) {
+    rateLimiterDelay.labels(CIRCUIT_LABELS.vt).observe(totalDelayMs / 1000);
+  }
+}
+
 async function getJsonCache<T>(key: string): Promise<T | null> {
   const raw = await redis.get(key);
   if (!raw) return null;
@@ -143,6 +191,136 @@ interface GsbFetchResult {
   fromCache: boolean;
   durationMs: number;
   error: Error | null;
+}
+
+interface PhishtankDecisionInput {
+  gsbHit: boolean;
+  gsbError: Error | null;
+  gsbDurationMs: number;
+  gsbFromCache: boolean;
+  fallbackLatencyMs: number;
+  gsbApiKeyPresent: boolean;
+  phishtankEnabled: boolean;
+}
+
+function shouldQueryPhishtank({
+  gsbHit,
+  gsbError,
+  gsbDurationMs,
+  gsbFromCache,
+  fallbackLatencyMs,
+  gsbApiKeyPresent,
+  phishtankEnabled,
+}: PhishtankDecisionInput): boolean {
+  if (!phishtankEnabled) return false;
+  if (!gsbHit) return true;
+  if (gsbError) return true;
+  if (!gsbApiKeyPresent) return true;
+  if (!gsbFromCache && gsbDurationMs > fallbackLatencyMs) return true;
+  return false;
+}
+
+type ArtifactCandidate = {
+  type: 'screenshot' | 'dom';
+  url: string;
+};
+
+function normaliseArtifactUrl(candidate: unknown, baseUrl: string): string | undefined {
+  if (typeof candidate !== 'string') return undefined;
+  const trimmed = candidate.trim();
+  if (!trimmed) return undefined;
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  return `${baseUrl}/${trimmed.replace(/^\/+/, '')}`;
+}
+
+function extractUrlscanArtifactCandidates(uuid: string, payload: any): ArtifactCandidate[] {
+  const baseUrl = (config.urlscan.baseUrl || 'https://urlscan.io').replace(/\/+$/, '');
+  const candidates: ArtifactCandidate[] = [];
+  const seen = new Set<string>();
+
+  const screenshotSources = [
+    payload?.screenshotURL,
+    payload?.task?.screenshotURL,
+    payload?.visual?.data?.screenshotURL,
+    `${baseUrl}/screenshots/${uuid}.png`,
+  ];
+
+  for (const source of screenshotSources) {
+    const resolved = normaliseArtifactUrl(source, baseUrl);
+    if (resolved && !seen.has(`screenshot:${resolved}`)) {
+      seen.add(`screenshot:${resolved}`);
+      candidates.push({ type: 'screenshot', url: resolved });
+    }
+  }
+
+  const domSources = [
+    payload?.domURL,
+    payload?.task?.domURL,
+    `${baseUrl}/dom/${uuid}.json`,
+  ];
+
+  for (const source of domSources) {
+    const resolved = normaliseArtifactUrl(source, baseUrl);
+    if (resolved && !seen.has(`dom:${resolved}`)) {
+      seen.add(`dom:${resolved}`);
+      candidates.push({ type: 'dom', url: resolved });
+    }
+  }
+
+  return candidates;
+}
+
+async function persistUrlscanArtifacts(urlHashValue: string, uuid: string, payload: any): Promise<void> {
+  if (!config.urlscan.enabled) return;
+  const candidates = extractUrlscanArtifactCandidates(uuid, payload);
+  if (candidates.length === 0) return;
+
+  for (const candidate of candidates) {
+    try {
+      const { rowCount } = await pg.query('SELECT 1 FROM urlscan_artifacts WHERE url_hash=$1 AND artifact_type=$2', [urlHashValue, candidate.type]);
+      if (rowCount && rowCount > 0) {
+        continue;
+      }
+    } catch (err) {
+      logger.warn({ err }, 'urlscan artifact existence check failed');
+    }
+
+    try {
+      const response = await undiciRequest(candidate.url, {
+        method: 'GET',
+        headers: config.urlscan.apiKey ? { 'API-Key': config.urlscan.apiKey } : undefined,
+        headersTimeout: config.urlscan.resultPollTimeoutMs,
+        bodyTimeout: config.urlscan.resultPollTimeoutMs,
+      });
+
+      if (response.statusCode >= 400) {
+        logger.warn({ statusCode: response.statusCode, url: candidate.url }, 'urlscan artifact fetch failed');
+        continue;
+      }
+
+      const arrayBuffer = await response.body.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      if (buffer.length === 0) {
+        continue;
+      }
+      const header = response.headers['content-type'];
+      const contentType = Array.isArray(header)
+        ? header[0]
+        : header || (candidate.type === 'dom' ? 'application/json' : 'image/png');
+
+      await pg.query(
+        `INSERT INTO urlscan_artifacts (url_hash, artifact_type, content, content_type, size_bytes)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (url_hash, artifact_type)
+         DO UPDATE SET content=EXCLUDED.content, content_type=EXCLUDED.content_type, size_bytes=EXCLUDED.size_bytes, created_at=now()`,
+        [urlHashValue, candidate.type, buffer, contentType, buffer.length]
+      );
+    } catch (err) {
+      logger.warn({ err, url: candidate.url, type: candidate.type }, 'urlscan artifact persistence failed');
+    }
+  }
 }
 
 async function fetchGsbAnalysis(finalUrl: string, hash: string): Promise<GsbFetchResult> {
@@ -227,7 +405,10 @@ async function fetchVirusTotal(finalUrl: string, hash: string): Promise<VirusTot
   }
   try {
     const analysis = await vtCircuit.execute(() =>
-      withRetry(() => vtAnalyzeUrl(finalUrl), {
+      withRetry(async () => {
+        await applyVtRateLimit();
+        return vtAnalyzeUrl(finalUrl);
+      }, {
         retries: 3,
         baseDelayMs: 1000,
         factor: 2,
@@ -425,6 +606,10 @@ async function main() {
       logger.error({ err }, 'failed to persist urlscan callback');
     });
 
+    await persistUrlscanArtifacts(urlHashValue, uuid, body).catch((err: Error) => {
+      logger.warn({ err, uuid }, 'failed to persist urlscan artifacts');
+    });
+
     reply.send({ ok: true });
   });
 
@@ -462,11 +647,17 @@ async function main() {
       const gsbHit = gsbMatches.length > 0;
       if (gsbHit) metrics.gsbHits.inc();
 
-      const shouldFallbackToPhishtank =
-        !gsbResult.fromCache &&
-        (gsbResult.error !== null || !config.gsb.apiKey || gsbResult.durationMs > config.gsb.fallbackLatencyMs);
       let phishtankResult: PhishtankResult | null = null;
-      if (shouldFallbackToPhishtank) {
+      const phishtankNeeded = shouldQueryPhishtank({
+        gsbHit,
+        gsbError: gsbResult.error,
+        gsbDurationMs: gsbResult.durationMs,
+        gsbFromCache: gsbResult.fromCache,
+        fallbackLatencyMs: config.gsb.fallbackLatencyMs,
+        gsbApiKeyPresent: Boolean(config.gsb.apiKey),
+        phishtankEnabled: config.phishtank.enabled,
+      });
+      if (phishtankNeeded) {
         const phishResponse = await fetchPhishtank(finalUrl, h);
         phishtankResult = phishResponse.result;
       }
@@ -653,4 +844,9 @@ export const __testables = {
   fetchUrlhaus,
   shouldRetry,
   classifyError,
+  shouldQueryPhishtank,
+  applyVtRateLimit,
+  setVtRateLimiterForTest: (limiter: RateLimiterRedis | null) => { vtRateLimiter = limiter; },
+  resetVtRateLimiterForTest: () => { vtRateLimiter = defaultVtRateLimiter; },
+  extractUrlscanArtifactCandidates,
 };

@@ -65,6 +65,14 @@ export const circuitStates = new client.Gauge({
   registers: [register],
 });
 
+export const rateLimiterDelay = new client.Histogram({
+  name: 'wbscanner_rate_limiter_delay_seconds',
+  help: 'Delay introduced by rate limiters before external API calls',
+  buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5],
+  labelNames: ['service'],
+  registers: [register],
+});
+
 export function metricsRoute() {
   return async (_req: any, res: any) => {
     res.header('Content-Type', register.contentType);
