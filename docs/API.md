@@ -14,3 +14,13 @@ Auth: `Authorization: Bearer <CONTROL_PLANE_API_TOKEN>`
 - GET `/scans/:urlHash/urlscan-artifacts/:type` → streams persisted artifacts (`type`: `screenshot`|`dom`)
 
 Metrics: `/metrics` (Prometheus format)
+
+## Override precedence
+
+- `url_hash` overrides win over pattern-based entries, even if the pattern was created later. Use these for one-off false
+  positives/negatives when you can copy the canonical hash from `/scans`.
+- Pattern overrides match against the normalized hostname. Provide exact domains (`example.com`), glob wildcards (`*.example.com`),
+  or SQL-style wildcards (`%.example.com`) to cover subdomains.
+- Expired overrides are ignored; otherwise the most recent matching pattern takes effect.
+- Manual `deny` verdicts force a block and manual `allow` suppresses all automated signals. The override reason is attached to the
+  cached verdict payload so analysts can see why a score was changed.

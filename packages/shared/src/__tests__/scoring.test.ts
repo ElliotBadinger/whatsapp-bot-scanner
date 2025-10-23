@@ -25,3 +25,17 @@ test('final url mismatch adds risk', () => {
   const result = scoreFromSignals({ finalUrlMismatch: true });
   expect(result.score).toBeGreaterThanOrEqual(2);
 });
+
+test('manual allow forces benign verdict even with malicious signals', () => {
+  const result = scoreFromSignals({ gsbThreatTypes: ['MALWARE'], manualOverride: 'allow' });
+  expect(result.level).toBe('benign');
+  expect(result.score).toBe(0);
+  expect(result.reasons).toContain('Manually allowed');
+});
+
+test('manual deny forces malicious verdict', () => {
+  const result = scoreFromSignals({ manualOverride: 'deny' });
+  expect(result.level).toBe('malicious');
+  expect(result.score).toBeGreaterThanOrEqual(15);
+  expect(result.reasons).toContain('Manually blocked');
+});

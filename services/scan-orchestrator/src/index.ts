@@ -151,6 +151,65 @@ async function setJsonCache(key: string, value: unknown, ttlSeconds: number): Pr
   await redis.set(key, JSON.stringify(value), 'EX', ttlSeconds);
 }
 
+function escapeForRegex(input: string): string {
+  return input.replace(/[-/\\^$*+?.()|[\]{}]/g, '\$&');
+}
+
+function domainPatternMatches(pattern: string | null | undefined, hostname: string): boolean {
+  if (!pattern) return false;
+  const normalizedPattern = pattern.trim().toLowerCase();
+  if (!normalizedPattern) return false;
+  const normalizedHost = hostname.toLowerCase();
+
+  if (normalizedPattern === normalizedHost) {
+    return true;
+  }
+
+  if (normalizedPattern.includes('*') || normalizedPattern.includes('%') || normalizedPattern.includes('_')) {
+    const regexBody = normalizedPattern
+      .split(/(\*|%|_)/g)
+      .map(token => {
+        if (token === '*' || token === '%') return '.*';
+        if (token === '_') return '.';
+        return escapeForRegex(token);
+      })
+      .join('');
+    const regex = new RegExp(`^${regexBody}$`, 'i');
+    if (regex.test(normalizedHost)) {
+      return true;
+    }
+  }
+
+  if (normalizedPattern.includes('.')) {
+    return normalizedHost.endsWith(`.${normalizedPattern}`);
+  }
+
+  return false;
+}
+
+function buildOverridePatternCandidates(hostname: string): string[] {
+  const normalized = hostname.toLowerCase();
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(normalized)) {
+    return [normalized];
+  }
+  const segments = normalized.split('.').filter(Boolean);
+  const patterns = new Set<string>();
+
+  for (let i = 0; i < segments.length; i += 1) {
+    const suffix = segments.slice(i).join('.');
+    if (!suffix) continue;
+    patterns.add(suffix);
+    patterns.add(`*.${suffix}`);
+    patterns.add(`%.${suffix}`);
+  }
+
+  if (patterns.size === 0 && normalized) {
+    patterns.add(normalized);
+  }
+
+  return Array.from(patterns);
+}
+
 type GsbMatch = GsbThreatMatch;
 type VtStats = ReturnType<typeof vtVerdictStats>;
 type UrlhausResult = UrlhausLookupResult;
@@ -604,18 +663,42 @@ async function main() {
         );
       }
 
+      const normalizedHostname = finalUrlObj.hostname.toLowerCase();
+      const overridePatternCandidates = buildOverridePatternCandidates(normalizedHostname);
+
       let manualOverride: 'allow' | 'deny' | null = null;
+      let manualOverrideReason: string | null = null;
       try {
         const overrideResult = await pg.query(
-          `SELECT status FROM overrides
-             WHERE (url_hash = $1 OR pattern = $2)
-               AND (expires_at IS NULL OR expires_at > NOW())
-             ORDER BY created_at DESC
-             LIMIT 1`,
-          [h, finalUrlObj.hostname]
+          `SELECT status, reason, pattern, url_hash
+             FROM overrides
+            WHERE (
+              url_hash = $1
+              OR (pattern IS NOT NULL AND pattern <> '' AND pattern = ANY($2))
+              OR (pattern IS NOT NULL AND pattern <> '' AND $3 ILIKE pattern)
+            )
+              AND (expires_at IS NULL OR expires_at > NOW())
+            ORDER BY created_at DESC
+            LIMIT 50`,
+          [h, overridePatternCandidates.length > 0 ? overridePatternCandidates : [normalizedHostname], normalizedHostname]
         );
-        if (overrideResult.rows[0]?.status) {
-          manualOverride = overrideResult.rows[0].status as 'allow' | 'deny';
+
+        type OverrideRow = {
+          status?: string;
+          reason?: string | null;
+          pattern?: string | null;
+          url_hash?: string | null;
+        };
+        const rows = overrideResult.rows as OverrideRow[];
+        const hashOverride = rows.find(row => row.url_hash === h && row.status);
+        const patternOverride = rows.find(row =>
+          Boolean(row.pattern && row.status && domainPatternMatches(row.pattern, normalizedHostname))
+        );
+        const matchedOverride = hashOverride ?? patternOverride;
+        if (matchedOverride?.status) {
+          manualOverride = matchedOverride.status as 'allow' | 'deny';
+          const trimmedReason = matchedOverride.reason?.trim();
+          manualOverrideReason = trimmedReason ? trimmedReason : null;
           metrics.manualOverrideApplied.labels(manualOverride).inc();
         }
       } catch (err) {
@@ -680,7 +763,10 @@ async function main() {
       };
       const verdictResult = scoreFromSignals(signals);
       const verdict = verdictResult.level;
-      const { score, reasons } = verdictResult;
+      const score = verdictResult.score;
+      const reasonsWithOverride = manualOverrideReason
+        ? Array.from(new Set([...verdictResult.reasons, `Override reason: ${manualOverrideReason}`]))
+        : [...verdictResult.reasons];
 
       const blocklistHit = gsbHit || phishtankHit || Boolean(urlhausResult?.listed);
 
@@ -713,6 +799,10 @@ async function main() {
       const ttlByLevel = config.orchestrator.cacheTtl as Record<string, number>;
       const ttl = ttlByLevel[verdict] ?? verdictResult.cacheTtl ?? 3600;
 
+      const overrideInfo = manualOverride
+        ? { status: manualOverride, reason: manualOverrideReason }
+        : undefined;
+
       const res = {
         messageId,
         chatId,
@@ -721,7 +811,8 @@ async function main() {
         urlHash: h,
         verdict,
         score,
-        reasons,
+        reasons: reasonsWithOverride,
+        override: overrideInfo,
         gsb: { matches: gsbMatches },
         phishtank: phishtankResult,
         urlhaus: urlhausResult,
@@ -740,7 +831,23 @@ async function main() {
       await pg.query(`INSERT INTO scans (url_hash, normalized_url, verdict, score, reasons, vt_stats, gsafebrowsing_hit, domain_age_days, redirect_chain_summary, cache_ttl, source_kind, urlscan_status, whois_source, whois_registrar, shortener_provider)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
         ON CONFLICT (url_hash) DO UPDATE SET last_seen_at=now(), verdict=EXCLUDED.verdict, score=EXCLUDED.score, reasons=EXCLUDED.reasons, vt_stats=EXCLUDED.vt_stats, gsafebrowsing_hit=EXCLUDED.gsafebrowsing_hit, domain_age_days=EXCLUDED.domain_age_days, redirect_chain_summary=EXCLUDED.redirect_chain_summary, cache_ttl=EXCLUDED.cache_ttl, urlscan_status=COALESCE(EXCLUDED.urlscan_status, scans.urlscan_status), whois_source=COALESCE(EXCLUDED.whois_source, scans.whois_source), whois_registrar=COALESCE(EXCLUDED.whois_registrar, scans.whois_registrar), shortener_provider=COALESCE(EXCLUDED.shortener_provider, scans.shortener_provider)`,
-        [h, finalUrl, verdict, score, JSON.stringify(reasons), JSON.stringify(vtStats || {}), blocklistHit, domainAgeDays ?? null, JSON.stringify(redirectChain), ttl, 'wa', enqueuedUrlscan ? 'queued' : null, domainIntel.source === 'none' ? null : domainIntel.source, domainIntel.registrar ?? null, shortenerInfo?.provider ?? null]
+        [
+          h,
+          finalUrl,
+          verdict,
+          score,
+          JSON.stringify(reasonsWithOverride),
+          JSON.stringify(vtStats || {}),
+          blocklistHit,
+          domainAgeDays ?? null,
+          JSON.stringify(redirectChain),
+          ttl,
+          'wa',
+          enqueuedUrlscan ? 'queued' : null,
+          domainIntel.source === 'none' ? null : domainIntel.source,
+          domainIntel.registrar ?? null,
+          shortenerInfo?.provider ?? null,
+        ]
       );
       if (enqueuedUrlscan) {
         await pg.query('UPDATE scans SET urlscan_status=$1 WHERE url_hash=$2', ['queued', h]).catch(() => undefined);
