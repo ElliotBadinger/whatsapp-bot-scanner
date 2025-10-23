@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+
 dotenv.config();
 
 const urlscanEnabled = (process.env.URLSCAN_ENABLED || 'true') === 'true';
@@ -8,15 +9,29 @@ if (urlscanEnabled && !urlscanCallbackSecret) {
   throw new Error('URLSCAN_CALLBACK_SECRET must be provided when URLSCAN_ENABLED=true');
 }
 
-function ensureQueueName(raw: string, envVar: string): string {
-  const value = raw.trim();
+function ensureNonEmpty(raw: string | undefined, envVar: string): string {
+  const value = (raw ?? '').trim();
   if (!value) {
     throw new Error(`${envVar} must not be empty`);
   }
+  return value;
+}
+
+function ensureQueueName(raw: string, envVar: string): string {
+  const value = ensureNonEmpty(raw, envVar);
   if (value.includes(':')) {
     throw new Error(`${envVar} must not contain ':' characters. Use hyphen-separated names (e.g., scan-request).`);
   }
   return value;
+}
+
+let cachedControlPlaneToken: string | undefined;
+
+function getControlPlaneToken(): string {
+  if (!cachedControlPlaneToken) {
+    cachedControlPlaneToken = ensureNonEmpty(process.env.CONTROL_PLANE_API_TOKEN, 'CONTROL_PLANE_API_TOKEN');
+  }
+  return cachedControlPlaneToken;
 }
 
 function parsePositiveInt(value: string | undefined, fallback: number, { minimum = 1 }: { minimum?: number } = {}): number {
@@ -105,7 +120,9 @@ export const config = {
   },
   controlPlane: {
     port: parseInt(process.env.CONTROL_PLANE_PORT || '8080', 10),
-    token: process.env.CONTROL_PLANE_API_TOKEN || '',
+    get token(): string {
+      return getControlPlaneToken();
+    },
     enableUi: (process.env.CONTROL_PLANE_ENABLE_UI || 'true') === 'true',
   },
   wa: {
@@ -117,3 +134,7 @@ export const config = {
     globalRatePerMinute: parseInt(process.env.WA_GLOBAL_REPLY_RATE_PER_MINUTE || '60', 10)
   }
 };
+
+export function assertControlPlaneToken(): string {
+  return getControlPlaneToken();
+}
