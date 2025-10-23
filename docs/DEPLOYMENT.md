@@ -23,3 +23,20 @@ Production notes:
 - Persist volumes: Postgres (`pgdata`), WA session (`wa_session`).
 - Configure firewall to restrict Control Plane IPs.
 - Scale `scan-orchestrator` by adding `deploy.replicas` or multiple service entries.
+
+## Queue Naming Constraints
+
+BullMQ namespaces its Redis keys with colons, so queue names that include `:` are rejected. Stick to hyphenated slugs when setting `SCAN_*_QUEUE` values.
+
+Examples:
+- ✅ `scan-request`
+- ✅ `scan-verdict`
+- ❌ `scan:request`
+- ❌ `scan:urlscan`
+
+Keep these names synchronized across:
+- `.env.example`
+- `packages/shared/src/config.ts`
+- `packages/shared/src/__tests__/config.test.ts`
+- `docs/RUNBOOKS.md`
+- `docs/ARCHITECTURE.md`
