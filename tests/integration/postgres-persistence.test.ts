@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+process.env.CONTROL_PLANE_API_TOKEN = 'test-token';
+process.env.CONTROL_PLANE_CSRF_TOKEN = 'test-token';
+
 vi.mock('ioredis', () => ({
   __esModule: true,
   default: class RedisMock {
@@ -34,12 +37,13 @@ describe('Control plane Postgres persistence', () => {
       method: 'POST',
       url: '/overrides',
       payload: {
-        url_hash: 'abc',
+        url_hash: 'd'.repeat(64),
         status: 'deny',
         reason: 'manual block',
       },
       headers: {
         authorization: 'Bearer test-token',
+        'x-csrf-token': 'test-token',
         'content-type': 'application/json',
       },
     });
@@ -47,7 +51,7 @@ describe('Control plane Postgres persistence', () => {
     expect(response.statusCode).toBe(201);
     expect(pgClient.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO overrides'),
-      expect.arrayContaining(['abc', null, 'deny'])
+      expect.arrayContaining(['d'.repeat(64), null, 'deny'])
     );
 
     await app.close();

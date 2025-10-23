@@ -7,6 +7,8 @@ Security controls:
 - Secrets only via env; never logged.
 - Rate limiting: Redis-backed per-group, per-hour, and global guards mitigate spam amplification and brute-force attempts against admin commands.
 - Control Plane protected by bearer tokens; WhatsApp admin commands validated against group admin roster before executing rescans or mutes.
+- Control Plane POST routes enforce a shared CSRF token and origin allowlist before mutating state.
+- urlscan artifact downloads require host allowlisting, sanitized file paths, and are served with strict Content-Security-Policy headers to prevent inline execution.
 
 Privacy:
 - Stores URL, minimal message context (chatId, messageId, senderId hash).
