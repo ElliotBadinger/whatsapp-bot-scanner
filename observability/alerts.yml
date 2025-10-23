@@ -43,6 +43,13 @@ groups:
           severity: critical
         annotations:
           summary: "WhoisXML API quota exhausted"
+      - alert: WhoisXMLFallbackSpike
+        expr: increase(wbscanner_whois_results_total{result="fallback"}[15m]) > 5
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "WhoisXML lookups frequently falling back to RDAP"
       - alert: QueueDepthHigh
         expr: wbscanner_queue_depth{queue="scan-request"} > 500
         for: 5m
