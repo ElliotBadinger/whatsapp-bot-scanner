@@ -68,7 +68,7 @@ describe('handleAdminCommand', () => {
       isGroup: true,
       id: { _serialized: 'group-123' },
       sendMessage,
-      setMessagesAdminsOnly: jest.fn(),
+      setMessagesAdminsOnly: jest.fn().mockResolvedValue(true),
     } as unknown as GroupChat;
     (mockChat as any).participants = [{ id: { _serialized: 'user-1' }, isAdmin: true, isSuperAdmin: false }];
 
@@ -126,7 +126,7 @@ describe('handleAdminCommand', () => {
       isGroup: true,
       id: { _serialized: 'group-456' },
       sendMessage,
-      setMessagesAdminsOnly: jest.fn(),
+      setMessagesAdminsOnly: jest.fn().mockResolvedValue(true),
     } as unknown as GroupChat;
     (mockChat as any).participants = [{ id: { _serialized: 'admin-1' }, isAdmin: true, isSuperAdmin: false }];
 
@@ -140,13 +140,13 @@ describe('handleAdminCommand', () => {
 
     await handleAdminCommand({ approveGroupMembershipRequests: approveMembership } as unknown as Client, mockMessage);
 
-    expect(approveMembership).toHaveBeenCalledWith('group-456', { requesterIds: ['pending-user'] });
+    expect(approveMembership).toHaveBeenCalledWith('group-456', { requesterIds: ['pending-user'], sleep: null });
     expect(sendMessage).toHaveBeenCalledWith('Approved membership request for pending-user.');
   });
 
   it('summarizes governance events for admins', async () => {
     const sendMessage = jest.fn();
-    const setMessagesAdminsOnly = jest.fn();
+    const setMessagesAdminsOnly = jest.fn().mockResolvedValue(true);
     const mockChat = {
       isGroup: true,
       id: { _serialized: 'group-789' },

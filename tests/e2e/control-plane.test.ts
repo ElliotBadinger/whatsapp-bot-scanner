@@ -121,7 +121,10 @@ describe('WA admin command integration', () => {
   });
 
   it('invokes control-plane rescan endpoint', async () => {
-    const fetchMock = vi.spyOn(global, 'fetch' as any).mockResolvedValue({ ok: true } as any);
+    const fetchMock = vi.spyOn(global, 'fetch' as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, urlHash: 'hash123', jobId: 'job-1' }),
+    } as any);
     const chat = { sendMessage: vi.fn(), id: { _serialized: 'group' } } as any;
     const msg = {
       body: '!scanner rescan http://example.com',

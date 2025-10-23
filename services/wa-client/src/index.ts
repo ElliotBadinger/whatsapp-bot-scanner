@@ -1006,7 +1006,8 @@ async function main() {
     try {
       const chat = await notification.getChat() as GroupChat;
       const chatId = chat.id._serialized;
-      const eventType = notification.type === 'promote' ? 'admin_promote' : 'admin_demote';
+      const notificationType = notification.type as unknown as string;
+      const eventType = notificationType === 'promote' ? 'admin_promote' : 'admin_demote';
       metrics.waGroupEvents.labels(eventType).inc();
       const recipients = await notification.getRecipients().catch(() => [] as Contact[]);
       await groupStore.recordEvent({
@@ -1017,7 +1018,7 @@ async function main() {
         recipients: notification.recipientIds,
         metadata: { body: notification.body },
       });
-      if (notification.type === 'promote' && recipients.length > 0) {
+      if (notificationType === 'promote' && recipients.length > 0) {
         try {
           await governanceLimiter.consume(chatId);
         } catch {
@@ -1031,7 +1032,7 @@ async function main() {
           lines.push('This group is still awaiting consent. Please review and run !scanner consent when ready.');
           await chat.setMessagesAdminsOnly(true).catch(() => undefined);
         }
-        await chat.sendMessage(lines.join(' '), { mentions: recipients });
+        await chat.sendMessage(lines.join(' '), { mentions: recipients as unknown as any });
         metrics.waGovernanceActions.labels('admin_prompt').inc();
       }
     } catch (err) {

@@ -38,7 +38,6 @@ describe('homoglyph detection', () => {
     expect(result.unicodeHostname).toBe('xn--.com');
     expect(result.isPunycode).toBe(true);
   });
-
   it('treats benign Latin IDNs as safe when no confusables present', () => {
     const result = detectHomoglyphs('münchen.de');
     expect(result.detected).toBe(false);

@@ -105,6 +105,11 @@ export const metrics = {
     labelNames: ['level'],
     registers: [register],
   }),
+  degradedModeEvents: new client.Counter({
+    name: 'wbscanner_degraded_mode_events_total',
+    help: 'Scans processed while operating in degraded mode',
+    registers: [register],
+  }),
   cacheLookupDuration: new client.Histogram({
     name: 'wbscanner_cache_lookup_duration_seconds',
     help: 'Latency of cache lookups by cache type',

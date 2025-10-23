@@ -82,3 +82,18 @@ export function isSuspiciousTld(hostname: string): boolean {
 export function isShortener(hostname: string): boolean {
   return isKnownShortener(hostname);
 }
+
+function parseForbiddenPatterns(): string[] {
+  return (process.env.WA_FORBIDDEN_HOSTNAMES || '')
+    .split(',')
+    .map(entry => entry.trim().toLowerCase())
+    .filter(entry => entry.length > 0);
+}
+
+export async function isForbiddenHostname(hostname: string): Promise<boolean> {
+  const patterns = parseForbiddenPatterns();
+  if (patterns.length === 0) return false;
+
+  const lowerHost = hostname.toLowerCase();
+  return patterns.some(pattern => lowerHost === pattern || lowerHost.endsWith(`.${pattern}`));
+}
