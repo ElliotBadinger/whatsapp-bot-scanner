@@ -1,0 +1,10 @@
+{
+  "name": "confusable",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "types": "index.d.ts",
+  "dependencies": {
+    "confusables.js": "^0.4.1"
+  }
+}

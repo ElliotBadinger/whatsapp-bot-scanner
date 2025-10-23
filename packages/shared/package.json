@@ -12,6 +12,7 @@
   "dependencies": {
     "bottleneck": "^2.19.5",
     "bullmq": "^5.7.8",
+    "confusable": "^0.1.0",
     "confusables": "^1.1.1",
     "dotenv": "^17.2.3",
     "fastify": "^4.27.0",
