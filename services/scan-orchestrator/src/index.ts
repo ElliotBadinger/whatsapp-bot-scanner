@@ -592,7 +592,13 @@ async function main() {
 
   new Worker(config.queues.scanRequest, async (job) => {
     const start = Date.now();
-    const { chatId, messageId, url } = job.data as { chatId: string; messageId: string; url: string };
+    const { chatId, messageId, url, rescan } = job.data as {
+      chatId?: string;
+      messageId?: string;
+      url: string;
+      rescan?: boolean;
+    };
+    const hasChatContext = typeof chatId === 'string' && typeof messageId === 'string';
     try {
       const norm = normalizeUrl(url);
       if (!norm) return;
@@ -601,8 +607,18 @@ async function main() {
       const cached = await redis.get(cacheKey);
       if (cached) {
         recordCacheEvent('scan', true);
-        const data = JSON.parse(cached);
-        await scanVerdictQueue.add('verdict', { chatId, messageId, ...data }, { removeOnComplete: true });
+        const data = JSON.parse(cached) as { chatId?: string; messageId?: string };
+        const resolvedChatId = hasChatContext ? chatId : data.chatId;
+        const resolvedMessageId = hasChatContext ? messageId : data.messageId;
+        if (resolvedChatId && resolvedMessageId) {
+          await scanVerdictQueue.add(
+            'verdict',
+            { ...data, chatId: resolvedChatId, messageId: resolvedMessageId },
+            { removeOnComplete: true }
+          );
+        } else {
+          logger.info({ url: norm, jobId: job.id, rescan: Boolean(rescan) }, 'Skipping verdict dispatch without chat context');
+        }
         return;
       }
       recordCacheEvent('scan', false);
@@ -750,9 +766,7 @@ async function main() {
       const ttlByLevel = config.orchestrator.cacheTtl as Record<string, number>;
       const ttl = ttlByLevel[verdict] ?? verdictResult.cacheTtl ?? 3600;
 
-      const res = {
-        messageId,
-        chatId,
+      const resBase = {
         url: finalUrl,
         normalizedUrl: finalUrl,
         urlHash: h,
@@ -772,7 +786,10 @@ async function main() {
         shortener: shortenerInfo ? { provider: shortenerInfo.provider, chain: shortenerInfo.chain } : undefined,
         finalUrlMismatch,
       };
-      await redis.set(cacheKey, JSON.stringify(res), 'EX', ttl);
+      const cachePayload = hasChatContext
+        ? { ...resBase, chatId, messageId }
+        : resBase;
+      await redis.set(cacheKey, JSON.stringify(cachePayload), 'EX', ttl);
 
       await pg.query(`INSERT INTO scans (url_hash, normalized_url, verdict, score, reasons, vt_stats, gsafebrowsing_hit, domain_age_days, redirect_chain_summary, cache_ttl, source_kind, urlscan_status, whois_source, whois_registrar, shortener_provider)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
@@ -782,10 +799,21 @@ async function main() {
       if (enqueuedUrlscan) {
         await pg.query('UPDATE scans SET urlscan_status=$1 WHERE url_hash=$2', ['queued', h]).catch(() => undefined);
       }
-      await pg.query(`INSERT INTO messages (chat_id, message_id, url_hash, verdict, posted_at)
-        VALUES ($1,$2,$3,$4,now()) ON CONFLICT DO NOTHING`, [chatId, messageId, h, verdict]);
+      if (hasChatContext) {
+        try {
+          await pg.query(
+            `INSERT INTO messages (chat_id, message_id, url_hash, verdict, posted_at)
+        VALUES ($1,$2,$3,$4,now()) ON CONFLICT DO NOTHING`,
+            [chatId, messageId, h, verdict]
+          );
+        } catch (err) {
+          logger.warn({ err, h }, 'failed to persist message metadata for scan');
+        }
 
-      await scanVerdictQueue.add('verdict', res, { removeOnComplete: true });
+        await scanVerdictQueue.add('verdict', { ...resBase, chatId, messageId }, { removeOnComplete: true });
+      } else {
+        logger.info({ url: finalUrl, jobId: job.id, rescan: Boolean(rescan) }, 'Completed scan without chat context; skipping messaging flow');
+      }
       metrics.verdictCounter.labels(verdict).inc();
       metrics.scanLatency.observe((Date.now() - start) / 1000);
     } catch (e) {

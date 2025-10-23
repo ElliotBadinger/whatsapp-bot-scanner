@@ -31,6 +31,8 @@ describe('Control plane integration', () => {
   });
 
   it('invalidates caches and enqueues rescan', async () => {
+    pgClient.query.mockResolvedValueOnce({ rows: [{ chat_id: 'chat-123', message_id: 'msg-456' }] });
+
     const { buildServer } = await import('../../services/control-plane/src/index');
     const { app } = await buildServer({
       pgClient,
@@ -65,6 +67,8 @@ describe('Control plane integration', () => {
     await fs.mkdir('storage/urlscan-artifacts', { recursive: true });
     await fs.writeFile(screenshotPath, 'fake', 'utf8');
     pgClient.query.mockResolvedValueOnce({ rows: [{ urlscan_screenshot_path: screenshotPath }] });
+
+    pgClient.query.mockResolvedValueOnce({ rows: [{ chat_id: 'chat-123', message_id: 'msg-456' }] });
 
     const { buildServer } = await import('../../services/control-plane/src/index');
     const { app } = await buildServer({
