@@ -1,21 +1,24 @@
 import Fastify from 'fastify';
-import { register, metrics, config, logger } from '@wbscanner/shared';
+import { register, metrics, config, logger, assertControlPlaneToken } from '@wbscanner/shared';
 import { Client as PgClient } from 'pg';
 
-function authHook(req: any, reply: any, done: any) {
-  const hdr = req.headers['authorization'] || '';
-  const token = hdr.startsWith('Bearer ') ? hdr.slice(7) : hdr;
-  if (token !== config.controlPlane.token) {
-    reply.code(401).send({ error: 'unauthorized' });
-    return;
-  }
-  done();
+function createAuthHook(expectedToken: string) {
+  return function authHook(req: any, reply: any, done: any) {
+    const hdr = req.headers['authorization'] || '';
+    const token = hdr.startsWith('Bearer ') ? hdr.slice(7) : hdr;
+    if (token !== expectedToken) {
+      reply.code(401).send({ error: 'unauthorized' });
+      return;
+    }
+    done();
+  };
 }
 export interface BuildOptions {
   pgClient?: PgClient;
 }
 
 export async function buildServer(options: BuildOptions = {}) {
+  const requiredToken = assertControlPlaneToken();
   const pgClient = options.pgClient ?? new PgClient({
     host: config.postgres.host,
     port: config.postgres.port,
@@ -31,7 +34,7 @@ export async function buildServer(options: BuildOptions = {}) {
   app.get('/healthz', async () => ({ ok: true }));
   app.get('/metrics', async (_req, reply) => { reply.header('Content-Type', register.contentType); return register.metrics(); });
 
-  app.addHook('preHandler', authHook);
+  app.addHook('preHandler', createAuthHook(requiredToken));
 
   app.get('/status', async () => {
     const { rows } = await pgClient.query('SELECT COUNT(*) AS scans, SUM((verdict = $1)::int) AS malicious FROM scans', ['malicious']);
@@ -95,6 +98,7 @@ export async function buildServer(options: BuildOptions = {}) {
 }
 
 async function main() {
+  assertControlPlaneToken();
   const { app } = await buildServer();
   await app.listen({ host: '0.0.0.0', port: config.controlPlane.port });
 }
