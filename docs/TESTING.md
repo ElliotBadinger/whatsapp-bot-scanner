@@ -5,16 +5,17 @@
 | Suite | Command | Scope |
 |-------|---------|-------|
 | Unit (shared package) | `npm --workspace packages/shared test` | URL utilities, scoring, reputation helpers |
-| Integration | `npm --workspace tests/integration test` | Mocked blocklists, rate limiting, shortener fallback |
-| E2E | `npm --workspace tests/e2e test` | WhatsApp message → verdict flow, admin controls |
+| Integration | `npm run test:integration` | Mocked blocklists, VT throttling, Redis/PG persistence, circuit breakers |
+| E2E | `npm run test:e2e` | WhatsApp message → verdict formatting, admin controls, control-plane APIs |
 
-Run `npm test --workspaces` before committing to execute all suites.
+Run `npm test --workspaces` before committing to execute all suites. For a fast pre-commit check that finishes in under two minutes, use `npm run test:fast` (integration + e2e).
 
 ## Coverage Expectations
 
 - Core scoring logic: ≥90% branch coverage.
-- Rate limiting and quota enforcement: integration tests confirm throttling and quota disablement.
-- Shortener fallback: ensures Unshorten → HEAD → library cascade with SSRF guard.
+- Rate limiting and quota enforcement: integration tests confirm throttling, delay metrics, and quota disablement.
+- Shortener fallback and Safe Browsing mocks: ensures Unshorten → HEAD → library cascade with SSRF guard and GSB parsing stays stable.
+- Cache and persistence flows: Redis caches are exercised end-to-end and control-plane overrides persist via Postgres inserts.
 
 ## Manual Smoke Checklist
 
