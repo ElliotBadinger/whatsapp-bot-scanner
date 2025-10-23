@@ -13,6 +13,7 @@ Steps:
 
 Key environment variables:
 - `URLSCAN_*` controls private urlscan.io submissions (API key, callback URL, visibility); ensure reverse proxy routes `/urlscan/callback`.
+- `URLSCAN_CALLBACK_SECRET` is mandatory when `URLSCAN_ENABLED=true`; configure the same shared secret in urlscan's webhook settings so callbacks are accepted.
 - `WHOISXML_*` toggles paid WhoisXML lookups; leave disabled if quota unavailable.
 - `VT_REQUESTS_PER_MINUTE` + `VT_REQUEST_JITTER_MS` set VirusTotal throttling (default 4 req/min with 0.5s jitter).
 - `UNSHORTEN_ENDPOINT`, `UNSHORTEN_RETRIES`, `SHORTENER_CACHE_TTL_SECONDS` tune shortener expansion.
