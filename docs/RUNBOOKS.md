@@ -28,7 +28,11 @@ Urlscan Deep Scan Workflow:
 - Queue renames must follow [Queue Naming Constraints](./DEPLOYMENT.md#queue-naming-constraints) when adjusting `SCAN_*_QUEUE` values.
 - Suspicious verdicts (score 4–7) enqueue BullMQ jobs on `scan-urlscan`. Submission state lands in Postgres (`scans.urlscan_status`) and Redis (`urlscan:submitted:{hash}`).
 - urlscan callbacks POST to `/urlscan/callback` (reverse proxy path `/urlscan/callback`), authenticated via `URLSCAN_CALLBACK_SECRET`. Callback payload stored in `scans.urlscan_result`.
-- Manual rescan: delete `url:analysis:{hash}:*`, `url:shortener:{hash}`, and `urlscan:*:{hash}` keys then add a new `scan-request` job.
+- Manual rescan workflow:
+  1. POST to the control-plane `/rescan` endpoint with `{ "url": "https://target" }` using the bearer token.
+  2. Confirm the JSON response contains `urlHash` and `jobId`; the hash is the Redis suffix for any follow-up spot checks.
+  3. Use `redis-cli --scan --pattern "bull:scan-request:wait"` (swap `scan-request` for your `SCAN_REQUEST_QUEUE` override) or the Bull UI to ensure the returned job id is queued and processing.
+  4. Optional: `redis-cli ttl url:verdict:{urlHash}` to double-check caches were cleared (should return `-2`).
 
 Manual Override Management:
 - Create override: `POST /overrides` with `status=allow|deny`, `pattern` or `url_hash`, optional `expires_at`. Verify entry with `GET /overrides` and document ticket reference.

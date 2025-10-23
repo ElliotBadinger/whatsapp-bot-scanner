@@ -25,22 +25,73 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { buildServer } from '../index';
 
+jest.mock('url-expand', () => ({ __esModule: true, default: jest.fn(async (url: string) => url) }), { virtual: true });
+jest.mock('confusables', () => ({ __esModule: true, default: (input: string) => input }), { virtual: true });
+jest.mock('bottleneck', () => ({
+  __esModule: true,
+  default: class BottleneckMock {
+    on(): void {
+      // no-op for tests
+    }
+    async currentReservoir(): Promise<number> {
+      return 1;
+    }
+    schedule<T>(fn: (...args: any[]) => T, ...params: any[]): Promise<T> {
+      return Promise.resolve(fn(...params));
+    }
+  }
+}), { virtual: true });
+
 describe('control-plane routes', () => {
   let pgClient: { connect: jest.Mock; query: jest.Mock };
   let app: FastifyInstance;
+  let redisClient: { del: jest.Mock };
+  let queue: { add: jest.Mock };
 
   beforeEach(async () => {
     pgClient = {
       connect: jest.fn(),
       query: jest.fn().mockResolvedValue({ rows: [] }),
     };
-    const { app: fastifyApp } = await buildServer({ pgClient } as any);
+    redisClient = { del: jest.fn().mockResolvedValue(1) } as any;
+    queue = { add: jest.fn().mockResolvedValue({ id: 'job-123' }) } as any;
+    const { app: fastifyApp } = await buildServer({ pgClient, redisClient, queue } as any);
     app = fastifyApp;
   });
 
   afterEach(async () => {
     await app.close();
     jest.clearAllMocks();
+  });
+
+  it('invalidates caches and enqueues rescan job', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/rescan',
+      payload: { url: 'https://example.com/test?utm_source=newsletter' },
+      headers: { authorization: 'Bearer test-token', 'content-type': 'application/json' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body).toEqual({ ok: true, urlHash: expect.any(String), jobId: 'job-123' });
+
+    const hashRegex = /^[0-9a-f]{64}$/;
+    expect(body.urlHash).toMatch(hashRegex);
+    expect(redisClient.del).toHaveBeenCalledTimes(8);
+    expect(redisClient.del).toHaveBeenCalledWith(`scan:${body.urlHash}`);
+    expect(redisClient.del).toHaveBeenCalledWith(`url:verdict:${body.urlHash}`);
+    expect(redisClient.del).toHaveBeenCalledWith(`url:analysis:${body.urlHash}:vt`);
+    expect(redisClient.del).toHaveBeenCalledWith(`url:analysis:${body.urlHash}:gsb`);
+    expect(redisClient.del).toHaveBeenCalledWith(`url:analysis:${body.urlHash}:whois`);
+    expect(redisClient.del).toHaveBeenCalledWith(`url:analysis:${body.urlHash}:phishtank`);
+    expect(redisClient.del).toHaveBeenCalledWith(`url:analysis:${body.urlHash}:urlhaus`);
+    expect(redisClient.del).toHaveBeenCalledWith(`url:shortener:${body.urlHash}`);
+    expect(queue.add).toHaveBeenCalledWith(
+      'rescan',
+      { url: expect.stringMatching(/^https:\/\/example\.com\/test\/?$/), urlHash: body.urlHash },
+      expect.objectContaining({ removeOnComplete: true, removeOnFail: 100, priority: 1 })
+    );
   });
 
   it('fails to start when control plane token missing', async () => {
