@@ -26,17 +26,14 @@ Production notes:
 
 ## Queue Naming Constraints
 
-BullMQ namespaces its Redis keys with colons, so queue names that include `:` are rejected. Stick to hyphenated slugs when setting `SCAN_*_QUEUE` values.
+**CRITICAL:** Queue names MUST NOT contain colons (`:`) as BullMQ forbids this character.
 
-Examples:
+Valid examples:
 - ✅ `scan-request`
 - ✅ `scan-verdict`
-- ❌ `scan:request`
-- ❌ `scan:urlscan`
+- ❌ `scan:request` (will crash)
 
-Keep these names synchronized across:
+If changing queue names, update:
 - `.env.example`
-- `packages/shared/src/config.ts`
-- `packages/shared/src/__tests__/config.test.ts`
-- `docs/RUNBOOKS.md`
-- `docs/ARCHITECTURE.md`
+- Both service queue initializations
+- All documentation references

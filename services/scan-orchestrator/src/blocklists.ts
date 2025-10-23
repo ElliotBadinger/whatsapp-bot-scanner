@@ -71,15 +71,20 @@ export async function checkBlocklistsWithRedundancy({
   const gsbMatches = gsbResult.matches;
   const gsbHit = gsbMatches.length > 0;
 
-  const phishtankNeeded = shouldQueryPhishtank({
-    gsbHit,
-    gsbError: gsbResult.error,
-    gsbDurationMs: gsbResult.durationMs,
-    gsbFromCache: gsbResult.fromCache,
-    fallbackLatencyMs,
-    gsbApiKeyPresent,
-    phishtankEnabled,
-  });
+  // Guarantee a Phishtank lookup whenever GSB returns clean and the
+  // integration is enabled. The helper still handles fallback scenarios
+  // (timeouts, missing API key, latency) when GSB did return a match.
+  const phishtankNeeded = !gsbHit
+    ? phishtankEnabled
+    : shouldQueryPhishtank({
+        gsbHit,
+        gsbError: gsbResult.error,
+        gsbDurationMs: gsbResult.durationMs,
+        gsbFromCache: gsbResult.fromCache,
+        fallbackLatencyMs,
+        gsbApiKeyPresent,
+        phishtankEnabled,
+      });
 
   let phishtankResult: PhishtankLookupResult | null = null;
 
@@ -111,6 +116,11 @@ export async function checkBlocklistsWithRedundancy({
     logger.info(
       { urlHash: hash, url: finalUrl, gsbMatches: gsbMatches.length },
       'GSB found threats -> skipping Phishtank redundancy check'
+    );
+  } else if (!phishtankEnabled) {
+    logger.info(
+      { urlHash: hash, url: finalUrl },
+      'Phishtank disabled -> skipping redundancy check for clean GSB result'
     );
   }
 
