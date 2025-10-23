@@ -40,7 +40,18 @@ export const metrics = {
     name: 'wbscanner_gsb_hits_total',
     help: 'Google Safe Browsing hits',
     registers: [register],
-  })
+  }),
+  phishtankSecondaryChecks: new client.Counter({
+    name: 'wbscanner_phishtank_secondary_checks_total',
+    help: 'Phishtank secondary checks executed when GSB is inconclusive',
+    registers: [register],
+  }),
+  phishtankSecondaryHits: new client.Counter({
+    name: 'wbscanner_phishtank_secondary_hits_total',
+    help: 'Phishtank hits observed during secondary checks, partitioned by verification status',
+    labelNames: ['verified'],
+    registers: [register],
+  }),
 };
 
 export const externalLatency = new client.Histogram({
