@@ -31,6 +31,6 @@ Scaling:
 
 Security:
 
-- SSRF protection: No private IPs; DNS resolution checked. HEAD-only expansion with redirect and time limits.
+- SSRF protection: Shorteners expand via Unshorten.me first, then fall back to url-expand using a guarded `fetch` that enforces redirect/time limits and blocks private hosts.
 - Non-root containers, `no-new-privileges`, limited volumes, secrets via env.
 - Structured logs with redaction of sensitive values.
