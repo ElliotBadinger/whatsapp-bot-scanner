@@ -710,6 +710,8 @@ async function main() {
 
       for (const removed of previousHashes.filter((hash) => !newHashes.has(hash))) {
         const context: VerdictContext = { chatId, messageId, urlHash: removed };
+        const idem = processedKey(chatId, messageId, removed);
+        await redis.del(idem);
         const verdict = await messageStore.getVerdictRecord(context);
         if (verdict && verdict.status !== 'retracted') {
           await messageStore.markVerdictStatus(context, 'retracted');
