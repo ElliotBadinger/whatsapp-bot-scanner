@@ -2,6 +2,9 @@
 
 Auth: `Authorization: Bearer <CONTROL_PLANE_API_TOKEN>`
 
+CSRF: Include `X-CSRF-Token: <CONTROL_PLANE_CSRF_TOKEN>` on every state-changing request (`POST` routes). Requests missing the
+token or originating from a disallowed origin are rejected with HTTP 403.
+
 > The control-plane service aborts startup when `CONTROL_PLANE_API_TOKEN` is unset or blank—configure this to a strong secret before running.
 
 - GET `/healthz` → `{ ok: true }`
@@ -10,13 +13,9 @@ Auth: `Authorization: Bearer <CONTROL_PLANE_API_TOKEN>`
 - POST `/overrides` → body: `{ url_hash?, pattern?, status: 'allow'|'deny', scope: 'global'|'group', scope_id?, reason?, expires_at? }`
 - POST `/groups/:chatId/mute` → `{ ok: true, muted_until }`
 - POST `/groups/:chatId/unmute` → `{ ok: true }`
-<<<<<<< HEAD
-- POST `/rescan` → `{ ok: true }`
-- GET `/scans/:urlHash/urlscan-artifacts/:type` → streams persisted artifacts (`type`: `screenshot`|`dom`)
-=======
-- POST `/rescan` → `{ ok: true, urlHash: string, jobId: string }`
-- GET `/scans/:urlHash/urlscan-artifacts/:type` → binary response for persisted artifacts (`type`: `screenshot` or `dom`)
->>>>>>> origin/codex/implement-rescan-job-and-workflows
+- POST `/rescan` → `{ ok: true, urlHash: string, jobId: string }`; the service rejects internal or invalid targets with `400`
+- GET `/scans/:urlHash/urlscan-artifacts/:type` → binary response for persisted artifacts (`type`: `screenshot` or `dom`) served
+  with download headers and strict CSP to prevent inline execution
 
 Metrics: `/metrics` (Prometheus format)
 

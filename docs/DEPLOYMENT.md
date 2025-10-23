@@ -67,13 +67,14 @@ Add the following secrets to the Railway project before deploying:
 | Secret name               | Populates environment variable | Purpose                                                  |
 |---------------------------|--------------------------------|----------------------------------------------------------|
 | `CONTROL_PLANE_API_TOKEN` | `CONTROL_PLANE_API_TOKEN`      | Bearer token used by wa-client to call the control plane.|
+| `CONTROL_PLANE_CSRF_TOKEN` | `CONTROL_PLANE_CSRF_TOKEN`    | Shared CSRF token required on all control-plane POSTs.   |
 | `VT_API_KEY`              | `VT_API_KEY`                   | VirusTotal verdict enrichment.                           |
 | `GSB_API_KEY`             | `GSB_API_KEY`                  | Google Safe Browsing lookups.                            |
 | `WHOISXML_API_KEY`        | `WHOISXML_API_KEY`             | Domain age and registration context.                     |
 | `URLSCAN_API_KEY`         | `URLSCAN_API_KEY`              | Optional urlscan.io submissions.                         |
 | `URLSCAN_CALLBACK_SECRET` | `URLSCAN_CALLBACK_SECRET`      | Validates urlscan.io webhook callbacks.                  |
 
-Optional providers—such as `PHISHTANK_APP_KEY`, `OPENAI_API_KEY`, or additional override knobs in `.env.example`—can also be declared as Railway secrets when those integrations are enabled.
+Optional providers—such as `PHISHTANK_APP_KEY`, `OPENAI_API_KEY`, or additional override knobs in `.env.example`—can also be declared as Railway secrets when those integrations are enabled. Configure `CONTROL_PLANE_ALLOWED_ORIGINS` with a comma-separated list of trusted UI origins and `URLSCAN_ALLOWED_HOSTS` for any additional artifact domains beyond the default urlscan.io host.
 
 The template automatically wires `REDIS_URL`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, and `POSTGRES_PASSWORD` from the managed Redis and PostgreSQL services so no manual wiring is required.
 
