@@ -22,7 +22,23 @@ describe('control-plane routes', () => {
     jest.clearAllMocks();
   });
 
-  it('rejects unauthorized requests', async () => {
+  it('fails to start when control plane token missing', async () => {
+    delete process.env.CONTROL_PLANE_API_TOKEN;
+    let buildPromise: Promise<unknown> | undefined;
+
+    jest.isolateModules(() => {
+      const mod = require('../index') as typeof import('../index');
+      const fakePg = { connect: jest.fn(), query: jest.fn() } as any;
+      buildPromise = mod.buildServer({ pgClient: fakePg });
+    });
+
+    expect(buildPromise).toBeDefined();
+    await expect(buildPromise as Promise<unknown>).rejects.toThrow(/CONTROL_PLANE_API_TOKEN must not be empty/);
+
+    process.env.CONTROL_PLANE_API_TOKEN = 'test-token';
+  });
+
+  it('rejects requests missing bearer token', async () => {
     const response = await app.inject({ method: 'GET', url: '/status' });
     expect(response.statusCode).toBe(401);
   });
