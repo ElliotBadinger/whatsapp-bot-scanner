@@ -103,9 +103,13 @@ export async function buildServer(options: BuildOptions = {}) {
       `url:shortener:${hash}`,
     ];
     await Promise.all(keys.map((key) => redisClient.del(key)));
-    await queue.add('rescan', { url: normalized, urlHash: hash, priority: 10 }, { removeOnComplete: true, removeOnFail: 100 });
+    const job = await queue.add(
+      'rescan',
+      { url: normalized, urlHash: hash },
+      { removeOnComplete: true, removeOnFail: 100, priority: 1 }
+    );
     metrics.rescanRequests.labels('control-plane').inc();
-    reply.send({ ok: true, message: 'Cache invalidated, rescan queued', urlHash: hash });
+    reply.send({ ok: true, urlHash: hash, jobId: job.id });
   });
 
   function isWithinArtifactRoot(resolvedPath: string): boolean {

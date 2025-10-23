@@ -10,8 +10,13 @@ Auth: `Authorization: Bearer <CONTROL_PLANE_API_TOKEN>`
 - POST `/overrides` → body: `{ url_hash?, pattern?, status: 'allow'|'deny', scope: 'global'|'group', scope_id?, reason?, expires_at? }`
 - POST `/groups/:chatId/mute` → `{ ok: true, muted_until }`
 - POST `/groups/:chatId/unmute` → `{ ok: true }`
+<<<<<<< HEAD
 - POST `/rescan` → `{ ok: true }`
 - GET `/scans/:urlHash/urlscan-artifacts/:type` → streams persisted artifacts (`type`: `screenshot`|`dom`)
+=======
+- POST `/rescan` → `{ ok: true, urlHash: string, jobId: string }`
+- GET `/scans/:urlHash/urlscan-artifacts/:type` → binary response for persisted artifacts (`type`: `screenshot` or `dom`)
+>>>>>>> origin/codex/implement-rescan-job-and-workflows
 
 Metrics: `/metrics` (Prometheus format)
 
