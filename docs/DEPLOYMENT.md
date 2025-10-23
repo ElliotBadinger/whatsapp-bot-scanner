@@ -17,7 +17,11 @@ Key environment variables:
 - `WHOISXML_*` toggles paid WhoisXML lookups; leave disabled if quota unavailable. `WHOISXML_MONTHLY_QUOTA` should match your subscription tier.
 - VirusTotal throttling is now enforced in-code (4 req/min). No manual tuning required unless you upgrade plans.
 - `UNSHORTEN_ENDPOINT`, `UNSHORTEN_RETRIES`, `SHORTENER_CACHE_TTL_SECONDS` tune shortener expansion.
+<<<<<<< HEAD
 - `WA_PER_GROUP_REPLY_COOLDOWN_SECONDS`, `WA_PER_GROUP_HOURLY_LIMIT`, and `WA_GLOBAL_REPLY_RATE_PER_HOUR` keep outbound messaging within WhatsApp policy (defaults: 60 s cooldown, 60 per group, 1000 global).
+=======
+- `WA_GLOBAL_REPLY_RATE_PER_HOUR` enforces a 1000 message/hour global token bucket, while `WA_PER_GROUP_HOURLY_LIMIT` caps each group at 60 replies/hour. Override `WA_GLOBAL_TOKEN_BUCKET_KEY` if multiple stacks share the same Redis instance.
+>>>>>>> origin/codex/implement-new-rate-limiting-strategy
 - `URLSCAN_ARTIFACT_DIR` (optional) relocates screenshot/DOM persistence; ensure the directory exists and is writable.
 - Customize Prometheus/Grafana by editing `observability/prometheus.yml` and `grafana/provisioning/*` before deploy if your platform requires alternate scrape targets or dashboards.
 

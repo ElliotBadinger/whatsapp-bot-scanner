@@ -4,18 +4,14 @@ import QRCode from 'qrcode-terminal';
 import { Queue, Worker, JobsOptions } from 'bullmq';
 import { createHash } from 'node:crypto';
 import Redis from 'ioredis';
-import { config, logger, extractUrls, normalizeUrl, urlHash, metrics, register, assertControlPlaneToken } from '@wbscanner/shared';
+import { config, logger, extractUrls, normalizeUrl, urlHash, metrics, register, assertControlPlaneToken, assertEssentialConfig } from '@wbscanner/shared';
 import { RateLimiterRedis } from 'rate-limiter-flexible';
+import { createGlobalTokenBucket, GLOBAL_TOKEN_BUCKET_ID } from './limiters';
 
 const redis = new Redis(config.redisUrl);
 const scanRequestQueue = new Queue(config.queues.scanRequest, { connection: redis });
 
-const globalLimiter = new RateLimiterRedis({
-  storeClient: redis,
-  keyPrefix: 'rate',
-  points: config.wa.globalRatePerHour,
-  duration: 3600,
-});
+const globalLimiter = createGlobalTokenBucket(redis, config.wa.globalRatePerHour, config.wa.globalTokenBucketKey);
 const groupLimiter = new RateLimiterRedis({
   storeClient: redis,
   keyPrefix: 'group_cooldown',
@@ -31,17 +27,8 @@ const groupHourlyLimiter = new RateLimiterRedis({
 
 const processedKey = (chatId: string, messageId: string, urlH: string) => `processed:${chatId}:${messageId}:${urlH}`;
 
-function validateStartupConfig() {
-  const required = ['VT_API_KEY', 'GSB_API_KEY', 'REDIS_URL', 'POSTGRES_HOST'];
-  const missing = required.filter((key) => !process.env[key] || process.env[key]?.trim() === '');
-  if (missing.length > 0) {
-    logger.error({ missing }, 'Missing required environment variables for wa-client');
-    process.exit(1);
-  }
-}
-
 async function main() {
-  validateStartupConfig();
+  assertEssentialConfig('wa-client');
   assertControlPlaneToken();
   const app = Fastify();
   app.get('/healthz', async () => ({ ok: true }));
@@ -83,7 +70,7 @@ async function main() {
         const already = await redis.set(idem, '1', 'EX', 60 * 60 * 24 * 7, 'NX');
         if (already === null) continue; // duplicate
 
-        try { await globalLimiter.consume('global'); } catch { continue; }
+        try { await globalLimiter.consume(GLOBAL_TOKEN_BUCKET_ID); } catch { continue; }
 
         const jobOpts: JobsOptions = { removeOnComplete: true, removeOnFail: 1000, attempts: 2, backoff: { type: 'exponential', delay: 1000 } };
         await scanRequestQueue.add('scan', {
