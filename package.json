@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "workspaces": [
     "packages/*",
-    "services/*"
+    "services/*",
+    "tests/*"
   ],
   "scripts": {
     "build": "npm -ws run build",
