@@ -4,9 +4,6 @@ import QRCode from 'qrcode-terminal';
 import { Queue, Worker, JobsOptions } from 'bullmq';
 import { createHash } from 'node:crypto';
 import Redis from 'ioredis';
-<<<<<<< HEAD
-import { config, logger, extractUrls, normalizeUrl, urlHash, metrics, register, assertControlPlaneToken, assertEssentialConfig } from '@wbscanner/shared';
-=======
 import {
   config,
   logger,
@@ -16,9 +13,10 @@ import {
   metrics,
   register,
   assertControlPlaneToken,
+  assertEssentialConfig,
   waSessionStatusGauge,
+  isForbiddenHostname,
 } from '@wbscanner/shared';
->>>>>>> origin/codex/add-prometheus-metrics-and-dashboards
 import { RateLimiterRedis } from 'rate-limiter-flexible';
 import { createGlobalTokenBucket, GLOBAL_TOKEN_BUCKET_ID } from './limiters';
 
@@ -40,6 +38,45 @@ const groupHourlyLimiter = new RateLimiterRedis({
 });
 
 const processedKey = (chatId: string, messageId: string, urlH: string) => `processed:${chatId}:${messageId}:${urlH}`;
+
+const SAFE_CONTROL_PLANE_DEFAULT = 'http://control-plane:8080';
+
+function sanitizeLogValue(value: string | undefined): string | undefined {
+  if (!value) return value;
+  return value.replace(/[\r\n\t]+/g, ' ').slice(0, 256);
+}
+
+function resolveControlPlaneBase(): string {
+  const candidate = (process.env.CONTROL_PLANE_BASE || SAFE_CONTROL_PLANE_DEFAULT).trim();
+  try {
+    const parsed = new URL(candidate);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error('invalid protocol');
+    }
+    parsed.hash = '';
+    return parsed.toString().replace(/\/+$/, '');
+  } catch {
+    return SAFE_CONTROL_PLANE_DEFAULT;
+  }
+}
+
+async function isUrlAllowedForScanning(normalized: string): Promise<boolean> {
+  try {
+    const parsed = new URL(normalized);
+    if (await isForbiddenHostname(parsed.hostname)) {
+      return false;
+    }
+    if (parsed.port) {
+      const port = Number.parseInt(parsed.port, 10);
+      if (!Number.isFinite(port) || port <= 0 || port > 65535) {
+        return false;
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 async function main() {
   assertEssentialConfig('wa-client');
@@ -108,6 +145,13 @@ async function main() {
           metrics.waMessagesDropped.labels('invalid_url').inc();
           continue;
         }
+
+        if (!(await isUrlAllowedForScanning(norm))) {
+          metrics.waMessagesDropped.labels('blocked_internal_host').inc();
+          logger.warn({ chatId: sanitizeLogValue(chat.id._serialized) }, 'Dropped URL due to disallowed host');
+          continue;
+        }
+
         const h = urlHash(norm);
         const idem = processedKey(chat.id._serialized, msg.id.id || msg.id._serialized, h);
         const already = await redis.set(idem, '1', 'EX', 60 * 60 * 24 * 7, 'NX');
@@ -116,16 +160,12 @@ async function main() {
           continue; // duplicate
         }
 
-<<<<<<< HEAD
-        try { await globalLimiter.consume(GLOBAL_TOKEN_BUCKET_ID); } catch { continue; }
-=======
         try {
-          await globalLimiter.consume('global');
+          await globalLimiter.consume(GLOBAL_TOKEN_BUCKET_ID);
         } catch {
           metrics.waMessagesDropped.labels('rate_limited_global').inc();
           continue;
         }
->>>>>>> origin/codex/add-prometheus-metrics-and-dashboards
 
         const jobOpts: JobsOptions = { removeOnComplete: true, removeOnFail: 1000, attempts: 2, backoff: { type: 'exponential', delay: 1000 } };
         await scanRequestQueue.add('scan', {
@@ -136,7 +176,9 @@ async function main() {
           timestamp: Date.now()
         }, jobOpts);
       }
-    } catch (e) { logger.error(e); }
+    } catch (e) {
+      logger.error({ err: e, chatId: sanitizeLogValue((msg as any)?.from) }, 'Failed to process incoming WhatsApp message');
+    }
   });
 
   // Consume verdicts
@@ -237,17 +279,22 @@ export async function handleAdminCommand(client: Client, msg: Message, existingC
   const parts = (msg.body || '').trim().split(/\s+/);
   const cmd = parts[1];
   if (!cmd) return;
-  const base = process.env.CONTROL_PLANE_BASE || 'http://control-plane:8080';
+  const base = resolveControlPlaneBase();
   const token = assertControlPlaneToken();
+  const csrfToken = config.controlPlane.csrfToken;
+  const authHeaders = {
+    authorization: `Bearer ${token}`,
+    'x-csrf-token': csrfToken,
+  } as const;
 
   if (cmd === 'mute') {
-    const resp = await fetch(`${base}/groups/${encodeURIComponent(chat.id._serialized)}/mute`, { method: 'POST', headers: { 'authorization': `Bearer ${token}` } }).catch(() => null);
+    const resp = await fetch(`${base}/groups/${encodeURIComponent(chat.id._serialized)}/mute`, { method: 'POST', headers: authHeaders }).catch(() => null);
     await chat.sendMessage(resp && resp.ok ? 'Scanner muted for 60 minutes.' : 'Mute failed.');
   } else if (cmd === 'unmute') {
-    const resp = await fetch(`${base}/groups/${encodeURIComponent(chat.id._serialized)}/unmute`, { method: 'POST', headers: { 'authorization': `Bearer ${token}` } }).catch(() => null);
+    const resp = await fetch(`${base}/groups/${encodeURIComponent(chat.id._serialized)}/unmute`, { method: 'POST', headers: authHeaders }).catch(() => null);
     await chat.sendMessage(resp && resp.ok ? 'Scanner unmuted.' : 'Unmute failed.');
   } else if (cmd === 'status') {
-    const resp = await fetch(`${base}/status`, { headers: { 'authorization': `Bearer ${token}` } }).catch(() => null);
+    const resp = await fetch(`${base}/status`, { headers: { authorization: `Bearer ${token}` } }).catch(() => null);
     const json = resp && resp.ok ? await resp.json() : {};
     await chat.sendMessage(`Scanner status: scans=${json.scans||0}, malicious=${json.malicious||0}`);
   } else if (cmd === 'rescan' && parts[2]) {
@@ -255,7 +302,7 @@ export async function handleAdminCommand(client: Client, msg: Message, existingC
     const resp = await fetch(`${base}/rescan`, {
       method: 'POST',
       headers: {
-        'authorization': `Bearer ${token}`,
+        ...authHeaders,
         'content-type': 'application/json',
       },
       body: JSON.stringify({ url: rescanUrl }),
@@ -277,7 +324,7 @@ export async function handleAdminCommand(client: Client, msg: Message, existingC
 
 if (process.env.NODE_ENV !== 'test') {
   main().catch(err => {
-    logger.error(err, 'Fatal in wa-client');
+    logger.error({ err }, 'Fatal in wa-client');
     process.exit(1);
   });
 }

@@ -47,7 +47,7 @@ describe('handleAdminCommand', () => {
 
     expect(global.fetch).toHaveBeenCalledWith('http://control-plane.test/groups/group-123/mute', expect.objectContaining({
       method: 'POST',
-      headers: { authorization: 'Bearer secret-token' },
+      headers: { authorization: 'Bearer secret-token', 'x-csrf-token': 'secret-token' },
     }));
     expect(sendMessage).toHaveBeenCalledWith('Scanner muted for 60 minutes.');
   });
@@ -78,7 +78,7 @@ describe('handleAdminCommand', () => {
 
     expect(global.fetch).toHaveBeenCalledWith('http://control-plane.test/rescan', expect.objectContaining({
       method: 'POST',
-      headers: expect.objectContaining({ authorization: 'Bearer secret-token' }),
+      headers: expect.objectContaining({ authorization: 'Bearer secret-token', 'x-csrf-token': 'secret-token' }),
     }));
     expect(sendMessage).toHaveBeenCalledWith('Rescan queued. hash=abc123 job=job-1');
   });

@@ -10,6 +10,16 @@ if (urlscanEnabled && !urlscanCallbackSecret) {
   throw new Error('URLSCAN_CALLBACK_SECRET must be provided when URLSCAN_ENABLED=true');
 }
 
+function parseStringList(value: string | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+  return value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
 function ensureNonEmpty(raw: string | undefined, envVar: string): string {
   const value = (raw ?? '').trim();
   if (!value) {
@@ -103,6 +113,18 @@ export const config = {
     uuidTtlSeconds: parseInt(process.env.URLSCAN_UUID_TTL_SECONDS || '86400', 10),
     resultTtlSeconds: parseInt(process.env.URLSCAN_RESULT_TTL_SECONDS || '86400', 10),
     concurrency: parseInt(process.env.URLSCAN_CONCURRENCY || '2', 10),
+    get allowedArtifactHosts(): string[] {
+      const configuredHosts = parseStringList(process.env.URLSCAN_ALLOWED_HOSTS);
+      const baseHosts = [] as string[];
+      try {
+        const host = new URL(process.env.URLSCAN_BASE_URL || 'https://urlscan.io').hostname.toLowerCase();
+        baseHosts.push(host);
+      } catch {
+        // ignore invalid base URL overrides; validation happens elsewhere
+      }
+      const combined = [...baseHosts, ...configuredHosts].map((host) => host.toLowerCase());
+      return Array.from(new Set(combined.filter((host) => host.length > 0)));
+    },
   },
   whoisxml: {
     enabled: ((process.env.WHOISXML_ENABLE ?? process.env.WHOISXML_ENABLED) || 'true') === 'true',
@@ -135,6 +157,12 @@ export const config = {
       return getControlPlaneToken();
     },
     enableUi: (process.env.CONTROL_PLANE_ENABLE_UI || 'true') === 'true',
+    get csrfToken(): string {
+      return (process.env.CONTROL_PLANE_CSRF_TOKEN || getControlPlaneToken()).trim();
+    },
+    get allowedOrigins(): string[] {
+      return parseStringList(process.env.CONTROL_PLANE_ALLOWED_ORIGINS).map((origin) => origin.toLowerCase());
+    },
   },
   wa: {
     headless: (process.env.WA_HEADLESS || 'true') === 'true',
