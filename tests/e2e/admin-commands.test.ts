@@ -40,7 +40,10 @@ describe('WA admin command scenarios', () => {
       .mockResolvedValueOnce({ ok: true })
       .mockResolvedValueOnce({ ok: true })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ scans: 10, malicious: 2 }) })
-      .mockResolvedValueOnce({ ok: true });
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true, urlHash: 'hash123', jobId: 'job-1' }),
+      });
 
     global.fetch = fetchMock as any;
 
@@ -70,6 +73,6 @@ describe('WA admin command scenarios', () => {
       expect.stringContaining('/rescan'),
       expect.objectContaining({ method: 'POST' })
     );
-    expect(chat.sendMessage).toHaveBeenLastCalledWith('Rescan queued.');
+    expect(chat.sendMessage).toHaveBeenLastCalledWith('Rescan queued. hash=hash123 job=job-1');
   });
 });

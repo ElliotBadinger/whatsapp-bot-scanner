@@ -15,7 +15,8 @@ class FakeLimiter {
   private readonly refreshAmount: number;
 
   constructor(options: { reservoir?: number; reservoirRefreshAmount?: number } = {}) {
-    this.reservoir = options.reservoir ?? 0;
+    const defaultReservoir = options.reservoir ?? Number.POSITIVE_INFINITY;
+    this.reservoir = defaultReservoir;
     this.refreshAmount = options.reservoirRefreshAmount ?? this.reservoir;
     instances.push(this);
   }

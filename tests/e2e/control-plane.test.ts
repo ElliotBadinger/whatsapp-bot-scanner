@@ -14,11 +14,22 @@ vi.mock('bullmq', () => ({
   Queue: vi.fn().mockImplementation(() => ({ add: vi.fn(), on: vi.fn() })),
 }));
 
+vi.mock('url-expand', () => ({ __esModule: true, default: vi.fn(async (url: string) => url) }));
+vi.mock('confusables', () => ({ __esModule: true, default: (input: string) => input }));
+vi.mock('bottleneck', () => ({
+  __esModule: true,
+  default: class BottleneckMock {
+    on(): void {}
+    async currentReservoir(): Promise<number> { return 1; }
+    schedule<T>(fn: (...args: any[]) => T, ...params: any[]): Promise<T> { return Promise.resolve(fn(...params)); }
+  }
+}));
+
 process.env.CONTROL_PLANE_API_TOKEN = 'test-token';
 
 describe('Control plane integration', () => {
-  const redisDel = vi.fn();
-  const queueAdd = vi.fn();
+  const redisDel = vi.fn().mockResolvedValue(1);
+  const queueAdd = vi.fn().mockResolvedValue({ id: 'job-123' });
   const pgClient = {
     connect: vi.fn().mockResolvedValue(undefined),
     query: vi.fn(),
@@ -26,7 +37,9 @@ describe('Control plane integration', () => {
 
   beforeEach(() => {
     redisDel.mockReset();
+    redisDel.mockResolvedValue(1);
     queueAdd.mockReset();
+    queueAdd.mockResolvedValue({ id: 'job-123' });
     pgClient.query.mockReset();
   });
 
@@ -54,10 +67,11 @@ describe('Control plane integration', () => {
       expect.objectContaining({
         url: 'http://example.com/',
         urlHash: expect.stringMatching(/^[0-9a-f]{64}$/),
-        priority: 10,
       }),
-      expect.objectContaining({ removeOnComplete: true, removeOnFail: 100 })
+      expect.objectContaining({ removeOnComplete: true, removeOnFail: 100, priority: 1 })
     );
+    const body = response.json();
+    expect(body).toEqual({ ok: true, urlHash: expect.any(String), jobId: 'job-123' });
   });
 
   it('streams stored artifacts from disk', async () => {
@@ -143,7 +157,7 @@ describe('WA admin command integration', () => {
   it('invokes control-plane rescan endpoint', async () => {
     const fetchMock = vi.spyOn(global, 'fetch' as any).mockResolvedValue({
       ok: true,
-      json: async () => ({ ok: true, urlHash: 'hash123', jobId: 'job-1' }),
+      json: async () => ({ ok: true, urlHash: 'hash123', jobId: 'job-1' })
     } as any);
     const chat = { sendMessage: vi.fn(), id: { _serialized: 'group' } } as any;
     const msg = {
@@ -165,6 +179,7 @@ describe('WA admin command integration', () => {
       expect.stringContaining('/rescan'),
       expect.objectContaining({ method: 'POST' })
     );
+    expect(chat.sendMessage).toHaveBeenCalledWith('Rescan queued. hash=hash123 job=job-1');
     fetchMock.mockRestore();
   });
 });

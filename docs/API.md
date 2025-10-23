@@ -10,7 +10,7 @@ Auth: `Authorization: Bearer <CONTROL_PLANE_API_TOKEN>`
 - POST `/overrides` → body: `{ url_hash?, pattern?, status: 'allow'|'deny', scope: 'global'|'group', scope_id?, reason?, expires_at? }`
 - POST `/groups/:chatId/mute` → `{ ok: true, muted_until }`
 - POST `/groups/:chatId/unmute` → `{ ok: true }`
-- POST `/rescan` → `{ ok: true }`
+- POST `/rescan` → `{ ok: true, urlHash: string, jobId: string }`
 - GET `/scans/:urlHash/urlscan-artifacts/:type` → streams persisted artifacts (`type`: `screenshot`|`dom`)
 
 Metrics: `/metrics` (Prometheus format)

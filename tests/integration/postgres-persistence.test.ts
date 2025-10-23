@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 vi.mock('ioredis', () => ({
   __esModule: true,
@@ -17,6 +17,10 @@ vi.mock('bullmq', () => ({
 
 afterEach(() => {
   vi.clearAllMocks();
+});
+
+beforeAll(() => {
+  process.env.CONTROL_PLANE_API_TOKEN = 'test-token';
 });
 
 describe('Control plane Postgres persistence', () => {

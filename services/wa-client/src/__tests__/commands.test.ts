@@ -90,6 +90,7 @@ describe('handleAdminCommand', () => {
     expect(global.fetch).toHaveBeenCalledWith('http://control-plane.test/rescan', expect.objectContaining({
       method: 'POST',
       headers: expect.objectContaining({ authorization: 'Bearer secret-token', 'x-csrf-token': 'secret-token' }),
+      headers: expect.objectContaining({ authorization: 'Bearer secret-token', 'x-csrf-token': 'secret-token' }),
     }));
     expect(sendMessage).toHaveBeenCalledWith('Rescan queued. hash=abc123 job=job-1');
   });
