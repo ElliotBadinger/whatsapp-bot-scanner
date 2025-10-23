@@ -173,9 +173,18 @@ export async function handleAdminCommand(client: Client, msg: Message) {
       },
       body: JSON.stringify({ url: rescanUrl }),
     }).catch(() => null);
-    await chat.sendMessage(resp && resp.ok ? 'Rescan queued.' : 'Rescan failed.');
+    if (resp && resp.ok) {
+      const data = await resp.json().catch(() => null);
+      if (data?.ok && data.urlHash && data.jobId) {
+        await chat.sendMessage(`Rescan queued. hash=${data.urlHash} job=${data.jobId}`);
+      } else {
+        await chat.sendMessage('Rescan queued, awaiting confirmation.');
+      }
+    } else {
+      await chat.sendMessage('Rescan failed.');
+    }
   } else {
-    await chat.sendMessage('Commands: !scanner mute|unmute|status');
+    await chat.sendMessage('Commands: !scanner mute|unmute|status|rescan <url>');
   }
 }
 

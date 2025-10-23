@@ -1,6 +1,17 @@
 import type { Client, Message, GroupChat } from 'whatsapp-web.js';
 import { handleAdminCommand, formatGroupVerdict } from '../index';
 
+jest.mock('url-expand', () => ({ __esModule: true, default: jest.fn(async (url: string) => url) }), { virtual: true });
+jest.mock('confusables', () => ({ __esModule: true, default: (input: string) => input }), { virtual: true });
+jest.mock('bottleneck', () => ({
+  __esModule: true,
+  default: class BottleneckMock {
+    on(): void {}
+    async currentReservoir(): Promise<number> { return 1; }
+    schedule<T>(fn: (...args: any[]) => T, ...params: any[]): Promise<T> { return Promise.resolve(fn(...params)); }
+  }
+}), { virtual: true });
+
 describe('handleAdminCommand', () => {
   const originalFetch = global.fetch;
 
@@ -39,6 +50,37 @@ describe('handleAdminCommand', () => {
       headers: { authorization: 'Bearer secret-token' },
     }));
     expect(sendMessage).toHaveBeenCalledWith('Scanner muted for 60 minutes.');
+  });
+
+  it('relays rescan confirmation when successful', async () => {
+    const sendMessage = jest.fn();
+    const mockChat = {
+      isGroup: true,
+      id: { _serialized: 'group-123' },
+      sendMessage,
+    } as unknown as GroupChat;
+    (mockChat as any).participants = [{ id: { _serialized: 'user-1' }, isAdmin: true, isSuperAdmin: false }];
+
+    const mockMessage = {
+      body: '!scanner rescan https://example.com/test',
+      from: 'user-1',
+      author: 'user-1',
+      id: { id: 'msg-2', _serialized: 'msg-2' },
+      getChat: jest.fn().mockResolvedValue(mockChat),
+    } as unknown as Message;
+
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ ok: true, urlHash: 'abc123', jobId: 'job-1' }),
+    });
+
+    await handleAdminCommand({} as Client, mockMessage);
+
+    expect(global.fetch).toHaveBeenCalledWith('http://control-plane.test/rescan', expect.objectContaining({
+      method: 'POST',
+      headers: expect.objectContaining({ authorization: 'Bearer secret-token' }),
+    }));
+    expect(sendMessage).toHaveBeenCalledWith('Rescan queued. hash=abc123 job=job-1');
   });
 });
 
