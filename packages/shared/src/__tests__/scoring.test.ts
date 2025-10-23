@@ -34,6 +34,7 @@ test('manual overrides take precedence over signals', () => {
   expect(allow.level).toBe('benign');
   expect(allow.score).toBe(0);
   expect(allow.cacheTtl).toBe(86400);
+  expect(allow.reasons).toContain('Manually allowed');
 
   const deny = scoreFromSignals({
     manualOverride: 'deny',
@@ -41,6 +42,7 @@ test('manual overrides take precedence over signals', () => {
   });
   expect(deny.level).toBe('malicious');
   expect(deny.score).toBe(15);
+  expect(deny.reasons).toContain('Manually blocked');
 });
 
 test('scoring uses domain age buckets and suspicious heuristics', () => {
