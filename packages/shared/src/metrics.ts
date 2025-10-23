@@ -145,6 +145,13 @@ export const apiQuotaStatusGauge = new client.Gauge({
   registers: [register],
 });
 
+export const apiQuotaDepletedCounter = new client.Counter({
+  name: 'wbscanner_api_quota_depleted_total',
+  help: 'Total number of times an external service quota was depleted',
+  labelNames: ['service'],
+  registers: [register],
+});
+
 export const cacheHitRatioGauge = new client.Gauge({
   name: 'wbscanner_cache_hit_ratio',
   help: 'Cache hit ratio by cache type',
