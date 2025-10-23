@@ -61,6 +61,10 @@ function parseNonNegativeInt(value: string | undefined, fallback: number): numbe
   return fallback;
 }
 
+const featureFlags = {
+  attachMediaToVerdicts: (process.env.FEATURE_ATTACH_MEDIA_TO_VERDICTS || 'false') === 'true',
+};
+
 export const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
   redisUrl: process.env.REDIS_URL || 'redis://localhost:6379/0',
@@ -164,6 +168,7 @@ export const config = {
       return parseStringList(process.env.CONTROL_PLANE_ALLOWED_ORIGINS).map((origin) => origin.toLowerCase());
     },
   },
+  features: featureFlags,
   wa: {
     headless: (process.env.WA_HEADLESS || 'true') === 'true',
     qrTerminal: (process.env.WA_QR_TERMINAL || 'true') === 'true',
@@ -173,6 +178,12 @@ export const config = {
     globalRatePerHour: parsePositiveInt(process.env.WA_GLOBAL_REPLY_RATE_PER_HOUR, 1000),
     globalTokenBucketKey: process.env.WA_GLOBAL_TOKEN_BUCKET_KEY || 'wa_global_token_bucket',
     perGroupHourlyLimit: parsePositiveInt(process.env.WA_PER_GROUP_HOURLY_LIMIT, 60),
+    verdictAckTimeoutSeconds: parsePositiveInt(process.env.WA_VERDICT_ACK_TIMEOUT_SECONDS, 30),
+    verdictMaxRetries: parsePositiveInt(process.env.WA_VERDICT_MAX_RETRIES, 3),
+    membershipAutoApprovePerHour: parsePositiveInt(process.env.WA_MEMBERSHIP_AUTO_APPROVE_PER_HOUR, 10),
+    membershipGlobalHourlyLimit: parsePositiveInt(process.env.WA_MEMBERSHIP_GLOBAL_HOURLY_LIMIT, 100),
+    governanceInterventionsPerHour: parsePositiveInt(process.env.WA_GOVERNANCE_INTERVENTIONS_PER_HOUR, 12),
+    messageLineageTtlSeconds: parsePositiveInt(process.env.WA_MESSAGE_LINEAGE_TTL_SECONDS, 60 * 60 * 24 * 30),
   }
 };
 
