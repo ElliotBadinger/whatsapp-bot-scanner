@@ -31,6 +31,12 @@ import {
   CircuitState,
   withRetry,
 } from '@wbscanner/shared';
+import {
+  checkBlocklistsWithRedundancy,
+  shouldQueryPhishtank,
+  type GsbFetchResult,
+  type PhishtankFetchResult,
+} from './blocklists';
 import type { GsbThreatMatch, UrlhausLookupResult, PhishtankLookupResult, VirusTotalAnalysis, UrlscanSubmissionResponse, WhoisXmlResponse } from '@wbscanner/shared';
 
 const redis = new Redis(config.redisUrl);
@@ -185,40 +191,6 @@ type GsbMatch = GsbThreatMatch;
 type VtStats = ReturnType<typeof vtVerdictStats>;
 type UrlhausResult = UrlhausLookupResult;
 type PhishtankResult = PhishtankLookupResult;
-
-interface GsbFetchResult {
-  matches: GsbMatch[];
-  fromCache: boolean;
-  durationMs: number;
-  error: Error | null;
-}
-
-interface PhishtankDecisionInput {
-  gsbHit: boolean;
-  gsbError: Error | null;
-  gsbDurationMs: number;
-  gsbFromCache: boolean;
-  fallbackLatencyMs: number;
-  gsbApiKeyPresent: boolean;
-  phishtankEnabled: boolean;
-}
-
-function shouldQueryPhishtank({
-  gsbHit,
-  gsbError,
-  gsbDurationMs,
-  gsbFromCache,
-  fallbackLatencyMs,
-  gsbApiKeyPresent,
-  phishtankEnabled,
-}: PhishtankDecisionInput): boolean {
-  if (!phishtankEnabled) return false;
-  if (!gsbHit) return true;
-  if (gsbError) return true;
-  if (!gsbApiKeyPresent) return true;
-  if (!gsbFromCache && gsbDurationMs > fallbackLatencyMs) return true;
-  return false;
-}
 
 type ArtifactCandidate = {
   type: 'screenshot' | 'dom';
@@ -380,12 +352,6 @@ async function fetchGsbAnalysis(finalUrl: string, hash: string): Promise<GsbFetc
     logger.warn({ err, url: finalUrl }, 'Google Safe Browsing lookup failed');
     return { matches: [], fromCache: false, durationMs: 0, error: err as Error };
   }
-}
-
-interface PhishtankFetchResult {
-  result: PhishtankResult | null;
-  fromCache: boolean;
-  error: Error | null;
 }
 
 async function fetchPhishtank(finalUrl: string, hash: string): Promise<PhishtankFetchResult> {
@@ -690,25 +656,20 @@ async function main() {
       const wasShortened = Boolean(shortenerInfo?.wasShortened);
       const finalUrlMismatch = wasShortened && new URL(norm).hostname !== finalUrlObj.hostname;
 
-      const gsbResult = await fetchGsbAnalysis(finalUrl, h);
-      const gsbMatches = gsbResult.matches;
-      const gsbHit = gsbMatches.length > 0;
-      if (gsbHit) metrics.gsbHits.inc();
-
-      let phishtankResult: PhishtankResult | null = null;
-      const phishtankNeeded = shouldQueryPhishtank({
-        gsbHit,
-        gsbError: gsbResult.error,
-        gsbDurationMs: gsbResult.durationMs,
-        gsbFromCache: gsbResult.fromCache,
+      const blocklistResult = await checkBlocklistsWithRedundancy({
+        finalUrl,
+        hash: h,
         fallbackLatencyMs: config.gsb.fallbackLatencyMs,
         gsbApiKeyPresent: Boolean(config.gsb.apiKey),
         phishtankEnabled: config.phishtank.enabled,
+        fetchGsbAnalysis,
+        fetchPhishtank,
       });
-      if (phishtankNeeded) {
-        const phishResponse = await fetchPhishtank(finalUrl, h);
-        phishtankResult = phishResponse.result;
-      }
+      const gsbMatches = blocklistResult.gsbMatches;
+      const gsbHit = gsbMatches.length > 0;
+      if (gsbHit) metrics.gsbHits.inc();
+
+      const phishtankResult = blocklistResult.phishtankResult;
       const phishtankHit = Boolean(phishtankResult?.verified);
 
       let vtStats: VtStats | undefined;
@@ -892,6 +853,7 @@ export const __testables = {
   fetchUrlhaus,
   shouldRetry,
   classifyError,
+  checkBlocklistsWithRedundancy,
   shouldQueryPhishtank,
   applyVtRateLimit,
   setVtRateLimiterForTest: (limiter: RateLimiterRedis | null) => { vtRateLimiter = limiter; },
