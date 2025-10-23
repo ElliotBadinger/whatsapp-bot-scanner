@@ -17,8 +17,9 @@ Key environment variables:
 - `WHOISXML_*` toggles paid WhoisXML lookups; leave disabled if quota unavailable. `WHOISXML_MONTHLY_QUOTA` should match your subscription tier.
 - VirusTotal throttling is now enforced in-code (4 req/min). No manual tuning required unless you upgrade plans.
 - `UNSHORTEN_ENDPOINT`, `UNSHORTEN_RETRIES`, `SHORTENER_CACHE_TTL_SECONDS` tune shortener expansion.
-- `WA_GLOBAL_REPLY_RATE_PER_HOUR` and `WA_PER_GROUP_HOURLY_LIMIT` keep outbound messaging within WhatsApp policy (defaults: 1000 global, 60 per group).
+- `WA_PER_GROUP_REPLY_COOLDOWN_SECONDS`, `WA_PER_GROUP_HOURLY_LIMIT`, and `WA_GLOBAL_REPLY_RATE_PER_HOUR` keep outbound messaging within WhatsApp policy (defaults: 60 s cooldown, 60 per group, 1000 global).
 - `URLSCAN_ARTIFACT_DIR` (optional) relocates screenshot/DOM persistence; ensure the directory exists and is writable.
+- Customize Prometheus/Grafana by editing `observability/prometheus.yml` and `grafana/provisioning/*` before deploy if your platform requires alternate scrape targets or dashboards.
 
 Production notes:
 - Put `reverse-proxy` behind TLS (e.g., nginx with Let’s Encrypt or Caddy). Update environment and mount certs.
@@ -27,6 +28,7 @@ Production notes:
 - Configure firewall to restrict Control Plane IPs.
 - Scale `scan-orchestrator` by adding `deploy.replicas` or multiple service entries.
 - BullMQ queues share Redis; heavy burst traffic may require upgrading Redis instance memory/throughput.
+- Wire Prometheus alert rules from `observability/alerts.yml` into your monitoring stack; update recipients for quota, queue depth, and circuit breaker paging policies.
 
 ## Queue Naming Constraints
 
