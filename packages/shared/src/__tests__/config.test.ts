@@ -17,6 +17,8 @@ describe('queue configuration validation', () => {
       expect(config.queues.scanRequest).toBe('scan-request');
       expect(config.queues.scanVerdict).toBe('scan-verdict');
       expect(config.queues.urlscan).toBe('scan-urlscan');
+      expect(config.features.attachMediaToVerdicts).toBe(false);
+      expect(config.wa.verdictAckTimeoutSeconds).toBeGreaterThan(0);
     });
   });
 

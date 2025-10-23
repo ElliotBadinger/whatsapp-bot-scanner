@@ -1,3 +1,13 @@
+import FakeRedis from './fake-redis';
+
+jest.mock('ioredis', () => FakeRedis);
+
+jest.mock('rate-limiter-flexible', () => ({
+  RateLimiterRedis: class {
+    async consume() { return; }
+  }
+}));
+
 import type { Client, Message, GroupChat } from 'whatsapp-web.js';
 import { handleAdminCommand, formatGroupVerdict } from '../index';
 
@@ -58,6 +68,7 @@ describe('handleAdminCommand', () => {
       isGroup: true,
       id: { _serialized: 'group-123' },
       sendMessage,
+      setMessagesAdminsOnly: jest.fn(),
     } as unknown as GroupChat;
     (mockChat as any).participants = [{ id: { _serialized: 'user-1' }, isAdmin: true, isSuperAdmin: false }];
 
@@ -81,6 +92,82 @@ describe('handleAdminCommand', () => {
       headers: expect.objectContaining({ authorization: 'Bearer secret-token', 'x-csrf-token': 'secret-token' }),
     }));
     expect(sendMessage).toHaveBeenCalledWith('Rescan queued. hash=abc123 job=job-1');
+  });
+
+  it('records consent acknowledgement from admins', async () => {
+    const sendMessage = jest.fn();
+    const setMessagesAdminsOnly = jest.fn().mockResolvedValue(true);
+    const mockChat = {
+      isGroup: true,
+      id: { _serialized: 'group-123' },
+      sendMessage,
+      setMessagesAdminsOnly,
+    } as unknown as GroupChat;
+    (mockChat as any).participants = [{ id: { _serialized: 'user-1' }, isAdmin: true, isSuperAdmin: false }];
+
+    const mockMessage = {
+      body: '!scanner consent',
+      from: 'user-1',
+      author: 'user-1',
+      id: { id: 'msg-3', _serialized: 'msg-3' },
+      getChat: jest.fn().mockResolvedValue(mockChat),
+    } as unknown as Message;
+
+    await handleAdminCommand({} as Client, mockMessage);
+
+    expect(setMessagesAdminsOnly).toHaveBeenCalledWith(false);
+    expect(sendMessage).toHaveBeenCalledWith('Consent recorded. Automated scanning enabled for this group.');
+  });
+
+  it('approves membership overrides from admins', async () => {
+    const sendMessage = jest.fn();
+    const approveMembership = jest.fn().mockResolvedValue(undefined);
+    const mockChat = {
+      isGroup: true,
+      id: { _serialized: 'group-456' },
+      sendMessage,
+      setMessagesAdminsOnly: jest.fn(),
+    } as unknown as GroupChat;
+    (mockChat as any).participants = [{ id: { _serialized: 'admin-1' }, isAdmin: true, isSuperAdmin: false }];
+
+    const mockMessage = {
+      body: '!scanner approve pending-user',
+      from: 'admin-1',
+      author: 'admin-1',
+      id: { id: 'msg-4', _serialized: 'msg-4' },
+      getChat: jest.fn().mockResolvedValue(mockChat),
+    } as unknown as Message;
+
+    await handleAdminCommand({ approveGroupMembershipRequests: approveMembership } as unknown as Client, mockMessage);
+
+    expect(approveMembership).toHaveBeenCalledWith('group-456', { requesterIds: ['pending-user'] });
+    expect(sendMessage).toHaveBeenCalledWith('Approved membership request for pending-user.');
+  });
+
+  it('summarizes governance events for admins', async () => {
+    const sendMessage = jest.fn();
+    const setMessagesAdminsOnly = jest.fn();
+    const mockChat = {
+      isGroup: true,
+      id: { _serialized: 'group-789' },
+      sendMessage,
+      setMessagesAdminsOnly,
+    } as unknown as GroupChat;
+    (mockChat as any).participants = [{ id: { _serialized: 'admin-1' }, isAdmin: true, isSuperAdmin: false }];
+
+    const baseMessage = {
+      from: 'admin-1',
+      author: 'admin-1',
+      id: { id: 'msg-5', _serialized: 'msg-5' },
+      getChat: jest.fn().mockResolvedValue(mockChat),
+    } as unknown as Message;
+
+    await handleAdminCommand({} as Client, { ...baseMessage, body: '!scanner consent' });
+    sendMessage.mockClear();
+
+    await handleAdminCommand({} as Client, { ...baseMessage, body: '!scanner governance 5' });
+
+    expect(sendMessage).toHaveBeenCalledWith(expect.stringContaining('consent_granted'));
   });
 });
 
