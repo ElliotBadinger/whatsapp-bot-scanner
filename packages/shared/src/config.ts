@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { logger } from './log';
 
 dotenv.config();
 
@@ -132,10 +133,25 @@ export const config = {
     quietHours: process.env.WA_QUIET_HOURS || '22-07',
     perGroupCooldownSeconds: parseInt(process.env.WA_PER_GROUP_REPLY_COOLDOWN_SECONDS || '60', 10),
     globalRatePerHour: parsePositiveInt(process.env.WA_GLOBAL_REPLY_RATE_PER_HOUR, 1000),
+    globalTokenBucketKey: process.env.WA_GLOBAL_TOKEN_BUCKET_KEY || 'wa_global_token_bucket',
     perGroupHourlyLimit: parsePositiveInt(process.env.WA_PER_GROUP_HOURLY_LIMIT, 60),
   }
 };
 
 export function assertControlPlaneToken(): string {
   return getControlPlaneToken();
+}
+
+export function assertEssentialConfig(serviceName: string): void {
+  const missing: string[] = [];
+
+  if (!config.vt.apiKey?.trim()) missing.push('VT_API_KEY');
+  if (!config.gsb.apiKey?.trim()) missing.push('GSB_API_KEY');
+  if (!config.redisUrl?.trim()) missing.push('REDIS_URL');
+  if (!config.postgres.host?.trim()) missing.push('POSTGRES_HOST');
+
+  if (missing.length > 0) {
+    logger.error({ service: serviceName, missing }, 'Missing required environment variables');
+    process.exit(1);
+  }
 }
