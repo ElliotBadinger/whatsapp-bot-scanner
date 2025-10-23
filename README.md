@@ -32,3 +32,5 @@ Operational notes:
 - Metrics are Prometheus-compatible under `/metrics` per service.
 
 Documentation located in `docs/` covers architecture, security, operations, and runbooks.
+See [`docs/COST_MODEL.md`](docs/COST_MODEL.md) for VirusTotal quota guidance and
+observability metrics.
