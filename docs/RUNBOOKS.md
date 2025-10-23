@@ -43,3 +43,21 @@ Observability Health Check:
 
 Rollback:
 - `docker compose rollback` (if using compose profiles with tags) or redeploy previous images.
+
+RemoteAuth Operations:
+- Enable RemoteAuth by setting `WA_AUTH_STRATEGY=remote`, `WA_REMOTE_AUTH_STORE=redis`, and providing a data key (either `WA_REMOTE_AUTH_DATA_KEY` base64 plaintext, or `WA_REMOTE_AUTH_ENCRYPTED_DATA_KEY` with `WA_REMOTE_AUTH_KMS_KEY_ID`/Vault transit envs). Redeploy wa-client to apply.
+- Session snapshots live under the Redis key prefix `remoteauth:v1:<WA_AUTH_CLIENT_ID>`; clear a session with `DEL remoteauth:v1:<clientId>:RemoteAuth-<clientId>` before re-pairing.
+- Rotate encryption keys by generating a new data key, updating the env var(s), and recycling wa-client pods; old ciphertext becomes unreadable after rotation.
+- Health queue `wa-health` carries state transitions; investigate repeated `CONFLICT` events or `reset_state` jobs via Bull board.
+- WhatsApp auth failure alerts fire after three consecutive failures in 15 minutes; check Slack/Grafana notifications, inspect wa-client logs, and consider re-pairing or clearing the remote session if failures persist.
+
+WhatsApp Governance & Consent:
+- `WA_CONSENT_ON_JOIN`, `WA_AUTO_APPROVE_DEFAULT`, `WA_AUTO_APPROVE_RATE_PER_HOUR`, and `WA_GOVERNANCE_ACTIONS_PER_HOUR` drive default behaviour; tune them per environment and redeploy wa-client.
+- Admins can override auto-approval via `!scanner autoapprove on|off|status`; the toggle persists in Redis (`wa:group:<id>:auto_approve`).
+- Consent decisions persist under `wa:group:<id>:consent`; `!scanner consent approve|deny|status` updates or queries the value. Denying consent triggers an immediate leave.
+- Audit logs for governance actions are emitted via pino; ship them to your log stack for later reviews.
+
+Verdict Delivery Monitoring:
+- `wbscanner_wa_verdict_delivery_total{result}` and `wbscanner_wa_verdict_delivery_retries_total` expose successes, failures, and retries. Grafana dashboard tiles and Prometheus alerts are wired to these counters.
+- Use `WA_VERDICT_ACK_TIMEOUT_SECONDS` and `WA_VERDICT_ACK_MAX_RETRIES` to balance user experience with WhatsApp rate limits; raise the timeout for slower networks before increasing retry counts.
+- Optional verdict attachments require `FEATURE_ATTACH_MEDIA_VERDICTS=true` plus valid assets (e.g., `WA_VERDICT_MEDIA_DIR=/app/media/verdicts` mounted read-only). Attachments default to off to avoid inflated bandwidth costs.

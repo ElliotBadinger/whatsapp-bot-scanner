@@ -132,12 +132,14 @@ export function scoreFromSignals(signals: Signals): RiskVerdict {
     pushReason(reasons, 'Redirect leads to mismatched domain/brand');
   }
 
+  const finalScore = Math.max(0, Math.min(score, 15));
+
   let level: RiskVerdict['level'];
   let cacheTtl: number;
-  if (score <= 3) {
+  if (finalScore <= 3) {
     level = 'benign';
     cacheTtl = 86400;
-  } else if (score <= 7) {
+  } else if (finalScore <= 7) {
     level = 'suspicious';
     cacheTtl = 3600;
   } else {
@@ -145,7 +147,7 @@ export function scoreFromSignals(signals: Signals): RiskVerdict {
     cacheTtl = 900;
   }
 
-  return { score, level, reasons, cacheTtl };
+  return { score: finalScore, level, reasons, cacheTtl };
 }
 
 export function extraHeuristics(u: URL): Partial<Signals> {

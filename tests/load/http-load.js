@@ -15,6 +15,21 @@ const { request } = require('undici');
 const target = process.env.LOAD_TARGET_URL || 'http://localhost:3001/healthz';
 const durationSeconds = Number(process.env.LOAD_DURATION_SECONDS || '30');
 const concurrency = Number(process.env.LOAD_CONCURRENCY || '50');
+const headerEnv = process.env.LOAD_HEADERS || '';
+const headerTuples = headerEnv
+  .split(',')
+  .map((segment) => segment.trim())
+  .filter(Boolean)
+  .map((entry) => {
+    const idx = entry.indexOf(':');
+    if (idx === -1) return null;
+    const name = entry.slice(0, idx).trim();
+    const value = entry.slice(idx + 1).trim();
+    if (!name || !value) return null;
+    return [name, value];
+  })
+  .filter(Boolean);
+const headers = Object.fromEntries(headerTuples);
 
 if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
   console.error('LOAD_DURATION_SECONDS must be a positive number');
@@ -35,9 +50,12 @@ async function worker() {
   while (Date.now() < endTime) {
     const start = performance.now();
     try {
-      const response = await request(target, { method: 'GET' });
-      // drain body to release socket
-      await response.body.cancel();
+      const response = await request(target, { method: 'GET', headers });
+      if (response.body && typeof response.body.text === 'function') {
+        await response.body.text();
+      } else if (response.body && typeof response.body.resume === 'function') {
+        response.body.resume();
+      }
       const latency = performance.now() - start;
       latencies.push(latency);
       success += 1;

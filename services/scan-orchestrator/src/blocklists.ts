@@ -56,6 +56,7 @@ export interface BlocklistCheckResult {
   gsbResult: GsbFetchResult;
   phishtankResult: PhishtankLookupResult | null;
   phishtankNeeded: boolean;
+  phishtankError: Error | null;
 }
 
 export async function checkBlocklistsWithRedundancy({
@@ -87,6 +88,7 @@ export async function checkBlocklistsWithRedundancy({
       });
 
   let phishtankResult: PhishtankLookupResult | null = null;
+  let phishtankError: Error | null = null;
 
   if (phishtankNeeded) {
     const logContext = {
@@ -108,6 +110,7 @@ export async function checkBlocklistsWithRedundancy({
     metrics.phishtankSecondaryChecks.inc();
     const phishResponse = await fetchPhishtank(finalUrl, hash);
     phishtankResult = phishResponse.result;
+    phishtankError = phishResponse.error ?? null;
 
     if (phishResponse.result?.inDatabase) {
       metrics.phishtankSecondaryHits.labels(phishResponse.result.verified ? 'true' : 'false').inc();
@@ -124,5 +127,5 @@ export async function checkBlocklistsWithRedundancy({
     );
   }
 
-  return { gsbMatches, gsbResult, phishtankResult, phishtankNeeded };
+  return { gsbMatches, gsbResult, phishtankResult, phishtankNeeded, phishtankError };
 }

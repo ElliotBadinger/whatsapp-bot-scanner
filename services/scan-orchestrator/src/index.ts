@@ -13,6 +13,7 @@ import {
   rateLimiterDelay,
   circuitBreakerTransitionCounter,
   queueDepthGauge,
+  cacheHitRatioGauge,
   normalizeUrl,
   expandUrl,
   urlHash,
@@ -104,6 +105,27 @@ const urlhausCircuit = makeCircuit(CIRCUIT_LABELS.urlhaus);
 const vtCircuit = makeCircuit(CIRCUIT_LABELS.vt);
 const urlscanCircuit = makeCircuit(CIRCUIT_LABELS.urlscan);
 const whoisCircuit = makeCircuit(CIRCUIT_LABELS.whoisxml);
+
+const cacheStats: Record<'scan' | 'analysis' | 'shortener', { hits: number; misses: number }> = {
+  scan: { hits: 0, misses: 0 },
+  analysis: { hits: 0, misses: 0 },
+  shortener: { hits: 0, misses: 0 },
+};
+
+function recordCacheEvent(type: keyof typeof cacheStats, hit: boolean) {
+  const stats = cacheStats[type];
+  if (hit) {
+    stats.hits += 1;
+    metrics.cacheHit.inc();
+  } else {
+    stats.misses += 1;
+    metrics.cacheMiss.inc();
+  }
+  const total = stats.hits + stats.misses;
+  if (total > 0) {
+    cacheHitRatioGauge.labels(type).set(stats.hits / total);
+  }
+}
 
 function recordLatency(service: string, ms?: number) {
   if (typeof ms === 'number' && ms >= 0) {
@@ -242,8 +264,10 @@ async function fetchGsbAnalysis(finalUrl: string, hash: string): Promise<GsbFetc
   const cacheKey = `url:analysis:${hash}:gsb`;
   const cached = await getJsonCache<GsbMatch[]>(cacheKey);
   if (cached) {
+    recordCacheEvent('analysis', true);
     return { matches: cached, fromCache: true, durationMs: 0, error: null };
   }
+  recordCacheEvent('analysis', false);
   try {
     const result = await gsbCircuit.execute(() =>
       withRetry(() => gsbLookup([finalUrl]), {
@@ -275,8 +299,10 @@ async function fetchPhishtank(finalUrl: string, hash: string): Promise<Phishtank
   const cacheKey = `url:analysis:${hash}:phishtank`;
   const cached = await getJsonCache<PhishtankResult>(cacheKey);
   if (cached) {
+    recordCacheEvent('analysis', true);
     return { result: cached, fromCache: true, error: null };
   }
+  recordCacheEvent('analysis', false);
   try {
     const result = await phishtankCircuit.execute(() =>
       withRetry(() => phishtankLookup(finalUrl), {
@@ -310,8 +336,10 @@ async function fetchVirusTotal(finalUrl: string, hash: string): Promise<VirusTot
   const cacheKey = `url:analysis:${hash}:vt`;
   const cached = await getJsonCache<VtStats>(cacheKey);
   if (cached) {
+    recordCacheEvent('analysis', true);
     return { stats: cached, fromCache: true, quotaExceeded: false, error: null };
   }
+  recordCacheEvent('analysis', false);
   try {
     const analysis = await vtCircuit.execute(() =>
       withRetry(() => vtAnalyzeUrl(finalUrl), {
@@ -350,8 +378,10 @@ async function fetchUrlhaus(finalUrl: string, hash: string): Promise<UrlhausFetc
   const cacheKey = `url:analysis:${hash}:urlhaus`;
   const cached = await getJsonCache<UrlhausResult>(cacheKey);
   if (cached) {
+    recordCacheEvent('analysis', true);
     return { result: cached, fromCache: true, error: null };
   }
+  recordCacheEvent('analysis', false);
   try {
     const result = await urlhausCircuit.execute(() =>
       withRetry(() => urlhausLookup(finalUrl), {
@@ -381,7 +411,11 @@ interface ShortenerCacheEntry {
 async function resolveShortenerWithCache(url: string, hash: string): Promise<ShortenerCacheEntry | null> {
   const cacheKey = `${SHORTENER_CACHE_PREFIX}${hash}`;
   const cached = await getJsonCache<ShortenerCacheEntry>(cacheKey);
-  if (cached) return cached;
+  if (cached) {
+    recordCacheEvent('shortener', true);
+    return cached;
+  }
+  recordCacheEvent('shortener', false);
   try {
     const start = Date.now();
     const resolved = await resolveShortener(url);
@@ -566,12 +600,12 @@ async function main() {
       const cacheKey = `scan:${h}`;
       const cached = await redis.get(cacheKey);
       if (cached) {
-        metrics.cacheHit.inc();
+        recordCacheEvent('scan', true);
         const data = JSON.parse(cached);
         await scanVerdictQueue.add('verdict', { chatId, messageId, ...data }, { removeOnComplete: true });
         return;
       }
-      metrics.cacheMiss.inc();
+      recordCacheEvent('scan', false);
 
       const shortenerInfo = await resolveShortenerWithCache(norm, h);
       const preExpansionUrl = shortenerInfo?.finalUrl ?? norm;
@@ -624,6 +658,7 @@ async function main() {
 
       const phishtankResult = blocklistResult.phishtankResult;
       const phishtankHit = Boolean(phishtankResult?.verified);
+      const phishtankError = blocklistResult.phishtankError;
 
       let vtStats: VtStats | undefined;
       let vtQuotaExceeded = false;
@@ -639,6 +674,7 @@ async function main() {
       }
 
       let urlhausResult: UrlhausResult | null = null;
+      let urlhausError: Error | null = null;
       const shouldQueryUrlhaus =
         !gsbHit && (
           !config.vt.apiKey ||
@@ -649,6 +685,19 @@ async function main() {
       if (shouldQueryUrlhaus) {
         const urlhausResponse = await fetchUrlhaus(finalUrl, h);
         urlhausResult = urlhausResponse.result;
+        urlhausError = urlhausResponse.error ?? null;
+      }
+
+      const gsbAvailable = Boolean(config.gsb.apiKey) && !blocklistResult.gsbResult.error;
+      const phishtankAvailable = config.phishtank.enabled
+        ? (!blocklistResult.phishtankNeeded || !phishtankError)
+        : false;
+      const vtAvailable = Boolean(config.vt.apiKey) && !vtError && !vtQuotaExceeded;
+      const urlhausAvailable = config.urlhaus.enabled ? !urlhausError : false;
+
+      if (!(gsbAvailable || phishtankAvailable || vtAvailable || urlhausAvailable)) {
+        metrics.degradedModeEvents.inc();
+        logger.warn({ url: finalUrl, urlHash: h }, 'All external providers unavailable; heuristics-only verdict issued');
       }
 
       const signals = {

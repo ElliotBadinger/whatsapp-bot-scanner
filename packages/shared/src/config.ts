@@ -45,6 +45,9 @@ function parsePositiveInt(value: string | undefined, fallback: number, { minimum
 export const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
   redisUrl: process.env.REDIS_URL || 'redis://localhost:6379/0',
+  features: {
+    attachMediaToVerdicts: (process.env.FEATURE_ATTACH_MEDIA_VERDICTS || 'false') === 'true',
+  },
   postgres: {
     host: process.env.POSTGRES_HOST || 'localhost',
     port: parseInt(process.env.POSTGRES_PORT || '5432', 10),
@@ -56,6 +59,7 @@ export const config = {
     scanRequest: ensureQueueName(process.env.SCAN_REQUEST_QUEUE || 'scan-request', 'SCAN_REQUEST_QUEUE'),
     scanVerdict: ensureQueueName(process.env.SCAN_VERDICT_QUEUE || 'scan-verdict', 'SCAN_VERDICT_QUEUE'),
     urlscan: ensureQueueName(process.env.SCAN_URLSCAN_QUEUE || 'scan-urlscan', 'SCAN_URLSCAN_QUEUE'),
+    waHealth: ensureQueueName(process.env.WA_HEALTH_QUEUE || 'wa-health', 'WA_HEALTH_QUEUE'),
   },
   vt: {
     apiKey: process.env.VT_API_KEY || '',
@@ -126,13 +130,45 @@ export const config = {
     enableUi: (process.env.CONTROL_PLANE_ENABLE_UI || 'true') === 'true',
   },
   wa: {
+    authStrategy: (() => {
+      const raw = (process.env.WA_AUTH_STRATEGY || 'local').toLowerCase();
+      return raw === 'remote' ? 'remote' : 'local';
+    })() as 'local' | 'remote',
     headless: (process.env.WA_HEADLESS || 'true') === 'true',
+    puppeteerArgs: (() => {
+      const raw = process.env.WA_PUPPETEER_ARGS;
+      if (!raw || raw.trim() === '') {
+        return ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'];
+      }
+      return raw.split(',').map((segment) => segment.trim()).filter((segment) => segment.length > 0);
+    })(),
     qrTerminal: (process.env.WA_QR_TERMINAL || 'true') === 'true',
     consentOnJoin: (process.env.WA_CONSENT_ON_JOIN || 'true') === 'true',
     quietHours: process.env.WA_QUIET_HOURS || '22-07',
     perGroupCooldownSeconds: parseInt(process.env.WA_PER_GROUP_REPLY_COOLDOWN_SECONDS || '60', 10),
     globalRatePerHour: parsePositiveInt(process.env.WA_GLOBAL_REPLY_RATE_PER_HOUR, 1000),
     perGroupHourlyLimit: parsePositiveInt(process.env.WA_PER_GROUP_HOURLY_LIMIT, 60),
+    remoteAuth: {
+      store: (process.env.WA_REMOTE_AUTH_STORE || 'redis').toLowerCase(),
+      clientId: process.env.WA_AUTH_CLIENT_ID || 'default',
+      kmsKeyId: (process.env.WA_REMOTE_AUTH_KMS_KEY_ID || '').trim() || undefined,
+      encryptedDataKey: (process.env.WA_REMOTE_AUTH_ENCRYPTED_DATA_KEY || '').trim() || undefined,
+      dataKey: (process.env.WA_REMOTE_AUTH_DATA_KEY || '').trim() || undefined,
+      vaultTransitPath: (process.env.WA_REMOTE_AUTH_VAULT_PATH || '').trim() || undefined,
+      vaultToken: (process.env.WA_REMOTE_AUTH_VAULT_TOKEN || '').trim() || undefined,
+      vaultAddress: (process.env.WA_REMOTE_AUTH_VAULT_ADDRESS || '').trim() || undefined,
+      alertThreshold: parsePositiveInt(process.env.WA_AUTH_FAILURE_ALERT_THRESHOLD, 3, { minimum: 1 }),
+      alertCooldownSeconds: parsePositiveInt(process.env.WA_AUTH_FAILURE_ALERT_COOLDOWN_SECONDS, 1800, { minimum: 60 }),
+      failureWindowSeconds: parsePositiveInt(process.env.WA_AUTH_FAILURE_WINDOW_SECONDS, 900, { minimum: 60 }),
+      resetDebounceSeconds: parsePositiveInt(process.env.WA_RESET_DEBOUNCE_SECONDS, 60, { minimum: 15 }),
+      backupIntervalMs: parsePositiveInt(process.env.WA_REMOTE_AUTH_BACKUP_INTERVAL_MS, 300000, { minimum: 60000 }),
+      dataPath: process.env.WA_REMOTE_AUTH_DATA_PATH || './data/remote-session'
+    },
+    autoApproveDefault: (process.env.WA_AUTO_APPROVE_DEFAULT || 'true') === 'true',
+    autoApproveRatePerHour: parsePositiveInt(process.env.WA_AUTO_APPROVE_RATE_PER_HOUR, 20, { minimum: 1 }),
+    governanceActionsPerHour: parsePositiveInt(process.env.WA_GOVERNANCE_ACTIONS_PER_HOUR, 12, { minimum: 1 }),
+    verdictAckTimeoutSeconds: parsePositiveInt(process.env.WA_VERDICT_ACK_TIMEOUT_SECONDS, 15, { minimum: 5 }),
+    verdictAckMaxRetries: parsePositiveInt(process.env.WA_VERDICT_ACK_MAX_RETRIES, 2, { minimum: 0 })
   }
 };
 

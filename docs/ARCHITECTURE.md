@@ -4,6 +4,7 @@ Components:
 
 - WA Client Service: Manages WhatsApp session, extracts URLs, deduplicates, enqueues scan jobs, posts verdicts, and enforces rate limits.
 - Scan Orchestrator: Normalizes/expands URLs, runs reputation checks (Google Safe Browsing, VirusTotal, URLhaus, Phishtank), enriches with domain intelligence (RDAP/WhoisXML) and shortener expansion, computes heuristics, scores risk, caches results, and persists to Postgres. Suspicious links enqueue asynchronous urlscan.io deep scans via a dedicated BullMQ queue and webhook callback.
+  - Google Safe Browsing calls use the v4 Lookup API (not hash prefix). The strategy document prioritises response fidelity over the additional latency of hash-prefix verification, and requests are stripped of PII before submission. Responses are cached per URL hash to respect quota and to avoid re-sending the same URLs.
 -   VirusTotal calls are wrapped in a Bottleneck scheduler (4 req/min) and fall back to URLhaus when quota is exhausted. urlscan artifacts (screenshot + DOM) are downloaded to `storage/urlscan-artifacts` and paths are persisted on the `scans` record for later retrieval.
 -   Manual overrides are resolved prior to scoring; `allow`/`deny` instructions override automated verdicts until their expiry.
 - Control Plane API: Admin auth via bearer token, overrides, mutes, rescans, and status. Exposes metrics and health.

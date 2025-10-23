@@ -18,6 +18,8 @@ RUN cd /app/services/wa-client && \
     npm install ../..//packages/shared/*.tgz && \
     npm install && npm run build
 
+RUN mkdir -p /app/services/wa-client/data && chown -R pptruser:pptruser /app/services/wa-client
+
 ENV NODE_ENV=production \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome
 

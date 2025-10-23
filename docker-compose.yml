@@ -54,10 +54,10 @@ services:
       - redis
     networks: [internal]
     volumes:
-      - wa_session:/app/data
+      - wa_session:/app/services/wa-client/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL","wget -qO- http://localhost:3000/healthz || exit 1"]
+      test: ["CMD-SHELL","wget -qO- http://127.0.0.1:3000/healthz || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 10
@@ -76,7 +76,7 @@ services:
     networks: [internal]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL","wget -qO- http://localhost:3001/healthz || exit 1"]
+      test: ["CMD-SHELL","wget -qO- http://127.0.0.1:3001/healthz || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 10
@@ -94,7 +94,7 @@ services:
     networks: [internal]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL","wget -qO- http://localhost:8080/healthz || exit 1"]
+      test: ["CMD-SHELL","wget --header=\"Authorization: Bearer ${CONTROL_PLANE_API_TOKEN}\" -qO- http://127.0.0.1:8080/healthz || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 10

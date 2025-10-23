@@ -25,3 +25,63 @@ test('final url mismatch adds risk', () => {
   const result = scoreFromSignals({ finalUrlMismatch: true });
   expect(result.score).toBeGreaterThanOrEqual(2);
 });
+
+test('manual overrides take precedence over signals', () => {
+  const allow = scoreFromSignals({
+    manualOverride: 'allow',
+    gsbThreatTypes: ['MALWARE'],
+  });
+  expect(allow.level).toBe('benign');
+  expect(allow.score).toBe(0);
+  expect(allow.cacheTtl).toBe(86400);
+
+  const deny = scoreFromSignals({
+    manualOverride: 'deny',
+    domainAgeDays: 1,
+  });
+  expect(deny.level).toBe('malicious');
+  expect(deny.score).toBe(15);
+});
+
+test('scoring uses domain age buckets and suspicious heuristics', () => {
+  const result = scoreFromSignals({
+    domainAgeDays: 10,
+    hasUncommonPort: true,
+    redirectCount: 3,
+    isIpLiteral: true,
+    hasExecutableExtension: true,
+  });
+  expect(result.level).toBe('malicious');
+  expect(result.score).toBeGreaterThanOrEqual(12);
+  expect(result.cacheTtl).toBe(900);
+});
+
+test('score clamps at 15 even with stacked blocklists', () => {
+  const result = scoreFromSignals({
+    gsbThreatTypes: ['MALWARE'],
+    phishtankVerified: true,
+    urlhausListed: true,
+    vtMalicious: 5,
+    homoglyph: {
+      detected: true,
+      riskLevel: 'high',
+      confusableChars: [],
+      normalizedDomain: 'evil.test',
+    },
+    urlLength: 400,
+    wasShortened: true,
+    finalUrlMismatch: true,
+  });
+  expect(result.level).toBe('malicious');
+  expect(result.score).toBeLessThanOrEqual(15);
+  expect(result.cacheTtl).toBe(900);
+});
+
+test('suspicious tier returns 1 hour ttl', () => {
+  const result = scoreFromSignals({
+    vtMalicious: 1,
+    domainAgeDays: 20,
+  });
+  expect(result.level).toBe('suspicious');
+  expect(result.cacheTtl).toBe(3600);
+});

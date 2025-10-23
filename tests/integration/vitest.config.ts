@@ -16,6 +16,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@wbscanner/shared': resolve(rootDir, '../../packages/shared/src'),
+      'url-expand': resolve(rootDir, '../stubs/url-expand.ts'),
+      bottleneck: resolve(rootDir, '../stubs/bottleneck.ts'),
     },
   },
 });

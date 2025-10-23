@@ -16,9 +16,12 @@
     "seed": "node scripts/run-seeds.js",
     "test:load": "node tests/load/http-load.js",
     "validate:config": "node scripts/validate-config.js",
-    "prebuild": "npm run validate:config"
+    "prebuild": "npm run validate:config",
+    "export:wwebjs-docs": "node scripts/export-wwebjs-docs.mjs"
   },
   "devDependencies": {
+    "cheerio": "^1.1.2",
+    "turndown": "^7.2.1",
     "vitest": "^1.6.0"
   }
 }

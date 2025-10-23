@@ -99,6 +99,47 @@ export const metrics = {
     labelNames: ['level'],
     registers: [register],
   }),
+  degradedModeEvents: new client.Counter({
+    name: 'wbscanner_degraded_mode_events_total',
+    help: 'Scans processed when all external threat providers were unavailable',
+    registers: [register],
+  }),
+  waStateChanges: new client.Counter({
+    name: 'wbscanner_wa_state_changes_total',
+    help: 'WhatsApp client state transitions by event',
+    labelNames: ['event', 'state'],
+    registers: [register],
+  }),
+  waConsecutiveAuthFailures: new client.Gauge({
+    name: 'wbscanner_wa_consecutive_auth_failures',
+    help: 'Rolling count of consecutive WhatsApp auth failures',
+    labelNames: ['client_id'],
+    registers: [register],
+  }),
+  waVerdictDelivery: new client.Counter({
+    name: 'wbscanner_wa_verdict_delivery_total',
+    help: 'Verdict delivery outcomes by result',
+    labelNames: ['result'],
+    registers: [register],
+  }),
+  waVerdictDeliveryRetries: new client.Counter({
+    name: 'wbscanner_wa_verdict_delivery_retries_total',
+    help: 'Verdict delivery retries by reason',
+    labelNames: ['reason'],
+    registers: [register],
+  }),
+  waVerdictReactions: new client.Counter({
+    name: 'wbscanner_wa_verdict_reactions_total',
+    help: 'Verdict reaction outcomes by result',
+    labelNames: ['result'],
+    registers: [register],
+  }),
+  waVerdictAttachmentUsage: new client.Counter({
+    name: 'wbscanner_wa_verdict_attachments_total',
+    help: 'Verdict attachment usage outcomes',
+    labelNames: ['result'],
+    registers: [register],
+  }),
 };
 
 export const externalLatency = new client.Histogram({
