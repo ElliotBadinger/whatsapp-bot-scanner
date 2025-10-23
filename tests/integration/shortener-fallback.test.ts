@@ -22,6 +22,9 @@ const buildResponse = (status: number, headers: Record<string, string> = {}) => 
       return headers[name.toLowerCase()] ?? null;
     },
   },
+  body: {
+    cancel: vi.fn().mockResolvedValue(undefined),
+  },
 });
 
 beforeEach(() => {
@@ -51,6 +54,8 @@ describe('Shortener fallback chain', () => {
     const result = await resolveShortener('http://bit.ly/demo');
     expect(result.provider).toBe('urlexpander');
     expect(result.finalUrl).toBe('https://expanded.example/path');
+    expect(result.expanded).toBe(true);
+    expect(result.reason).toBeUndefined();
   });
 
   it('blocks url-expander results that resolve to private addresses', async () => {
@@ -69,6 +74,50 @@ describe('Shortener fallback chain', () => {
 
     const result = await resolveShortener('http://bit.ly/private');
     expect(result.provider).toBe('original');
+    expect(result.expanded).toBe(false);
+    expect(result.reason).toBe('ssrf-blocked');
     expect(result.error).toContain('SSRF protection');
+  });
+
+  it('flags responses above the content-length cap', async () => {
+    const undici = await import('undici');
+    const expand = expandMock;
+
+    vi.mocked(undici.request).mockResolvedValue({ statusCode: 500 } as any);
+    vi.mocked(undici.fetch).mockResolvedValue(
+      buildResponse(200, { 'content-length': '2097152' }) as any,
+    );
+    expand.mockImplementation((_url: string, cb: (err: unknown, expanded?: string) => void) =>
+      cb(new Error('library failure')),
+    );
+
+    const { resolveShortener } = await import('@wbscanner/shared');
+
+    const result = await resolveShortener('http://bit.ly/oversized');
+    expect(result.provider).toBe('original');
+    expect(result.expanded).toBe(false);
+    expect(result.reason).toBe('max-content-length');
+    expect(result.error).toContain('Content too large');
+  });
+
+  it('reports timeouts from the direct fetch fallback', async () => {
+    const undici = await import('undici');
+    const expand = expandMock;
+
+    vi.mocked(undici.request).mockResolvedValue({ statusCode: 500 } as any);
+    const abortError = new Error('Aborted');
+    abortError.name = 'AbortError';
+    vi.mocked(undici.fetch).mockRejectedValue(abortError);
+    expand.mockImplementation((_url: string, cb: (err: unknown, expanded?: string) => void) =>
+      cb(new Error('library failure')),
+    );
+
+    const { resolveShortener } = await import('@wbscanner/shared');
+
+    const result = await resolveShortener('http://bit.ly/timeout');
+    expect(result.provider).toBe('original');
+    expect(result.expanded).toBe(false);
+    expect(result.reason).toBe('timeout');
+    expect(result.error).toContain('timed out');
   });
 });

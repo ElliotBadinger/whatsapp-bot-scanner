@@ -17,6 +17,10 @@ Risk Register (top):
 - WA session bans – Random delays, modest messaging, quiet hours.
 - SSRF via URL expansion – DNS/IP checks; block private ranges.
 
+## URL Expansion Safeguards
+
+Shortener fallbacks perform bounded HTTP GETs: every hop re-validates hostnames against the private-network denylist, aborts after the orchestrator timeout via `AbortSignal.timeout`, and rejects any response advertising a `content-length` beyond the expansion ceiling. These guards prevent long-running or oversized payloads from exhausting resources while maintaining redirect resolution accuracy.【F:packages/shared/src/url-shortener.ts†L78-L155】
+
 ## Blocklist Redundancy Strategy
 
 The scan orchestrator enforces a two-tier blocklist workflow: every URL is checked against Google Safe Browsing first, then the system decides whether to invoke Phishtank as a secondary provider based on the initial verdict, error state, response latency, cache status, API key availability, and feature flag configuration. This ensures that secondary lookups automatically cover clean responses, outages, and quota gaps without duplicating work when the primary provider already reports a threat.【F:services/scan-orchestrator/src/blocklists.ts†L27-L117】
