@@ -22,6 +22,9 @@ Risk Register (top):
 - Each external dependency (Google Safe Browsing, VirusTotal, urlhaus, Phishtank, urlscan, WhoisXML) is wrapped in a shared `CircuitBreaker` with a failure threshold of 5 within 60 s, a half-open success threshold of 3, and a 30 s cool-off before retrying. Breaker transitions update Prometheus gauges (`wbscanner_circuit_breaker_state`) and counters (`wbscanner_circuit_breaker_transitions_total`) for alerting.
 - Execution funnels through provider-specific retry policies that classify timeouts, rate limits, and server errors; open circuits short-circuit requests until the timeout elapses, reducing cascading failures while keeping caches available for warm responses.
 - WhoisXML quota exhaustion disables the provider for the remainder of the month and falls back to RDAP-only intel. VirusTotal rate-limit errors retain cached stats and rely on the urlhaus fallback to keep verdict coverage.
+## URL Expansion Safeguards
+
+Shortener fallbacks perform bounded HTTP GETs: every hop re-validates hostnames against the private-network denylist, aborts after the orchestrator timeout via `AbortSignal.timeout`, and rejects any response advertising a `content-length` beyond the expansion ceiling. These guards prevent long-running or oversized payloads from exhausting resources while maintaining redirect resolution accuracy.【F:packages/shared/src/url-shortener.ts†L78-L155】
 
 ## Blocklist Redundancy Strategy
 
