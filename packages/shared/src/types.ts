@@ -17,6 +17,10 @@ export interface ScanResult {
   verdict: Verdict;
   score: number;
   reasons: string[];
+  override?: {
+    status: 'allow' | 'deny';
+    reason?: string | null;
+  };
   vt?: any;
   gsb?: { matches: any[] } | boolean;
   phishtank?: any;
