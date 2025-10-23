@@ -5,38 +5,26 @@ const path = require('path');
 const envPath = path.join(__dirname, '..', '.env.example');
 
 if (!fs.existsSync(envPath)) {
-  console.error(`[validate-config] Missing .env.example at ${envPath}`);
+  console.error(`FAIL: Missing .env.example at ${envPath}`);
   process.exit(1);
 }
 
-const content = fs.readFileSync(envPath, 'utf8');
-const lines = content.split(/\r?\n/);
+const env = fs.readFileSync(envPath, 'utf8');
+const queueLines = env.split(/\r?\n/).filter(line => line.includes('_QUEUE='));
 let hasError = false;
 
-lines.forEach((line, index) => {
-  if (/^\s*#/.test(line)) {
-    return;
-  }
+queueLines.forEach((line, index) => {
+  const value = line.split('=')[1]?.trim();
 
-  const match = line.match(/^\s*([A-Z0-9_]+_QUEUE)\s*=\s*(.*)$/);
-  if (!match) {
-    return;
-  }
-
-  const [, key, rawValue] = match;
-  const value = rawValue.trim();
-
-  if (value.includes(':')) {
-    console.error(
-      `[validate-config] ${key} in .env.example cannot contain a colon (line ${index + 1}, value: "${value}").`
-    );
+  if (value && value.includes(':')) {
+    console.error(`FAIL: Queue name contains colon: ${line} (line ${index + 1})`);
     hasError = true;
   }
 });
 
 if (hasError) {
-  console.error('[validate-config] Queue names must exclude colons to avoid BullMQ runtime failures.');
   process.exit(1);
 }
 
-console.log('[validate-config] All queue configuration values are valid.');
+console.log('PASS: All queue names compliant');
+
