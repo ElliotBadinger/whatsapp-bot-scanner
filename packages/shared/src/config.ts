@@ -1,5 +1,13 @@
 import dotenv from 'dotenv';
+
 dotenv.config();
+
+const urlscanEnabled = (process.env.URLSCAN_ENABLED || 'true') === 'true';
+const urlscanCallbackSecret = (process.env.URLSCAN_CALLBACK_SECRET || '').trim();
+
+if (urlscanEnabled && !urlscanCallbackSecret) {
+  throw new Error('URLSCAN_CALLBACK_SECRET must be provided when URLSCAN_ENABLED=true');
+}
 
 function ensureNonEmpty(raw: string | undefined, envVar: string): string {
   const value = (raw ?? '').trim();
@@ -74,13 +82,13 @@ export const config = {
     timeoutMs: parseInt(process.env.RDAP_TIMEOUT_MS || '5000', 10),
   },
   urlscan: {
-    enabled: (process.env.URLSCAN_ENABLED || 'true') === 'true',
+    enabled: urlscanEnabled,
     apiKey: process.env.URLSCAN_API_KEY || '',
     baseUrl: process.env.URLSCAN_BASE_URL || 'https://urlscan.io',
     visibility: process.env.URLSCAN_VISIBILITY || 'private',
     tags: (process.env.URLSCAN_TAGS || 'wbscanner').split(',').map(t => t.trim()).filter(Boolean),
     callbackUrl: process.env.URLSCAN_CALLBACK_URL || '',
-    callbackSecret: process.env.URLSCAN_CALLBACK_SECRET || '',
+    callbackSecret: urlscanCallbackSecret,
     submitTimeoutMs: parseInt(process.env.URLSCAN_SUBMIT_TIMEOUT_MS || '10000', 10),
     resultPollTimeoutMs: parseInt(process.env.URLSCAN_RESULT_TIMEOUT_MS || '30000', 10),
     uuidTtlSeconds: parseInt(process.env.URLSCAN_UUID_TTL_SECONDS || '86400', 10),

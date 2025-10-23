@@ -225,14 +225,43 @@ type ArtifactCandidate = {
   url: string;
 };
 
-function normaliseArtifactUrl(candidate: unknown, baseUrl: string): string | undefined {
-  if (typeof candidate !== 'string') return undefined;
+function normalizeUrlscanArtifactCandidate(candidate: unknown, baseUrl: string): { url?: string; invalid: boolean } {
+  if (typeof candidate !== 'string') return { invalid: false };
   const trimmed = candidate.trim();
-  if (!trimmed) return undefined;
-  if (/^https?:\/\//i.test(trimmed)) {
-    return trimmed;
+  if (!trimmed) return { invalid: false };
+
+  const sanitizedBase = baseUrl.replace(/\/+$/, '');
+  let trustedHostname: string;
+  try {
+    trustedHostname = new URL(sanitizedBase).hostname.toLowerCase();
+  } catch {
+    return { invalid: true };
   }
-  return `${baseUrl}/${trimmed.replace(/^\/+/, '')}`;
+
+  const rawUrl = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : `${sanitizedBase}/${trimmed.replace(/^\/+/, '')}`;
+
+  const normalized = normalizeUrl(rawUrl);
+  if (!normalized) {
+    return { invalid: true };
+  }
+
+  const parsed = new URL(normalized);
+  const candidateHostname = parsed.hostname.toLowerCase();
+  const hostAllowed =
+    candidateHostname === trustedHostname || candidateHostname.endsWith(`.${trustedHostname}`);
+
+  if (!hostAllowed) {
+    return { invalid: true };
+  }
+
+  return { url: parsed.toString(), invalid: false };
+}
+
+function normaliseArtifactUrl(candidate: unknown, baseUrl: string): string | undefined {
+  const result = normalizeUrlscanArtifactCandidate(candidate, baseUrl);
+  return result.url;
 }
 
 function extractUrlscanArtifactCandidates(uuid: string, payload: any): ArtifactCandidate[] {
@@ -561,20 +590,39 @@ async function main() {
       reply.code(503).send({ ok: false, error: 'urlscan disabled' });
       return;
     }
-    if (config.urlscan.callbackSecret) {
-      const headers = req.headers as Record<string, string | undefined>;
-      const headerToken = headers['x-urlscan-secret'] || headers['x-urlscan-token'];
-      const queryToken = (req.query as Record<string, string | undefined> | undefined)?.token;
-      if (headerToken !== config.urlscan.callbackSecret && queryToken !== config.urlscan.callbackSecret) {
-        reply.code(401).send({ ok: false, error: 'unauthorized' });
-        return;
-      }
+    const secret = config.urlscan.callbackSecret;
+    const headers = req.headers as Record<string, string | string[] | undefined>;
+    const rawHeaderToken = headers['x-urlscan-secret'] ?? headers['x-urlscan-token'];
+    const headerToken = Array.isArray(rawHeaderToken) ? rawHeaderToken[0] : rawHeaderToken;
+    const queryTokenRaw = (req.query as Record<string, string | string[] | undefined> | undefined)?.token;
+    const queryToken = Array.isArray(queryTokenRaw) ? queryTokenRaw[0] : queryTokenRaw;
+
+    if (!secret || (headerToken !== secret && queryToken !== secret)) {
+      reply.code(401).send({ ok: false, error: 'unauthorized' });
+      return;
     }
     const body = req.body as any;
     const uuid = body?.uuid || body?.task?.uuid;
     if (!uuid) {
       reply.code(400).send({ ok: false, error: 'missing uuid' });
       return;
+    }
+    const urlscanBaseUrl = (config.urlscan.baseUrl || 'https://urlscan.io').replace(/\/+$/, '');
+    const artifactSources = [
+      body?.screenshotURL,
+      body?.task?.screenshotURL,
+      body?.visual?.data?.screenshotURL,
+      body?.domURL,
+      body?.task?.domURL,
+    ];
+
+    for (const source of artifactSources) {
+      const validation = normalizeUrlscanArtifactCandidate(source, urlscanBaseUrl);
+      if (validation.invalid) {
+        logger.warn({ uuid, source }, 'urlscan callback rejected due to artifact host validation');
+        reply.code(400).send({ ok: false, error: 'invalid artifact url' });
+        return;
+      }
     }
     let urlHashValue = await redis.get(`${URLSCAN_UUID_PREFIX}${uuid}`);
     if (!urlHashValue) {
@@ -849,4 +897,5 @@ export const __testables = {
   setVtRateLimiterForTest: (limiter: RateLimiterRedis | null) => { vtRateLimiter = limiter; },
   resetVtRateLimiterForTest: () => { vtRateLimiter = defaultVtRateLimiter; },
   extractUrlscanArtifactCandidates,
+  normalizeUrlscanArtifactCandidate,
 };
