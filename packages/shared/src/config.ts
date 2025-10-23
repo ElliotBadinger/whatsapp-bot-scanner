@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { logger } from './log';
 
 dotenv.config();
 
@@ -7,6 +8,16 @@ const urlscanCallbackSecret = (process.env.URLSCAN_CALLBACK_SECRET || '').trim()
 
 if (urlscanEnabled && !urlscanCallbackSecret) {
   throw new Error('URLSCAN_CALLBACK_SECRET must be provided when URLSCAN_ENABLED=true');
+}
+
+function parseStringList(value: string | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+  return value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
 }
 
 function ensureNonEmpty(raw: string | undefined, envVar: string): string {
@@ -50,12 +61,13 @@ function parseNonNegativeInt(value: string | undefined, fallback: number): numbe
   return fallback;
 }
 
+const featureFlags = {
+  attachMediaToVerdicts: (process.env.FEATURE_ATTACH_MEDIA_TO_VERDICTS || 'false') === 'true',
+};
+
 export const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
   redisUrl: process.env.REDIS_URL || 'redis://localhost:6379/0',
-  features: {
-    attachMediaToVerdicts: (process.env.FEATURE_ATTACH_MEDIA_VERDICTS || 'false') === 'true',
-  },
   postgres: {
     host: process.env.POSTGRES_HOST || 'localhost',
     port: parseInt(process.env.POSTGRES_PORT || '5432', 10),
@@ -67,7 +79,6 @@ export const config = {
     scanRequest: ensureQueueName(process.env.SCAN_REQUEST_QUEUE || 'scan-request', 'SCAN_REQUEST_QUEUE'),
     scanVerdict: ensureQueueName(process.env.SCAN_VERDICT_QUEUE || 'scan-verdict', 'SCAN_VERDICT_QUEUE'),
     urlscan: ensureQueueName(process.env.SCAN_URLSCAN_QUEUE || 'scan-urlscan', 'SCAN_URLSCAN_QUEUE'),
-    waHealth: ensureQueueName(process.env.WA_HEALTH_QUEUE || 'wa-health', 'WA_HEALTH_QUEUE'),
   },
   vt: {
     apiKey: process.env.VT_API_KEY || '',
@@ -106,6 +117,18 @@ export const config = {
     uuidTtlSeconds: parseInt(process.env.URLSCAN_UUID_TTL_SECONDS || '86400', 10),
     resultTtlSeconds: parseInt(process.env.URLSCAN_RESULT_TTL_SECONDS || '86400', 10),
     concurrency: parseInt(process.env.URLSCAN_CONCURRENCY || '2', 10),
+    get allowedArtifactHosts(): string[] {
+      const configuredHosts = parseStringList(process.env.URLSCAN_ALLOWED_HOSTS);
+      const baseHosts = [] as string[];
+      try {
+        const host = new URL(process.env.URLSCAN_BASE_URL || 'https://urlscan.io').hostname.toLowerCase();
+        baseHosts.push(host);
+      } catch {
+        // ignore invalid base URL overrides; validation happens elsewhere
+      }
+      const combined = [...baseHosts, ...configuredHosts].map((host) => host.toLowerCase());
+      return Array.from(new Set(combined.filter((host) => host.length > 0)));
+    },
   },
   whoisxml: {
     enabled: ((process.env.WHOISXML_ENABLE ?? process.env.WHOISXML_ENABLED) || 'true') === 'true',
@@ -138,25 +161,22 @@ export const config = {
       return getControlPlaneToken();
     },
     enableUi: (process.env.CONTROL_PLANE_ENABLE_UI || 'true') === 'true',
+    get csrfToken(): string {
+      return (process.env.CONTROL_PLANE_CSRF_TOKEN || getControlPlaneToken()).trim();
+    },
+    get allowedOrigins(): string[] {
+      return parseStringList(process.env.CONTROL_PLANE_ALLOWED_ORIGINS).map((origin) => origin.toLowerCase());
+    },
   },
+  features: featureFlags,
   wa: {
-    authStrategy: (() => {
-      const raw = (process.env.WA_AUTH_STRATEGY || 'local').toLowerCase();
-      return raw === 'remote' ? 'remote' : 'local';
-    })() as 'local' | 'remote',
     headless: (process.env.WA_HEADLESS || 'true') === 'true',
-    puppeteerArgs: (() => {
-      const raw = process.env.WA_PUPPETEER_ARGS;
-      if (!raw || raw.trim() === '') {
-        return ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'];
-      }
-      return raw.split(',').map((segment) => segment.trim()).filter((segment) => segment.length > 0);
-    })(),
     qrTerminal: (process.env.WA_QR_TERMINAL || 'true') === 'true',
     consentOnJoin: (process.env.WA_CONSENT_ON_JOIN || 'true') === 'true',
     quietHours: process.env.WA_QUIET_HOURS || '22-07',
     perGroupCooldownSeconds: parseInt(process.env.WA_PER_GROUP_REPLY_COOLDOWN_SECONDS || '60', 10),
     globalRatePerHour: parsePositiveInt(process.env.WA_GLOBAL_REPLY_RATE_PER_HOUR, 1000),
+    globalTokenBucketKey: process.env.WA_GLOBAL_TOKEN_BUCKET_KEY || 'wa_global_token_bucket',
     perGroupHourlyLimit: parsePositiveInt(process.env.WA_PER_GROUP_HOURLY_LIMIT, 60),
     remoteAuth: {
       store: (process.env.WA_REMOTE_AUTH_STORE || 'redis').toLowerCase(),
@@ -174,14 +194,40 @@ export const config = {
       backupIntervalMs: parsePositiveInt(process.env.WA_REMOTE_AUTH_BACKUP_INTERVAL_MS, 300000, { minimum: 60000 }),
       dataPath: process.env.WA_REMOTE_AUTH_DATA_PATH || './data/remote-session'
     },
-    autoApproveDefault: (process.env.WA_AUTO_APPROVE_DEFAULT || 'true') === 'true',
-    autoApproveRatePerHour: parsePositiveInt(process.env.WA_AUTO_APPROVE_RATE_PER_HOUR, 20, { minimum: 1 }),
-    governanceActionsPerHour: parsePositiveInt(process.env.WA_GOVERNANCE_ACTIONS_PER_HOUR, 12, { minimum: 1 }),
-    verdictAckTimeoutSeconds: parsePositiveInt(process.env.WA_VERDICT_ACK_TIMEOUT_SECONDS, 15, { minimum: 5 }),
-    verdictAckMaxRetries: parsePositiveInt(process.env.WA_VERDICT_ACK_MAX_RETRIES, 2, { minimum: 0 })
+    authStrategy: (() => {
+      const raw = (process.env.WA_AUTH_STRATEGY || 'local').toLowerCase();
+      return raw === 'remote' ? 'remote' : 'local';
+    })() as 'local' | 'remote',
+    puppeteerArgs: (() => {
+      const raw = process.env.WA_PUPPETEER_ARGS;
+      if (!raw || raw.trim() === '') {
+        return ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'];
+      }
+      return raw.split(',').map((segment) => segment.trim()).filter((segment) => segment.length > 0);
+    })(),
+    verdictAckTimeoutSeconds: parsePositiveInt(process.env.WA_VERDICT_ACK_TIMEOUT_SECONDS, 30),
+    verdictMaxRetries: parsePositiveInt(process.env.WA_VERDICT_MAX_RETRIES, 3),
+    membershipAutoApprovePerHour: parsePositiveInt(process.env.WA_MEMBERSHIP_AUTO_APPROVE_PER_HOUR, 10),
+    membershipGlobalHourlyLimit: parsePositiveInt(process.env.WA_MEMBERSHIP_GLOBAL_HOURLY_LIMIT, 100),
+    governanceInterventionsPerHour: parsePositiveInt(process.env.WA_GOVERNANCE_INTERVENTIONS_PER_HOUR, 12),
+    messageLineageTtlSeconds: parsePositiveInt(process.env.WA_MESSAGE_LINEAGE_TTL_SECONDS, 60 * 60 * 24 * 30),
   }
 };
 
 export function assertControlPlaneToken(): string {
   return getControlPlaneToken();
+}
+
+export function assertEssentialConfig(serviceName: string): void {
+  const missing: string[] = [];
+
+  if (!config.vt.apiKey?.trim()) missing.push('VT_API_KEY');
+  if (!config.gsb.apiKey?.trim()) missing.push('GSB_API_KEY');
+  if (!config.redisUrl?.trim()) missing.push('REDIS_URL');
+  if (!config.postgres.host?.trim()) missing.push('POSTGRES_HOST');
+
+  if (missing.length > 0) {
+    logger.error({ service: serviceName, missing }, 'Missing required environment variables');
+    process.exit(1);
+  }
 }

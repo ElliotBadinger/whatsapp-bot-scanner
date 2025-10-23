@@ -105,45 +105,280 @@ export const metrics = {
     labelNames: ['level'],
     registers: [register],
   }),
-  degradedModeEvents: new client.Counter({
-    name: 'wbscanner_degraded_mode_events_total',
-    help: 'Scans processed when all external threat providers were unavailable',
+  cacheLookupDuration: new client.Histogram({
+    name: 'wbscanner_cache_lookup_duration_seconds',
+    help: 'Latency of cache lookups by cache type',
+    labelNames: ['cache_type'],
+    buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5],
     registers: [register],
   }),
-  waStateChanges: new client.Counter({
-    name: 'wbscanner_wa_state_changes_total',
-    help: 'WhatsApp client state transitions by event',
-    labelNames: ['event', 'state'],
+  cacheWriteDuration: new client.Histogram({
+    name: 'wbscanner_cache_write_duration_seconds',
+    help: 'Latency of cache writes by cache type',
+    labelNames: ['cache_type'],
+    buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5],
     registers: [register],
   }),
-  waConsecutiveAuthFailures: new client.Gauge({
-    name: 'wbscanner_wa_consecutive_auth_failures',
-    help: 'Rolling count of consecutive WhatsApp auth failures',
-    labelNames: ['client_id'],
+  cacheEntryBytes: new client.Gauge({
+    name: 'wbscanner_cache_entry_bytes',
+    help: 'Serialized cache entry size by cache type',
+    labelNames: ['cache_type'],
     registers: [register],
   }),
-  waVerdictDelivery: new client.Counter({
-    name: 'wbscanner_wa_verdict_delivery_total',
-    help: 'Verdict delivery outcomes by result',
-    labelNames: ['result'],
+  cacheRefreshTotal: new client.Counter({
+    name: 'wbscanner_cache_refresh_total',
+    help: 'Cache refresh operations by cache type',
+    labelNames: ['cache_type'],
     registers: [register],
   }),
-  waVerdictDeliveryRetries: new client.Counter({
-    name: 'wbscanner_wa_verdict_delivery_retries_total',
-    help: 'Verdict delivery retries by reason',
+  cacheStaleTotal: new client.Counter({
+    name: 'wbscanner_cache_stale_total',
+    help: 'Cache hits considered stale by cache type',
+    labelNames: ['cache_type'],
+    registers: [register],
+  }),
+  cacheEntryTtl: new client.Gauge({
+    name: 'wbscanner_cache_entry_ttl_seconds',
+    help: 'Remaining TTL for cache entries by cache type',
+    labelNames: ['cache_type'],
+    registers: [register],
+  }),
+  verdictScore: new client.Histogram({
+    name: 'wbscanner_verdict_score',
+    help: 'Distribution of computed risk scores',
+    buckets: [0, 2, 4, 6, 8, 10, 12, 15, 20],
+    registers: [register],
+  }),
+  verdictReasons: new client.Counter({
+    name: 'wbscanner_verdict_reasons_total',
+    help: 'Reasons contributing to final verdicts',
     labelNames: ['reason'],
     registers: [register],
   }),
-  waVerdictReactions: new client.Counter({
-    name: 'wbscanner_wa_verdict_reactions_total',
-    help: 'Verdict reaction outcomes by result',
-    labelNames: ['result'],
+  verdictSignals: new client.Counter({
+    name: 'wbscanner_verdict_signals_total',
+    help: 'Signals observed while composing verdicts',
+    labelNames: ['signal'],
     registers: [register],
   }),
-  waVerdictAttachmentUsage: new client.Counter({
+  verdictLatency: new client.Histogram({
+    name: 'wbscanner_verdict_latency_seconds',
+    help: 'Latency from ingestion to verdict emission',
+    buckets: [0.5, 1, 2, 5, 10, 20, 40, 80],
+    registers: [register],
+  }),
+  verdictCacheTtl: new client.Histogram({
+    name: 'wbscanner_verdict_cache_ttl_seconds',
+    help: 'Cache TTL assigned to verdict responses',
+    buckets: [300, 900, 1800, 3600, 7200, 14400, 28800, 86400],
+    registers: [register],
+  }),
+  verdictEscalations: new client.Counter({
+    name: 'wbscanner_verdict_escalations_total',
+    help: 'Verdict transitions compared to cached decision',
+    labelNames: ['from', 'to'],
+    registers: [register],
+  }),
+  queueJobWait: new client.Histogram({
+    name: 'wbscanner_queue_job_wait_seconds',
+    help: 'Time jobs spend waiting in queue before execution',
+    labelNames: ['queue'],
+    buckets: [0.1, 0.5, 1, 2, 5, 10, 30, 60, 120, 300],
+    registers: [register],
+  }),
+  queueProcessingDuration: new client.Histogram({
+    name: 'wbscanner_queue_processing_duration_seconds',
+    help: 'Job processing duration per queue',
+    labelNames: ['queue'],
+    buckets: [0.1, 0.5, 1, 2, 5, 10, 20, 40, 80],
+    registers: [register],
+  }),
+  queueCompleted: new client.Counter({
+    name: 'wbscanner_queue_completed_total',
+    help: 'Jobs completed by queue',
+    labelNames: ['queue'],
+    registers: [register],
+  }),
+  queueRetries: new client.Counter({
+    name: 'wbscanner_queue_retries_total',
+    help: 'Retry attempts by queue',
+    labelNames: ['queue'],
+    registers: [register],
+  }),
+  queueFailures: new client.Counter({
+    name: 'wbscanner_queue_failures_total',
+    help: 'Failed jobs by queue',
+    labelNames: ['queue'],
+    registers: [register],
+  }),
+  queueActive: new client.Gauge({
+    name: 'wbscanner_queue_active_jobs',
+    help: 'Active jobs per queue',
+    labelNames: ['queue'],
+    registers: [register],
+  }),
+  queueDelayed: new client.Gauge({
+    name: 'wbscanner_queue_delayed_jobs',
+    help: 'Delayed jobs per queue',
+    labelNames: ['queue'],
+    registers: [register],
+  }),
+  queueFailedGauge: new client.Gauge({
+    name: 'wbscanner_queue_failed_jobs',
+    help: 'Failed job backlog per queue',
+    labelNames: ['queue'],
+    registers: [register],
+  }),
+  waMessagesReceived: new client.Counter({
+    name: 'wbscanner_wa_messages_received_total',
+    help: 'WhatsApp messages received by chat type',
+    labelNames: ['chat_type'],
+    registers: [register],
+  }),
+  waMessagesWithUrls: new client.Counter({
+    name: 'wbscanner_wa_messages_with_urls_total',
+    help: 'WhatsApp messages containing URLs',
+    labelNames: ['chat_type'],
+    registers: [register],
+  }),
+  waMessagesDropped: new client.Counter({
+    name: 'wbscanner_wa_messages_dropped_total',
+    help: 'WhatsApp messages dropped before scanning by reason',
+    labelNames: ['reason'],
+    registers: [register],
+  }),
+  waSessionReconnects: new client.Counter({
+    name: 'wbscanner_wa_session_events_total',
+    help: 'WhatsApp client session lifecycle events',
+    labelNames: ['event'],
+    registers: [register],
+  }),
+  waQrCodesGenerated: new client.Counter({
+    name: 'wbscanner_wa_qr_generated_total',
+    help: 'QR codes generated for WhatsApp reauthentication',
+    registers: [register],
+  }),
+  waVerdictsSent: new client.Counter({
+    name: 'wbscanner_wa_verdict_messages_sent_total',
+    help: 'Verdict messages sent back to WhatsApp groups',
+    registers: [register],
+  }),
+  waVerdictFailures: new client.Counter({
+    name: 'wbscanner_wa_verdict_messages_failed_total',
+    help: 'Failed attempts to send verdict messages',
+    registers: [register],
+  }),
+  waVerdictLatency: new client.Histogram({
+    name: 'wbscanner_wa_verdict_delivery_latency_seconds',
+    help: 'Latency between verdict availability and WhatsApp delivery',
+    buckets: [0.5, 1, 2, 5, 10, 20, 40],
+    registers: [register],
+  }),
+  waMessageEdits: new client.Counter({
+    name: 'wbscanner_wa_message_edits_total',
+    help: 'WhatsApp message edit events handled by cause',
+    labelNames: ['cause'],
+    registers: [register],
+  }),
+  waMessageRevocations: new client.Counter({
+    name: 'wbscanner_wa_message_revocations_total',
+    help: 'WhatsApp message revocation events by scope',
+    labelNames: ['scope'],
+    registers: [register],
+  }),
+  waMessageReactions: new client.Counter({
+    name: 'wbscanner_wa_message_reactions_total',
+    help: 'WhatsApp message reaction events grouped by reaction emoji',
+    labelNames: ['reaction'],
+    registers: [register],
+  }),
+  waVerdictAckTransitions: new client.Counter({
+    name: 'wbscanner_wa_verdict_ack_transitions_total',
+    help: 'Ack transitions observed for verdict messages',
+    labelNames: ['from', 'to'],
+    registers: [register],
+  }),
+  waVerdictAckTimeouts: new client.Counter({
+    name: 'wbscanner_wa_verdict_ack_timeouts_total',
+    help: 'Verdict delivery attempts that exceeded ack thresholds',
+    labelNames: ['reason'],
+    registers: [register],
+  }),
+  waVerdictRetryAttempts: new client.Counter({
+    name: 'wbscanner_wa_verdict_retries_total',
+    help: 'Verdict resend attempts by outcome',
+    labelNames: ['outcome'],
+    registers: [register],
+  }),
+  waVerdictAttachmentsSent: new client.Counter({
     name: 'wbscanner_wa_verdict_attachments_total',
-    help: 'Verdict attachment usage outcomes',
-    labelNames: ['result'],
+    help: 'Media attachments delivered alongside verdicts by type',
+    labelNames: ['type'],
+    registers: [register],
+  }),
+  waGroupEvents: new client.Counter({
+    name: 'wbscanner_wa_group_events_total',
+    help: 'Group lifecycle and governance events observed',
+    labelNames: ['event'],
+    registers: [register],
+  }),
+  waGovernanceActions: new client.Counter({
+    name: 'wbscanner_wa_governance_actions_total',
+    help: 'Group governance interventions executed by action',
+    labelNames: ['action'],
+    registers: [register],
+  }),
+  waGovernanceRateLimited: new client.Counter({
+    name: 'wbscanner_wa_governance_rate_limited_total',
+    help: 'Governance actions skipped due to rate limiting by action',
+    labelNames: ['action'],
+    registers: [register],
+  }),
+  waMembershipApprovals: new client.Counter({
+    name: 'wbscanner_wa_membership_approvals_total',
+    help: 'Membership approvals handled by mode',
+    labelNames: ['mode'],
+    registers: [register],
+  }),
+  waConsentGauge: new client.Gauge({
+    name: 'wbscanner_wa_group_consent_pending',
+    help: 'Number of WhatsApp groups awaiting consent acknowledgment',
+    registers: [register],
+  }),
+  waSessionState: new client.Gauge({
+    name: 'wbscanner_wa_session_state',
+    help: 'Current WhatsApp client state indicator (1 for current state, 0 otherwise)',
+    labelNames: ['state'],
+    registers: [register],
+  }),
+  waIncomingCalls: new client.Counter({
+    name: 'wbscanner_wa_incoming_calls_total',
+    help: 'Incoming WhatsApp calls handled by action',
+    labelNames: ['action'],
+    registers: [register],
+  }),
+  apiQuotaConsumption: new client.Counter({
+    name: 'wbscanner_api_quota_consumption_total',
+    help: 'API quota tokens consumed by service',
+    labelNames: ['service'],
+    registers: [register],
+  }),
+  apiQuotaResets: new client.Counter({
+    name: 'wbscanner_api_quota_resets_total',
+    help: 'API quota reset events by service',
+    labelNames: ['service'],
+    registers: [register],
+  }),
+  apiQuotaProjectedDepletion: new client.Gauge({
+    name: 'wbscanner_api_quota_projected_depletion_seconds',
+    help: 'Projected seconds until quota depletion by service',
+    labelNames: ['service'],
+    registers: [register],
+  }),
+  apiQuotaUtilization: new client.Gauge({
+    name: 'wbscanner_api_quota_utilization_ratio',
+    help: 'Fraction of quota consumed by service',
+    labelNames: ['service'],
     registers: [register],
   }),
 };
@@ -224,6 +459,28 @@ export const waSessionStatusGauge = new client.Gauge({
   name: 'wbscanner_wa_session_status',
   help: 'WhatsApp session status (1=ready,0=disconnected)',
   labelNames: ['state'],
+  registers: [register],
+});
+
+export const circuitBreakerRejections = new client.Counter({
+  name: 'wbscanner_circuit_breaker_rejections_total',
+  help: 'Requests rejected due to open circuit breakers by service',
+  labelNames: ['service'],
+  registers: [register],
+});
+
+export const circuitBreakerOpenDuration = new client.Histogram({
+  name: 'wbscanner_circuit_breaker_open_duration_seconds',
+  help: 'Duration circuits remain open before recovery',
+  labelNames: ['service'],
+  buckets: [5, 10, 30, 60, 120, 300, 600, 1200],
+  registers: [register],
+});
+
+export const rateLimiterQueueDepth = new client.Gauge({
+  name: 'wbscanner_rate_limiter_queue_depth',
+  help: 'Jobs queued inside external API rate limiters',
+  labelNames: ['service'],
   registers: [register],
 });
 

@@ -1,39 +1,33 @@
 import Fastify from 'fastify';
-import { Client, LocalAuth, RemoteAuth, Message, GroupChat, Reaction, GroupNotification, MessageMedia, Call, Chat } from 'whatsapp-web.js';
+import { Client, LocalAuth, Message, GroupChat, GroupNotification, MessageMedia, Reaction, MessageAck, Call, Contact } from 'whatsapp-web.js';
 import QRCode from 'qrcode-terminal';
 import { Queue, Worker, JobsOptions } from 'bullmq';
 import { createHash } from 'node:crypto';
 import Redis from 'ioredis';
-import { config, logger, extractUrls, normalizeUrl, urlHash, metrics, register, assertControlPlaneToken, waSessionStatusGauge } from '@wbscanner/shared';
+import path from 'node:path';
+import { readFileSync } from 'node:fs';
+import {
+  config,
+  logger,
+  extractUrls,
+  normalizeUrl,
+  urlHash,
+  metrics,
+  register,
+  assertControlPlaneToken,
+  assertEssentialConfig,
+  waSessionStatusGauge,
+  isForbiddenHostname,
+} from '@wbscanner/shared';
 import { RateLimiterRedis } from 'rate-limiter-flexible';
-import { loadEncryptionMaterials } from './crypto/dataKeyProvider';
-import { createRemoteAuthStore } from './remoteAuthStore';
-import { publishWaHealth, incrementAuthFailure, resetAuthFailures, type WaHealthContext, type WaHealthEvent } from './waHealth';
-import { createAsyncDebouncer } from './utils/debounce';
-import { sendAuthFailureAlert } from './alerts';
-import { ensureMessageState, updateMessageBody, markMessageRevoked, recordReaction, recordVerdictAssociation, clearVerdictAssociation, getMessageState, recordMessageAck, upsertMessageMetadata, recordMediaUpload, appendMessageEdit } from './state/messageStore';
-import { getGroupConsent, setGroupConsent, getAutoApprove, setAutoApprove, recordGovernanceAction, appendGovernanceLog, recordInviteRotation, getLastInviteRotation } from './groupGovernance';
-import { storePendingVerdict, clearPendingVerdict, loadPendingVerdict, restorePendingVerdicts, triggerVerdictRetry, type PendingVerdictRecord } from './verdictTracker';
-import { rememberChat, updateChatCursor, listKnownChats, syncChatHistory } from './utils/historySync';
-import { buildVerdictMedia } from './media';
+import { createGlobalTokenBucket, GLOBAL_TOKEN_BUCKET_ID } from './limiters';
+import { MessageStore, VerdictContext, VerdictAttemptPayload } from './message-store';
+import { GroupStore } from './group-store';
 
-// BullMQ requires maxRetriesPerRequest to be null to support blocking commands.
-const redisOptions = {
-  maxRetriesPerRequest: null,
-  enableReadyCheck: false,
-} as const;
-
-const redis = new Redis(config.redisUrl, redisOptions);
+const redis = new Redis(config.redisUrl);
 const scanRequestQueue = new Queue(config.queues.scanRequest, { connection: redis });
-const waHealthQueue = new Queue(config.queues.waHealth, { connection: redis });
-const waClientId = config.wa.remoteAuth.clientId || 'default';
 
-const globalLimiter = new RateLimiterRedis({
-  storeClient: redis,
-  keyPrefix: 'rate',
-  points: config.wa.globalRatePerHour,
-  duration: 3600,
-});
+const globalLimiter = createGlobalTokenBucket(redis, config.wa.globalRatePerHour, config.wa.globalTokenBucketKey);
 const groupLimiter = new RateLimiterRedis({
   storeClient: redis,
   keyPrefix: 'group_cooldown',
@@ -48,65 +42,434 @@ const groupHourlyLimiter = new RateLimiterRedis({
 });
 const governanceLimiter = new RateLimiterRedis({
   storeClient: redis,
-  keyPrefix: 'group_govern',
-  points: config.wa.governanceActionsPerHour,
+  keyPrefix: 'group_governance',
+  points: Math.max(1, config.wa.governanceInterventionsPerHour),
   duration: 3600,
 });
-const membershipApprovalLimiter = new RateLimiterRedis({
+const membershipGroupLimiter = new RateLimiterRedis({
   storeClient: redis,
-  keyPrefix: 'group_membership',
-  points: config.wa.autoApproveRatePerHour,
+  keyPrefix: 'group_membership_auto',
+  points: Math.max(1, config.wa.membershipAutoApprovePerHour),
   duration: 3600,
 });
+const membershipGlobalLimiter = new RateLimiterRedis({
+  storeClient: redis,
+  keyPrefix: 'membership_global',
+  points: Math.max(1, config.wa.membershipGlobalHourlyLimit),
+  duration: 3600,
+});
+const messageStore = new MessageStore(redis, config.wa.messageLineageTtlSeconds);
+const groupStore = new GroupStore(redis, config.wa.messageLineageTtlSeconds);
+
 const processedKey = (chatId: string, messageId: string, urlH: string) => `processed:${chatId}:${messageId}:${urlH}`;
 
-function validateStartupConfig() {
-  const required = ['VT_API_KEY', 'GSB_API_KEY', 'REDIS_URL', 'POSTGRES_HOST'];
-  const missing = required.filter((key) => !process.env[key] || process.env[key]?.trim() === '');
-  if (missing.length > 0) {
-    logger.error({ missing }, 'Missing required environment variables for wa-client');
-    process.exit(1);
+const consentStatusKey = (chatId: string) => `wa:consent:status:${chatId}`;
+const consentPendingSetKey = 'wa:consent:pending';
+const membershipPendingKey = (chatId: string) => `wa:membership:pending:${chatId}`;
+const VERDICT_ACK_TARGET = 2;
+
+const ackWatchers = new Map<string, NodeJS.Timeout>();
+let currentWaState: string | null = null;
+let botWid: string | null = null;
+
+function contextKey(context: VerdictContext): string {
+  return `${context.chatId}:${context.messageId}:${context.urlHash}`;
+}
+
+function loadConsentTemplate(): string {
+  const candidates = [
+    path.resolve(process.cwd(), 'docs/CONSENT.md'),
+    path.resolve(__dirname, '../../docs/CONSENT.md'),
+    path.resolve(__dirname, '../../../docs/CONSENT.md'),
+  ];
+  for (const candidate of candidates) {
+    try {
+      const raw = readFileSync(candidate, 'utf8');
+      if (raw.trim().length > 0) {
+        return raw.trim();
+      }
+    } catch {
+      // ignore missing file candidates
+    }
+  }
+  return [
+    'Hello! This group uses automated link scanning for safety.',
+    'Links shared here are checked against security sources and verdicts are posted in reply.',
+    'We store only normalized links, chat ID, message ID, and a hashed sender identifier for 30 days.',
+    'Admins can opt out at any time with !scanner mute.',
+    'By continuing to use this group you consent to automated link scanning. Thank you!'
+  ].join('\n');
+}
+
+const consentTemplate = loadConsentTemplate();
+
+async function refreshConsentGauge(): Promise<void> {
+  try {
+    const pending = await redis.scard(consentPendingSetKey);
+    metrics.waConsentGauge.set(pending);
+  } catch (err) {
+    logger.warn({ err }, 'Failed to refresh consent gauge');
   }
 }
 
-async function buildAuthStrategy(): Promise<LocalAuth | RemoteAuth> {
-  if (config.wa.authStrategy === 'remote') {
-    if (config.wa.remoteAuth.store !== 'redis') {
-      throw new Error(`Unsupported WA remote auth store: ${config.wa.remoteAuth.store}`);
-    }
-    const materials = await loadEncryptionMaterials({
-      store: config.wa.remoteAuth.store,
-      clientId: waClientId,
-      kmsKeyId: config.wa.remoteAuth.kmsKeyId,
-      encryptedDataKey: config.wa.remoteAuth.encryptedDataKey,
-      dataKey: config.wa.remoteAuth.dataKey,
-      vaultTransitPath: config.wa.remoteAuth.vaultTransitPath,
-      vaultToken: config.wa.remoteAuth.vaultToken,
-      vaultAddress: config.wa.remoteAuth.vaultAddress,
-    }, logger);
-    const store = createRemoteAuthStore({
-      redis,
-      logger,
-      prefix: `remoteauth:v1:${waClientId}`,
-      materials,
-      clientId: waClientId,
+async function markConsentPending(chatId: string): Promise<void> {
+  await redis.set(consentStatusKey(chatId), 'pending', 'EX', config.wa.messageLineageTtlSeconds);
+  await redis.sadd(consentPendingSetKey, chatId);
+  metrics.waGovernanceActions.labels('consent_pending').inc();
+  await refreshConsentGauge();
+}
+
+async function markConsentGranted(chatId: string): Promise<void> {
+  await redis.set(consentStatusKey(chatId), 'granted', 'EX', config.wa.messageLineageTtlSeconds);
+  await redis.srem(consentPendingSetKey, chatId);
+  metrics.waGovernanceActions.labels('consent_granted').inc();
+  await refreshConsentGauge();
+}
+
+async function clearConsentState(chatId: string): Promise<void> {
+  await redis.del(consentStatusKey(chatId));
+  await redis.srem(consentPendingSetKey, chatId);
+  await refreshConsentGauge();
+}
+
+async function getConsentStatus(chatId: string): Promise<'pending' | 'granted' | null> {
+  const status = await redis.get(consentStatusKey(chatId));
+  if (status === 'pending' || status === 'granted') {
+    return status;
+  }
+  return null;
+}
+
+async function addPendingMembership(chatId: string, requesterId: string, timestamp: number): Promise<void> {
+  await redis.hset(membershipPendingKey(chatId), requesterId, String(timestamp));
+}
+
+async function removePendingMembership(chatId: string, requesterId: string): Promise<void> {
+  await redis.hdel(membershipPendingKey(chatId), requesterId);
+}
+
+async function listPendingMemberships(chatId: string): Promise<string[]> {
+  const entries = await redis.hkeys(membershipPendingKey(chatId));
+  return entries;
+}
+
+interface VerdictJobData {
+  chatId: string;
+  messageId: string;
+  verdict: string;
+  reasons: string[];
+  url: string;
+  urlHash: string;
+  decidedAt?: number;
+  redirectChain?: string[];
+  shortener?: { provider: string; chain: string[] } | null;
+}
+
+async function collectVerdictMedia(job: VerdictJobData): Promise<Array<{ media: MessageMedia; type: 'screenshot' | 'ioc' }>> {
+  if (!config.features.attachMediaToVerdicts) {
+    return [];
+  }
+  const attachments: Array<{ media: MessageMedia; type: 'screenshot' | 'ioc' }> = [];
+  const base = resolveControlPlaneBase();
+  const token = assertControlPlaneToken();
+
+  try {
+    const resp = await fetch(`${base}/scans/${job.urlHash}/urlscan-artifacts/screenshot`, {
+      headers: { authorization: `Bearer ${token}` },
     });
-    logger.info({ clientId: waClientId }, 'Using RemoteAuth strategy for wa-client');
-    return new RemoteAuth({
-      clientId: waClientId,
-      store,
-      backupSyncIntervalMs: config.wa.remoteAuth.backupIntervalMs,
-      dataPath: config.wa.remoteAuth.dataPath,
+    if (resp.ok) {
+      const buffer = Buffer.from(await resp.arrayBuffer());
+      if (buffer.length > 0) {
+        const media = new MessageMedia('image/png', buffer.toString('base64'), `screenshot-${job.urlHash.slice(0, 8)}.png`);
+        attachments.push({ media, type: 'screenshot' });
+      }
+    }
+  } catch (err) {
+    logger.warn({ err, urlHash: job.urlHash }, 'Failed to fetch screenshot attachment');
+  }
+
+  const lines: string[] = [];
+  lines.push(`URL: ${job.url}`);
+  lines.push(`Verdict: ${job.verdict}`);
+  if (job.reasons.length > 0) {
+    lines.push('Reasons:');
+    for (const reason of job.reasons) {
+      lines.push(`- ${reason}`);
+    }
+  }
+  if (job.redirectChain && job.redirectChain.length > 0) {
+    lines.push('Redirect chain:');
+    for (const hop of job.redirectChain) {
+      lines.push(`- ${hop}`);
+    }
+  }
+  if (job.shortener?.chain && job.shortener.chain.length > 0) {
+    lines.push(`Shortener expansion (${job.shortener.provider ?? 'unknown'}):`);
+    for (const hop of job.shortener.chain) {
+      lines.push(`- ${hop}`);
+    }
+  }
+
+  const textPayload = lines.join('\n');
+  if (textPayload.trim().length > 0) {
+    const data = Buffer.from(textPayload, 'utf8').toString('base64');
+    const media = new MessageMedia('text/plain', data, `scan-${job.urlHash.slice(0, 8)}.txt`);
+    attachments.push({ media, type: 'ioc' });
+  }
+
+  return attachments;
+}
+
+async function deliverVerdictMessage(
+  client: Client,
+  job: VerdictJobData,
+  context: VerdictContext,
+  isRetry = false
+): Promise<boolean> {
+  let targetMessage: Message | null = null;
+  try {
+    targetMessage = await client.getMessageById(job.messageId);
+  } catch (err) {
+    logger.warn({ err, messageId: job.messageId }, 'Failed to hydrate original message by id');
+  }
+
+  let chat: GroupChat | null = null;
+  try {
+    if (targetMessage) {
+      chat = await targetMessage.getChat() as GroupChat;
+    } else {
+      chat = await client.getChatById(job.chatId) as GroupChat;
+    }
+  } catch (err) {
+    logger.warn({ err, chatId: job.chatId }, 'Unable to load chat for verdict delivery');
+    return false;
+  }
+
+  const verdictText = formatGroupVerdict(job.verdict, job.reasons, job.url);
+  let reply: Message | null = null;
+  try {
+    if (targetMessage) {
+      reply = await targetMessage.reply(verdictText);
+    } else {
+      try {
+        reply = await chat.sendMessage(verdictText, { quotedMessageId: job.messageId });
+      } catch (err) {
+        logger.warn({ err, chatId: job.chatId, messageId: job.messageId }, 'Failed to quote verdict message, retrying without quote');
+        reply = await chat.sendMessage(verdictText);
+      }
+    }
+  } catch (err) {
+    metrics.waVerdictFailures.inc();
+    logger.warn({ err, chatId: job.chatId, messageId: job.messageId }, 'Failed to send verdict message');
+    await messageStore.markVerdictStatus(context, 'failed');
+    return false;
+  }
+
+  const ack = typeof reply?.ack === 'number' ? reply?.ack : null;
+  const attachments = await collectVerdictMedia(job);
+  const attachmentMeta = attachments.length > 0 ? {
+    screenshot: attachments.some((item) => item.type === 'screenshot'),
+    ioc: attachments.some((item) => item.type === 'ioc'),
+  } : undefined;
+
+  await messageStore.registerVerdictAttempt({
+    chatId: job.chatId,
+    messageId: job.messageId,
+    url: job.url,
+    urlHash: job.urlHash,
+    verdict: job.verdict,
+    reasons: job.reasons,
+    decidedAt: job.decidedAt,
+    verdictMessageId: reply?.id?._serialized || reply?.id?.id,
+    ack,
+    attachments: attachmentMeta,
+    redirectChain: job.redirectChain,
+    shortener: job.shortener ?? null,
+  });
+
+  if (job.verdict === 'malicious' && targetMessage) {
+    targetMessage.react('⚠️').catch((err) => {
+      logger.warn({ err }, 'Failed to add reaction to malicious message');
     });
   }
-  logger.info('Using LocalAuth strategy for wa-client');
-  return new LocalAuth({ dataPath: './data/session' });
+
+  for (const attachment of attachments) {
+    try {
+      if (targetMessage) {
+        await targetMessage.reply(attachment.media, undefined, {
+          sendMediaAsDocument: attachment.type === 'ioc',
+        });
+      } else {
+        await chat.sendMessage(attachment.media, {
+          sendMediaAsDocument: attachment.type === 'ioc',
+        });
+      }
+      metrics.waVerdictAttachmentsSent.labels(attachment.type).inc();
+    } catch (err) {
+      logger.warn({ err, type: attachment.type }, 'Failed to send verdict attachment');
+    }
+  }
+
+  metrics.waVerdictsSent.inc();
+
+  if (reply?.id?._serialized) {
+    const retryFn = async () => { await deliverVerdictMessage(client, job, context, true); };
+    await scheduleAckWatch(context, retryFn);
+  }
+
+  if (isRetry) {
+    logger.info({ job, verdictMessageId: reply?.id?._serialized }, 'Retried verdict delivery');
+  }
+  return true;
+}
+
+async function clearAckWatchForContext(context: VerdictContext): Promise<void> {
+  const key = contextKey(context);
+  const existing = ackWatchers.get(key);
+  if (existing) {
+    clearTimeout(existing);
+    ackWatchers.delete(key);
+  }
+  try {
+    await messageStore.removePendingAckContext(context);
+  } catch (err) {
+    logger.warn({ err, context }, 'Failed to clear ack context from store');
+  }
+}
+
+async function scheduleAckWatch(context: VerdictContext, retry: () => Promise<void>): Promise<void> {
+  const key = contextKey(context);
+  const timeoutSeconds = Math.max(5, config.wa.verdictAckTimeoutSeconds);
+  await clearAckWatchForContext(context);
+  const handle = setTimeout(async () => {
+    ackWatchers.delete(key);
+    try {
+      const verdict = await messageStore.getVerdictRecord(context);
+      if (!verdict) {
+        await messageStore.removePendingAckContext(context).catch(() => undefined);
+        return;
+      }
+      const currentAck = verdict.ack ?? 0;
+      if (currentAck >= VERDICT_ACK_TARGET) {
+        await messageStore.removePendingAckContext(context).catch(() => undefined);
+        return;
+      }
+      metrics.waVerdictAckTimeouts.labels('timeout').inc();
+      if (verdict.attemptCount >= config.wa.verdictMaxRetries) {
+        await messageStore.markVerdictStatus(context, 'failed');
+        metrics.waVerdictRetryAttempts.labels('failed').inc();
+        logger.warn({ context }, 'Max verdict retry attempts reached');
+        await messageStore.removePendingAckContext(context).catch(() => undefined);
+        return;
+      }
+      await messageStore.markVerdictStatus(context, 'retrying');
+      metrics.waVerdictRetryAttempts.labels('retry').inc();
+      await retry();
+    } catch (err) {
+      logger.error({ err, context }, 'Ack timeout handler failed');
+    }
+  }, timeoutSeconds * 1000);
+  ackWatchers.set(key, handle);
+  try {
+    await messageStore.addPendingAckContext(context);
+  } catch (err) {
+    logger.warn({ err, context }, 'Failed to persist pending ack context');
+  }
+}
+
+async function rehydrateAckWatchers(client: Client): Promise<void> {
+  try {
+    const contexts = await messageStore.listPendingAckContexts(100);
+    for (const context of contexts) {
+      try {
+        const record = await messageStore.getRecord(context.chatId, context.messageId);
+        if (!record) {
+          await messageStore.removePendingAckContext(context);
+          continue;
+        }
+        const verdict = record.verdicts?.[context.urlHash];
+        if (!verdict) {
+          await messageStore.removePendingAckContext(context);
+          continue;
+        }
+        const ackValue = verdict.ack ?? 0;
+        if (ackValue >= VERDICT_ACK_TARGET || verdict.status === 'retracted' || verdict.status === 'failed') {
+          await messageStore.removePendingAckContext(context);
+          continue;
+        }
+        const job: VerdictJobData = {
+          chatId: context.chatId,
+          messageId: context.messageId,
+          verdict: verdict.verdict,
+          reasons: verdict.reasons,
+          url: verdict.url,
+          urlHash: verdict.urlHash,
+          decidedAt: verdict.decidedAt,
+          redirectChain: verdict.redirectChain,
+          shortener: verdict.shortener ?? null,
+        };
+        await scheduleAckWatch(context, async () => {
+          await deliverVerdictMessage(client, job, context, true);
+        });
+      } catch (err) {
+        logger.warn({ err, context }, 'Failed to rehydrate ack watcher for context');
+      }
+    }
+  } catch (err) {
+    logger.warn({ err }, 'Failed to list pending ack contexts for rehydration');
+  }
+}
+
+const SAFE_CONTROL_PLANE_DEFAULT = 'http://control-plane:8080';
+
+function sanitizeLogValue(value: string | undefined): string | undefined {
+  if (!value) return value;
+  return value.replace(/[\r\n\t]+/g, ' ').slice(0, 256);
+}
+
+function updateSessionStateGauge(state: string): void {
+  if (currentWaState) {
+    metrics.waSessionState.labels(currentWaState).set(0);
+  }
+  currentWaState = state;
+  metrics.waSessionState.labels(state).set(1);
+}
+
+function resolveControlPlaneBase(): string {
+  const candidate = (process.env.CONTROL_PLANE_BASE || SAFE_CONTROL_PLANE_DEFAULT).trim();
+  try {
+    const parsed = new URL(candidate);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error('invalid protocol');
+    }
+    parsed.hash = '';
+    return parsed.toString().replace(/\/+$/, '');
+  } catch {
+    return SAFE_CONTROL_PLANE_DEFAULT;
+  }
+}
+
+async function isUrlAllowedForScanning(normalized: string): Promise<boolean> {
+  try {
+    const parsed = new URL(normalized);
+    if (await isForbiddenHostname(parsed.hostname)) {
+      return false;
+    }
+    if (parsed.port) {
+      const port = Number.parseInt(parsed.port, 10);
+      if (!Number.isFinite(port) || port <= 0 || port > 65535) {
+        return false;
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function main() {
-  validateStartupConfig();
+  assertEssentialConfig('wa-client');
   assertControlPlaneToken();
-
   const app = Fastify();
   app.get('/healthz', async () => ({ ok: true }));
   app.get('/metrics', async (_req, reply) => {
@@ -114,832 +477,663 @@ async function main() {
     return register.metrics();
   });
 
-  const authStrategy = await buildAuthStrategy();
+  await refreshConsentGauge();
 
   const client = new Client({
-    puppeteer: {
-      headless: config.wa.headless,
-      args: config.wa.puppeteerArgs,
-    },
-    authStrategy
+    puppeteer: { headless: config.wa.headless },
+    authStrategy: new LocalAuth({ dataPath: './data/session' })
   });
 
-  const waHealthContext: WaHealthContext = {
-    queue: waHealthQueue,
-    redis,
-    clientId: waClientId,
-    logger,
-    alertThreshold: config.wa.remoteAuth.alertThreshold,
-    alertCooldownSeconds: config.wa.remoteAuth.alertCooldownSeconds,
-    failureWindowSeconds: config.wa.remoteAuth.failureWindowSeconds,
-  };
-  const resetDebounce = createAsyncDebouncer(config.wa.remoteAuth.resetDebounceSeconds * 1000);
-  waSessionStatusGauge.labels('ready').set(0);
-
-  const emitHealth = (payload: WaHealthEvent) => {
-    publishWaHealth(waHealthContext, payload).catch((err) => {
-      logger.warn({ err, payload }, 'Failed to publish WhatsApp health event');
-    });
-  };
-
-  let statePoller: NodeJS.Timeout | null = null;
-  const startStatePoller = () => {
-    if (statePoller) return;
-    statePoller = setInterval(async () => {
-      try {
-        const [state, version] = await Promise.all([
-          client.getState().catch(() => null),
-          client.getWWebVersion().catch(() => null),
-        ]);
-        emitHealth({ event: 'state_poll', state: state ?? undefined, version: version ?? undefined, details: { polledAt: Date.now() } });
-      } catch (err) {
-        logger.debug({ err }, 'State poll failed');
-      }
-    }, 60_000);
-  };
-
-  const stopStatePoller = () => {
-    if (statePoller) {
-      clearInterval(statePoller);
-      statePoller = null;
-    }
-  };
-
-  let historySyncTimer: NodeJS.Timeout | null = null;
-  const historySyncIntervalMs = 5 * 60 * 1000;
-
-  const runHistorySync = async () => {
-    const chatIds = await listKnownChats(redis);
-    if (chatIds.length === 0) return;
-    for (const chatId of chatIds) {
-      try {
-        const processed = await syncChatHistory({
-          client,
-          redis,
-          logger,
-          chatId,
-          onMessage: processHistoricalMessage,
-        });
-        if (processed > 0) {
-          logger.info({ chatId, processed }, 'Replayed historical messages after reconnect');
-        }
-      } catch (err) {
-        logger.error({ err, chatId }, 'Failed to sync chat history');
-      }
-    }
-  };
-
-  const startHistorySync = () => {
-    if (historySyncTimer) return;
-    historySyncTimer = setInterval(() => {
-      runHistorySync().catch((err) => logger.error({ err }, 'History sync tick failed'));
-    }, historySyncIntervalMs);
-    void runHistorySync();
-  };
-
-  const stopHistorySync = () => {
-    if (historySyncTimer) {
-      clearInterval(historySyncTimer);
-      historySyncTimer = null;
-    }
-  };
-
-  type VerdictJobPayload = {
-    chatId: string;
-    messageId: string;
-    verdict: string;
-    reasons: string[];
-    url: string;
-    urlHash: string;
-    normalizedUrl?: string;
-    artifacts?: { screenshotPath?: string | null; badgePath?: string | null };
-    urlscan?: { screenshotPath?: string | null; artifactPath?: string | null };
-    [key: string]: unknown;
-  };
-
-  const queueUrlsForMessage = async (msg: Message, chat: GroupChat, options: { forceRescan?: boolean; bodyOverride?: string } = {}) => {
-    const body = options.bodyOverride ?? msg.body ?? '';
-    const urls = extractUrls(body);
-    metrics.ingestionRate.inc();
-    metrics.urlsPerMessage.observe(urls.length);
-    if (urls.length === 0) return;
-
-    for (const raw of urls) {
-      const norm = normalizeUrl(raw);
-      if (!norm) continue;
-      const h = urlHash(norm);
-      const messageKey = msg.id._serialized;
-      const idem = processedKey(chat.id._serialized, messageKey, h);
-      if (options.forceRescan) {
-        await redis.del(idem);
-        await redis.set(idem, '1', 'EX', 60 * 60 * 24 * 7);
-      } else {
-        const already = await redis.set(idem, '1', 'EX', 60 * 60 * 24 * 7, 'NX');
-        if (already === null) continue;
-      }
-
-      try { await globalLimiter.consume('global'); } catch { continue; }
-
-      const jobOpts: JobsOptions = { removeOnComplete: true, removeOnFail: 1000, attempts: 2, backoff: { type: 'exponential', delay: 1000 } };
-      await scanRequestQueue.add('scan', {
-        chatId: chat.id._serialized,
-        messageId: messageKey,
-        senderIdHash: sha256(msg.author || msg.from || chat.id._serialized),
-        url: norm,
-        timestamp: Date.now(),
-        origin: options.forceRescan ? 'edit' : 'new'
-      }, jobOpts);
-    }
-  };
-
-  const collectMessageMetadata = async (msg: Message) => {
-    const mentionedIds = Array.isArray(msg.mentionedIds) ? msg.mentionedIds.filter((id): id is string => typeof id === 'string' && id.length > 0) : undefined;
-    const groupMentionsRaw = (msg as unknown as { groupMentions?: Array<{ groupJid?: { _serialized?: string } } | string> }).groupMentions;
-    const groupMentions = Array.isArray(groupMentionsRaw)
-      ? groupMentionsRaw
-          .map((entry) => {
-            if (typeof entry === 'string') return entry;
-            if (entry && typeof entry === 'object') {
-              const maybeJid = (entry as { groupJid?: { _serialized?: string } }).groupJid;
-              if (maybeJid && typeof maybeJid._serialized === 'string') return maybeJid._serialized;
-            }
-            return undefined;
-          })
-          .filter((id): id is string => typeof id === 'string' && id.length > 0)
-      : undefined;
-
-    let quotedMessageId: string | undefined;
-    if (msg.hasQuotedMsg) {
-      try {
-        const quoted = await msg.getQuotedMessage();
-        if (quoted?.id?._serialized) {
-          quotedMessageId = quoted.id._serialized;
-        }
-      } catch {
-        quotedMessageId = undefined;
-      }
-    }
-
-    const forwardingScore = typeof msg.forwardingScore === 'number' ? msg.forwardingScore : undefined;
-    const viewOnce = (msg as unknown as { isViewOnce?: boolean }).isViewOnce === true;
-    const ephemeral = (msg as unknown as { isEphemeral?: boolean }).isEphemeral === true;
-
-    return { mentionedIds, groupMentions, quotedMessageId, forwardingScore, viewOnce, ephemeral };
-  };
-
-  const normalizeJid = (raw: unknown): string | null => {
-    if (typeof raw === 'string') return raw;
-    if (raw && typeof raw === 'object' && '_serialized' in (raw as Record<string, unknown>)) {
-      const serialized = (raw as { _serialized?: unknown })._serialized;
-      if (typeof serialized === 'string') return serialized;
-    }
-    return null;
-  };
-
-  const withGovernanceBudget = async (chatId: string, reason: string, handler: () => Promise<void>, detail?: string): Promise<boolean> => {
-    try {
-      await governanceLimiter.consume(chatId);
-    } catch {
-      await appendGovernanceLog(redis, chatId, { action: 'governance_skipped', reason: `${reason}:rate_limited`, detail });
-      return false;
-    }
-    try {
-      await handler();
-      await recordGovernanceAction(redis, chatId, 3600);
-      await appendGovernanceLog(redis, chatId, { action: 'governance_enforced', reason, detail });
-      return true;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'unknown-error';
-      await appendGovernanceLog(redis, chatId, { action: 'governance_failed', reason, detail: message });
-      logger.warn({ err, chatId, reason }, 'Governance enforcement failed');
-      return false;
-    }
-  };
-
-  const applyAdminsOnlyGuard = async (groupChat: GroupChat, chatId: string, reason: string) => {
-    await withGovernanceBudget(chatId, reason, async () => {
-      await groupChat.setMessagesAdminsOnly(true);
-    }, 'set_admins_only');
-  };
-
-  const rotateInviteLinkSafely = async (groupChat: GroupChat, chatId: string, reason: string) => {
-    const lastRotation = await getLastInviteRotation(redis, chatId);
-    if (lastRotation && Date.now() - lastRotation < 5 * 60 * 1000) {
-      await appendGovernanceLog(redis, chatId, { action: 'invite_rotation_skipped', reason, detail: 'cooldown_active' });
-      return;
-    }
-    const rotated = await withGovernanceBudget(chatId, reason, async () => {
-      await groupChat.revokeInvite();
-      await recordInviteRotation(redis, chatId);
-    }, 'rotate_invite');
-    if (rotated) {
-      logger.info({ chatId }, 'Rotated group invite link');
-    }
-  };
-
-  const processHistoricalMessage = async (msg: Message, chat: GroupChat) => {
-    const chatId = chat.id._serialized;
-    await rememberChat(redis, chatId);
-    const metadata = await collectMessageMetadata(msg);
-    await ensureMessageState(redis, {
-      chatId,
-      messageId: msg.id._serialized,
-      from: msg.author || msg.from,
-      body: msg.body || '',
-      timestamp: msg.timestamp ? msg.timestamp * 1000 : Date.now(),
-      mentionedIds: metadata.mentionedIds,
-      groupMentions: metadata.groupMentions,
-      quotedMessageId: metadata.quotedMessageId,
-      forwardingScore: metadata.forwardingScore,
-      viewOnce: metadata.viewOnce,
-      ephemeral: metadata.ephemeral,
-    });
-    if (metadata.mentionedIds?.length || metadata.groupMentions?.length || metadata.quotedMessageId || metadata.forwardingScore !== undefined || metadata.viewOnce !== undefined || metadata.ephemeral !== undefined) {
-      await upsertMessageMetadata(redis, {
-        chatId,
-        messageId: msg.id._serialized,
-        mentionedIds: metadata.mentionedIds,
-        groupMentions: metadata.groupMentions,
-        quotedMessageId: metadata.quotedMessageId,
-        forwardingScore: metadata.forwardingScore,
-        viewOnce: metadata.viewOnce,
-        ephemeral: metadata.ephemeral,
-      });
-    }
-    await updateChatCursor(redis, chatId, msg.timestamp ? msg.timestamp * 1000 : Date.now());
-    if ((msg.body || '').startsWith('!scanner')) return;
-    await queueUrlsForMessage(msg, chat, { forceRescan: true });
-  };
-
-  const retractVerdictForMessage = async (chatId: string, messageId: string) => {
-    const state = await getMessageState(redis, chatId, messageId);
-    if (!state?.verdictMessageId) return;
-    try {
-      const verdictMsg = await client.getMessageById(state.verdictMessageId);
-      await verdictMsg.delete(true).catch(() => undefined);
-    } catch (err) {
-      logger.debug({ err, chatId, messageId }, 'Failed to delete verdict message during retraction');
-    }
-    try {
-      const original = await client.getMessageById(messageId);
-      await original.react('').catch(() => undefined);
-    } catch {
-      // ignore missing original message
-    }
-    await clearVerdictAssociation(redis, { chatId, messageId });
-    const pending = await loadPendingVerdict(redis, state.verdictMessageId);
-    if (pending) {
-      await clearPendingVerdict(redis, state.verdictMessageId, 'failed');
-    }
-  };
-
-  const deliverVerdict = async (payload: VerdictJobPayload, options: { force?: boolean; previousVerdictId?: string; retries?: number } = {}): Promise<PendingVerdictRecord | null> => {
-    const chat = await client.getChatById(payload.chatId).catch(() => null);
-    if (!chat || !(chat as GroupChat).isGroup) return null;
-    const groupChat = chat as GroupChat;
-
-    const delay = Math.floor(800 + Math.random() * 1200);
-    await new Promise(resolve => setTimeout(resolve, delay));
-
-    const attemptNumber = (options.retries ?? 0) + 1;
-
-    if (!options.force) {
-      try { await groupLimiter.consume(payload.chatId); } catch { return null; }
-    }
-    try { await groupHourlyLimiter.consume(payload.chatId); } catch { return null; }
-
-    const verdictKey = `verdict:${payload.chatId}:${payload.urlHash}`;
-    if (!options.force) {
-      const nx = await redis.set(verdictKey, '1', 'EX', 3600, 'NX');
-      if (nx === null) return null;
-    } else {
-      await redis.set(verdictKey, '1', 'EX', 3600);
-    }
-
-    if (options.previousVerdictId) {
-      try {
-        const previous = await client.getMessageById(options.previousVerdictId);
-        await previous.delete(true).catch(() => undefined);
-      } catch {
-        // best effort
-      }
-    }
-
-    let sourceMessage: Message | null = null;
-    try {
-      sourceMessage = await client.getMessageById(payload.messageId);
-    } catch {
-      sourceMessage = null;
-    }
-
-    const verdictText = formatGroupVerdict(payload.verdict, payload.reasons, payload.url);
-
-    let verdictMessage: Message | null = null;
-    let mediaWrapper: { media: MessageMedia; caption?: string } | null = null;
-    if (config.features.attachMediaToVerdicts) {
-      mediaWrapper = await buildVerdictMedia(payload, logger);
-      metrics.waVerdictAttachmentUsage.labels(mediaWrapper ? 'attached' : 'not_found').inc();
-    } else {
-      metrics.waVerdictAttachmentUsage.labels('disabled').inc();
-    }
-
-    try {
-      if (sourceMessage) {
-        if (mediaWrapper) {
-          verdictMessage = await sourceMessage.reply(mediaWrapper.media, undefined, { caption: mediaWrapper.caption ?? verdictText });
-        } else {
-          verdictMessage = await sourceMessage.reply(verdictText);
-        }
-      } else {
-        if (mediaWrapper) {
-          verdictMessage = await groupChat.sendMessage(mediaWrapper.media, { caption: mediaWrapper.caption ?? verdictText, quotedMessageId: payload.messageId });
-        } else {
-          verdictMessage = await groupChat.sendMessage(verdictText, { quotedMessageId: payload.messageId });
-        }
-      }
-    } catch (err) {
-      logger.error({ err, chatId: payload.chatId }, 'Failed to send verdict message');
-      return null;
-    }
-
-    if (sourceMessage && (payload.verdict === 'malicious' || payload.verdict === 'suspicious')) {
-      try {
-        await sourceMessage.react('⚠️');
-        metrics.waVerdictReactions.labels('success').inc();
-      } catch (err) {
-        metrics.waVerdictReactions.labels('failed').inc();
-        logger.debug({ err, chatId: payload.chatId }, 'Failed to react to flagged message');
-      }
-    }
-
-    await recordVerdictAssociation(redis, {
-      chatId: payload.chatId,
-      messageId: payload.messageId,
-      verdictMessageId: verdictMessage.id._serialized,
-      attempt: attemptNumber,
-      status: options.force ? 'resent' : 'sent',
-    });
-
-    const record: PendingVerdictRecord = {
-      verdictMessageId: verdictMessage.id._serialized,
-      originalMessageId: payload.messageId,
-      chatId: payload.chatId,
-      verdictText,
-      urlHash: payload.urlHash,
-      sentAt: Date.now(),
-      retries: options.retries ?? 0,
-      level: payload.verdict,
-      payload: payload,
-    };
-    return record;
-  };
-
-  const resendPendingVerdict = async (record: PendingVerdictRecord): Promise<PendingVerdictRecord | null> => {
-    const payload = record.payload as VerdictJobPayload;
-    return deliverVerdict(payload, { force: true, previousVerdictId: record.verdictMessageId, retries: record.retries });
-  };
-
-  await restorePendingVerdicts(redis, resendPendingVerdict, logger);
-
-  client.on('qr', qr => { if (config.wa.qrTerminal) QRCode.generate(qr, { small: true }); });
+  client.on('qr', qr => {
+    if (config.wa.qrTerminal) QRCode.generate(qr, { small: true });
+    metrics.waQrCodesGenerated.inc();
+  });
   client.on('ready', async () => {
     logger.info('WhatsApp client ready');
     waSessionStatusGauge.labels('ready').set(1);
-    emitHealth({ event: 'ready', state: 'ready' });
-    await resetAuthFailures(waHealthContext);
-    startStatePoller();
-    startHistorySync();
-  });
-  client.on('auth_failure', async (m) => {
-    logger.error({ m }, 'Auth failure');
-    emitHealth({ event: 'auth_failure', reason: typeof m === 'string' ? m : JSON.stringify(m) });
-    const { count, alert } = await incrementAuthFailure(waHealthContext);
-    if (alert) {
-      try {
-        await sendAuthFailureAlert(logger, { clientId: waClientId, count, lastMessage: typeof m === 'string' ? m : undefined });
-      } catch (err) {
-        logger.error({ err }, 'Failed to dispatch auth failure alert');
-      }
+    waSessionStatusGauge.labels('disconnected').set(0);
+    metrics.waSessionReconnects.labels('ready').inc();
+    updateSessionStateGauge('ready');
+    botWid = client.info?.wid?._serialized || null;
+    try {
+      await rehydrateAckWatchers(client);
+    } catch (err) {
+      logger.warn({ err }, 'Failed to rehydrate ack watchers on ready');
     }
+  });
+  client.on('auth_failure', (m) => {
+    logger.error({ m }, 'Auth failure');
+    waSessionStatusGauge.labels('ready').set(0);
+    metrics.waSessionReconnects.labels('auth_failure').inc();
+  });
+  client.on('change_state', (state) => {
+    const label = typeof state === 'string' ? state.toLowerCase() : 'unknown';
+    metrics.waSessionReconnects.labels(`state_${label}`).inc();
+    updateSessionStateGauge(String(state));
+    logger.info({ state }, 'WhatsApp client state change');
   });
   client.on('disconnected', (r) => {
     logger.warn({ r }, 'Disconnected');
     waSessionStatusGauge.labels('ready').set(0);
-    emitHealth({ event: 'disconnected', reason: typeof r === 'string' ? r : JSON.stringify(r) });
-    stopStatePoller();
-    stopHistorySync();
+    waSessionStatusGauge.labels('disconnected').set(1);
+    metrics.waSessionReconnects.labels('disconnected').inc();
+    updateSessionStateGauge('disconnected');
   });
-  client.on('remote_session_saved', async () => {
-    emitHealth({ event: 'remote_session_saved' });
-    await resetAuthFailures(waHealthContext);
-  });
-  client.on('change_state', (state) => {
-    emitHealth({ event: 'change_state', state });
-    if (state === 'CONNECTED') {
-      waSessionStatusGauge.labels('ready').set(1);
-      void resetAuthFailures(waHealthContext);
-      startHistorySync();
+  client.on('incoming_call', async (call: Call) => {
+    metrics.waIncomingCalls.labels('received').inc();
+    try {
+      await call.reject();
+      metrics.waIncomingCalls.labels('rejected').inc();
+    } catch (err) {
+      metrics.waIncomingCalls.labels('reject_error').inc();
+      logger.warn({ err }, 'Failed to reject incoming call');
     }
-    if (state === 'CONFLICT' || state === 'UNPAIRED_IDLE') {
-      void resetDebounce(async () => {
-        logger.warn({ state }, 'Attempting client.resetState after state change');
-        try {
-          await client.resetState();
-          emitHealth({ event: 'reset_state', state });
-        } catch (err) {
-          logger.error({ err }, 'Failed to reset WhatsApp client state');
-        }
+    try {
+      await groupStore.recordEvent({
+        chatId: call.from || 'unknown',
+        type: 'incoming_call',
+        timestamp: Date.now(),
+        actorId: call.from,
+        metadata: { isGroup: call.isGroup, isVideo: call.isVideo },
       });
+    } catch (err) {
+      logger.warn({ err }, 'Failed to record incoming call event');
     }
   });
 
-  client.on('message_edit', async (message, newBody) => {
+  client.on('message_create', async (msg: Message) => {
     try {
-      const chat = await message.getChat();
-      if (!(chat as GroupChat).isGroup) return;
-      const chatId = (chat as GroupChat).id._serialized;
-      const body = typeof newBody === 'string' ? newBody : message.body || '';
-      await appendMessageEdit(redis, { chatId, messageId: message.id._serialized, newBody: body });
-      const metadata = await collectMessageMetadata(message);
-      if (metadata.mentionedIds?.length || metadata.groupMentions?.length || metadata.quotedMessageId || metadata.forwardingScore !== undefined || metadata.viewOnce !== undefined || metadata.ephemeral !== undefined) {
-        await upsertMessageMetadata(redis, {
+      if (!msg.from) return;
+      const chat = await msg.getChat();
+      const chatType = (chat as GroupChat).isGroup ? 'group' : 'direct';
+      metrics.waMessagesReceived.labels(chatType).inc();
+      // Admin commands
+      if ((msg.body || '').startsWith('!scanner')) {
+        await handleAdminCommand(client, msg, chat as GroupChat);
+        return;
+      }
+      const chatId = chat.id._serialized;
+      const messageId = msg.id._serialized || msg.id.id;
+      const sender = msg.author || msg.from;
+      const senderHash = sha256(sender);
+      const timestampMs = typeof msg.timestamp === 'number' ? msg.timestamp * 1000 : Date.now();
+
+      await messageStore.recordMessageCreate({
+        chatId,
+        messageId,
+        senderId: sender,
+        senderIdHash: senderHash,
+        timestamp: timestampMs,
+        body: msg.body || '',
+        normalizedUrls: [],
+        urlHashes: [],
+      });
+
+      if (config.wa.consentOnJoin) {
+        const consentStatus = await getConsentStatus(chatId);
+        if (consentStatus !== 'granted') {
+          metrics.waMessagesDropped.labels('consent_pending').inc();
+          return;
+        }
+      }
+
+      const urls = extractUrls((msg.body || ''));
+      metrics.ingestionRate.inc();
+      metrics.urlsPerMessage.observe(urls.length);
+      if (urls.length === 0) {
+        metrics.waMessagesDropped.labels('no_url').inc();
+        return;
+      }
+      metrics.waMessagesWithUrls.labels(chatType).inc(urls.length);
+      if (!chat.isGroup) {
+        metrics.waMessagesDropped.labels('non_group').inc();
+        return; // Only groups per spec
+      }
+
+      const normalizedUrls: string[] = [];
+      const urlHashes: string[] = [];
+      for (const raw of urls) {
+        const norm = normalizeUrl(raw);
+        if (!norm) {
+          metrics.waMessagesDropped.labels('invalid_url').inc();
+          continue;
+        }
+
+        if (!(await isUrlAllowedForScanning(norm))) {
+          metrics.waMessagesDropped.labels('blocked_internal_host').inc();
+          logger.warn({ chatId: sanitizeLogValue(chat.id._serialized) }, 'Dropped URL due to disallowed host');
+          continue;
+        }
+
+        const h = urlHash(norm);
+        const idem = processedKey(chatId, messageId, h);
+        const already = await redis.set(idem, '1', 'EX', 60 * 60 * 24 * 7, 'NX');
+        if (already === null) {
+          metrics.waMessagesDropped.labels('duplicate').inc();
+          continue; // duplicate
+        }
+
+        normalizedUrls.push(norm);
+        urlHashes.push(h);
+
+        try {
+          await globalLimiter.consume(GLOBAL_TOKEN_BUCKET_ID);
+        } catch {
+          metrics.waMessagesDropped.labels('rate_limited_global').inc();
+          continue;
+        }
+
+        const jobOpts: JobsOptions = { removeOnComplete: true, removeOnFail: 1000, attempts: 2, backoff: { type: 'exponential', delay: 1000 } };
+        await scanRequestQueue.add('scan', {
           chatId,
-          messageId: message.id._serialized,
-          mentionedIds: metadata.mentionedIds,
-          groupMentions: metadata.groupMentions,
-          quotedMessageId: metadata.quotedMessageId,
-          forwardingScore: metadata.forwardingScore,
-          viewOnce: metadata.viewOnce,
-          ephemeral: metadata.ephemeral,
+          messageId,
+          senderIdHash: senderHash,
+          url: norm,
+          timestamp: Date.now()
+        }, jobOpts);
+      }
+      if (normalizedUrls.length > 0) {
+        await messageStore.recordMessageCreate({
+          chatId,
+          messageId,
+          senderId: sender,
+          senderIdHash: senderHash,
+          timestamp: timestampMs,
+          body: msg.body || '',
+          normalizedUrls,
+          urlHashes,
         });
       }
-      await retractVerdictForMessage(chatId, message.id._serialized);
-      await queueUrlsForMessage(message, chat as GroupChat, { forceRescan: true, bodyOverride: body });
-    } catch (err) {
-      logger.error({ err }, 'Failed to handle message_edit event');
+    } catch (e) {
+      logger.error({ err: e, chatId: sanitizeLogValue((msg as any)?.from) }, 'Failed to process incoming WhatsApp message');
     }
   });
 
-  client.on('message_revoke_everyone', async (after, before) => {
-    const target = before || after;
-    if (!target) return;
+  client.on('message_edit', async (msg: Message) => {
     try {
-      const chat = await target.getChat();
-      if (!(chat as GroupChat).isGroup) return;
-      const chatId = (chat as GroupChat).id._serialized;
-      await markMessageRevoked(redis, { chatId, messageId: target.id._serialized });
-      await retractVerdictForMessage(chatId, target.id._serialized);
+      const chat = await msg.getChat();
+      if (!(chat as GroupChat).isGroup) {
+        return;
+      }
+      const chatId = chat.id._serialized;
+      const messageId = msg.id._serialized || msg.id.id;
+      const existing = await messageStore.getRecord(chatId, messageId);
+      const previousHashes = existing?.urlHashes ?? [];
+      const urls = extractUrls(msg.body || '');
+      const normalizedUrls: string[] = [];
+      const urlHashes: string[] = [];
+      for (const raw of urls) {
+        const norm = normalizeUrl(raw);
+        if (!norm) {
+          continue;
+        }
+        normalizedUrls.push(norm);
+        urlHashes.push(urlHash(norm));
+      }
+      await messageStore.appendEdit(chatId, messageId, {
+        body: msg.body || '',
+        normalizedUrls,
+        urlHashes,
+        timestamp: Date.now(),
+      });
+      metrics.waMessageEdits.labels('processed').inc();
+
+      const senderHash = sha256(msg.author || msg.from || chatId);
+      const newHashes = new Set(urlHashes);
+      for (let i = 0; i < normalizedUrls.length; i += 1) {
+        const norm = normalizedUrls[i];
+        const hash = urlHashes[i];
+        if (previousHashes.includes(hash)) {
+          continue;
+        }
+        const idem = processedKey(chatId, messageId, hash);
+        const already = await redis.set(idem, '1', 'EX', 60 * 60 * 24 * 7, 'NX');
+        if (already === null) {
+          continue;
+        }
+        try {
+          await globalLimiter.consume(GLOBAL_TOKEN_BUCKET_ID);
+        } catch {
+          metrics.waMessagesDropped.labels('rate_limited_global').inc();
+          continue;
+        }
+        const jobOpts: JobsOptions = { removeOnComplete: true, removeOnFail: 1000, attempts: 2, backoff: { type: 'exponential', delay: 1000 } };
+        await scanRequestQueue.add('scan', {
+          chatId,
+          messageId,
+          senderIdHash: senderHash,
+          url: norm,
+          timestamp: Date.now(),
+        }, jobOpts);
+        metrics.waMessageEdits.labels('new_url').inc();
+      }
+
+      for (const removed of previousHashes.filter((hash) => !newHashes.has(hash))) {
+        const context: VerdictContext = { chatId, messageId, urlHash: removed };
+        const verdict = await messageStore.getVerdictRecord(context);
+        if (verdict && verdict.status !== 'retracted') {
+          await messageStore.markVerdictStatus(context, 'retracted');
+          metrics.waMessageEdits.labels('retracted').inc();
+          await clearAckWatchForContext(context);
+          try {
+            await msg.reply('Automated scan verdict withdrawn due to message edit.');
+          } catch (err) {
+            logger.warn({ err }, 'Failed to send verdict retraction after edit');
+          }
+        }
+      }
     } catch (err) {
-      logger.error({ err }, 'Failed to handle message revoke');
+      logger.error({ err }, 'Failed to process message edit');
     }
   });
 
-  client.on('message_revoke_me', async (message) => {
+  client.on('message_revoke_everyone', async (msg: Message, revoked?: Message) => {
     try {
-      const chat = await message.getChat();
-      if (!(chat as GroupChat).isGroup) return;
-      const chatId = (chat as GroupChat).id._serialized;
-      await markMessageRevoked(redis, { chatId, messageId: message.id._serialized });
-      await retractVerdictForMessage(chatId, message.id._serialized);
+      const original = revoked ?? msg;
+      const chat = await original.getChat();
+      if (!(chat as GroupChat).isGroup) {
+        return;
+      }
+      const chatId = chat.id._serialized;
+      const messageId = original.id._serialized || original.id.id;
+      await messageStore.recordRevocation(chatId, messageId, 'everyone', Date.now());
+      metrics.waMessageRevocations.labels('everyone').inc();
+      const record = await messageStore.getRecord(chatId, messageId);
+      if (record) {
+        let retracted = false;
+        for (const hash of Object.keys(record.verdicts)) {
+          const context: VerdictContext = { chatId, messageId, urlHash: hash };
+          const verdict = await messageStore.getVerdictRecord(context);
+          if (verdict && verdict.status !== 'retracted') {
+            await messageStore.markVerdictStatus(context, 'retracted');
+            await clearAckWatchForContext(context);
+            retracted = true;
+          }
+        }
+        if (retracted) {
+          try {
+            await chat.sendMessage('Previously flagged content was removed. Automated verdict withdrawn.');
+          } catch (err) {
+            logger.warn({ err }, 'Failed to announce verdict retraction after revoke');
+          }
+        }
+      }
     } catch (err) {
-      logger.error({ err }, 'Failed to handle self message revoke');
+      logger.error({ err }, 'Failed to handle message revoke for everyone');
+    }
+  });
+
+  client.on('message_revoke_me', async (msg: Message) => {
+    try {
+      const chat = await msg.getChat();
+      const chatId = chat.id._serialized;
+      const messageId = msg.id._serialized || msg.id.id;
+      await messageStore.recordRevocation(chatId, messageId, 'me', Date.now());
+      metrics.waMessageRevocations.labels('me').inc();
+    } catch (err) {
+      logger.warn({ err }, 'Failed to record self message revoke');
     }
   });
 
   client.on('message_reaction', async (reaction: Reaction) => {
     try {
-      const remote = (reaction.id as { remote?: string | { _serialized: string } } | undefined)?.remote;
-      const chatId = typeof remote === 'object' ? remote?._serialized : remote;
-      const parent = reaction.msgId as { _serialized?: string } | string | undefined;
-      const messageId = typeof parent === 'object' ? parent?._serialized : parent;
-      if (!chatId || !messageId) return;
-      const sender = typeof reaction.senderId === 'string' ? reaction.senderId : 'unknown';
-      const emoji = typeof reaction.reaction === 'string' && reaction.reaction.length > 0 ? reaction.reaction : null;
-      await recordReaction(redis, {
-        chatId,
-        messageId,
-        senderId: sender,
-        reaction: emoji,
+      const messageId = (reaction.msgId as any)?._serialized || reaction.msgId?.id;
+      if (!messageId) return;
+      const message = await client.getMessageById(messageId);
+      if (!message) return;
+      const chat = await message.getChat();
+      if (!(chat as GroupChat).isGroup) {
+        return;
+      }
+      const chatId = chat.id._serialized;
+      await messageStore.recordReaction(chatId, messageId, {
+        reaction: reaction.reaction || '',
+        senderId: reaction.senderId || 'unknown',
+        timestamp: (reaction.timestamp || Math.floor(Date.now() / 1000)) * 1000,
       });
+      const emoji = (reaction.reaction || '').trim();
+      const label = emoji && emoji.length <= 2 ? emoji : 'other';
+      metrics.waMessageReactions.labels(label).inc();
     } catch (err) {
-      logger.error({ err }, 'Failed to record message reaction');
+      logger.warn({ err }, 'Failed to process message reaction');
     }
   });
 
-  client.on('message_ciphertext', async (message: Message) => {
+  client.on('message_ack', async (message: Message, ack: MessageAck) => {
     try {
-      const verdictId = message.id?._serialized;
-      if (!verdictId) return;
-      const pending = await loadPendingVerdict(redis, verdictId);
-      if (!pending) return;
-      metrics.waVerdictDeliveryRetries.labels('ciphertext').inc();
-      emitHealth({ event: 'ciphertext_retry', state: 'retrying', details: { messageId: verdictId } });
-      await triggerVerdictRetry(redis, verdictId, resendPendingVerdict, logger);
-    } catch (err) {
-      logger.error({ err }, 'Failed to handle message_ciphertext');
-    }
-  });
-
-  client.on('message_ack', async (message, ack) => {
-    try {
-      let chatId: string | undefined = message.fromMe ? message.to : message.from;
-      if (!chatId) {
-        try {
-          const chat = await message.getChat();
-          if ((chat as GroupChat).isGroup) {
-            chatId = (chat as GroupChat).id._serialized;
-          }
-        } catch {
-          chatId = undefined;
-        }
+      const verdictMessageId = message.id._serialized || message.id.id;
+      if (!verdictMessageId) return;
+      const context = await messageStore.getVerdictMapping(verdictMessageId);
+      if (!context) return;
+      const ackNumber = typeof ack === 'number' ? ack : Number(ack);
+      const timestamp = Date.now();
+      const result = await messageStore.updateVerdictAck(context, Number.isFinite(ackNumber) ? ackNumber : null, timestamp);
+      if (!result) return;
+      const { verdict, previousAck } = result;
+      metrics.waVerdictAckTransitions.labels(String(previousAck ?? -1), String(ackNumber ?? -1)).inc();
+      if (ackNumber === -1) {
+        metrics.waVerdictAckTimeouts.labels('error').inc();
+        await messageStore.markVerdictStatus(context, 'failed');
+        await clearAckWatchForContext(context);
+        return;
       }
-      if (chatId) {
-        await recordMessageAck(redis, { chatId, messageId: message.id._serialized, ack });
+      if ((ackNumber ?? 0) >= VERDICT_ACK_TARGET) {
+        await clearAckWatchForContext(context);
+        await messageStore.markVerdictStatus(context, 'sent');
       }
+      logger.debug({ context, ack: ackNumber, verdictAckHistory: verdict.ackHistory }, 'Updated verdict ack state');
     } catch (err) {
-      logger.error({ err }, 'Failed to persist message ack state');
-    }
-    if (ack < 2) return;
-    const pending = await loadPendingVerdict(redis, message.id._serialized);
-    if (!pending) return;
-    await clearPendingVerdict(redis, message.id._serialized, 'success');
-  });
-
-  client.on('media_uploaded', async (message: Message) => {
-    try {
-      let chatId: string | undefined = message.fromMe ? message.to : message.from;
-      if (!chatId) {
-        try {
-          const chat = await message.getChat();
-          if ((chat as GroupChat).isGroup) {
-            chatId = (chat as GroupChat).id._serialized;
-          }
-        } catch {
-          chatId = undefined;
-        }
-      }
-      if (!chatId) return;
-      await recordMediaUpload(redis, { chatId, messageId: message.id._serialized });
-      emitHealth({ event: 'media_uploaded', state: 'uploaded', details: { chatId, messageId: message.id._serialized } });
-    } catch (err) {
-      logger.error({ err }, 'Failed to process media_uploaded event');
+      logger.warn({ err }, 'Failed to process verdict ack event');
     }
   });
 
   client.on('group_join', async (notification: GroupNotification) => {
     try {
-      const chat = await notification.getChat();
-      if (!(chat as GroupChat).isGroup) return;
-      const groupChat = chat as GroupChat;
-      const chatId = groupChat.id._serialized;
-
-      const actor = normalizeJid(notification.author);
-      const targets = (Array.isArray(notification.recipientIds) ? notification.recipientIds : [])
-        .map((id) => normalizeJid(id))
-        .filter((id): id is string => typeof id === 'string');
-      await appendGovernanceLog(redis, chatId, { action: 'group_join', actor, targets, detail: notification.type ?? 'join' });
-
-      await rememberChat(redis, chatId);
-
-      await setGroupConsent(redis, chatId, config.wa.consentOnJoin ? 'pending' : 'granted');
-
-      if (config.wa.consentOnJoin) {
-        const locked = await withGovernanceBudget(chatId, 'consent_pending_join', async () => {
-          await groupChat.setMessagesAdminsOnly(true);
-        }, 'set_admins_only_on_join');
-        if (locked) {
-          logger.info({ chatId }, 'Restricted group to admins-only after join');
-        }
-        await groupChat.sendMessage('Hello! I am the security scanner bot. Admins, please reply `!scanner consent approve` to enable link scanning or `!scanner consent deny` to remove me.');
-      } else {
-        await groupChat.sendMessage('Security scanner active. Use `!scanner mute` to pause automatic verdicts.');
+      const chat = await notification.getChat() as GroupChat;
+      const chatId = chat.id._serialized;
+      try {
+        await governanceLimiter.consume(chatId);
+      } catch {
+        metrics.waGovernanceRateLimited.labels('group_join').inc();
+        return;
       }
+      metrics.waGroupEvents.labels('join').inc();
+      metrics.waGovernanceActions.labels('group_join').inc();
+      const toggled = await chat.setMessagesAdminsOnly(true).catch((err) => {
+        logger.warn({ err, chatId }, 'Failed to restrict messages to admins only');
+        return false;
+      });
+      if (config.wa.consentOnJoin) {
+        await markConsentPending(chatId);
+        metrics.waGroupEvents.labels('consent_pending').inc();
+        await groupStore.recordEvent({
+          chatId,
+          type: 'consent_pending',
+          timestamp: Date.now(),
+          actorId: notification.author,
+          recipients: notification.recipientIds,
+          metadata: { reason: 'group_join' },
+        });
+      } else {
+        await markConsentGranted(chatId);
+        metrics.waGroupEvents.labels('consent_granted').inc();
+        await groupStore.recordEvent({
+          chatId,
+          type: 'consent_granted',
+          timestamp: Date.now(),
+          actorId: notification.author,
+          recipients: notification.recipientIds,
+          metadata: { reason: 'group_join' },
+        });
+      }
+      try {
+        await chat.sendMessage(consentTemplate);
+      } catch (err) {
+        logger.warn({ err, chatId }, 'Failed to send consent message on join');
+      }
+      if (!config.wa.consentOnJoin && toggled) {
+        await chat.setMessagesAdminsOnly(false).catch(() => undefined);
+      }
+      await groupStore.recordEvent({
+        chatId,
+        type: 'join',
+        timestamp: Date.now(),
+        actorId: notification.author,
+        recipients: notification.recipientIds,
+        metadata: { adminsOnly: toggled === true, consentRequired: config.wa.consentOnJoin },
+      });
     } catch (err) {
-      logger.error({ err }, 'Failed to handle group_join event');
+      logger.error({ err }, 'Failed to handle group join notification');
     }
   });
 
   client.on('group_membership_request', async (notification: GroupNotification) => {
     try {
-      const chat = await notification.getChat();
-      if (!(chat as GroupChat).isGroup) return;
-      const groupChat = chat as GroupChat;
-      const chatId = groupChat.id._serialized;
-
-      const actor = normalizeJid(notification.author);
-      const targets = (Array.isArray(notification.recipientIds) ? notification.recipientIds : [])
-        .map((id) => normalizeJid(id))
-        .filter((id): id is string => typeof id === 'string');
-      await appendGovernanceLog(redis, chatId, { action: 'group_membership_request', actor, targets, detail: notification.type ?? 'membership_request' });
-
-      await rememberChat(redis, chatId);
-
-      const autoApprove = await getAutoApprove(redis, chatId, config.wa.autoApproveDefault);
-      if (!autoApprove) return;
-
-      try { await membershipApprovalLimiter.consume(chatId); } catch {
-        logger.warn({ chatId }, 'Auto-approval rate limited; skipping membership approval');
-        await appendGovernanceLog(redis, chatId, { action: 'group_membership_request_skipped', actor, targets, detail: 'rate_limited' });
+      const chat = await notification.getChat() as GroupChat;
+      const chatId = chat.id._serialized;
+      const requesterId = notification.author;
+      if (!requesterId) {
+        return;
+      }
+      metrics.waGroupEvents.labels('membership_request').inc();
+      await groupStore.recordEvent({
+        chatId,
+        type: 'membership_request',
+        timestamp: Date.now(),
+        actorId: requesterId,
+        recipients: notification.recipientIds,
+        metadata: { requestTimestamp: notification.timestamp },
+      });
+      try {
+        await membershipGroupLimiter.consume(chatId);
+        await membershipGlobalLimiter.consume('global');
+      } catch {
+        metrics.waGovernanceRateLimited.labels('membership_auto').inc();
+        await addPendingMembership(chatId, requesterId, Date.now());
+        metrics.waMembershipApprovals.labels('rate_limited').inc();
+        await groupStore.recordEvent({
+          chatId,
+          type: 'membership_pending',
+          timestamp: Date.now(),
+          actorId: requesterId,
+          metadata: { reason: 'rate_limited' },
+        });
+        try {
+          await chat.sendMessage(`Membership request from ${requesterId} queued for admin review. Use !scanner approve ${requesterId} to override.`);
+        } catch (err) {
+          logger.warn({ err, chatId }, 'Failed to notify group about pending membership request');
+        }
         return;
       }
 
-      const requesterIds = notification.recipientIds && notification.recipientIds.length > 0 ? notification.recipientIds : undefined;
-      const approveOptions = { requesterIds: requesterIds ?? null, sleep: null as number | null };
-      await groupChat.approveGroupMembershipRequests(approveOptions);
-      await recordGovernanceAction(redis, chatId, 3600);
-      logger.info({ chatId, requesterIds }, 'Auto-approved group membership request');
-      const normalized = (requesterIds ?? []).map((id) => normalizeJid(id)).filter((id): id is string => typeof id === 'string');
-      await appendGovernanceLog(redis, chatId, { action: 'group_membership_auto_approved', actor, targets: normalized, detail: 'auto_approved' });
+      try {
+        await client.approveGroupMembershipRequests(chatId, { requesterIds: [requesterId], sleep: null });
+        metrics.waMembershipApprovals.labels('auto').inc();
+        metrics.waGovernanceActions.labels('membership_auto').inc();
+        await removePendingMembership(chatId, requesterId);
+        await groupStore.recordEvent({
+          chatId,
+          type: 'membership_auto',
+          timestamp: Date.now(),
+          actorId: requesterId,
+        });
+        try {
+          await chat.sendMessage(`Automatically approved membership request from ${requesterId}.`);
+        } catch (err) {
+          logger.warn({ err, chatId }, 'Failed to announce auto-approved membership');
+        }
+      } catch (err) {
+        logger.warn({ err, chatId, requesterId }, 'Auto approval failed, storing for manual review');
+        metrics.waMembershipApprovals.labels('error').inc();
+        await addPendingMembership(chatId, requesterId, Date.now());
+        await groupStore.recordEvent({
+          chatId,
+          type: 'membership_error',
+          timestamp: Date.now(),
+          actorId: requesterId,
+          metadata: { reason: 'auto_approval_failed' },
+        });
+        try {
+          await chat.sendMessage(`Could not auto-approve ${requesterId}. An admin may run !scanner approve ${requesterId} to proceed.`);
+        } catch (sendErr) {
+          logger.warn({ err: sendErr, chatId }, 'Failed to notify admin about membership approval failure');
+        }
+      }
     } catch (err) {
-      logger.error({ err }, 'Failed to auto-approve membership request');
+      logger.error({ err }, 'Failed to process membership request');
     }
   });
 
   client.on('group_leave', async (notification: GroupNotification) => {
     try {
-      const chat = await notification.getChat();
-      if (!(chat as GroupChat).isGroup) return;
-      const groupChat = chat as GroupChat;
-      const chatId = groupChat.id._serialized;
-      const actor = normalizeJid(notification.author);
-      const targets = (Array.isArray(notification.recipientIds) ? notification.recipientIds : [])
-        .map((id) => normalizeJid(id))
-        .filter((id): id is string => typeof id === 'string');
-      const changeType = notification.type ?? 'leave';
-      await appendGovernanceLog(redis, chatId, { action: 'group_leave', actor, targets, detail: changeType });
-
-      const botJid = client.info?.wid?._serialized;
-      if (botJid && targets.includes(botJid) && changeType === 'remove') {
-        logger.warn({ chatId }, 'Bot removed from group; skipping governance escalation');
-        return;
+      const chat = await notification.getChat() as GroupChat;
+      const chatId = chat.id._serialized;
+      const recipients = (notification.recipientIds && notification.recipientIds.length > 0)
+        ? notification.recipientIds
+        : (notification.author ? [notification.author] : []);
+      const normalizedType = notification.type === 'remove' ? 'leave_remove' : 'leave';
+      metrics.waGroupEvents.labels(normalizedType).inc();
+      for (const member of recipients) {
+        await removePendingMembership(chatId, member).catch(() => undefined);
       }
-
-      if (changeType === 'remove' && targets.length >= 3) {
-        await applyAdminsOnlyGuard(groupChat, chatId, 'bulk_member_removal');
-        await rotateInviteLinkSafely(groupChat, chatId, 'bulk_member_removal');
+      const includesBot = !!botWid && recipients.includes(botWid);
+      if (includesBot) {
+        await clearConsentState(chatId);
+        metrics.waGroupEvents.labels('bot_removed').inc();
+        await groupStore.recordEvent({
+          chatId,
+          type: 'bot_removed',
+          timestamp: Date.now(),
+          actorId: notification.author,
+          recipients,
+          metadata: { originalType: notification.type },
+        });
       }
+      await groupStore.recordEvent({
+        chatId,
+        type: normalizedType,
+        timestamp: Date.now(),
+        actorId: notification.author,
+        recipients,
+        metadata: { includesBot },
+      });
     } catch (err) {
-      logger.error({ err }, 'Failed to handle group_leave event');
+      logger.error({ err }, 'Failed to process group leave notification');
     }
   });
 
   client.on('group_admin_changed', async (notification: GroupNotification) => {
     try {
-      const chat = await notification.getChat();
-      if (!(chat as GroupChat).isGroup) return;
-      const groupChat = chat as GroupChat;
-      const chatId = groupChat.id._serialized;
-      const actor = normalizeJid(notification.author);
-      const targets = (Array.isArray(notification.recipientIds) ? notification.recipientIds : [])
-        .map((id) => normalizeJid(id))
-        .filter((id): id is string => typeof id === 'string');
-      const changeTypeRaw = notification.type as unknown;
-      const changeType = typeof changeTypeRaw === 'string' ? changeTypeRaw : String(changeTypeRaw ?? 'admin_changed');
-      await appendGovernanceLog(redis, chatId, { action: 'group_admin_changed', actor, targets, detail: changeType });
-
-      if (changeType === 'promote' || changeType === 'demote') {
-        await applyAdminsOnlyGuard(groupChat, chatId, `admin_change_${changeType}`);
-      }
-      if (changeType === 'promote') {
-        await rotateInviteLinkSafely(groupChat, chatId, 'admin_promotion_invite');
-      }
-    } catch (err) {
-      logger.error({ err }, 'Failed to handle group_admin_changed event');
-    }
-  });
-
-  client.on('group_participants_changed', async (notification: GroupNotification) => {
-    try {
-      const chat = await notification.getChat();
-      if (!(chat as GroupChat).isGroup) return;
-      const groupChat = chat as GroupChat;
-      const chatId = groupChat.id._serialized;
-      const actor = normalizeJid(notification.author);
-      const targets = (Array.isArray(notification.recipientIds) ? notification.recipientIds : [])
-        .map((id) => normalizeJid(id))
-        .filter((id): id is string => typeof id === 'string');
-      const changeType = notification.type ?? 'participants_changed';
-      await appendGovernanceLog(redis, chatId, { action: 'group_participants_changed', actor, targets, detail: changeType });
-
-      if (changeType === 'add' && targets.length >= 3) {
-        await applyAdminsOnlyGuard(groupChat, chatId, 'mass_addition_detected');
-        await rotateInviteLinkSafely(groupChat, chatId, 'mass_addition_detected');
-      }
-      if (changeType === 'remove' && targets.length >= 2) {
-        await applyAdminsOnlyGuard(groupChat, chatId, 'sequential_removal_detected');
+      const chat = await notification.getChat() as GroupChat;
+      const chatId = chat.id._serialized;
+      const eventType = notification.type === 'promote' ? 'admin_promote' : 'admin_demote';
+      metrics.waGroupEvents.labels(eventType).inc();
+      const recipients = await notification.getRecipients().catch(() => [] as Contact[]);
+      await groupStore.recordEvent({
+        chatId,
+        type: eventType,
+        timestamp: Date.now(),
+        actorId: notification.author,
+        recipients: notification.recipientIds,
+        metadata: { body: notification.body },
+      });
+      if (notification.type === 'promote' && recipients.length > 0) {
+        try {
+          await governanceLimiter.consume(chatId);
+        } catch {
+          metrics.waGovernanceRateLimited.labels('admin_change').inc();
+          return;
+        }
+        const consentStatus = config.wa.consentOnJoin ? await getConsentStatus(chatId) : 'granted';
+        const mentionText = recipients.map((contact) => `@${contact.id?.user || contact.id?._serialized || 'member'}`).join(' ');
+        const lines = [`${mentionText} promoted to admin.`];
+        if (consentStatus !== 'granted') {
+          lines.push('This group is still awaiting consent. Please review and run !scanner consent when ready.');
+          await chat.setMessagesAdminsOnly(true).catch(() => undefined);
+        }
+        await chat.sendMessage(lines.join(' '), { mentions: recipients });
+        metrics.waGovernanceActions.labels('admin_prompt').inc();
       }
     } catch (err) {
-      logger.error({ err }, 'Failed to handle group_participants_changed event');
+      logger.error({ err }, 'Failed to process admin change notification');
     }
   });
 
   client.on('group_update', async (notification: GroupNotification) => {
     try {
-      const chat = await notification.getChat();
-      if (!(chat as GroupChat).isGroup) return;
-      const groupChat = chat as GroupChat;
-      const chatId = groupChat.id._serialized;
-      const actor = normalizeJid(notification.author);
-      const updateType = notification.type ?? 'update';
-      const summary = typeof notification.body === 'string' && notification.body.length > 0
-        ? `body:${notification.body.slice(0, 160)}`
-        : undefined;
-      await appendGovernanceLog(redis, chatId, { action: 'group_update', actor, detail: updateType, reason: summary, targets: [] });
-
-      if (updateType === 'restrict' || updateType === 'announce') {
-        await applyAdminsOnlyGuard(groupChat, chatId, `settings_${updateType}`);
-        await rotateInviteLinkSafely(groupChat, chatId, `settings_${updateType}`);
-      }
-    } catch (err) {
-      logger.error({ err }, 'Failed to handle group_update event');
-    }
-  });
-
-  client.on('incoming_call', async (call: Call) => {
-    try {
-      emitHealth({
-        event: 'incoming_call',
-        state: call.isVideo ? 'video' : 'voice',
-        details: {
-          from: call.from,
-          isGroup: call.isGroup,
-          canHandleLocally: call.canHandleLocally,
-        },
-      });
-    } catch (err) {
-      logger.error({ err }, 'Failed to record incoming call');
-    }
-  });
-
-  client.on('chat_removed', async (chat: Chat) => {
-    try {
-      const chatId = (chat as unknown as { id?: { _serialized?: string } }).id?._serialized;
-      emitHealth({ event: 'chat_removed', state: 'removed', details: { chatId } });
-    } catch (err) {
-      logger.error({ err }, 'Failed to handle chat_removed event');
-    }
-  });
-
-  const handleMessageCreate = async (msg: Message) => {
-    try {
-      const chat = await msg.getChat();
-      if (!(chat as GroupChat).isGroup) return;
-      const groupChat = chat as GroupChat;
-      const chatId = groupChat.id._serialized;
-      const metadata = await collectMessageMetadata(msg);
-      await ensureMessageState(redis, {
+      const chat = await notification.getChat() as GroupChat;
+      const chatId = chat.id._serialized;
+      const subtype = notification.type || 'unknown';
+      const map: Record<string, string> = {
+        subject: 'update_subject',
+        description: 'update_description',
+        picture: 'update_picture',
+        announce: 'update_announce',
+        restrict: 'update_restrict',
+      };
+      const eventType = map[subtype] ?? `update_${subtype}`;
+      metrics.waGroupEvents.labels(eventType).inc();
+      await groupStore.recordEvent({
         chatId,
-        messageId: msg.id._serialized,
-        from: msg.author || msg.from,
-        body: msg.body || '',
-        timestamp: msg.timestamp ? msg.timestamp * 1000 : Date.now(),
-        mentionedIds: metadata.mentionedIds,
-        groupMentions: metadata.groupMentions,
-        quotedMessageId: metadata.quotedMessageId,
-        forwardingScore: metadata.forwardingScore,
-        viewOnce: metadata.viewOnce,
-        ephemeral: metadata.ephemeral,
+        type: eventType,
+        timestamp: Date.now(),
+        actorId: notification.author,
+        recipients: notification.recipientIds,
+        details: notification.body,
+        metadata: { subtype },
       });
-      if (metadata.mentionedIds?.length || metadata.groupMentions?.length || metadata.quotedMessageId || metadata.forwardingScore !== undefined || metadata.viewOnce !== undefined || metadata.ephemeral !== undefined) {
-        await upsertMessageMetadata(redis, {
-          chatId,
-          messageId: msg.id._serialized,
-          mentionedIds: metadata.mentionedIds,
-          groupMentions: metadata.groupMentions,
-          quotedMessageId: metadata.quotedMessageId,
-          forwardingScore: metadata.forwardingScore,
-          viewOnce: metadata.viewOnce,
-          ephemeral: metadata.ephemeral,
-        });
+      if (subtype === 'announce' && config.wa.consentOnJoin) {
+        const consentStatus = await getConsentStatus(chatId);
+        if (consentStatus === 'pending') {
+          await chat.setMessagesAdminsOnly(true).catch(() => undefined);
+        }
       }
-      await rememberChat(redis, chatId);
-      await updateChatCursor(redis, chatId, msg.timestamp ? msg.timestamp * 1000 : Date.now());
-
-      if ((msg.body || '').startsWith('!scanner')) {
-        await handleAdminCommand(client, msg, groupChat);
-        return;
-      }
-
-      await queueUrlsForMessage(msg, groupChat);
-    } catch (e) {
-      logger.error(e);
+    } catch (err) {
+      logger.error({ err }, 'Failed to process group update notification');
     }
-  };
+  });
 
   // Consume verdicts
   new Worker(config.queues.scanVerdict, async (job) => {
+    const queueName = config.queues.scanVerdict;
+    const started = Date.now();
+    const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
+    metrics.queueJobWait.labels(queueName).observe(waitSeconds);
+    const data = job.data as VerdictJobData & { decidedAt?: number; redirectChain?: string[]; shortener?: { provider: string; chain: string[] } | null };
+    const payload: VerdictJobData = {
+      chatId: data.chatId,
+      messageId: data.messageId,
+      verdict: data.verdict,
+      reasons: data.reasons,
+      url: data.url,
+      urlHash: data.urlHash,
+      decidedAt: data.decidedAt,
+      redirectChain: data.redirectChain,
+      shortener: data.shortener ?? null,
+    };
     try {
-      const payload = job.data as VerdictJobPayload;
-      const record = await deliverVerdict(payload);
-      if (record) {
-        await storePendingVerdict(redis, record, resendPendingVerdict, logger);
-      }
+      const delay = Math.floor(800 + Math.random() * 1200);
+      await new Promise<void>((resolve) => {
+        setTimeout(async () => {
+          try {
+            try {
+              await groupLimiter.consume(payload.chatId);
+              await groupHourlyLimiter.consume(payload.chatId);
+            } catch {
+              metrics.waMessagesDropped.labels('verdict_rate_limited').inc();
+              return;
+            }
+            const key = `verdict:${payload.chatId}:${payload.urlHash}`;
+            const nx = await redis.set(key, '1', 'EX', 3600, 'NX');
+            if (nx === null) {
+              metrics.waMessagesDropped.labels('verdict_duplicate').inc();
+              return;
+            }
+            const context: VerdictContext = {
+              chatId: payload.chatId,
+              messageId: payload.messageId,
+              urlHash: payload.urlHash,
+            };
+            await deliverVerdictMessage(client, payload, context);
+          } finally {
+            const verdictLatencySeconds = Math.max(0, (Date.now() - (payload.decidedAt ?? started)) / 1000);
+            metrics.waVerdictLatency.observe(verdictLatencySeconds);
+            const processingSeconds = (Date.now() - started) / 1000;
+            metrics.queueProcessingDuration.labels(queueName).observe(processingSeconds);
+            metrics.queueCompleted.labels(queueName).inc();
+            if (job.attemptsMade > 0) {
+              metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
+            }
+            resolve();
+          }
+        }, delay);
+      });
     } catch (err) {
-      logger.error({ err }, 'Failed to process verdict job');
+      metrics.queueFailures.labels(queueName).inc();
+      metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
+      throw err;
     }
   }, { connection: redis });
-
-  client.on('message_create', handleMessageCreate);
 
   await client.initialize();
   await app.listen({ host: '0.0.0.0', port: 3000 });
@@ -961,8 +1155,8 @@ export function formatGroupVerdict(verdict: string, reasons: string[], url: stri
   return `Link scan: ${level}\nDomain: ${domain}\n${advice}${reasonsStr ? `\nWhy: ${reasonsStr}` : ''}`;
 }
 
-export async function handleAdminCommand(client: Client, msg: Message, preloadedChat?: GroupChat) {
-  const chat = preloadedChat ?? await msg.getChat();
+export async function handleAdminCommand(client: Client, msg: Message, existingChat?: GroupChat) {
+  const chat = existingChat ?? (await msg.getChat());
   if (!(chat as GroupChat).isGroup) return;
   const gc = chat as GroupChat;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -973,92 +1167,115 @@ export async function handleAdminCommand(client: Client, msg: Message, preloaded
   const parts = (msg.body || '').trim().split(/\s+/);
   const cmd = parts[1];
   if (!cmd) return;
-  const chatId = gc.id._serialized;
-  const base = process.env.CONTROL_PLANE_BASE || 'http://control-plane:8080';
+  const base = resolveControlPlaneBase();
   const token = assertControlPlaneToken();
+  const csrfToken = config.controlPlane.csrfToken;
+  const authHeaders = {
+    authorization: `Bearer ${token}`,
+    'x-csrf-token': csrfToken,
+  } as const;
 
   if (cmd === 'mute') {
-    const resp = await fetch(`${base}/groups/${encodeURIComponent(chatId)}/mute`, { method: 'POST', headers: { authorization: `Bearer ${token}` } }).catch(() => null);
+    const resp = await fetch(`${base}/groups/${encodeURIComponent(chat.id._serialized)}/mute`, { method: 'POST', headers: authHeaders }).catch(() => null);
     await chat.sendMessage(resp && resp.ok ? 'Scanner muted for 60 minutes.' : 'Mute failed.');
-    logger.info({ chatId, actor: sender.id._serialized, action: 'mute' }, 'Audit: group mute issued');
   } else if (cmd === 'unmute') {
-    const resp = await fetch(`${base}/groups/${encodeURIComponent(chatId)}/unmute`, { method: 'POST', headers: { authorization: `Bearer ${token}` } }).catch(() => null);
+    const resp = await fetch(`${base}/groups/${encodeURIComponent(chat.id._serialized)}/unmute`, { method: 'POST', headers: authHeaders }).catch(() => null);
     await chat.sendMessage(resp && resp.ok ? 'Scanner unmuted.' : 'Unmute failed.');
-    logger.info({ chatId, actor: sender.id._serialized, action: 'unmute' }, 'Audit: group unmute issued');
   } else if (cmd === 'status') {
     const resp = await fetch(`${base}/status`, { headers: { authorization: `Bearer ${token}` } }).catch(() => null);
     const json = resp && resp.ok ? await resp.json() : {};
-    await chat.sendMessage(`Scanner status: scans=${json.scans || 0}, malicious=${json.malicious || 0}`);
+    await chat.sendMessage(`Scanner status: scans=${json.scans||0}, malicious=${json.malicious||0}`);
   } else if (cmd === 'rescan' && parts[2]) {
     const rescanUrl = parts[2];
     const resp = await fetch(`${base}/rescan`, {
       method: 'POST',
       headers: {
-        authorization: `Bearer ${token}`,
+        ...authHeaders,
         'content-type': 'application/json',
       },
       body: JSON.stringify({ url: rescanUrl }),
     }).catch(() => null);
-    await chat.sendMessage(resp && resp.ok ? 'Rescan queued.' : 'Rescan failed.');
-    metrics.rescanRequests.labels('wa').inc();
-  } else if (cmd === 'consent') {
-    const decision = (parts[2] || '').toLowerCase();
-    if (['approve', 'allowed', 'allow', 'yes', 'on', 'grant'].includes(decision)) {
-      await setGroupConsent(redis, chatId, 'granted');
-      await chat.sendMessage('Consent recorded. Link scanning is active.');
-      logger.info({ chatId, actor: sender.id._serialized, action: 'consent_granted' }, 'Audit: consent granted');
-      try {
-        await governanceLimiter.consume(chatId);
-        await gc.setMessagesAdminsOnly(false);
-        await recordGovernanceAction(redis, chatId, 3600);
-      } catch (err) {
-        logger.warn({ err, chatId }, 'Failed to restore group messaging permissions');
+    if (resp && resp.ok) {
+      const data = await resp.json().catch(() => null);
+      if (data?.ok && data.urlHash && data.jobId) {
+        await chat.sendMessage(`Rescan queued. hash=${data.urlHash} job=${data.jobId}`);
+      } else {
+        await chat.sendMessage('Rescan queued, awaiting confirmation.');
       }
-    } else if (['deny', 'decline', 'no', 'off', 'remove'].includes(decision)) {
-      await setGroupConsent(redis, chatId, 'denied');
-      await chat.sendMessage('Consent denied. The scanner will leave the group.');
-      logger.info({ chatId, actor: sender.id._serialized, action: 'consent_denied' }, 'Audit: consent denied');
-      await gc.leave();
-    } else if (decision === 'status') {
-      const state = await getGroupConsent(redis, chatId);
-      await chat.sendMessage(`Consent status: ${state ?? 'pending'}`);
     } else {
-      await chat.sendMessage('Usage: !scanner consent approve|deny|status');
+      await chat.sendMessage('Rescan failed.');
     }
-  } else if (cmd === 'autoapprove') {
-    const mode = (parts[2] || '').toLowerCase();
-    if (['on', 'enable', 'yes'].includes(mode)) {
-      await setAutoApprove(redis, chatId, true);
-      await chat.sendMessage('Automatic membership approval enabled.');
-      logger.info({ chatId, actor: sender.id._serialized, action: 'autoapprove_on' }, 'Audit: auto-approve enabled');
-    } else if (['off', 'disable', 'no'].includes(mode)) {
-      await setAutoApprove(redis, chatId, false);
-      await chat.sendMessage('Automatic membership approval disabled.');
-      logger.info({ chatId, actor: sender.id._serialized, action: 'autoapprove_off' }, 'Audit: auto-approve disabled');
-    } else if (mode === 'status') {
-      const enabled = await getAutoApprove(redis, chatId, config.wa.autoApproveDefault);
-      await chat.sendMessage(`Auto-approval is ${enabled ? 'enabled' : 'disabled'}.`);
-    } else {
-      await chat.sendMessage('Usage: !scanner autoapprove on|off|status');
+  } else if (cmd === 'consent') {
+    if (!config.wa.consentOnJoin) {
+      await chat.sendMessage('Consent enforcement is currently disabled.');
+      return;
     }
-  } else if (cmd === 'approve_join' && parts[2]) {
-    const userId = parts[2];
+    await markConsentGranted(chat.id._serialized);
+    await gc.setMessagesAdminsOnly(false).catch(() => undefined);
+    await chat.sendMessage('Consent recorded. Automated scanning enabled for this group.');
+    metrics.waGroupEvents.labels('consent_granted').inc();
+    await groupStore.recordEvent({
+      chatId: chat.id._serialized,
+      type: 'consent_granted',
+      timestamp: Date.now(),
+      actorId: msg.author || msg.from,
+      metadata: { source: 'command' },
+    });
+  } else if (cmd === 'consentstatus') {
+    const status = await getConsentStatus(chat.id._serialized) ?? 'none';
+    await chat.sendMessage(`Consent status: ${status}`);
+  } else if (cmd === 'approve') {
+    const target = parts[2];
+    if (!target) {
+      const pending = await listPendingMemberships(chat.id._serialized);
+      if (pending.length === 0) {
+        await chat.sendMessage('No pending membership requests recorded.');
+      } else {
+        await chat.sendMessage(`Pending membership requests: ${pending.join(', ')}`);
+      }
+      return;
+    }
     try {
-        await gc.approveGroupMembershipRequests({ requesterIds: [userId], sleep: null });
-        await chat.sendMessage('Membership request approved.');
-        logger.info({ chatId, actor: sender.id._serialized, action: 'approve_join', target: userId }, 'Audit: group membership approved');
+      await client.approveGroupMembershipRequests(chat.id._serialized, { requesterIds: [target], sleep: null });
+      await removePendingMembership(chat.id._serialized, target);
+      metrics.waMembershipApprovals.labels('override').inc();
+      metrics.waGovernanceActions.labels('membership_override').inc();
+      metrics.waGroupEvents.labels('membership_override').inc();
+      await groupStore.recordEvent({
+        chatId: chat.id._serialized,
+        type: 'membership_override',
+        timestamp: Date.now(),
+        actorId: msg.author || msg.from,
+        recipients: [target],
+      });
+      await chat.sendMessage(`Approved membership request for ${target}.`);
     } catch (err) {
-        await chat.sendMessage('Failed to approve membership request.');
-        logger.error({ err, chatId, userId }, 'Failed to approve membership request');
+      metrics.waMembershipApprovals.labels('error').inc();
+      logger.warn({ err, target }, 'Failed to approve membership via override');
+      await chat.sendMessage(`Unable to approve ${target}. Check logs for details.`);
     }
+  } else if (cmd === 'governance') {
+    const limit = Number.isFinite(Number(parts[2])) ? Math.max(1, Math.min(25, Number(parts[2]))) : 10;
+    const events = await groupStore.listRecentEvents(chat.id._serialized, limit);
+    if (events.length === 0) {
+      await chat.sendMessage('No recent governance events recorded.');
+      return;
+    }
+    const lines = events.map((event) => {
+      const timestamp = new Date(event.timestamp).toISOString();
+      const recipients = (event.recipients && event.recipients.length > 0) ? ` -> ${event.recipients.join(', ')}` : '';
+      const detail = event.details ? ` :: ${event.details}` : '';
+      return `- ${timestamp} [${event.type}] ${event.actorId ?? 'unknown'}${recipients}${detail}`;
+    });
+    await chat.sendMessage(`Recent governance events:\n${lines.join('\n')}`);
   } else {
-    await chat.sendMessage('Commands: !scanner mute|unmute|status|rescan <url>|consent <approve|deny|status>|autoapprove <on|off|status>|approve_join <userId>');
+    await chat.sendMessage('Commands: !scanner mute|unmute|status|rescan <url>|consent|consentstatus|approve [memberId]|governance [limit]');
   }
 }
 
 if (process.env.NODE_ENV !== 'test') {
   main().catch(err => {
-    logger.error(err, 'Fatal in wa-client');
+    logger.error({ err }, 'Fatal in wa-client');
     process.exit(1);
   });
 }
