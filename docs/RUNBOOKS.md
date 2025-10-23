@@ -17,6 +17,7 @@ Cache Flush:
 Incident Response:
 - Mute noisy groups via Control Plane: `POST /groups/:chatId/mute`.
 - Increase thresholds by updating environment and redeploy.
+- Global reply saturation: monitor the Redis key named by `WA_GLOBAL_TOKEN_BUCKET_KEY` (default `wa_global_token_bucket`). The bucket refills according to `WA_GLOBAL_REPLY_RATE_PER_HOUR` (1000/hour by default), so bursts beyond the allowance will delay verdict replies until tokens recover.
 - urlscan backlog: inspect `scan-urlscan` queue via Redis (`LRANGE bull:scan-urlscan:wait 0 -1`), confirm `URLSCAN_API_KEY` quota, check callback reachability (`/urlscan/callback` logs), and temporarily disable deep scans with `URLSCAN_ENABLED=false` if necessary.
 - Whois quota exhausted: toggle `WHOISXML_ENABLED=false` to fall back to RDAP, note reduced domain-age precision in incident report, and plan quota top-up.
 - Shortener expansion failures: delete Redis key `url:shortener:{hash}` and rescan; verify `UNSHORTEN_ENDPOINT` is accessible.

@@ -4,7 +4,7 @@ import { createReadStream } from 'node:fs';
 import path from 'node:path';
 import Redis from 'ioredis';
 import { Queue } from 'bullmq';
-import { register, metrics, config, logger, assertControlPlaneToken, normalizeUrl, urlHash } from '@wbscanner/shared';
+import { register, metrics, config, logger, assertControlPlaneToken, normalizeUrl, urlHash, assertEssentialConfig } from '@wbscanner/shared';
 import { Client as PgClient } from 'pg';
 
 const artifactRoot = path.resolve(process.env.URLSCAN_ARTIFACT_DIR || 'storage/urlscan-artifacts');
@@ -29,6 +29,7 @@ export interface BuildOptions {
 }
 
 export async function buildServer(options: BuildOptions = {}) {
+  assertEssentialConfig('control-plane');
   const requiredToken = assertControlPlaneToken();
   const pgClient = options.pgClient ?? new PgClient({
     host: config.postgres.host,

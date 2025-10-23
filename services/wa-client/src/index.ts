@@ -466,7 +466,6 @@ async function isUrlAllowedForScanning(normalized: string): Promise<boolean> {
     return false;
   }
 }
-
 async function main() {
   assertEssentialConfig('wa-client');
   assertControlPlaneToken();

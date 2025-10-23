@@ -24,6 +24,7 @@
   },
   "devDependencies": {
     "cheerio": "^1.1.2",
+    "ioredis-mock": "^5.8.0",
     "turndown": "^7.2.1",
     "vitest": "^1.6.0"
   }
