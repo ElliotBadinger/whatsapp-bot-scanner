@@ -1,6 +1,15 @@
 import Fastify from 'fastify';
-import { register, metrics, config, logger, assertControlPlaneToken } from '@wbscanner/shared';
+import fs from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import path from 'node:path';
+import Redis from 'ioredis';
+import { Queue } from 'bullmq';
+import { register, metrics, config, logger, assertControlPlaneToken, normalizeUrl, urlHash } from '@wbscanner/shared';
 import { Client as PgClient } from 'pg';
+
+const artifactRoot = path.resolve(process.env.URLSCAN_ARTIFACT_DIR || 'storage/urlscan-artifacts');
+const redis = new Redis(config.redisUrl);
+const rescanQueue = new Queue(config.queues.scanRequest, { connection: redis });
 
 function createAuthHook(expectedToken: string) {
   return function authHook(req: any, reply: any, done: any) {
@@ -15,6 +24,8 @@ function createAuthHook(expectedToken: string) {
 }
 export interface BuildOptions {
   pgClient?: PgClient;
+  redisClient?: Redis;
+  queue?: Queue;
 }
 
 export async function buildServer(options: BuildOptions = {}) {
@@ -28,6 +39,8 @@ export async function buildServer(options: BuildOptions = {}) {
   });
   const ownsClient = !options.pgClient;
   if (ownsClient) await pgClient.connect();
+  const redisClient = options.redisClient ?? redis;
+  const queue = options.queue ?? rescanQueue;
 
   const app = Fastify();
 
@@ -66,23 +79,83 @@ export async function buildServer(options: BuildOptions = {}) {
     reply.send({ ok: true });
   });
 
-  app.post('/rescan', async (_req, reply) => {
-    reply.send({ ok: true });
-  });
-
-  app.get('/scans/:urlHash/urlscan-artifacts/:type', async (req, reply) => {
-    const { urlHash, type } = req.params as { urlHash: string; type: string };
-    const { rows } = await pgClient.query(
-      'SELECT content, content_type FROM urlscan_artifacts WHERE url_hash=$1 AND artifact_type=$2',
-      [urlHash, type]
-    );
-    if (!rows.length) {
-      reply.code(404).send({ error: 'artifact_not_found' });
+  app.post('/rescan', async (req, reply) => {
+    const { url } = req.body as { url?: string };
+    if (!url) {
+      reply.code(400).send({ error: 'url_required' });
       return;
     }
-    const row = rows[0];
-    reply.header('Content-Type', row.content_type);
-    reply.send(row.content);
+    const normalized = normalizeUrl(url);
+    if (!normalized) {
+      reply.code(400).send({ error: 'invalid_url' });
+      return;
+    }
+    const hash = urlHash(normalized);
+    const keys = [
+      `scan:${hash}`,
+      `url:verdict:${hash}`,
+      `url:analysis:${hash}:vt`,
+      `url:analysis:${hash}:gsb`,
+      `url:analysis:${hash}:whois`,
+      `url:analysis:${hash}:phishtank`,
+      `url:analysis:${hash}:urlhaus`,
+      `url:shortener:${hash}`,
+    ];
+    await Promise.all(keys.map((key) => redisClient.del(key)));
+    await queue.add('rescan', { url: normalized, urlHash: hash, priority: 10 }, { removeOnComplete: true, removeOnFail: 100 });
+    metrics.rescanRequests.labels('control-plane').inc();
+    reply.send({ ok: true, message: 'Cache invalidated, rescan queued', urlHash: hash });
+  });
+
+  app.get('/artifacts/:urlHash/screenshot', async (req, reply) => {
+    const { urlHash: hash } = req.params as { urlHash: string };
+    const { rows } = await pgClient.query(
+      'SELECT urlscan_screenshot_path FROM scans WHERE url_hash=$1 LIMIT 1',
+      [hash]
+    );
+    const filePath = rows[0]?.urlscan_screenshot_path;
+    if (!filePath) {
+      reply.code(404).send({ error: 'screenshot_not_found' });
+      return;
+    }
+    const resolvedPath = path.resolve(filePath);
+    if (!resolvedPath.startsWith(artifactRoot)) {
+      reply.code(403).send({ error: 'access_denied' });
+      return;
+    }
+    try {
+      await fs.access(resolvedPath);
+    } catch {
+      reply.code(404).send({ error: 'screenshot_not_found' });
+      return;
+    }
+    const stream = createReadStream(resolvedPath);
+    reply.header('Content-Type', 'image/png');
+    reply.send(stream);
+  });
+
+  app.get('/artifacts/:urlHash/dom', async (req, reply) => {
+    const { urlHash: hash } = req.params as { urlHash: string };
+    const { rows } = await pgClient.query(
+      'SELECT urlscan_dom_path FROM scans WHERE url_hash=$1 LIMIT 1',
+      [hash]
+    );
+    const filePath = rows[0]?.urlscan_dom_path;
+    if (!filePath) {
+      reply.code(404).send({ error: 'dom_not_found' });
+      return;
+    }
+    const resolvedPath = path.resolve(filePath);
+    if (!resolvedPath.startsWith(artifactRoot)) {
+      reply.code(403).send({ error: 'access_denied' });
+      return;
+    }
+    try {
+      const html = await fs.readFile(resolvedPath, 'utf8');
+      reply.type('text/html').send(html);
+    } catch {
+      reply.code(500).send({ error: 'artifact_unavailable' });
+    }
   });
 
   if (process.env.NODE_ENV !== 'test') {

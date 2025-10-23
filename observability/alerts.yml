@@ -15,4 +15,53 @@ groups:
           severity: critical
         annotations:
           summary: "wa-client not scraping"
+      - alert: VirusTotalQuotaLow
+        expr: wbscanner_api_quota_remaining{service="virustotal"} < 2
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "VirusTotal quota nearly exhausted"
+      - alert: VirusTotalQuotaExhausted
+        expr: wbscanner_api_quota_status{service="virustotal"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "VirusTotal quota exhausted"
+      - alert: WhoisXMLQuotaNearLimit
+        expr: wbscanner_api_quota_remaining{service="whoisxml"} < 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "WhoisXML API quota low"
+      - alert: WhoisXMLQuotaExhausted
+        expr: wbscanner_api_quota_status{service="whoisxml"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "WhoisXML API quota exhausted"
+      - alert: QueueDepthHigh
+        expr: wbscanner_queue_depth{queue="scan-request"} > 500
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Scan request queue depth is high"
+      - alert: ShortenerFallbackErrors
+        expr: rate(wbscanner_shortener_expansions_total{method="urlexpander",result="error"}[10m]) > 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "URL expander fallback experiencing errors"
+      - alert: HomoglyphSpike
+        expr: increase(wbscanner_homoglyph_detections_total[15m]) > 20
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: "Spike in homoglyph detections"
 

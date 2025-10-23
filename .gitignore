@@ -26,4 +26,8 @@ tmp/
 # WhatsApp session artifacts
 services/wa-client/data/
 
+# Persistent storage artifacts
+storage/
+!storage/.gitkeep
+
 whatsapp-web.js/

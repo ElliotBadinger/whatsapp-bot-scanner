@@ -60,8 +60,6 @@ export const config = {
   vt: {
     apiKey: process.env.VT_API_KEY || '',
     timeoutMs: parseInt(process.env.VT_REQUEST_TIMEOUT_MS || '8000', 10),
-    requestsPerMinute: parsePositiveInt(process.env.VT_REQUESTS_PER_MINUTE, 4),
-    requestJitterMs: parsePositiveInt(process.env.VT_REQUEST_JITTER_MS, 500, { minimum: 0 }),
   },
   gsb: {
     apiKey: process.env.GSB_API_KEY || '',
@@ -96,9 +94,11 @@ export const config = {
     concurrency: parseInt(process.env.URLSCAN_CONCURRENCY || '2', 10),
   },
   whoisxml: {
-    enabled: (process.env.WHOISXML_ENABLED || 'true') === 'true',
+    enabled: ((process.env.WHOISXML_ENABLE ?? process.env.WHOISXML_ENABLED) || 'true') === 'true',
     apiKey: process.env.WHOISXML_API_KEY || '',
     timeoutMs: parseInt(process.env.WHOISXML_TIMEOUT_MS || '5000', 10),
+    monthlyQuota: parsePositiveInt(process.env.WHOISXML_MONTHLY_QUOTA, 500),
+    quotaAlertThreshold: parsePositiveInt(process.env.WHOISXML_QUOTA_ALERT_THRESHOLD, 100, { minimum: 1 }),
   },
   shortener: {
     unshortenEndpoint: process.env.UNSHORTEN_ENDPOINT || 'https://unshorten.me/json/',
@@ -131,7 +131,8 @@ export const config = {
     consentOnJoin: (process.env.WA_CONSENT_ON_JOIN || 'true') === 'true',
     quietHours: process.env.WA_QUIET_HOURS || '22-07',
     perGroupCooldownSeconds: parseInt(process.env.WA_PER_GROUP_REPLY_COOLDOWN_SECONDS || '60', 10),
-    globalRatePerMinute: parseInt(process.env.WA_GLOBAL_REPLY_RATE_PER_MINUTE || '60', 10)
+    globalRatePerHour: parsePositiveInt(process.env.WA_GLOBAL_REPLY_RATE_PER_HOUR, 1000),
+    perGroupHourlyLimit: parsePositiveInt(process.env.WA_PER_GROUP_HOURLY_LIMIT, 60),
   }
 };
 
