@@ -113,6 +113,26 @@ describe('Control plane integration', () => {
     }
     await fs.unlink(screenshotPath);
   });
+
+  it('reports scan status via /status endpoint', async () => {
+    pgClient.query.mockResolvedValueOnce({ rows: [{ scans: '12', malicious: '3' }] });
+
+    const { buildServer } = await import('../../services/control-plane/src/index');
+    const { app } = await buildServer({
+      pgClient,
+      redisClient: { del: redisDel } as any,
+      queue: { add: queueAdd } as any,
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/status',
+      headers: { authorization: 'Bearer test-token' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toEqual({ scans: 12, malicious: 3 });
+  });
 });
 
 describe('WA admin command integration', () => {
