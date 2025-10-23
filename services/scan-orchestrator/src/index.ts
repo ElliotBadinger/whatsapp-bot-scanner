@@ -410,6 +410,7 @@ async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainI
     return { ageDays: rdapAge, source: 'rdap' };
   }
   if (!config.whoisxml.enabled || !config.whoisxml.apiKey) {
+    metrics.whoisResults.labels('disabled').inc();
     return { ageDays: undefined, source: 'none' };
   }
   const cacheKey = `url:analysis:${hash}:whois`;
@@ -434,6 +435,7 @@ async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainI
     return { ageDays, registrar, source: 'whoisxml' };
   } catch (err) {
     recordError(CIRCUIT_LABELS.whoisxml, err);
+    metrics.whoisResults.labels('fallback').inc();
     if (err instanceof QuotaExceededError) {
       logger.warn({ hostname }, 'WhoisXML quota exhausted, disabling for remainder of month');
       disableWhoisXmlForMonth();

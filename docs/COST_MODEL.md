@@ -31,11 +31,21 @@ track quota usage in Grafana:
 - `wbscanner_rate_limiter_delay_seconds{service="virustotal"}` – histogram of the
   queuing delay imposed before a request was executed.
 
+<<<<<<< HEAD
 To raise throughput you may gradually increase `VT_REQUESTS_PER_MINUTE` after
 upgrading to a commercial tier. We recommend lowering `VT_REQUEST_JITTER_MS`
 only if the upstream SLA allows tightly spaced calls; otherwise keep a few
 hundred milliseconds of entropy to prevent synchronized bursts when many scans
 start at once.
+=======
+**Quota Tracking:**
+- Gauge: `wbscanner_api_quota_remaining{service="whoisxml"}`
+- Counter: `wbscanner_whois_results_total{result}` surfaces success, quota exhaustion, rate limiting, and fallbacks
+- Alerts: `WhoisXMLQuotaNearLimit`, `WhoisXMLQuotaExhausted`, and `WhoisXMLFallbackSpike`
+- Alert at 80% consumption (100 remaining)
+- Auto-disable and circuit breaker when exhausted
+- Environment toggles: `WHOISXML_ENABLE`, `WHOISXML_MONTHLY_QUOTA`, `WHOISXML_QUOTA_ALERT_THRESHOLD`
+>>>>>>> origin/codex/add-whoisxml-quota-tracking-and-metrics
 
 ## Operational Guidance
 
@@ -50,6 +60,7 @@ start at once.
 - 7-day cache TTL reduces repeat lookups
 - Monthly quota enforcement halts before paid tier
 - Alert fires 48h before monthly reset to plan upgrades
+- Prometheus fallback counter (`result="fallback"`) highlights when RDAP-only behaviour persists so analysts can reassess budgets
 
 ## Additional Considerations
 
