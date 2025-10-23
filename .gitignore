@@ -30,4 +30,3 @@ services/wa-client/data/
 storage/*
 !storage/.gitkeep
 
-whatsapp-web.js/
