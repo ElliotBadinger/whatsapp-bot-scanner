@@ -4,7 +4,7 @@ import QRCode from 'qrcode-terminal';
 import { Queue, Worker, JobsOptions } from 'bullmq';
 import { createHash } from 'node:crypto';
 import Redis from 'ioredis';
-import { config, logger, extractUrls, normalizeUrl, urlHash, metrics, register } from '@wbscanner/shared';
+import { config, logger, extractUrls, normalizeUrl, urlHash, metrics, register, assertControlPlaneToken } from '@wbscanner/shared';
 import { RateLimiterRedis } from 'rate-limiter-flexible';
 
 const redis = new Redis(config.redisUrl);
@@ -26,6 +26,7 @@ const groupLimiter = new RateLimiterRedis({
 const processedKey = (chatId: string, messageId: string, urlH: string) => `processed:${chatId}:${messageId}:${urlH}`;
 
 async function main() {
+  assertControlPlaneToken();
   const app = Fastify();
   app.get('/healthz', async () => ({ ok: true }));
   app.get('/metrics', async (_req, reply) => {
@@ -129,7 +130,7 @@ export async function handleAdminCommand(client: Client, msg: Message) {
   const cmd = parts[1];
   if (!cmd) return;
   const base = process.env.CONTROL_PLANE_BASE || 'http://control-plane:8080';
-  const token = process.env.CONTROL_PLANE_API_TOKEN || '';
+  const token = assertControlPlaneToken();
 
   if (cmd === 'mute') {
     const resp = await fetch(`${base}/groups/${encodeURIComponent(chat.id._serialized)}/mute`, { method: 'POST', headers: { 'authorization': `Bearer ${token}` } }).catch(() => null);
