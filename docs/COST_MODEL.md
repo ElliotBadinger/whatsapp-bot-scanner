@@ -50,3 +50,11 @@
 
 - Redis and Postgres are provisioned via managed services; monitor storage to avoid overage.
 - Grafana/Prometheus deployments remain on free-tier container quotas (<1 vCPU, <512MB) to avoid add-on costs.
+- Control Plane exposes `wbscanner_api_quota_remaining`/`status` gauges; alerts must stay wired before enabling new paid integrations.
+
+## Governance & Change Control
+
+- Budget Guardrails: Engineering maintains a rolling 3-month forecast for each provider. Raising `WHOISXML_MONTHLY_QUOTA` or upgrading VirusTotal tiers requires approval from security ops and an update to this document.
+- Deployment Gates: CI should fail if quota environment variables are unset when paid plans are enabled (`WHOISXML_ENABLE=true`, `VT_API_KEY` present). Configuration reviews confirm cache TTLs and rate limiters match the expected spend envelopes.
+- Monitoring Reviews: On-call reviews Grafana's Cost & Quota dashboard weekly to compare actual consumption against projections; Prometheus alerts (`VirusTotalQuotaLow`, `WhoisXMLQuotaNearLimit`) page when remaining tokens breach thresholds.
+- Feature Flags: Expensive enrichments (WhoisXML, urlscan) must stay behind feature flags with documented rollback (`WHOISXML_ENABLE`, `URLSCAN_ENABLED`) to rapidly shed cost during incidents.

@@ -3,6 +3,7 @@
 Components:
 
 - WA Client Service: Manages WhatsApp session, extracts URLs, deduplicates, enqueues scan jobs, posts verdicts, and enforces rate limits.
+-   Rate limiting stack: Redis-backed limiters enforce a one-minute per-group cooldown, a 60-per-hour per-group ceiling, and a 1,000-per-hour global ceiling before attempting to send verdicts.
 - Scan Orchestrator: Normalizes/expands URLs, runs reputation checks (Google Safe Browsing, VirusTotal, URLhaus, Phishtank), enriches with domain intelligence (RDAP/WhoisXML) and shortener expansion, computes heuristics, scores risk, caches results, and persists to Postgres. Suspicious links enqueue asynchronous urlscan.io deep scans via a dedicated BullMQ queue and webhook callback.
 -   VirusTotal calls are wrapped in a Bottleneck scheduler (4 req/min) and fall back to URLhaus when quota is exhausted. urlscan artifacts (screenshot + DOM) are downloaded to `storage/urlscan-artifacts` and paths are persisted on the `scans` record for later retrieval.
 -   Manual overrides are resolved prior to scoring; `allow`/`deny` instructions override automated verdicts until their expiry.
@@ -10,7 +11,7 @@ Components:
 -   `/rescan` now invalidates Redis cache keys (`scan`, `analysis`, `shortener`) and requeues high-priority jobs. `/artifacts/:urlHash/(screenshot|dom)` streams urlscan evidence from disk with path whitelisting.
 - Data Stores: Redis (queues + caching), Postgres (persistent records), volumes (WA session).
 - Observability: Prometheus scraping, Grafana dashboard.
--   Custom metrics track API quota, queue depth, homoglyph detections, manual overrides, and verdict distribution. Grafana dashboard adds quota gauges, queue depth, homoglyph stats, and verdict trends; Prometheus alerts cover quota exhaustion, queue backlogs, shortener failures, and homoglyph spikes.
+-   Custom metrics track API quota, queue depth, circuit breaker state, rate limiter delay, homoglyph detections, manual overrides, and verdict distribution. Grafana dashboard adds quota gauges, circuit breaker panels, queue depth, homoglyph stats, and verdict trends; Prometheus alerts cover quota exhaustion, queue backlogs, shortener failures, and homoglyph spikes.
 - Reverse Proxy: Nginx ingress for control-plane.
 
 Data flow:
