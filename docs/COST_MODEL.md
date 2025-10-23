@@ -29,8 +29,11 @@
 
 **Quota Tracking:**
 - Gauge: `wbscanner_api_quota_remaining{service="whoisxml"}`
+- Counter: `wbscanner_whois_results_total{result}` surfaces success, quota exhaustion, rate limiting, and fallbacks
+- Alerts: `WhoisXMLQuotaNearLimit`, `WhoisXMLQuotaExhausted`, and `WhoisXMLFallbackSpike`
 - Alert at 80% consumption (100 remaining)
 - Auto-disable and circuit breaker when exhausted
+- Environment toggles: `WHOISXML_ENABLE`, `WHOISXML_MONTHLY_QUOTA`, `WHOISXML_QUOTA_ALERT_THRESHOLD`
 
 **Monthly Budget Scenarios:**
 
@@ -45,6 +48,7 @@
 - 7-day cache TTL reduces repeat lookups
 - Monthly quota enforcement halts before paid tier
 - Alert fires 48h before monthly reset to plan upgrades
+- Prometheus fallback counter (`result="fallback"`) highlights when RDAP-only behaviour persists so analysts can reassess budgets
 
 ## Additional Considerations
 
