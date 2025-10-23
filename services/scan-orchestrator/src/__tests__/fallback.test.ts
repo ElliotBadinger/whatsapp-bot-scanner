@@ -27,32 +27,8 @@ jest.mock('pg', () => {
   };
 });
 
-const consumeMock = jest.fn().mockResolvedValue(undefined);
-
-jest.mock('rate-limiter-flexible', () => {
-  class RateLimiterResMock {
-    msBeforeNext: number;
-    constructor(msBeforeNext = 0) {
-      this.msBeforeNext = msBeforeNext;
-    }
-  }
-
-  class RateLimiterRedisMock {
-    consume = consumeMock;
-  }
-
-  return {
-    RateLimiterRedis: RateLimiterRedisMock,
-    RateLimiterRes: RateLimiterResMock,
-  };
-});
-
 import { __testables } from '../index';
 import { config } from '@wbscanner/shared';
-// eslint-disable-next-line import/no-commonjs
-const rateLimiterModule = require('rate-limiter-flexible');
-
-const originalVtConfig = { ...config.vt };
 
 describe('error classification helpers', () => {
   it('classifies rate limit errors', () => {
@@ -73,35 +49,6 @@ describe('retry policy', () => {
 
   it('does not retry on rate-limit errors', () => {
     expect(__testables.shouldRetry({ code: 429 })).toBe(false);
-  });
-});
-
-describe('applyVtRateLimit', () => {
-  beforeEach(() => {
-    consumeMock.mockReset().mockResolvedValue(undefined);
-    config.vt.apiKey = 'test-key';
-    config.vt.requestJitterMs = 0;
-    __testables.setVtRateLimiterForTest({ consume: consumeMock } as any);
-  });
-
-  afterEach(() => {
-    Object.assign(config.vt, originalVtConfig);
-    __testables.resetVtRateLimiterForTest();
-  });
-
-  it('invokes limiter consume for each call', async () => {
-    await __testables.applyVtRateLimit();
-    expect(consumeMock).toHaveBeenCalledTimes(1);
-  });
-
-  it('waits and retries when limiter signals delay', async () => {
-    const { RateLimiterRes } = rateLimiterModule;
-    consumeMock
-      .mockRejectedValueOnce(new RateLimiterRes(5))
-      .mockResolvedValueOnce(undefined);
-
-    await __testables.applyVtRateLimit();
-    expect(consumeMock).toHaveBeenCalledTimes(2);
   });
 });
 

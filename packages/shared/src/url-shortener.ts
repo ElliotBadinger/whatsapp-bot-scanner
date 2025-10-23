@@ -1,7 +1,9 @@
 import { request, fetch } from 'undici';
+import expandUrl from 'url-expand';
 import { config } from './config';
 import { normalizeUrl } from './url';
 import { isPrivateHostname } from './ssrf';
+import { metrics } from './metrics';
 
 const DEFAULT_SHORTENERS = [
   'bit.ly', 'goo.gl', 't.co', 'tinyurl.com', 'ow.ly', 'is.gd', 'buff.ly', 'adf.ly',
@@ -33,9 +35,10 @@ export function isKnownShortener(hostname: string): boolean {
 
 export interface ShortenerResolution {
   finalUrl: string;
-  provider: 'unshorten_me' | 'direct' | 'original';
+  provider: 'unshorten_me' | 'direct' | 'urlexpander' | 'original';
   chain: string[];
   wasShortened: boolean;
+  error?: string;
 }
 
 interface UnshortenResponse {
@@ -66,25 +69,92 @@ async function resolveWithUnshorten(url: string): Promise<string | null> {
 }
 
 async function resolveWithHead(url: string): Promise<{ finalUrl: string; chain: string[] } | null> {
+  const { maxRedirects, timeoutMs, maxContentLength } = config.orchestrator.expansion;
   let current = url;
   const chain: string[] = [];
-  for (let i = 0; i < 8; i += 1) {
+
+  for (let i = 0; i < maxRedirects; i += 1) {
     const norm = normalizeUrl(current);
     if (!norm) break;
+
     const parsed = new URL(norm);
     if (await isPrivateHostname(parsed.hostname)) break;
+
     chain.push(norm);
-    const response = await fetch(norm, {
-      method: 'GET',
-      redirect: 'manual'
-    });
-    const location = response.headers.get('location');
-    if (!location || response.status < 300 || response.status >= 400) {
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(norm, {
+        method: 'GET',
+        redirect: 'manual',
+        signal: controller.signal,
+      });
+
+      const contentLengthHeader = response.headers?.get?.('content-length');
+      if (contentLengthHeader) {
+        const contentLength = Number.parseInt(contentLengthHeader, 10);
+        if (Number.isFinite(contentLength) && contentLength > maxContentLength) {
+          throw new Error(`Content too large: ${contentLength} bytes`);
+        }
+      }
+
+      if (response.status >= 400) {
+        if (response.status >= 500) {
+          throw new Error(`Expansion request failed with status ${response.status}`);
+        }
+        return null;
+      }
+
+      const location = response.headers?.get?.('location');
+      if (response.status >= 300 && response.status < 400) {
+        if (!location) {
+          return { finalUrl: norm, chain };
+        }
+        current = new URL(location, norm).toString();
+        continue;
+      }
+
       return { finalUrl: norm, chain };
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(`Expansion timed out after ${timeoutMs}ms`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
     }
-    current = new URL(location, norm).toString();
   }
+
   return chain.length ? { finalUrl: chain[chain.length - 1], chain } : null;
+}
+
+async function resolveWithUrlExpander(url: string): Promise<string | null> {
+  return new Promise((resolve, reject) => {
+    try {
+      expandUrl(url, async (err: unknown, expanded?: string) => {
+        if (err || !expanded) {
+          reject(err ?? new Error('Expansion failed'));
+          return;
+        }
+        try {
+          const normalized = normalizeUrl(expanded) || expanded;
+          const parsed = new URL(normalized);
+          const isPrivate = await isPrivateHostname(parsed.hostname);
+          if (isPrivate) {
+            reject(new Error('SSRF protection: Private IP blocked'));
+            return;
+          }
+          resolve(normalized);
+        } catch (error) {
+          reject(error);
+        }
+      });
+    } catch (error) {
+      reject(error);
+    }
+  });
 }
 
 export async function resolveShortener(url: string): Promise<ShortenerResolution> {
@@ -102,6 +172,7 @@ export async function resolveShortener(url: string): Promise<ShortenerResolution
   for (let attempt = 0; attempt < tries; attempt += 1) {
     const resolved = await resolveWithUnshorten(normalized);
     if (resolved) {
+      metrics.shortenerExpansion.labels('unshorten.me', 'success').inc();
       return {
         finalUrl: resolved,
         provider: 'unshorten_me',
@@ -110,9 +181,19 @@ export async function resolveShortener(url: string): Promise<ShortenerResolution
       };
     }
   }
+  metrics.shortenerExpansion.labels('unshorten.me', 'error').inc();
 
-  const fallback = await resolveWithHead(normalized);
+  let fallback: { finalUrl: string; chain: string[] } | null = null;
+  let directError: unknown;
+  try {
+    fallback = await resolveWithHead(normalized);
+  } catch (error) {
+    directError = error;
+    metrics.shortenerExpansion.labels('direct', 'error').inc();
+  }
+
   if (fallback) {
+    metrics.shortenerExpansion.labels('direct', 'success').inc();
     return {
       finalUrl: fallback.finalUrl,
       provider: 'direct',
@@ -121,10 +202,37 @@ export async function resolveShortener(url: string): Promise<ShortenerResolution
     };
   }
 
+  try {
+    const expanded = await resolveWithUrlExpander(normalized);
+    if (expanded) {
+      metrics.shortenerExpansion.labels('urlexpander', 'success').inc();
+      return {
+        finalUrl: expanded,
+        provider: 'urlexpander',
+        chain: [normalized, expanded],
+        wasShortened: true,
+      };
+    }
+  } catch (error) {
+    metrics.shortenerExpansion.labels('urlexpander', 'error').inc();
+    return {
+      finalUrl: normalized,
+      provider: 'original',
+      chain: [normalized],
+      wasShortened: true,
+      error: error instanceof Error ? error.message : 'Expansion failed',
+    };
+  }
+
+  metrics.shortenerExpansion.labels('urlexpander', 'error').inc();
   return {
     finalUrl: normalized,
     provider: 'original',
     chain: [normalized],
     wasShortened: true,
+    error:
+      directError instanceof Error
+        ? directError.message
+        : 'Expansion failed',
   };
 }

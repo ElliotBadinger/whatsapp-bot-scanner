@@ -8,7 +8,7 @@ Repudiation: Audit logs table records admin actions; extend with request IDs.
 
 Information Disclosure: PII minimized; sender IDs hashed; secrets redacted in logs.
 
-Denial of Service: Rate limits per group; global limiter; backoff on 429/5xx; circuit breakers TBD.
+Denial of Service: Rate limits per group; hourly global limiter; Bottleneck-bound VirusTotal calls; circuit breakers with Prometheus alerts; queue depth monitoring and rescan cache invalidation to prevent backlog amplification.
 
 Elevation of Privilege: No shell execs; containers run non-root; API token required.
 
