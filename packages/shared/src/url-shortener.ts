@@ -1,5 +1,6 @@
-import { request, fetch } from 'undici';
-import expandUrl from 'url-expand';
+import { request, fetch as undiciFetch } from 'undici';
+import urlExpandModuleRaw from 'url-expand';
+import { promisify } from 'node:util';
 import { config } from './config';
 import { normalizeUrl } from './url';
 import { isPrivateHostname } from './ssrf';
@@ -35,7 +36,7 @@ export function isKnownShortener(hostname: string): boolean {
 
 export interface ShortenerResolution {
   finalUrl: string;
-  provider: 'unshorten_me' | 'direct' | 'urlexpander' | 'original';
+  provider: 'unshorten_me' | 'url_expand' | 'original';
   chain: string[];
   wasShortened: boolean;
   error?: string;
@@ -68,26 +69,50 @@ async function resolveWithUnshorten(url: string): Promise<string | null> {
   }
 }
 
-async function resolveWithHead(url: string): Promise<{ finalUrl: string; chain: string[] } | null> {
-  const { maxRedirects, timeoutMs, maxContentLength } = config.orchestrator.expansion;
-  let current = url;
-  const chain: string[] = [];
+type SafeFetch = (input: string | URL, init?: Parameters<typeof undiciFetch>[1]) => ReturnType<typeof undiciFetch>;
 
-  for (let i = 0; i < maxRedirects; i += 1) {
-    const norm = normalizeUrl(current);
-    if (!norm) break;
+function createGuardedFetch(
+  chain: string[],
+  maxRedirects: number,
+  timeoutMs: number,
+  maxContentLength: number,
+): SafeFetch {
+  let attempts = 0;
 
-    const parsed = new URL(norm);
-    if (await isPrivateHostname(parsed.hostname)) break;
+  return async (input, init) => {
+    const target =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : typeof input === 'object' && input !== null && 'url' in input && typeof (input as { url?: string }).url === 'string'
+            ? (input as { url: string }).url
+            : input?.toString();
+    if (!target) {
+      throw new Error('Expansion failed: Missing target URL');
+    }
 
-    chain.push(norm);
+    const normalizedTarget = normalizeUrl(target) || target;
+    const parsed = new URL(normalizedTarget);
+    if (await isPrivateHostname(parsed.hostname)) {
+      throw new Error('SSRF protection: Private host blocked');
+    }
+
+    if (attempts >= maxRedirects) {
+      throw new Error(`Redirect limit exceeded (${maxRedirects})`);
+    }
+    attempts += 1;
+
+    if (!chain.length || chain[chain.length - 1] !== normalizedTarget) {
+      chain.push(normalizedTarget);
+    }
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const response = await fetch(norm, {
-        method: 'GET',
+      const response = await undiciFetch(normalizedTarget, {
+        ...init,
         redirect: 'manual',
         signal: controller.signal,
       });
@@ -100,23 +125,7 @@ async function resolveWithHead(url: string): Promise<{ finalUrl: string; chain: 
         }
       }
 
-      if (response.status >= 400) {
-        if (response.status >= 500) {
-          throw new Error(`Expansion request failed with status ${response.status}`);
-        }
-        return null;
-      }
-
-      const location = response.headers?.get?.('location');
-      if (response.status >= 300 && response.status < 400) {
-        if (!location) {
-          return { finalUrl: norm, chain };
-        }
-        current = new URL(location, norm).toString();
-        continue;
-      }
-
-      return { finalUrl: norm, chain };
+      return response;
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         throw new Error(`Expansion timed out after ${timeoutMs}ms`);
@@ -125,36 +134,73 @@ async function resolveWithHead(url: string): Promise<{ finalUrl: string; chain: 
     } finally {
       clearTimeout(timer);
     }
-  }
-
-  return chain.length ? { finalUrl: chain[chain.length - 1], chain } : null;
+  };
 }
 
-async function resolveWithUrlExpander(url: string): Promise<string | null> {
-  return new Promise((resolve, reject) => {
-    try {
-      expandUrl(url, async (err: unknown, expanded?: string) => {
-        if (err || !expanded) {
-          reject(err ?? new Error('Expansion failed'));
-          return;
+async function resolveWithUrlExpand(url: string): Promise<{ finalUrl: string; chain: string[] }> {
+  const { maxRedirects, timeoutMs, maxContentLength } = config.orchestrator.expansion;
+  const normalizedInput = normalizeUrl(url) || url;
+  const chain: string[] = [normalizedInput];
+  const moduleAny = urlExpandModuleRaw as any;
+  const modernExpand: ((shortUrl: string, options: { fetch: SafeFetch; maxRedirects: number; timeoutMs: number }) => Promise<{ url: string; redirects?: string[] }>) | undefined =
+    typeof moduleAny?.expand === 'function' ? moduleAny.expand.bind(moduleAny) : undefined;
+
+  if (modernExpand) {
+    const fetchWithGuards = createGuardedFetch(chain, maxRedirects, timeoutMs, maxContentLength);
+    const result = await modernExpand(normalizedInput, {
+      fetch: fetchWithGuards,
+      maxRedirects,
+      timeoutMs,
+    });
+
+    if (Array.isArray(result.redirects)) {
+      for (const redirect of result.redirects) {
+        const normalizedRedirect = normalizeUrl(redirect) || redirect;
+        if (chain[chain.length - 1] !== normalizedRedirect) {
+          chain.push(normalizedRedirect);
         }
-        try {
-          const normalized = normalizeUrl(expanded) || expanded;
-          const parsed = new URL(normalized);
-          const isPrivate = await isPrivateHostname(parsed.hostname);
-          if (isPrivate) {
-            reject(new Error('SSRF protection: Private IP blocked'));
-            return;
-          }
-          resolve(normalized);
-        } catch (error) {
-          reject(error);
-        }
-      });
-    } catch (error) {
-      reject(error);
+      }
     }
-  });
+
+    const finalUrl = normalizeUrl(result.url) || result.url;
+    if (chain[chain.length - 1] !== finalUrl) {
+      chain.push(finalUrl);
+    }
+
+    return { finalUrl, chain };
+  }
+
+  const legacyExpand = typeof moduleAny === 'function'
+    ? promisify(moduleAny as (shortUrl: string, callback: (error: unknown, expandedUrl?: string | null) => void) => void)
+    : undefined;
+
+  if (!legacyExpand) {
+    throw new Error('url-expand module does not expose a supported interface');
+  }
+
+  const expandedUrl = await legacyExpand(normalizedInput) as string;
+  if (!expandedUrl) {
+    throw new Error('url-expand returned empty response');
+  }
+
+  const normalizedFinal = normalizeUrl(expandedUrl) || expandedUrl;
+
+  let parsedFinal: URL;
+  try {
+    parsedFinal = new URL(normalizedFinal);
+  } catch {
+    throw new Error('url-expand returned invalid URL');
+  }
+
+  if (await isPrivateHostname(parsedFinal.hostname)) {
+    throw new Error('SSRF protection: Private host blocked');
+  }
+
+  if (chain[chain.length - 1] !== normalizedFinal) {
+    chain.push(normalizedFinal);
+  }
+
+  return { finalUrl: normalizedFinal, chain };
 }
 
 export async function resolveShortener(url: string): Promise<ShortenerResolution> {
@@ -182,39 +228,17 @@ export async function resolveShortener(url: string): Promise<ShortenerResolution
     }
   }
   metrics.shortenerExpansion.labels('unshorten.me', 'error').inc();
-
-  let fallback: { finalUrl: string; chain: string[] } | null = null;
-  let directError: unknown;
   try {
-    fallback = await resolveWithHead(normalized);
-  } catch (error) {
-    directError = error;
-    metrics.shortenerExpansion.labels('direct', 'error').inc();
-  }
-
-  if (fallback) {
-    metrics.shortenerExpansion.labels('direct', 'success').inc();
+    const expanded = await resolveWithUrlExpand(normalized);
+    metrics.shortenerExpansion.labels('url-expand', 'success').inc();
     return {
-      finalUrl: fallback.finalUrl,
-      provider: 'direct',
-      chain: fallback.chain,
+      finalUrl: expanded.finalUrl,
+      provider: 'url_expand',
+      chain: expanded.chain,
       wasShortened: true,
     };
-  }
-
-  try {
-    const expanded = await resolveWithUrlExpander(normalized);
-    if (expanded) {
-      metrics.shortenerExpansion.labels('urlexpander', 'success').inc();
-      return {
-        finalUrl: expanded,
-        provider: 'urlexpander',
-        chain: [normalized, expanded],
-        wasShortened: true,
-      };
-    }
   } catch (error) {
-    metrics.shortenerExpansion.labels('urlexpander', 'error').inc();
+    metrics.shortenerExpansion.labels('url-expand', 'error').inc();
     return {
       finalUrl: normalized,
       provider: 'original',
@@ -223,16 +247,4 @@ export async function resolveShortener(url: string): Promise<ShortenerResolution
       error: error instanceof Error ? error.message : 'Expansion failed',
     };
   }
-
-  metrics.shortenerExpansion.labels('urlexpander', 'error').inc();
-  return {
-    finalUrl: normalized,
-    provider: 'original',
-    chain: [normalized],
-    wasShortened: true,
-    error:
-      directError instanceof Error
-        ? directError.message
-        : 'Expansion failed',
-  };
 }
