@@ -12,7 +12,7 @@ Components:
 Data flow:
 
 1. WA client receives a group message, extracts URLs, deduplicates by messageId+urlHash, and enqueues `scan-request`.
-2. Orchestrator consumes, runs shortener expansion + normalization, queries blocklists (GSB/Phishtank/URLhaus), reputation meta (VirusTotal), domain intel (RDAP/WhoisXML), records heuristics, aggregates signals → verdict, writes to DB/cache, optionally kicks urlscan.io deep scan jobs, and emits to `scan-verdict`.
+2. Orchestrator consumes, runs shortener expansion + normalization, queries blocklists (GSB/Phishtank/URLhaus), reputation meta (VirusTotal), domain intel (RDAP/WhoisXML), records heuristics, aggregates signals → verdict, writes to DB/cache, optionally kicks urlscan.io deep scan jobs, and emits to `scan-verdict` (see [Blocklist Redundancy Strategy](./THREAT_MODEL.md#blocklist-redundancy-strategy) for the fallback rationale).
 3. WA client consumes verdicts and posts replies in-group with short, clear guidance; detailed DM to admins is pluggable.
 
 SLOs:
