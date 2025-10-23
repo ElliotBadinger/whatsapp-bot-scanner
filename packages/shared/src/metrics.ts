@@ -87,6 +87,12 @@ export const metrics = {
     help: 'WhoisXML lookups executed',
     registers: [register],
   }),
+  whoisResults: new client.Counter({
+    name: 'wbscanner_whois_results_total',
+    help: 'WhoisXML lookup outcomes by result',
+    labelNames: ['result'],
+    registers: [register],
+  }),
   whoisDisabled: new client.Counter({
     name: 'wbscanner_whois_disabled_total',
     help: 'WhoisXML disabled events by reason',

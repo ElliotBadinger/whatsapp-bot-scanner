@@ -1,7 +1,7 @@
 # External Reputation Cost Model
 
 This document summarizes the default cost controls we apply when calling third-party
-reputation providers, with a focus on VirusTotal.
+reputation providers, with a focus on VirusTotal and WhoisXML.
 
 ## VirusTotal Free Tier Limits
 
@@ -37,6 +37,35 @@ only if the upstream SLA allows tightly spaced calls; otherwise keep a few
 hundred milliseconds of entropy to prevent synchronized bursts when many scans
 start at once.
 
+## WhoisXML API Cost Management
+
+**Pricing:**
+- Free: 500 requests/month
+- Paid: $0.002 per request (~$2 per 1,000)
+
+**Quota Tracking:**
+- Gauge: `wbscanner_api_quota_remaining{service="whoisxml"}`
+- Counter: `wbscanner_whois_results_total{result}` surfaces success, quota exhaustion, rate limiting, and fallbacks
+- Alerts: `WhoisXMLQuotaNearLimit`, `WhoisXMLQuotaExhausted`, and `WhoisXMLFallbackSpike`
+- Alert at 80% consumption (100 remaining)
+- Auto-disable and circuit breaker when exhausted
+- Environment toggles: `WHOISXML_ENABLE`, `WHOISXML_MONTHLY_QUOTA`, `WHOISXML_QUOTA_ALERT_THRESHOLD`
+
+**Monthly Budget Scenarios:**
+
+| Scenario | Unique URLs/Day | Cache Hit Rate | Monthly Requests | Estimated Cost |
+|----------|----------------|----------------|------------------|----------------|
+| Pilot    | 100            | 70%            | 900              | FREE (<500)    |
+| Small    | 500            | 70%            | 4,500            | $9/mo          |
+| Medium   | 2,000          | 70%            | 18,000           | $36/mo         |
+| Large    | 10,000         | 70%            | 90,000           | $180/mo        |
+
+**Cost Controls:**
+- 7-day cache TTL reduces repeat lookups
+- Monthly quota enforcement halts before paid tier
+- Alert fires 48h before monthly reset to plan upgrades
+- Prometheus fallback counter (`result="fallback"`) highlights when RDAP-only behaviour persists so analysts can reassess budgets
+
 ## Operational Guidance
 
 1. Monitor the quota gauges and counter. Sustained depletion events (`429`s) mean
@@ -47,3 +76,8 @@ start at once.
    close to quota but cannot immediately upgrade your plan.
 4. Document any plan upgrades in the runbook so on-call engineers know which rate
    limits are safe during incident response.
+
+## Additional Considerations
+
+- Redis and Postgres are provisioned via managed services; monitor storage to avoid overage.
+- Grafana/Prometheus deployments remain on free-tier container quotas (<1 vCPU, <512MB) to avoid add-on costs.
