@@ -2,6 +2,8 @@
 
 Auth: `Authorization: Bearer <CONTROL_PLANE_API_TOKEN>`
 
+> The control-plane service aborts startup when `CONTROL_PLANE_API_TOKEN` is unset or blank—configure this to a strong secret before running.
+
 - GET `/healthz` → `{ ok: true }`
 - GET `/status` → `{ scans: number, malicious: number }`
 - GET `/overrides` → `Override[]`
