@@ -33,7 +33,6 @@ import {
   CircuitState,
   withRetry,
   QuotaExceededError,
-  detectHomoglyphs,
 } from '@wbscanner/shared';
 import {
   checkBlocklistsWithRedundancy,
@@ -632,15 +631,26 @@ async function main() {
       const finalUrlObj = new URL(finalUrl);
       const redirectChain = [...(shortenerInfo?.chain ?? []), ...exp.chain.filter(item => !(shortenerInfo?.chain ?? []).includes(item))];
       const heurSignals = extraHeuristics(finalUrlObj);
+      const homoglyphResult = heurSignals.homoglyph;
       const domainIntel = await fetchDomainIntel(finalUrlObj.hostname, h);
       const domainAgeDays = domainIntel.ageDays;
       const wasShortened = Boolean(shortenerInfo?.wasShortened);
       const finalUrlMismatch = wasShortened && new URL(norm).hostname !== finalUrlObj.hostname;
 
-      const homoglyphResult = detectHomoglyphs(finalUrlObj.hostname);
-      if (homoglyphResult.detected) {
+      if (homoglyphResult?.detected) {
         metrics.homoglyphDetections.labels(homoglyphResult.riskLevel).inc();
-        logger.info({ hostname: finalUrlObj.hostname, risk: homoglyphResult.riskLevel, confusables: homoglyphResult.confusableChars }, 'Homoglyph detection');
+        const confusablePairs = homoglyphResult.confusableChars.map(c => `${c.original}→${c.confusedWith}`);
+        logger.info(
+          {
+            hostname: finalUrlObj.hostname,
+            risk: homoglyphResult.riskLevel,
+            confusables: confusablePairs,
+            reasons: homoglyphResult.riskReasons,
+            mixedScript: homoglyphResult.mixedScript,
+            isPunycode: homoglyphResult.isPunycode,
+          },
+          'Homoglyph detection',
+        );
       }
 
       let manualOverride: 'allow' | 'deny' | null = null;
@@ -730,7 +740,6 @@ async function main() {
         wasShortened,
         finalUrlMismatch,
         manualOverride,
-        homoglyph: homoglyphResult,
         ...heurSignals,
       };
       const verdictResult = scoreFromSignals(signals);
