@@ -32,6 +32,13 @@ describe('homoglyph detection', () => {
     );
   });
 
+  it('does not throw on malformed punycode labels', () => {
+    expect(() => detectHomoglyphs('xn--.com')).not.toThrow();
+    const result = detectHomoglyphs('xn--.com');
+    expect(result.unicodeHostname).toBe('xn--.com');
+    expect(result.isPunycode).toBe(true);
+  });
+
   it('treats benign Latin IDNs as safe when no confusables present', () => {
     const result = detectHomoglyphs('münchen.de');
     expect(result.detected).toBe(false);

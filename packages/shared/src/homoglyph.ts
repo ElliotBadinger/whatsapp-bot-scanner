@@ -165,7 +165,18 @@ export function detectHomoglyphs(domain: string): HomoglyphResult {
 function decodeDomain(domain: string): string {
   return domain
     .split('.')
-    .map(label => (label.startsWith('xn--') ? punycode.toUnicode(label) : label))
+    .map(label => {
+      if (!label.startsWith('xn--')) {
+        return label;
+      }
+
+      try {
+        const decoded = punycode.toUnicode(label);
+        return decoded || label;
+      } catch {
+        return label;
+      }
+    })
     .join('.');
 }
 
