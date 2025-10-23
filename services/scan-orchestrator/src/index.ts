@@ -102,6 +102,84 @@ const CIRCUIT_LABELS = {
 const cacheRatios = new Map<string, { hits: number; misses: number }>();
 const circuitOpenSince = new Map<string, number>();
 
+const VERDICT_REASON_OTHER_LABEL = 'other';
+
+function normalizeVerdictReason(reason: string): string {
+  if (reason === 'Manually allowed') {
+    return 'manual_allow';
+  }
+  if (reason === 'Manually blocked') {
+    return 'manual_deny';
+  }
+  if (reason.startsWith('Google Safe Browsing')) {
+    if (reason.includes('MALWARE')) {
+      return 'gsb_malware';
+    }
+    if (reason.includes('SOCIAL_ENGINEERING')) {
+      return 'gsb_social_engineering';
+    }
+    return 'gsb_threat';
+  }
+  if (reason === 'Verified phishing (Phishtank)') {
+    return 'phishtank_verified';
+  }
+  if (reason === 'Known malware distribution (URLhaus)') {
+    return 'urlhaus_listed';
+  }
+  if (reason.includes('VT engine')) {
+    return 'vt_malicious';
+  }
+  if (reason.startsWith('Domain registered')) {
+    if (reason.includes('<7')) {
+      return 'domain_age_lt7';
+    }
+    if (reason.includes('<14')) {
+      return 'domain_age_lt14';
+    }
+    if (reason.includes('<30')) {
+      return 'domain_age_lt30';
+    }
+    return 'domain_age';
+  }
+  if (reason.startsWith('High-risk homoglyph attack detected')) {
+    return 'homoglyph_high';
+  }
+  if (
+    reason.startsWith('Suspicious characters detected') ||
+    reason === 'Suspicious homoglyph characters detected'
+  ) {
+    return 'homoglyph_medium';
+  }
+  if (reason === 'Punycode/IDN domain detected') {
+    return 'homoglyph_low';
+  }
+  if (reason === 'URL uses IP address') {
+    return 'ip_literal';
+  }
+  if (reason === 'Suspicious TLD') {
+    return 'suspicious_tld';
+  }
+  if (reason.startsWith('Multiple redirects')) {
+    return 'multiple_redirects';
+  }
+  if (reason === 'Uncommon port') {
+    return 'uncommon_port';
+  }
+  if (reason.startsWith('Long URL')) {
+    return 'long_url';
+  }
+  if (reason === 'Executable file extension') {
+    return 'executable_extension';
+  }
+  if (reason === 'Shortened URL expanded') {
+    return 'shortener_expanded';
+  }
+  if (reason === 'Redirect leads to mismatched domain/brand') {
+    return 'redirect_mismatch';
+  }
+  return VERDICT_REASON_OTHER_LABEL;
+}
+
 function recordCacheOutcome(cacheType: string, outcome: 'hit' | 'miss'): void {
   const state = cacheRatios.get(cacheType) ?? { hits: 0, misses: 0 };
   if (outcome === 'hit') {
@@ -808,7 +886,7 @@ async function main() {
 
       metrics.verdictScore.observe(score);
       for (const reason of reasons) {
-        metrics.verdictReasons.labels(reason).inc();
+        metrics.verdictReasons.labels(normalizeVerdictReason(reason)).inc();
       }
       if (baselineVerdict !== verdict) {
         metrics.verdictEscalations.labels(baselineVerdict, verdict).inc();
