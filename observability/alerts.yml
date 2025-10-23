@@ -43,13 +43,6 @@ groups:
           severity: critical
         annotations:
           summary: "WhoisXML API quota exhausted"
-      - alert: WhoisXMLFallbackSpike
-        expr: increase(wbscanner_whois_results_total{result="fallback"}[15m]) > 5
-        for: 15m
-        labels:
-          severity: warning
-        annotations:
-          summary: "WhoisXML lookups frequently falling back to RDAP"
       - alert: QueueDepthHigh
         expr: wbscanner_queue_depth{queue="scan-request"} > 500
         for: 5m
@@ -58,7 +51,7 @@ groups:
         annotations:
           summary: "Scan request queue depth is high"
       - alert: ShortenerFallbackErrors
-        expr: rate(wbscanner_shortener_expansions_total{method="url-expand",result="error"}[10m]) > 5
+        expr: rate(wbscanner_shortener_expansions_total{method="urlexpander",result="error"}[10m]) > 5
         for: 10m
         labels:
           severity: warning
@@ -71,31 +64,53 @@ groups:
           severity: info
         annotations:
           summary: "Spike in homoglyph detections"
-      - alert: WAVerdictDeliveryFailures
-        expr: increase(wbscanner_wa_verdict_delivery_total{result="failed"}[10m]) > 0
-        for: 10m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Verdict replies are failing to deliver"
-      - alert: WAVerdictDeliveryRetriesHigh
-        expr: increase(wbscanner_wa_verdict_delivery_retries_total[10m]) > 5
-        for: 10m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Verdict delivery retries exceeding threshold"
-      - alert: WAAuthFailuresSpiking
-        expr: increase(wbscanner_wa_state_changes_total{event="auth_failure"}[5m]) > 3
+      - alert: VTQuotaUtilizationHigh
+        expr: wbscanner_api_quota_utilization_ratio{service="virustotal"} > 0.8
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Repeated WhatsApp auth failures detected"
-      - alert: ExternalProvidersDegraded
-        expr: increase(wbscanner_degraded_mode_events_total[5m]) > 0
-        for: 0m
+          summary: "VirusTotal quota utilization above 80%"
+      - alert: RateLimiterBacklog
+        expr: wbscanner_rate_limiter_queue_depth{service="virustotal"} > 2
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "VirusTotal limiter queue building up"
+      - alert: CircuitBreakerOpen
+        expr: wbscanner_circuit_breaker_state == 1
+        for: 2m
         labels:
           severity: critical
         annotations:
-          summary: "All external threat providers are unavailable; system running heuristics-only."
+          summary: "Circuit breaker open for external dependency"
+      - alert: QueueWaitHigh
+        expr: histogram_quantile(0.95, sum(rate(wbscanner_queue_job_wait_seconds_bucket[5m])) by (queue, le)) > 10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Queue wait time p95 above 10s"
+      - alert: VerdictLatencyHigh
+        expr: histogram_quantile(0.95, sum(rate(wbscanner_verdict_latency_seconds_bucket[5m])) by (le)) > 30
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Verdict latency p95 above 30s"
+      - alert: CacheStaleBurst
+        expr: increase(wbscanner_cache_stale_total[10m]) > 50
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Stale cache hits rising"
+      - alert: WADropSpike
+        expr: increase(wbscanner_wa_messages_dropped_total[5m]) > 25
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "WhatsApp drops exceeding threshold"
+

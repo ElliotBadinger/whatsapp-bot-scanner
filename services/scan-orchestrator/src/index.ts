@@ -12,6 +12,8 @@ import {
   circuitStates,
   rateLimiterDelay,
   circuitBreakerTransitionCounter,
+  circuitBreakerRejections,
+  circuitBreakerOpenDuration,
   queueDepthGauge,
   cacheHitRatioGauge,
   normalizeUrl,
@@ -33,6 +35,7 @@ import {
   CircuitState,
   withRetry,
   QuotaExceededError,
+  detectHomoglyphs,
 } from '@wbscanner/shared';
 import {
   checkBlocklistsWithRedundancy,
@@ -43,15 +46,17 @@ import {
 import type { GsbThreatMatch, UrlhausLookupResult, PhishtankLookupResult, VirusTotalAnalysis, UrlscanSubmissionResponse, WhoisXmlResponse } from '@wbscanner/shared';
 import { downloadUrlscanArtifacts } from './urlscan-artifacts';
 
-const redisOptions = {
-  maxRetriesPerRequest: null,
-  enableReadyCheck: false,
-} as const;
+const redis = new Redis(config.redisUrl);
+const scanRequestQueue = new Queue(config.queues.scanRequest, { connection: redis });
+const scanVerdictQueue = new Queue(config.queues.scanVerdict, { connection: redis });
+const urlscanQueue = new Queue(config.queues.urlscan, { connection: redis });
 
-const redis = new Redis(config.redisUrl, redisOptions);
-const scanRequestQueue = new Queue(config.queues.scanRequest, { connection: new Redis(config.redisUrl, redisOptions) });
-const scanVerdictQueue = new Queue(config.queues.scanVerdict, { connection: new Redis(config.redisUrl, redisOptions) });
-const urlscanQueue = new Queue(config.queues.urlscan, { connection: new Redis(config.redisUrl, redisOptions) });
+const queueMetricsInterval = setInterval(() => {
+  refreshQueueMetrics(scanRequestQueue, config.queues.scanRequest).catch(() => undefined);
+  refreshQueueMetrics(scanVerdictQueue, config.queues.scanVerdict).catch(() => undefined);
+  refreshQueueMetrics(urlscanQueue, config.queues.urlscan).catch(() => undefined);
+}, 10_000);
+queueMetricsInterval.unref();
 
 const ANALYSIS_TTLS = {
   gsb: 60 * 60,
@@ -67,6 +72,16 @@ const URLSCAN_QUEUED_PREFIX = 'urlscan:queued:';
 const URLSCAN_SUBMITTED_PREFIX = 'urlscan:submitted:';
 const URLSCAN_RESULT_PREFIX = 'urlscan:result:';
 const SHORTENER_CACHE_PREFIX = 'url:shortener:';
+
+const CACHE_LABELS = {
+  gsb: 'gsb_analysis',
+  phishtank: 'phishtank_analysis',
+  vt: 'virustotal_analysis',
+  urlhaus: 'urlhaus_analysis',
+  shortener: 'shortener_resolution',
+  whois: 'whois_analysis',
+  verdict: 'scan_result',
+} as const;
 
 const CIRCUIT_DEFAULTS = {
   failureThreshold: 5,
@@ -84,6 +99,31 @@ const CIRCUIT_LABELS = {
   whoisxml: 'whoisxml',
 } as const;
 
+const cacheRatios = new Map<string, { hits: number; misses: number }>();
+const circuitOpenSince = new Map<string, number>();
+
+function recordCacheOutcome(cacheType: string, outcome: 'hit' | 'miss'): void {
+  const state = cacheRatios.get(cacheType) ?? { hits: 0, misses: 0 };
+  if (outcome === 'hit') {
+    state.hits += 1;
+  } else {
+    state.misses += 1;
+  }
+  cacheRatios.set(cacheType, state);
+  const total = state.hits + state.misses;
+  if (total > 0) {
+    cacheHitRatioGauge.labels(cacheType).set(state.hits / total);
+  }
+}
+
+async function refreshQueueMetrics(queue: Queue, name: string): Promise<void> {
+  const counts = await queue.getJobCounts('waiting', 'active', 'delayed', 'failed');
+  queueDepthGauge.labels(name).set(counts.waiting ?? 0);
+  metrics.queueActive.labels(name).set(counts.active ?? 0);
+  metrics.queueDelayed.labels(name).set(counts.delayed ?? 0);
+  metrics.queueFailedGauge.labels(name).set(counts.failed ?? 0);
+}
+
 function makeCircuit(name: string) {
   const breaker = new CircuitBreaker({
     ...CIRCUIT_DEFAULTS,
@@ -91,6 +131,16 @@ function makeCircuit(name: string) {
     onStateChange: (state, from) => {
       circuitStates.labels(name).set(state);
       circuitBreakerTransitionCounter.labels(name, String(from ?? ''), String(state)).inc();
+      const now = Date.now();
+      if (state === CircuitState.OPEN) {
+        circuitOpenSince.set(name, now);
+      } else if (from === CircuitState.OPEN) {
+        const openedAt = circuitOpenSince.get(name);
+        if (openedAt) {
+          circuitBreakerOpenDuration.labels(name).observe((now - openedAt) / 1000);
+          circuitOpenSince.delete(name);
+        }
+      }
       logger.debug({ name, from, to: state }, 'Circuit state change');
     }
   });
@@ -104,27 +154,6 @@ const urlhausCircuit = makeCircuit(CIRCUIT_LABELS.urlhaus);
 const vtCircuit = makeCircuit(CIRCUIT_LABELS.vt);
 const urlscanCircuit = makeCircuit(CIRCUIT_LABELS.urlscan);
 const whoisCircuit = makeCircuit(CIRCUIT_LABELS.whoisxml);
-
-const cacheStats: Record<'scan' | 'analysis' | 'shortener', { hits: number; misses: number }> = {
-  scan: { hits: 0, misses: 0 },
-  analysis: { hits: 0, misses: 0 },
-  shortener: { hits: 0, misses: 0 },
-};
-
-function recordCacheEvent(type: keyof typeof cacheStats, hit: boolean) {
-  const stats = cacheStats[type];
-  if (hit) {
-    stats.hits += 1;
-    metrics.cacheHit.inc();
-  } else {
-    stats.misses += 1;
-    metrics.cacheMiss.inc();
-  }
-  const total = stats.hits + stats.misses;
-  if (total > 0) {
-    cacheHitRatioGauge.labels(type).set(stats.hits / total);
-  }
-}
 
 function recordLatency(service: string, ms?: number) {
   if (typeof ms === 'number' && ms >= 0) {
@@ -146,7 +175,11 @@ function classifyError(err: unknown): string {
 }
 
 function recordError(service: string, err: unknown) {
-  externalErrors.labels(service, classifyError(err)).inc();
+  const reason = classifyError(err);
+  if (reason === 'circuit_open') {
+    circuitBreakerRejections.labels(service).inc();
+  }
+  externalErrors.labels(service, reason).inc();
 }
 
 function shouldRetry(err: unknown): boolean {
@@ -159,77 +192,40 @@ function shouldRetry(err: unknown): boolean {
   return !codeNum;
 }
 
-async function getJsonCache<T>(key: string): Promise<T | null> {
+async function getJsonCache<T>(cacheType: string, key: string, ttlSeconds: number): Promise<T | null> {
+  const stop = metrics.cacheLookupDuration.labels(cacheType).startTimer();
   const raw = await redis.get(key);
-  if (!raw) return null;
+  stop();
+  if (!raw) {
+    recordCacheOutcome(cacheType, 'miss');
+    metrics.cacheEntryTtl.labels(cacheType).set(0);
+    return null;
+  }
+  recordCacheOutcome(cacheType, 'hit');
+  metrics.cacheEntryBytes.labels(cacheType).set(Buffer.byteLength(raw));
+  const ttlRemaining = await redis.ttl(key);
+  if (ttlRemaining >= 0) {
+    metrics.cacheEntryTtl.labels(cacheType).set(ttlRemaining);
+    if (ttlSeconds > 0 && ttlRemaining < Math.max(1, Math.floor(ttlSeconds * 0.2))) {
+      metrics.cacheStaleTotal.labels(cacheType).inc();
+    }
+  }
   try {
     return JSON.parse(raw) as T;
   } catch {
+    metrics.cacheStaleTotal.labels(cacheType).inc();
     return null;
   }
 }
 
-async function setJsonCache(key: string, value: unknown, ttlSeconds: number): Promise<void> {
-  await redis.set(key, JSON.stringify(value), 'EX', ttlSeconds);
-}
-
-function escapeForRegex(input: string): string {
-  return input.replace(/[-/\\^$*+?.()|[\]{}]/g, '\$&');
-}
-
-function domainPatternMatches(pattern: string | null | undefined, hostname: string): boolean {
-  if (!pattern) return false;
-  const normalizedPattern = pattern.trim().toLowerCase();
-  if (!normalizedPattern) return false;
-  const normalizedHost = hostname.toLowerCase();
-
-  if (normalizedPattern === normalizedHost) {
-    return true;
-  }
-
-  if (normalizedPattern.includes('*') || normalizedPattern.includes('%') || normalizedPattern.includes('_')) {
-    const regexBody = normalizedPattern
-      .split(/(\*|%|_)/g)
-      .map(token => {
-        if (token === '*' || token === '%') return '.*';
-        if (token === '_') return '.';
-        return escapeForRegex(token);
-      })
-      .join('');
-    const regex = new RegExp(`^${regexBody}$`, 'i');
-    if (regex.test(normalizedHost)) {
-      return true;
-    }
-  }
-
-  if (normalizedPattern.includes('.')) {
-    return normalizedHost.endsWith(`.${normalizedPattern}`);
-  }
-
-  return false;
-}
-
-function buildOverridePatternCandidates(hostname: string): string[] {
-  const normalized = hostname.toLowerCase();
-  if (/^\d+\.\d+\.\d+\.\d+$/.test(normalized)) {
-    return [normalized];
-  }
-  const segments = normalized.split('.').filter(Boolean);
-  const patterns = new Set<string>();
-
-  for (let i = 0; i < segments.length; i += 1) {
-    const suffix = segments.slice(i).join('.');
-    if (!suffix) continue;
-    patterns.add(suffix);
-    patterns.add(`*.${suffix}`);
-    patterns.add(`%.${suffix}`);
-  }
-
-  if (patterns.size === 0 && normalized) {
-    patterns.add(normalized);
-  }
-
-  return Array.from(patterns);
+async function setJsonCache(cacheType: string, key: string, value: unknown, ttlSeconds: number): Promise<void> {
+  const payload = JSON.stringify(value);
+  const stop = metrics.cacheWriteDuration.labels(cacheType).startTimer();
+  await redis.set(key, payload, 'EX', ttlSeconds);
+  stop();
+  metrics.cacheRefreshTotal.labels(cacheType).inc();
+  metrics.cacheEntryBytes.labels(cacheType).set(Buffer.byteLength(payload));
+  metrics.cacheEntryTtl.labels(cacheType).set(ttlSeconds);
 }
 
 type GsbMatch = GsbThreatMatch;
@@ -320,12 +316,10 @@ function extractUrlscanArtifactCandidates(uuid: string, payload: any): ArtifactC
 
 async function fetchGsbAnalysis(finalUrl: string, hash: string): Promise<GsbFetchResult> {
   const cacheKey = `url:analysis:${hash}:gsb`;
-  const cached = await getJsonCache<GsbMatch[]>(cacheKey);
+  const cached = await getJsonCache<GsbMatch[]>(CACHE_LABELS.gsb, cacheKey, ANALYSIS_TTLS.gsb);
   if (cached) {
-    recordCacheEvent('analysis', true);
     return { matches: cached, fromCache: true, durationMs: 0, error: null };
   }
-  recordCacheEvent('analysis', false);
   try {
     const result = await gsbCircuit.execute(() =>
       withRetry(() => gsbLookup([finalUrl]), {
@@ -336,7 +330,7 @@ async function fetchGsbAnalysis(finalUrl: string, hash: string): Promise<GsbFetc
       })
     );
     recordLatency(CIRCUIT_LABELS.gsb, result.latencyMs);
-    await setJsonCache(cacheKey, result.matches, ANALYSIS_TTLS.gsb);
+    await setJsonCache(CACHE_LABELS.gsb, cacheKey, result.matches, ANALYSIS_TTLS.gsb);
     return {
       matches: result.matches,
       fromCache: false,
@@ -355,12 +349,10 @@ async function fetchPhishtank(finalUrl: string, hash: string): Promise<Phishtank
     return { result: null, fromCache: true, error: null };
   }
   const cacheKey = `url:analysis:${hash}:phishtank`;
-  const cached = await getJsonCache<PhishtankResult>(cacheKey);
+  const cached = await getJsonCache<PhishtankResult>(CACHE_LABELS.phishtank, cacheKey, ANALYSIS_TTLS.phishtank);
   if (cached) {
-    recordCacheEvent('analysis', true);
     return { result: cached, fromCache: true, error: null };
   }
-  recordCacheEvent('analysis', false);
   try {
     const result = await phishtankCircuit.execute(() =>
       withRetry(() => phishtankLookup(finalUrl), {
@@ -371,7 +363,7 @@ async function fetchPhishtank(finalUrl: string, hash: string): Promise<Phishtank
       })
     );
     recordLatency(CIRCUIT_LABELS.phishtank, result.latencyMs);
-    await setJsonCache(cacheKey, result, ANALYSIS_TTLS.phishtank);
+    await setJsonCache(CACHE_LABELS.phishtank, cacheKey, result, ANALYSIS_TTLS.phishtank);
     return { result, fromCache: false, error: null };
   } catch (err) {
     recordError(CIRCUIT_LABELS.phishtank, err);
@@ -392,12 +384,10 @@ async function fetchVirusTotal(finalUrl: string, hash: string): Promise<VirusTot
     return { stats: undefined, fromCache: true, quotaExceeded: false, error: null };
   }
   const cacheKey = `url:analysis:${hash}:vt`;
-  const cached = await getJsonCache<VtStats>(cacheKey);
+  const cached = await getJsonCache<VtStats>(CACHE_LABELS.vt, cacheKey, ANALYSIS_TTLS.vt);
   if (cached) {
-    recordCacheEvent('analysis', true);
     return { stats: cached, fromCache: true, quotaExceeded: false, error: null };
   }
-  recordCacheEvent('analysis', false);
   try {
     const analysis = await vtCircuit.execute(() =>
       withRetry(() => vtAnalyzeUrl(finalUrl), {
@@ -410,7 +400,7 @@ async function fetchVirusTotal(finalUrl: string, hash: string): Promise<VirusTot
     recordLatency(CIRCUIT_LABELS.vt, analysis.latencyMs);
     const stats = vtVerdictStats(analysis as VirusTotalAnalysis);
     if (stats) {
-      await setJsonCache(cacheKey, stats, ANALYSIS_TTLS.vt);
+      await setJsonCache(CACHE_LABELS.vt, cacheKey, stats, ANALYSIS_TTLS.vt);
     }
     return { stats, fromCache: false, quotaExceeded: false, error: null };
   } catch (err) {
@@ -434,12 +424,10 @@ async function fetchUrlhaus(finalUrl: string, hash: string): Promise<UrlhausFetc
     return { result: null, fromCache: true, error: null };
   }
   const cacheKey = `url:analysis:${hash}:urlhaus`;
-  const cached = await getJsonCache<UrlhausResult>(cacheKey);
+  const cached = await getJsonCache<UrlhausResult>(CACHE_LABELS.urlhaus, cacheKey, ANALYSIS_TTLS.urlhaus);
   if (cached) {
-    recordCacheEvent('analysis', true);
     return { result: cached, fromCache: true, error: null };
   }
-  recordCacheEvent('analysis', false);
   try {
     const result = await urlhausCircuit.execute(() =>
       withRetry(() => urlhausLookup(finalUrl), {
@@ -450,7 +438,7 @@ async function fetchUrlhaus(finalUrl: string, hash: string): Promise<UrlhausFetc
       })
     );
     recordLatency(CIRCUIT_LABELS.urlhaus, result.latencyMs);
-    await setJsonCache(cacheKey, result, ANALYSIS_TTLS.urlhaus);
+    await setJsonCache(CACHE_LABELS.urlhaus, cacheKey, result, ANALYSIS_TTLS.urlhaus);
     return { result, fromCache: false, error: null };
   } catch (err) {
     recordError(CIRCUIT_LABELS.urlhaus, err);
@@ -468,12 +456,8 @@ interface ShortenerCacheEntry {
 
 async function resolveShortenerWithCache(url: string, hash: string): Promise<ShortenerCacheEntry | null> {
   const cacheKey = `${SHORTENER_CACHE_PREFIX}${hash}`;
-  const cached = await getJsonCache<ShortenerCacheEntry>(cacheKey);
-  if (cached) {
-    recordCacheEvent('shortener', true);
-    return cached;
-  }
-  recordCacheEvent('shortener', false);
+  const cached = await getJsonCache<ShortenerCacheEntry>(CACHE_LABELS.shortener, cacheKey, config.shortener.cacheTtlSeconds);
+  if (cached) return cached;
   try {
     const start = Date.now();
     const resolved = await resolveShortener(url);
@@ -485,7 +469,7 @@ async function resolveShortenerWithCache(url: string, hash: string): Promise<Sho
         chain: resolved.chain,
         wasShortened: true,
       };
-      await setJsonCache(cacheKey, payload, config.shortener.cacheTtlSeconds);
+      await setJsonCache(CACHE_LABELS.shortener, cacheKey, payload, config.shortener.cacheTtlSeconds);
       return payload;
     }
     return null;
@@ -508,11 +492,14 @@ async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainI
     return { ageDays: rdapAge, source: 'rdap' };
   }
   if (!config.whoisxml.enabled || !config.whoisxml.apiKey) {
-    metrics.whoisResults.labels('disabled').inc();
     return { ageDays: undefined, source: 'none' };
   }
   const cacheKey = `url:analysis:${hash}:whois`;
-  const cached = await getJsonCache<{ ageDays?: number; registrar?: string }>(cacheKey);
+  const cached = await getJsonCache<{ ageDays?: number; registrar?: string }>(
+    CACHE_LABELS.whois,
+    cacheKey,
+    ANALYSIS_TTLS.whois
+  );
   if (cached) {
     return { ageDays: cached.ageDays, registrar: cached.registrar, source: 'whoisxml' };
   }
@@ -529,11 +516,10 @@ async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainI
     recordLatency(CIRCUIT_LABELS.whoisxml, Date.now() - start);
     const ageDays = response?.record?.estimatedDomainAgeDays;
     const registrar = response?.record?.registrarName;
-    await setJsonCache(cacheKey, { ageDays, registrar }, ANALYSIS_TTLS.whois);
+    await setJsonCache(CACHE_LABELS.whois, cacheKey, { ageDays, registrar }, ANALYSIS_TTLS.whois);
     return { ageDays, registrar, source: 'whoisxml' };
   } catch (err) {
     recordError(CIRCUIT_LABELS.whoisxml, err);
-    metrics.whoisResults.labels('fallback').inc();
     if (err instanceof QuotaExceededError) {
       logger.warn({ hostname }, 'WhoisXML quota exhausted, disabling for remainder of month');
       disableWhoisXmlForMonth();
@@ -651,29 +637,81 @@ async function main() {
   });
 
   new Worker(config.queues.scanRequest, async (job) => {
-    const start = Date.now();
-    const { chatId, messageId, url, rescan } = job.data as {
+    const queueName = config.queues.scanRequest;
+    const started = Date.now();
+    const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
+    metrics.queueJobWait.labels(queueName).observe(waitSeconds);
+    const { chatId, messageId, url, timestamp } = job.data as {
       chatId?: string;
       messageId?: string;
       url: string;
-      rescan?: boolean;
+      timestamp?: number;
     };
+    const ingestionTimestamp = typeof timestamp === 'number' ? timestamp : job.timestamp ?? started;
     const hasChatContext = typeof chatId === 'string' && typeof messageId === 'string';
     try {
       const norm = normalizeUrl(url);
-      if (!norm) return;
+      if (!norm) {
+        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
+        metrics.queueCompleted.labels(queueName).inc();
+        if (job.attemptsMade > 0) {
+          metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
+        }
+        return;
+      }
       const h = urlHash(norm);
       const cacheKey = `scan:${h}`;
-      const cached = await redis.get(cacheKey);
-      if (cached) {
-        recordCacheEvent('scan', true);
-        const data = JSON.parse(cached) as { chatId?: string; messageId?: string };
-        const resolvedChatId = hasChatContext ? chatId : data.chatId;
-        const resolvedMessageId = hasChatContext ? messageId : data.messageId;
+      let cachedVerdict: any | null = null;
+      let cachedTtl = -1;
+      const cacheStop = metrics.cacheLookupDuration.labels(CACHE_LABELS.verdict).startTimer();
+      const cachedRaw = await redis.get(cacheKey);
+      cacheStop();
+      if (cachedRaw) {
+        recordCacheOutcome(CACHE_LABELS.verdict, 'hit');
+        metrics.cacheHit.inc();
+        metrics.cacheEntryBytes.labels(CACHE_LABELS.verdict).set(Buffer.byteLength(cachedRaw));
+        cachedTtl = await redis.ttl(cacheKey);
+        if (cachedTtl >= 0) {
+          metrics.cacheEntryTtl.labels(CACHE_LABELS.verdict).set(cachedTtl);
+        }
+        try {
+          cachedVerdict = JSON.parse(cachedRaw);
+        } catch {
+          metrics.cacheStaleTotal.labels(CACHE_LABELS.verdict).inc();
+        }
+        if (
+          cachedVerdict &&
+          typeof cachedVerdict.cacheTtl === 'number' &&
+          cachedTtl >= 0 &&
+          cachedTtl < Math.max(1, Math.floor(cachedVerdict.cacheTtl * 0.2))
+        ) {
+          metrics.cacheStaleTotal.labels(CACHE_LABELS.verdict).inc();
+        }
+      } else {
+        recordCacheOutcome(CACHE_LABELS.verdict, 'miss');
+        metrics.cacheMiss.inc();
+        metrics.cacheEntryTtl.labels(CACHE_LABELS.verdict).set(0);
+      }
+
+      if (cachedVerdict) {
+        const verdictLatencySeconds = Math.max(0, (Date.now() - ingestionTimestamp) / 1000);
+        metrics.verdictLatency.observe(verdictLatencySeconds);
+        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
+        metrics.queueCompleted.labels(queueName).inc();
+        if (job.attemptsMade > 0) {
+          metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
+        }
+        const resolvedChatId = hasChatContext ? chatId : cachedVerdict.chatId;
+        const resolvedMessageId = hasChatContext ? messageId : cachedVerdict.messageId;
         if (resolvedChatId && resolvedMessageId) {
           await scanVerdictQueue.add(
             'verdict',
-            { ...data, chatId: resolvedChatId, messageId: resolvedMessageId },
+            {
+              chatId: resolvedChatId,
+              messageId: resolvedMessageId,
+              ...cachedVerdict,
+              decidedAt: cachedVerdict.decidedAt ?? Date.now(),
+            },
             { removeOnComplete: true }
           );
         } else {
@@ -681,7 +719,6 @@ async function main() {
         }
         return;
       }
-      recordCacheEvent('scan', false);
 
       const shortenerInfo = await resolveShortenerWithCache(norm, h);
       const preExpansionUrl = shortenerInfo?.finalUrl ?? norm;
@@ -690,64 +727,29 @@ async function main() {
       const finalUrlObj = new URL(finalUrl);
       const redirectChain = [...(shortenerInfo?.chain ?? []), ...exp.chain.filter(item => !(shortenerInfo?.chain ?? []).includes(item))];
       const heurSignals = extraHeuristics(finalUrlObj);
-      const homoglyphResult = heurSignals.homoglyph;
       const domainIntel = await fetchDomainIntel(finalUrlObj.hostname, h);
       const domainAgeDays = domainIntel.ageDays;
       const wasShortened = Boolean(shortenerInfo?.wasShortened);
       const finalUrlMismatch = wasShortened && new URL(norm).hostname !== finalUrlObj.hostname;
 
-      if (homoglyphResult?.detected) {
+      const homoglyphResult = detectHomoglyphs(finalUrlObj.hostname);
+      if (homoglyphResult.detected) {
         metrics.homoglyphDetections.labels(homoglyphResult.riskLevel).inc();
-        const confusablePairs = homoglyphResult.confusableChars.map(c => `${c.original}→${c.confusedWith}`);
-        logger.info(
-          {
-            hostname: finalUrlObj.hostname,
-            risk: homoglyphResult.riskLevel,
-            confusables: confusablePairs,
-            reasons: homoglyphResult.riskReasons,
-            mixedScript: homoglyphResult.mixedScript,
-            isPunycode: homoglyphResult.isPunycode,
-          },
-          'Homoglyph detection',
-        );
+        logger.info({ hostname: finalUrlObj.hostname, risk: homoglyphResult.riskLevel, confusables: homoglyphResult.confusableChars }, 'Homoglyph detection');
       }
 
-      const normalizedHostname = finalUrlObj.hostname.toLowerCase();
-      const overridePatternCandidates = buildOverridePatternCandidates(normalizedHostname);
-
       let manualOverride: 'allow' | 'deny' | null = null;
-      let manualOverrideReason: string | null = null;
       try {
         const overrideResult = await pg.query(
-          `SELECT status, reason, pattern, url_hash
-             FROM overrides
-            WHERE (
-              url_hash = $1
-              OR (pattern IS NOT NULL AND pattern <> '' AND pattern = ANY($2))
-              OR (pattern IS NOT NULL AND pattern <> '' AND $3 ILIKE pattern)
-            )
-              AND (expires_at IS NULL OR expires_at > NOW())
-            ORDER BY created_at DESC
-            LIMIT 50`,
-          [h, overridePatternCandidates.length > 0 ? overridePatternCandidates : [normalizedHostname], normalizedHostname]
+          `SELECT status FROM overrides
+             WHERE (url_hash = $1 OR pattern = $2)
+               AND (expires_at IS NULL OR expires_at > NOW())
+             ORDER BY created_at DESC
+             LIMIT 1`,
+          [h, finalUrlObj.hostname]
         );
-
-        type OverrideRow = {
-          status?: string;
-          reason?: string | null;
-          pattern?: string | null;
-          url_hash?: string | null;
-        };
-        const rows = overrideResult.rows as OverrideRow[];
-        const hashOverride = rows.find(row => row.url_hash === h && row.status);
-        const patternOverride = rows.find(row =>
-          Boolean(row.pattern && row.status && domainPatternMatches(row.pattern, normalizedHostname))
-        );
-        const matchedOverride = hashOverride ?? patternOverride;
-        if (matchedOverride?.status) {
-          manualOverride = matchedOverride.status as 'allow' | 'deny';
-          const trimmedReason = matchedOverride.reason?.trim();
-          manualOverrideReason = trimmedReason ? trimmedReason : null;
+        if (overrideResult.rows[0]?.status) {
+          manualOverride = overrideResult.rows[0].status as 'allow' | 'deny';
           metrics.manualOverrideApplied.labels(manualOverride).inc();
         }
       } catch (err) {
@@ -769,7 +771,6 @@ async function main() {
 
       const phishtankResult = blocklistResult.phishtankResult;
       const phishtankHit = Boolean(phishtankResult?.verified);
-      const phishtankError = blocklistResult.phishtankError;
 
       let vtStats: VtStats | undefined;
       let vtQuotaExceeded = false;
@@ -785,7 +786,6 @@ async function main() {
       }
 
       let urlhausResult: UrlhausResult | null = null;
-      let urlhausError: Error | null = null;
       const shouldQueryUrlhaus =
         !gsbHit && (
           !config.vt.apiKey ||
@@ -796,19 +796,6 @@ async function main() {
       if (shouldQueryUrlhaus) {
         const urlhausResponse = await fetchUrlhaus(finalUrl, h);
         urlhausResult = urlhausResponse.result;
-        urlhausError = urlhausResponse.error ?? null;
-      }
-
-      const gsbAvailable = Boolean(config.gsb.apiKey) && !blocklistResult.gsbResult.error;
-      const phishtankAvailable = config.phishtank.enabled
-        ? (!blocklistResult.phishtankNeeded || !phishtankError)
-        : false;
-      const vtAvailable = Boolean(config.vt.apiKey) && !vtError && !vtQuotaExceeded;
-      const urlhausAvailable = config.urlhaus.enabled ? !urlhausError : false;
-
-      if (!(gsbAvailable || phishtankAvailable || vtAvailable || urlhausAvailable)) {
-        metrics.degradedModeEvents.inc();
-        logger.warn({ url: finalUrl, urlHash: h }, 'All external providers unavailable; heuristics-only verdict issued');
       }
 
       const signals = {
@@ -823,14 +810,54 @@ async function main() {
         wasShortened,
         finalUrlMismatch,
         manualOverride,
+        homoglyph: homoglyphResult,
         ...heurSignals,
       };
       const verdictResult = scoreFromSignals(signals);
       const verdict = verdictResult.level;
-      const score = verdictResult.score;
-      const reasonsWithOverride = manualOverrideReason
-        ? Array.from(new Set([...verdictResult.reasons, `Override reason: ${manualOverrideReason}`]))
-        : [...verdictResult.reasons];
+      const { score, reasons } = verdictResult;
+      const baselineVerdict = scoreFromSignals({ ...signals, manualOverride: null }).level;
+
+      metrics.verdictScore.observe(score);
+      for (const reason of reasons) {
+        metrics.verdictReasons.labels(reason).inc();
+      }
+      if (baselineVerdict !== verdict) {
+        metrics.verdictEscalations.labels(baselineVerdict, verdict).inc();
+      }
+      if (gsbMatches.length > 0) {
+        metrics.verdictSignals.labels('gsb_match').inc(gsbMatches.length);
+      }
+      if (phishtankHit) {
+        metrics.verdictSignals.labels('phishtank_verified').inc();
+      }
+      if (urlhausResult?.listed) {
+        metrics.verdictSignals.labels('urlhaus_listed').inc();
+      }
+      if ((vtStats?.malicious ?? 0) > 0) {
+        metrics.verdictSignals.labels('vt_malicious').inc(vtStats?.malicious ?? 0);
+      }
+      if ((vtStats?.suspicious ?? 0) > 0) {
+        metrics.verdictSignals.labels('vt_suspicious').inc(vtStats?.suspicious ?? 0);
+      }
+      if (wasShortened) {
+        metrics.verdictSignals.labels('shortener').inc();
+      }
+      if (finalUrlMismatch) {
+        metrics.verdictSignals.labels('redirect_mismatch').inc();
+      }
+      if (redirectChain.length > 0) {
+        metrics.verdictSignals.labels('redirect_chain').inc(redirectChain.length);
+      }
+      if (homoglyphResult.detected) {
+        metrics.verdictSignals.labels(`homoglyph_${homoglyphResult.riskLevel}`).inc();
+      }
+      if (typeof domainAgeDays === 'number') {
+        metrics.verdictSignals.labels('domain_age').inc();
+      }
+      if (signals.manualOverride) {
+        metrics.verdictSignals.labels(`override_${signals.manualOverride}`).inc();
+      }
 
       const blocklistHit = gsbHit || phishtankHit || Boolean(urlhausResult?.listed);
 
@@ -863,10 +890,9 @@ async function main() {
       const ttlByLevel = config.orchestrator.cacheTtl as Record<string, number>;
       const ttl = ttlByLevel[verdict] ?? verdictResult.cacheTtl ?? 3600;
 
-      const overrideInfo = manualOverride
-        ? { status: manualOverride, reason: manualOverrideReason }
-        : undefined;
+      metrics.verdictCacheTtl.observe(ttl);
 
+      const decidedAt = Date.now();
       const res = {
         messageId,
         chatId,
@@ -875,8 +901,7 @@ async function main() {
         urlHash: h,
         verdict,
         score,
-        reasons: reasonsWithOverride,
-        override: overrideInfo,
+        reasons,
         gsb: { matches: gsbMatches },
         phishtank: phishtankResult,
         urlhaus: urlhausResult,
@@ -889,62 +914,52 @@ async function main() {
         cacheTtl: ttl,
         shortener: shortenerInfo ? { provider: shortenerInfo.provider, chain: shortenerInfo.chain } : undefined,
         finalUrlMismatch,
+        decidedAt,
       };
-      const cachePayload = hasChatContext
-        ? { ...res, chatId, messageId }
-        : res;
-      await redis.set(cacheKey, JSON.stringify(cachePayload), 'EX', ttl);
+      await setJsonCache(CACHE_LABELS.verdict, cacheKey, res, ttl);
 
       await pg.query(`INSERT INTO scans (url_hash, normalized_url, verdict, score, reasons, vt_stats, gsafebrowsing_hit, domain_age_days, redirect_chain_summary, cache_ttl, source_kind, urlscan_status, whois_source, whois_registrar, shortener_provider)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
         ON CONFLICT (url_hash) DO UPDATE SET last_seen_at=now(), verdict=EXCLUDED.verdict, score=EXCLUDED.score, reasons=EXCLUDED.reasons, vt_stats=EXCLUDED.vt_stats, gsafebrowsing_hit=EXCLUDED.gsafebrowsing_hit, domain_age_days=EXCLUDED.domain_age_days, redirect_chain_summary=EXCLUDED.redirect_chain_summary, cache_ttl=EXCLUDED.cache_ttl, urlscan_status=COALESCE(EXCLUDED.urlscan_status, scans.urlscan_status), whois_source=COALESCE(EXCLUDED.whois_source, scans.whois_source), whois_registrar=COALESCE(EXCLUDED.whois_registrar, scans.whois_registrar), shortener_provider=COALESCE(EXCLUDED.shortener_provider, scans.shortener_provider)`,
-        [
-          h,
-          finalUrl,
-          verdict,
-          score,
-          JSON.stringify(reasonsWithOverride),
-          JSON.stringify(vtStats || {}),
-          blocklistHit,
-          domainAgeDays ?? null,
-          JSON.stringify(redirectChain),
-          ttl,
-          'wa',
-          enqueuedUrlscan ? 'queued' : null,
-          domainIntel.source === 'none' ? null : domainIntel.source,
-          domainIntel.registrar ?? null,
-          shortenerInfo?.provider ?? null,
-        ]
+        [h, finalUrl, verdict, score, JSON.stringify(reasons), JSON.stringify(vtStats || {}), blocklistHit, domainAgeDays ?? null, JSON.stringify(redirectChain), ttl, 'wa', enqueuedUrlscan ? 'queued' : null, domainIntel.source === 'none' ? null : domainIntel.source, domainIntel.registrar ?? null, shortenerInfo?.provider ?? null]
       );
       if (enqueuedUrlscan) {
         await pg.query('UPDATE scans SET urlscan_status=$1 WHERE url_hash=$2', ['queued', h]).catch(() => undefined);
       }
-      if (hasChatContext) {
-        try {
-          await pg.query(
-            `INSERT INTO messages (chat_id, message_id, url_hash, verdict, posted_at)
-        VALUES ($1,$2,$3,$4,now()) ON CONFLICT DO NOTHING`,
-            [chatId, messageId, h, verdict]
-          );
-        } catch (err) {
-          logger.warn({ err, h }, 'failed to persist message metadata for scan');
-        }
+      if (chatId && messageId) {
+        await pg.query(`INSERT INTO messages (chat_id, message_id, url_hash, verdict, posted_at)
+        VALUES ($1,$2,$3,$4,now()) ON CONFLICT DO NOTHING`, [chatId, messageId, h, verdict]).catch((err) => {
+          logger.warn({ err, chatId, messageId }, 'failed to persist message metadata for scan');
+        });
 
         await scanVerdictQueue.add('verdict', { ...res, chatId, messageId }, { removeOnComplete: true });
       } else {
         logger.info({ url: finalUrl, jobId: job.id, rescan: Boolean(rescan) }, 'Completed scan without chat context; skipping messaging flow');
       }
       metrics.verdictCounter.labels(verdict).inc();
-      metrics.scanLatency.observe((Date.now() - start) / 1000);
+      const totalProcessingSeconds = (Date.now() - started) / 1000;
+      metrics.verdictLatency.observe(Math.max(0, (Date.now() - ingestionTimestamp) / 1000));
+      metrics.scanLatency.observe(totalProcessingSeconds);
+      metrics.queueProcessingDuration.labels(queueName).observe(totalProcessingSeconds);
+      metrics.queueCompleted.labels(queueName).inc();
+      if (job.attemptsMade > 0) {
+        metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
+      }
     } catch (e) {
+      metrics.queueFailures.labels(queueName).inc();
+      metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
       logger.error(e, 'scan worker error');
     } finally {
-      queueDepthGauge.labels(config.queues.scanRequest).set(await scanRequestQueue.getWaitingCount());
+      await refreshQueueMetrics(scanRequestQueue, queueName).catch(() => undefined);
     }
   }, { connection: redis, concurrency: config.orchestrator.concurrency });
 
   if (config.urlscan.enabled && config.urlscan.apiKey) {
     new Worker(config.queues.urlscan, async (job) => {
+      const queueName = config.queues.urlscan;
+      const started = Date.now();
+      const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
+      metrics.queueJobWait.labels(queueName).observe(waitSeconds);
       const { url, urlHash: urlHashValue } = job.data as { url: string; urlHash: string };
       try {
         const submission: UrlscanSubmissionResponse = await urlscanCircuit.execute(() =>
@@ -982,6 +997,11 @@ async function main() {
             [submission.uuid, 'submitted', submission.result ?? null, urlHashValue]
           );
         }
+        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
+        metrics.queueCompleted.labels(queueName).inc();
+        if (job.attemptsMade > 0) {
+          metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
+        }
       } catch (err) {
         recordError(CIRCUIT_LABELS.urlscan, err);
         logger.error({ err, url }, 'urlscan submission failed');
@@ -989,9 +1009,11 @@ async function main() {
           `UPDATE scans SET urlscan_status=$1, urlscan_completed_at=now() WHERE url_hash=$2`,
           ['failed', urlHashValue]
         ).catch(() => undefined);
+        metrics.queueFailures.labels(queueName).inc();
+        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
         throw err;
       } finally {
-        queueDepthGauge.labels(config.queues.urlscan).set(await urlscanQueue.getWaitingCount());
+        await refreshQueueMetrics(urlscanQueue, queueName).catch(() => undefined);
       }
     }, { connection: redis, concurrency: config.urlscan.concurrency });
   }

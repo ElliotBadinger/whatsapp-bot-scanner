@@ -35,12 +35,7 @@
         {
           "expr": "sum(rate(wbscanner_cache_hits_total[5m]))/(sum(rate(wbscanner_cache_hits_total[5m]))+sum(rate(wbscanner_cache_misses_total[5m])))"
         }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "mappings": []
-        }
-      }
+      ]
     },
     {
       "type": "timeseries",
@@ -143,7 +138,7 @@
       },
       "targets": [
         {
-          "expr": "sum(increase(wbscanner_shortener_expansions_total{method=\"url-expand\",result=\"error\"}[5m]))"
+          "expr": "sum(increase(wbscanner_shortener_expansions_total{method=\"urlexpander\",result=\"error\"}[5m]))"
         }
       ]
     },
@@ -178,53 +173,68 @@
       ]
     },
     {
-      "type": "timeseries",
-      "title": "WA State Changes",
+      "type": "gauge",
+      "title": "VT Quota Utilization",
       "gridPos": {
         "x": 0,
         "y": 34,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "wbscanner_api_quota_utilization_ratio{service=\"virustotal\"}"
+        }
+      ]
+    },
+    {
+      "type": "gauge",
+      "title": "Whois Utilization",
+      "gridPos": {
+        "x": 4,
+        "y": 34,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "wbscanner_api_quota_utilization_ratio{service=\"whoisxml\"}"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Limiter Queue Depth",
+      "gridPos": {
+        "x": 8,
+        "y": 34,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "wbscanner_rate_limiter_queue_depth{service=\"virustotal\"}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Quota Depletion ETA",
+      "gridPos": {
+        "x": 0,
+        "y": 38,
         "w": 12,
         "h": 6
       },
       "targets": [
         {
-          "expr": "sum by(event) (increase(wbscanner_wa_state_changes_total[5m]))"
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "title": "Verdict Failures (10m)",
-      "gridPos": {
-        "x": 0,
-        "y": 40,
-        "w": 6,
-        "h": 4
-      },
-      "targets": [
-        {
-          "expr": "sum(increase(wbscanner_wa_verdict_delivery_total{result=\"failed\"}[10m]))"
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "title": "Verdict Retries (10m)",
-      "gridPos": {
-        "x": 6,
-        "y": 40,
-        "w": 6,
-        "h": 4
-      },
-      "targets": [
-        {
-          "expr": "sum(increase(wbscanner_wa_verdict_delivery_retries_total[10m]))"
+          "expr": "sum by(service) (wbscanner_api_quota_projected_depletion_seconds)"
         }
       ]
     },
     {
       "type": "timeseries",
-      "title": "Verdict Delivery Outcomes",
+      "title": "Queue Wait P95",
       "gridPos": {
         "x": 0,
         "y": 44,
@@ -233,7 +243,187 @@
       },
       "targets": [
         {
-          "expr": "sum by(result) (increase(wbscanner_wa_verdict_delivery_total[5m]))"
+          "expr": "histogram_quantile(0.95, sum(rate(wbscanner_queue_job_wait_seconds_bucket[5m])) by (queue, le))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Queue Processing P95",
+      "gridPos": {
+        "x": 0,
+        "y": 50,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(wbscanner_queue_processing_duration_seconds_bucket[5m])) by (queue, le))"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Queue Failures (5m)",
+      "gridPos": {
+        "x": 0,
+        "y": 56,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(wbscanner_queue_failures_total[5m]))"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Active Jobs",
+      "gridPos": {
+        "x": 4,
+        "y": 56,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "sum(wbscanner_queue_active_jobs)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Delayed Jobs",
+      "gridPos": {
+        "x": 8,
+        "y": 56,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "sum(wbscanner_queue_delayed_jobs)"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Cache Lookup P95",
+      "gridPos": {
+        "x": 0,
+        "y": 60,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(wbscanner_cache_lookup_duration_seconds_bucket[5m])) by (cache_type, le))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Cache Stale Hits",
+      "gridPos": {
+        "x": 0,
+        "y": 66,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "sum by(cache_type) (increase(wbscanner_cache_stale_total[5m]))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Verdict Latency P95",
+      "gridPos": {
+        "x": 0,
+        "y": 72,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(wbscanner_verdict_latency_seconds_bucket[5m])) by (le))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Verdict Score P75",
+      "gridPos": {
+        "x": 0,
+        "y": 78,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.75, sum(rate(wbscanner_verdict_score_bucket[5m])) by (le))"
+        }
+      ]
+    },
+    {
+      "type": "gauge",
+      "title": "WA Session Ready",
+      "gridPos": {
+        "x": 0,
+        "y": 84,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "wbscanner_wa_session_status{state=\"ready\"}"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "WA Drops (5m)",
+      "gridPos": {
+        "x": 4,
+        "y": 84,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(wbscanner_wa_messages_dropped_total[5m]))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "WA Verdict Latency P95",
+      "gridPos": {
+        "x": 0,
+        "y": 88,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(wbscanner_wa_verdict_delivery_latency_seconds_bucket[5m])) by (le))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Circuit States",
+      "gridPos": {
+        "x": 0,
+        "y": 94,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "wbscanner_circuit_breaker_state"
         }
       ]
     }
