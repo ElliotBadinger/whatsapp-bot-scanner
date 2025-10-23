@@ -43,7 +43,6 @@ If changing queue names, update:
 - `.env.example`
 - Both service queue initializations
 - All documentation references
-
 ## Railway Deployment
 
 The repository includes a first-class `railway.toml` that provisions the following managed services inside a Railway project:
