@@ -1,6 +1,25 @@
 process.env.NODE_ENV = 'test';
 process.env.CONTROL_PLANE_API_TOKEN = 'test-token';
 
+jest.mock('url-expand', () => ({
+  __esModule: true,
+  default: jest.fn(async (url: string) => url),
+}), { virtual: true });
+
+jest.mock('bottleneck', () => ({
+  __esModule: true,
+  default: jest.fn().mockImplementation(() => ({
+    schedule: jest.fn(async <T>(fn: () => Promise<T> | T) => fn()),
+    on: jest.fn(),
+    currentReservoir: jest.fn(async () => 1),
+  })),
+}), { virtual: true });
+
+jest.mock('confusables', () => ({
+  __esModule: true,
+  default: jest.fn((value: string) => value),
+}), { virtual: true });
+
 import type { FastifyInstance } from 'fastify';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -80,7 +99,7 @@ describe('control-plane routes', () => {
 
     const response = await app.inject({
       method: 'GET',
-      url: '/artifacts/hash-123/screenshot',
+      url: '/scans/hash-123/urlscan-artifacts/screenshot',
       headers: { authorization: 'Bearer test-token' },
     });
 
@@ -122,9 +141,18 @@ describe('control-plane routes', () => {
     pgClient.query.mockResolvedValueOnce({ rows: [] });
     const response = await app.inject({
       method: 'GET',
-      url: '/artifacts/missing/screenshot',
+      url: '/scans/missing/urlscan-artifacts/screenshot',
       headers: { authorization: 'Bearer test-token' },
     });
     expect(response.statusCode).toBe(404);
+  });
+
+  it('rejects unsupported artifact types', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/scans/hash/urlscan-artifacts/raw',
+      headers: { authorization: 'Bearer test-token' },
+    });
+    expect(response.statusCode).toBe(400);
   });
 });

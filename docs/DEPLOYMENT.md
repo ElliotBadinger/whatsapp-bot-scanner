@@ -24,7 +24,7 @@ Key environment variables:
 Production notes:
 - Put `reverse-proxy` behind TLS (e.g., nginx with Let’s Encrypt or Caddy). Update environment and mount certs.
 - Persist volumes: Postgres (`pgdata`), WA session (`wa_session`).
-- Monitor disk usage for `storage/urlscan-artifacts`; rotate/clean periodically if storage is constrained.
+- Monitor disk usage for `storage/urlscan-artifacts`; rotate/clean periodically if storage is constrained, using `scans.urlscan_artifact_stored_at` to identify stale evidence.
 - Configure firewall to restrict Control Plane IPs.
 - Scale `scan-orchestrator` by adding `deploy.replicas` or multiple service entries.
 - BullMQ queues share Redis; heavy burst traffic may require upgrading Redis instance memory/throughput.

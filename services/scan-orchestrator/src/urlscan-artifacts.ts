@@ -10,13 +10,19 @@ export interface ArtifactPaths {
   domPath: string | null;
 }
 
+type ArtifactType = 'screenshot' | 'dom';
+
 const ARTIFACT_DIR = process.env.URLSCAN_ARTIFACT_DIR || path.resolve('storage/urlscan-artifacts');
 
 async function ensureDirectory(): Promise<void> {
   await fs.mkdir(ARTIFACT_DIR, { recursive: true });
 }
 
-async function downloadToFile(url: string, targetPath: string): Promise<boolean> {
+function recordDownloadFailure(artifactType: ArtifactType, reason: string): void {
+  metrics.artifactDownloadFailures.labels(artifactType, reason).inc();
+}
+
+async function downloadToFile(artifactType: ArtifactType, url: string, targetPath: string): Promise<boolean> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10_000);
@@ -26,16 +32,16 @@ async function downloadToFile(url: string, targetPath: string): Promise<boolean>
     } finally {
       clearTimeout(timeout);
     }
-    if (!response.ok || !response.body) {
-      metrics.artifactDownloadFailures.labels('http', String(response.status)).inc();
+    if (!response?.ok || !response.body) {
+      recordDownloadFailure(artifactType, `http:${response?.status ?? 'unknown'}`);
       return false;
     }
     await ensureDirectory();
     await pipeline(response.body, createWriteStream(targetPath));
     return true;
   } catch (error) {
-    metrics.artifactDownloadFailures.labels('network', error instanceof Error ? error.name : 'unknown').inc();
-    logger.warn({ url, error }, 'Failed to download urlscan artifact');
+    recordDownloadFailure(artifactType, `network:${error instanceof Error ? error.name : 'unknown'}`);
+    logger.warn({ url, error, artifactType }, 'Failed to download urlscan artifact');
     return false;
   }
 }
@@ -47,14 +53,12 @@ export async function downloadUrlscanArtifacts(scanId: string, urlHash: string):
   const screenshotUrl = `${baseUrl}/screenshots/${scanId}.png`;
   const domUrl = `${baseUrl}/dom/${scanId}/`;
 
-  let screenshotSaved = false;
-  let domSaved = false;
-
-  screenshotSaved = await downloadToFile(screenshotUrl, screenshotPath);
+  const screenshotSaved = await downloadToFile('screenshot', screenshotUrl, screenshotPath);
   if (!screenshotSaved) {
     logger.warn({ scanId, urlHash }, 'Screenshot download failed');
   }
 
+  let domSaved = false;
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10_000);
@@ -64,17 +68,17 @@ export async function downloadUrlscanArtifacts(scanId: string, urlHash: string):
     } finally {
       clearTimeout(timeout);
     }
-    if (response.ok) {
+    if (response?.ok) {
       const html = await response.text();
       await ensureDirectory();
       await fs.writeFile(domPath, html, 'utf8');
       domSaved = true;
     } else {
-      metrics.artifactDownloadFailures.labels('http', String(response.status)).inc();
-      logger.warn({ scanId, urlHash, status: response.status }, 'DOM download failed');
+      recordDownloadFailure('dom', `http:${response?.status ?? 'unknown'}`);
+      logger.warn({ scanId, urlHash, status: response?.status }, 'DOM download failed');
     }
   } catch (error) {
-    metrics.artifactDownloadFailures.labels('network', error instanceof Error ? error.name : 'unknown').inc();
+    recordDownloadFailure('dom', `network:${error instanceof Error ? error.name : 'unknown'}`);
     logger.warn({ scanId, urlHash, error }, 'Failed to download urlscan DOM');
   }
 
