@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Fastify from 'fastify';
 
 vi.mock('ioredis', () => ({
@@ -125,13 +125,17 @@ describe('Control plane integration', () => {
     }
     await fs.unlink(screenshotPath);
   });
-});
+  it('reports scan status via /status endpoint', async () => {
+    pgClient.query.mockResolvedValueOnce({ rows: [{ scans: '12', malicious: '3' }] });
 
-describe('WA admin command integration', () => {
-  beforeAll(() => {
-    process.env.CONTROL_PLANE_BASE = 'http://control-plane:8080';
-  });
+    const { buildServer } = await import('../../services/control-plane/src/index');
+    const { app } = await buildServer({
+      pgClient,
+      redisClient: { del: redisDel } as any,
+      queue: { add: queueAdd } as any,
+    });
 
+<<<<<<< HEAD
   it('invokes control-plane rescan endpoint', async () => {
     const fetchMock = vi.spyOn(global, 'fetch' as any).mockResolvedValue({
       ok: true,
@@ -159,5 +163,15 @@ describe('WA admin command integration', () => {
     );
     expect(chat.sendMessage).toHaveBeenCalledWith('Rescan queued. hash=abc job=job-1');
     fetchMock.mockRestore();
+=======
+    const response = await app.inject({
+      method: 'GET',
+      url: '/status',
+      headers: { authorization: 'Bearer test-token' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toEqual({ scans: 12, malicious: 3 });
+>>>>>>> origin/codex/add-integration-and-e2e-tests
   });
 });
