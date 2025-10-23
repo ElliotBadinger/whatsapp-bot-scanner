@@ -21,7 +21,5 @@
     "validate:config": "node scripts/validate-config.js",
     "prebuild": "npm run validate:config"
   },
-  "devDependencies": {
-    "ioredis-mock": "^5.8.0"
-  }
+  "devDependencies": {}
 }

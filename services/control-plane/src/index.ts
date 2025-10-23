@@ -4,7 +4,21 @@ import { createReadStream } from 'node:fs';
 import path from 'node:path';
 import Redis from 'ioredis';
 import { Queue } from 'bullmq';
-import { register, metrics, config, logger, assertControlPlaneToken, normalizeUrl, urlHash, assertEssentialConfig } from '@wbscanner/shared';
+import sanitizeHtml from 'sanitize-html';
+import { z } from 'zod';
+import {
+  register,
+  metrics,
+  config,
+  logger,
+  assertControlPlaneToken,
+  normalizeUrl,
+  urlHash,
+  assertEssentialConfig,
+  isPrivateHostname,
+  sanitizeForLogging,
+  sanitizeInput,
+} from '@wbscanner/shared';
 import { Client as PgClient } from 'pg';
 
 const artifactRoot = path.resolve(process.env.URLSCAN_ARTIFACT_DIR || 'storage/urlscan-artifacts');
@@ -22,6 +36,83 @@ function createAuthHook(expectedToken: string) {
     done();
   };
 }
+
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+function normalizeOrigin(origin: string): string | null {
+  try {
+    const parsed = new URL(origin);
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return null;
+  }
+}
+
+function isOriginAllowed(value: string | undefined, allowedOrigins: Set<string>): boolean {
+  if (!value) {
+    return true;
+  }
+  const normalized = normalizeOrigin(value);
+  if (!normalized) {
+    return false;
+  }
+  if (allowedOrigins.size === 0) {
+    return true;
+  }
+  return allowedOrigins.has(normalized);
+}
+
+function createCsrfHook(secret: string, allowedOrigins: Set<string>) {
+  return function csrfHook(req: any, reply: any, done: any) {
+    if (SAFE_METHODS.has(req.method)) {
+      done();
+      return;
+    }
+
+    const tokenHeader = req.headers['x-csrf-token'];
+    const token = Array.isArray(tokenHeader) ? tokenHeader[0] : tokenHeader;
+    if (typeof token !== 'string' || token !== secret) {
+      logger.warn({ path: sanitizeForLogging(req.url), reason: 'invalid_csrf_token' }, 'Blocked request due to invalid CSRF token');
+      reply.code(403).send({ error: 'csrf_invalid' });
+      return;
+    }
+
+    const originHeader = Array.isArray(req.headers['origin']) ? req.headers['origin'][0] : req.headers['origin'];
+    const refererHeader = Array.isArray(req.headers['referer']) ? req.headers['referer'][0] : req.headers['referer'];
+
+    if (!isOriginAllowed(originHeader, allowedOrigins) || !isOriginAllowed(refererHeader, allowedOrigins)) {
+      logger.warn(
+        {
+          path: sanitizeForLogging(req.url),
+          origin: sanitizeForLogging(originHeader),
+          referer: sanitizeForLogging(refererHeader),
+        },
+        'Blocked request due to invalid origin or referrer'
+      );
+      reply.code(403).send({ error: 'origin_not_allowed' });
+      return;
+    }
+
+    done();
+  };
+}
+
+const rescanSchema = z.object({
+  url: z.string().max(2048, 'url_too_long'),
+});
+
+const overrideSchema = z.object({
+  url_hash: z.string().regex(/^[0-9a-f]{64}$/).optional().nullable(),
+  pattern: z.string().max(512).optional().nullable(),
+  status: z.string().min(1).max(32),
+  scope: z.string().max(32).optional().default('global'),
+  scope_id: z.string().max(128).optional().nullable(),
+  reason: z.string().max(512).optional().nullable(),
+  expires_at: z.string().optional().nullable().refine(
+    (value) => !value || !Number.isNaN(Date.parse(value)),
+    { message: 'invalid_date' }
+  ),
+});
 export interface BuildOptions {
   pgClient?: PgClient;
   redisClient?: Redis;
@@ -45,10 +136,17 @@ export async function buildServer(options: BuildOptions = {}) {
 
   const app = Fastify();
 
+  const allowedOrigins = new Set(
+    config.controlPlane.allowedOrigins
+      .map((origin) => normalizeOrigin(origin))
+      .filter((origin): origin is string => Boolean(origin))
+  );
+
   app.get('/healthz', async () => ({ ok: true }));
   app.get('/metrics', async (_req, reply) => { reply.header('Content-Type', register.contentType); return register.metrics(); });
 
   app.addHook('preHandler', createAuthHook(requiredToken));
+  app.addHook('preHandler', createCsrfHook(config.controlPlane.csrfSecret, allowedOrigins));
 
   app.get('/status', async () => {
     const { rows } = await pgClient.query('SELECT COUNT(*) AS scans, SUM((verdict = $1)::int) AS malicious FROM scans', ['malicious']);
@@ -56,9 +154,40 @@ export async function buildServer(options: BuildOptions = {}) {
   });
 
   app.post('/overrides', async (req, reply) => {
-    const body = req.body as any;
-    await pgClient.query(`INSERT INTO overrides (url_hash, pattern, status, scope, scope_id, created_by, reason, expires_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, [body.url_hash || null, body.pattern || null, body.status, body.scope || 'global', body.scope_id || null, 'admin', body.reason || null, body.expires_at || null]);
+    const parsed = overrideSchema.safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400).send({ error: 'invalid_payload', details: parsed.error.flatten() });
+      return;
+    }
+
+    const payload = parsed.data;
+    const sanitizedStatus = sanitizeInput(payload.status) || '';
+    if (!sanitizedStatus) {
+      reply.code(400).send({ error: 'invalid_status' });
+      return;
+    }
+
+    const sanitizedPattern = sanitizeInput(payload.pattern) ?? null;
+    const sanitizedScope = sanitizeInput(payload.scope) || 'global';
+    const sanitizedScopeId = sanitizeInput(payload.scope_id) ?? null;
+    const sanitizedReason = sanitizeInput(payload.reason) ?? null;
+    const sanitizedUrlHash = payload.url_hash ?? null;
+    const expiresAtIso = payload.expires_at ? new Date(payload.expires_at).toISOString() : null;
+
+    await pgClient.query(
+      `INSERT INTO overrides (url_hash, pattern, status, scope, scope_id, created_by, reason, expires_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [
+        sanitizedUrlHash,
+        sanitizedPattern,
+        sanitizedStatus,
+        sanitizedScope,
+        sanitizedScopeId,
+        'admin',
+        sanitizedReason,
+        expiresAtIso,
+      ]
+    );
     reply.code(201).send({ ok: true });
   });
 
@@ -81,14 +210,20 @@ export async function buildServer(options: BuildOptions = {}) {
   });
 
   app.post('/rescan', async (req, reply) => {
-    const { url } = req.body as { url?: string };
-    if (!url) {
+    const parsed = rescanSchema.safeParse(req.body);
+    if (!parsed.success) {
       reply.code(400).send({ error: 'url_required' });
       return;
     }
-    const normalized = normalizeUrl(url);
+    const normalized = normalizeUrl(parsed.data.url);
     if (!normalized) {
       reply.code(400).send({ error: 'invalid_url' });
+      return;
+    }
+    const target = new URL(normalized);
+    if (await isPrivateHostname(target.hostname)) {
+      logger.warn({ hostname: sanitizeForLogging(target.hostname) }, 'Blocked rescan request to internal host');
+      reply.code(403).send({ error: 'url_not_allowed' });
       return;
     }
     const hash = urlHash(normalized);
@@ -161,8 +296,23 @@ export async function buildServer(options: BuildOptions = {}) {
 
     try {
       const html = await fs.readFile(resolvedPath, 'utf8');
+      const sizeBytes = Buffer.byteLength(html, 'utf8');
+      if (sizeBytes > 1_000_000) {
+        reply.code(413).send({ error: 'artifact_too_large' });
+        return;
+      }
+      const sanitizedDom = sanitizeHtml(html, {
+        allowedTags: sanitizeHtml.defaults.allowedTags,
+        allowedAttributes: {
+          '*': ['href', 'src', 'alt', 'title', 'style', 'class', 'id', 'rel'],
+        },
+        allowedSchemes: ['http', 'https', 'mailto', 'data'],
+      });
       reply.header('Content-Type', 'text/html; charset=utf-8');
-      reply.send(html);
+      reply.header('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; frame-ancestors 'none'; base-uri 'none';");
+      reply.header('X-Content-Type-Options', 'nosniff');
+      reply.header('X-Frame-Options', 'DENY');
+      reply.send(sanitizedDom);
     } catch (error: any) {
       if (error?.code === 'ENOENT') {
         reply.code(404).send({ error: 'dom_not_found' });
@@ -177,7 +327,7 @@ export async function buildServer(options: BuildOptions = {}) {
       try {
         await pgClient.query("DELETE FROM scans WHERE last_seen_at < now() - interval '30 days'");
         await pgClient.query("DELETE FROM messages WHERE posted_at < now() - interval '30 days'");
-      } catch (e) { logger.error(e, 'purge job failed'); }
+      } catch (e) { logger.error({ err: sanitizeForLogging(e) }, 'purge job failed'); }
     }, 24 * 60 * 60 * 1000);
   }
 
@@ -191,5 +341,8 @@ async function main() {
 }
 
 if (process.env.NODE_ENV !== 'test') {
-  main().catch(err => { logger.error(err, 'Fatal in control-plane'); process.exit(1); });
+  main().catch(err => {
+    logger.error({ err: sanitizeForLogging(err) }, 'Fatal in control-plane');
+    process.exit(1);
+  });
 }

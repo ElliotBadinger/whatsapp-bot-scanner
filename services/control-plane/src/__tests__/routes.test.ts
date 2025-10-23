@@ -1,5 +1,7 @@
 process.env.NODE_ENV = 'test';
 process.env.CONTROL_PLANE_API_TOKEN = 'test-token';
+process.env.CONTROL_PLANE_CSRF_SECRET = 'test-csrf';
+process.env.CONTROL_PLANE_ALLOWED_ORIGINS = 'http://localhost:3000';
 
 jest.mock('url-expand', () => ({
   __esModule: true,
@@ -69,7 +71,12 @@ describe('control-plane routes', () => {
       method: 'POST',
       url: '/rescan',
       payload: { url: 'https://example.com/test?utm_source=newsletter' },
-      headers: { authorization: 'Bearer test-token', 'content-type': 'application/json' },
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+        'x-csrf-token': 'test-csrf',
+        origin: 'http://localhost:3000',
+      },
     });
 
     expect(response.statusCode).toBe(200);
@@ -115,6 +122,20 @@ describe('control-plane routes', () => {
     expect(response.statusCode).toBe(401);
   });
 
+  it('rejects requests missing csrf token', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/rescan',
+      payload: { url: 'https://example.com' },
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({ error: 'csrf_invalid' });
+  });
+
   it('returns status metrics when authorized', async () => {
     pgClient.query.mockResolvedValueOnce({ rows: [{ scans: '3', malicious: '1' }] });
     const response = await app.inject({
@@ -131,7 +152,11 @@ describe('control-plane routes', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/overrides',
-      headers: { authorization: 'Bearer test-token' },
+      headers: {
+        authorization: 'Bearer test-token',
+        'x-csrf-token': 'test-csrf',
+        origin: 'http://localhost:3000',
+      },
       payload: { status: 'allow', reason: 'testing' },
     });
     expect(response.statusCode).toBe(201);
@@ -205,5 +230,22 @@ describe('control-plane routes', () => {
       headers: { authorization: 'Bearer test-token' },
     });
     expect(response.statusCode).toBe(400);
+  });
+
+  it('blocks rescan requests to private networks', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/rescan',
+      payload: { url: 'http://127.0.0.1/internal' },
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+        'x-csrf-token': 'test-csrf',
+        origin: 'http://localhost:3000',
+      },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({ error: 'url_not_allowed' });
+    expect(queue.add).not.toHaveBeenCalled();
   });
 });

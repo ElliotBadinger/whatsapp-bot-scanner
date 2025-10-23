@@ -16,3 +16,4 @@ export * from './url-shortener';
 export * from './types';
 export * from './errors';
 export * from './homoglyph';
+export * from './sanitize';
