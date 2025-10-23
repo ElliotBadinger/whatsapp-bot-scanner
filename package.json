@@ -12,10 +12,20 @@
     "dev": "npm -ws --if-present run dev",
     "test": "npm -ws --if-present test",
     "lint": "npm -ws --if-present run lint",
+    "typecheck": "npm --workspace packages/shared run build && npm -ws --if-present run typecheck",
+    "check": "npm run lint && npm run typecheck && npm run test",
     "migrate": "node scripts/run-migrations.js",
     "seed": "node scripts/run-seeds.js",
     "test:load": "node tests/load/http-load.js",
     "validate:config": "node scripts/validate-config.js",
     "prebuild": "npm run validate:config"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "eslint": "^8.57.0"
+  },
+  "overrides": {
+    "typescript": "5.5.4"
   }
 }

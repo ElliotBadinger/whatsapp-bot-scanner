@@ -83,7 +83,7 @@ function makeCircuit(name: string) {
   const breaker = new CircuitBreaker({
     ...CIRCUIT_DEFAULTS,
     name,
-    onStateChange: (state, from) => {
+    onStateChange: (state: CircuitState, from: CircuitState) => {
       circuitStates.labels(name).set(state);
       circuitBreakerTransitionCounter.labels(name, String(from ?? ''), String(state)).inc();
       logger.debug({ name, from, to: state }, 'Circuit state change');
@@ -573,7 +573,10 @@ async function main() {
       const exp = await expandUrl(preExpansionUrl, config.orchestrator.expansion);
       const finalUrl = exp.finalUrl;
       const finalUrlObj = new URL(finalUrl);
-      const redirectChain = [...(shortenerInfo?.chain ?? []), ...exp.chain.filter(item => !(shortenerInfo?.chain ?? []).includes(item))];
+      const redirectChain = [
+        ...(shortenerInfo?.chain ?? []),
+        ...exp.chain.filter((item: string) => !(shortenerInfo?.chain ?? []).includes(item))
+      ];
       const heurSignals = extraHeuristics(finalUrlObj);
       const domainIntel = await fetchDomainIntel(finalUrlObj.hostname, h);
       const domainAgeDays = domainIntel.ageDays;

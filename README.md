@@ -17,6 +17,12 @@ Quick start:
 - Open Grafana at `http://localhost:3002` (admin/admin) for dashboards.
 - (Optional) `make test-load` to exercise `/healthz` endpoints; tune with `LOAD_TARGET_URL`, `LOAD_CONCURRENCY`, and `LOAD_DURATION_SECONDS`.
 
+### Quality checks
+
+- `npm run check` runs linting, type checking, and tests across every workspace.
+- `npm run lint`/`npm run typecheck` run the respective scripts for workspaces that implement them.
+- Scope to a single package with `npm run <script> --workspace <name>` (see `TESTING.md` for examples).
+
 Services:
 
 - `wa-client`: WhatsApp automation client (whatsapp-web.js) with session persistence.
