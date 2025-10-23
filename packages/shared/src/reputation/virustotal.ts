@@ -17,47 +17,51 @@ export interface VirusTotalAnalysis {
 }
 
 const VT_REQUESTS_PER_MINUTE = Math.max(1, config.vt.requestsPerMinute);
-const vtLimiter = new Bottleneck({
-  reservoir: VT_REQUESTS_PER_MINUTE,
-  reservoirRefreshAmount: VT_REQUESTS_PER_MINUTE,
-  reservoirRefreshInterval: 60_000,
-  maxConcurrent: 1,
-  minTime: Math.ceil(60_000 / VT_REQUESTS_PER_MINUTE),
-});
+const VT_WINDOW_MS = 60_000;
+const vtLimiter = new Bottleneck({ maxConcurrent: 1 });
 
-let requestsRemaining = VT_REQUESTS_PER_MINUTE;
-apiQuotaRemainingGauge.labels('virustotal').set(requestsRemaining);
-apiQuotaStatusGauge.labels('virustotal').set(1);
+const recentRequestTimestamps: number[] = [];
 
-async function updateReservoirMetrics(): Promise<void> {
-  try {
-    const current = await vtLimiter.currentReservoir();
-    if (typeof current === 'number') {
-      requestsRemaining = current;
-      apiQuotaRemainingGauge.labels('virustotal').set(current);
-      apiQuotaStatusGauge.labels('virustotal').set(current > 0 ? 1 : 0);
-    }
-  } catch (err) {
-    logger.debug({ err }, 'Failed to read VirusTotal limiter reservoir');
+function pruneExpiredRequests(now: number): void {
+  while (recentRequestTimestamps.length > 0 && now - recentRequestTimestamps[0] >= VT_WINDOW_MS) {
+    recentRequestTimestamps.shift();
   }
 }
 
-vtLimiter.on('depleted', () => {
-  requestsRemaining = 0;
-  apiQuotaRemainingGauge.labels('virustotal').set(0);
-  apiQuotaStatusGauge.labels('virustotal').set(0);
-  logger.warn('VirusTotal limiter reservoir depleted; awaiting refresh window');
-});
+function updateQuotaMetrics(now: number): void {
+  pruneExpiredRequests(now);
+  const remaining = Math.max(0, VT_REQUESTS_PER_MINUTE - recentRequestTimestamps.length);
+  apiQuotaRemainingGauge.labels('virustotal').set(remaining);
+  apiQuotaStatusGauge.labels('virustotal').set(remaining > 0 ? 1 : 0);
+}
 
-const refreshInterval = setInterval(updateReservoirMetrics, 10_000);
-refreshInterval.unref();
+updateQuotaMetrics(Date.now());
 
 async function scheduleVtCall<T>(cb: () => Promise<T>): Promise<T> {
-  const queuedAt = Date.now();
   return vtLimiter.schedule(async () => {
-    const waitSeconds = (Date.now() - queuedAt) / 1000;
-    if (waitSeconds > 0) {
-      rateLimiterDelay.labels('virustotal').observe(waitSeconds);
+    let totalDelayMs = 0;
+    // Wait until we have budget available for the current window.
+    while (true) {
+      const now = Date.now();
+      pruneExpiredRequests(now);
+      const remaining = VT_REQUESTS_PER_MINUTE - recentRequestTimestamps.length;
+      apiQuotaRemainingGauge.labels('virustotal').set(Math.max(remaining, 0));
+      apiQuotaStatusGauge.labels('virustotal').set(remaining > 0 ? 1 : 0);
+      if (remaining > 0) {
+        break;
+      }
+
+      const waitMs = Math.max(0, VT_WINDOW_MS - (now - recentRequestTimestamps[0]));
+      if (waitMs === 0) {
+        // If the oldest request expires exactly now, loop once more to recalc remaining tokens.
+        continue;
+      }
+      totalDelayMs += waitMs;
+      await new Promise(resolve => setTimeout(resolve, waitMs));
+    }
+
+    if (totalDelayMs > 0) {
+      rateLimiterDelay.labels('virustotal').observe(totalDelayMs / 1000);
     }
 
     const jitterMs = config.vt.requestJitterMs;
@@ -69,9 +73,14 @@ async function scheduleVtCall<T>(cb: () => Promise<T>): Promise<T> {
     }
 
     try {
+      const startedAt = Date.now();
+      recentRequestTimestamps.push(startedAt);
+      const remaining = Math.max(0, VT_REQUESTS_PER_MINUTE - recentRequestTimestamps.length);
+      apiQuotaRemainingGauge.labels('virustotal').set(remaining);
+      apiQuotaStatusGauge.labels('virustotal').set(remaining > 0 ? 1 : 0);
       return await cb();
     } finally {
-      await updateReservoirMetrics();
+      updateQuotaMetrics(Date.now());
     }
   });
 }

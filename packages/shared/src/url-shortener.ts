@@ -69,7 +69,8 @@ async function resolveWithUnshorten(url: string): Promise<string | null> {
   }
 }
 
-type SafeFetch = (input: string | URL, init?: Parameters<typeof undiciFetch>[1]) => ReturnType<typeof undiciFetch>;
+type FetchInput = Parameters<typeof undiciFetch>[0];
+type SafeFetch = (input: FetchInput, init?: Parameters<typeof undiciFetch>[1]) => ReturnType<typeof undiciFetch>;
 
 function createGuardedFetch(
   chain: string[],
@@ -80,19 +81,20 @@ function createGuardedFetch(
   let attempts = 0;
 
   return async (input, init) => {
-    const target =
+    const rawTarget =
       typeof input === 'string'
         ? input
         : input instanceof URL
           ? input.toString()
-          : typeof input === 'object' && input !== null && 'url' in input && typeof (input as { url?: string }).url === 'string'
+          : input && typeof input === 'object' && 'url' in input && typeof (input as { url?: unknown }).url === 'string'
             ? (input as { url: string }).url
-            : input?.toString();
-    if (!target) {
+            : undefined;
+
+    if (!rawTarget) {
       throw new Error('Expansion failed: Missing target URL');
     }
 
-    const normalizedTarget = normalizeUrl(target) || target;
+    const normalizedTarget = normalizeUrl(rawTarget) || rawTarget;
     const parsed = new URL(normalizedTarget);
     if (await isPrivateHostname(parsed.hostname)) {
       throw new Error('SSRF protection: Private host blocked');

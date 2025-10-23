@@ -68,8 +68,6 @@ describe('Control plane integration', () => {
     await fs.writeFile(screenshotPath, 'fake', 'utf8');
     pgClient.query.mockResolvedValueOnce({ rows: [{ urlscan_screenshot_path: screenshotPath }] });
 
-    pgClient.query.mockResolvedValueOnce({ rows: [{ chat_id: 'chat-123', message_id: 'msg-456' }] });
-
     const { buildServer } = await import('../../services/control-plane/src/index');
     const { app } = await buildServer({
       pgClient,
@@ -79,7 +77,7 @@ describe('Control plane integration', () => {
 
     const response = await app.inject({
       method: 'GET',
-      url: '/artifacts/hash123/screenshot',
+      url: '/scans/hash123/urlscan-artifacts/screenshot',
       headers: { authorization: 'Bearer test-token' },
     });
 
