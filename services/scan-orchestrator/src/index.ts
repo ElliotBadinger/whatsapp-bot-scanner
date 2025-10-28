@@ -47,10 +47,174 @@ import {
 import type { GsbThreatMatch, UrlhausLookupResult, PhishtankLookupResult, VirusTotalAnalysis, UrlscanSubmissionResponse, WhoisXmlResponse } from '@wbscanner/shared';
 import { downloadUrlscanArtifacts } from './urlscan-artifacts';
 
-const redis = new Redis(config.redisUrl);
-const scanRequestQueue = new Queue(config.queues.scanRequest, { connection: redis });
-const scanVerdictQueue = new Queue(config.queues.scanVerdict, { connection: redis });
-const urlscanQueue = new Queue(config.queues.urlscan, { connection: redis });
+const TEST_REDIS_KEY = '__WBSCANNER_TEST_REDIS__';
+const TEST_QUEUE_FACTORY_KEY = '__WBSCANNER_TEST_QUEUE_FACTORY__';
+
+class InMemoryRedis {
+  private store = new Map<string, string>();
+  private ttlStore = new Map<string, number>();
+  private setStore = new Map<string, Set<string>>();
+  private hashStore = new Map<string, Map<string, string>>();
+  private listStore = new Map<string, string[]>();
+
+  async get(key: string): Promise<string | null> {
+    return this.store.get(key) ?? null;
+  }
+
+  async set(key: string, value: string, mode?: string, ttlArg?: number, nxArg?: string): Promise<'OK' | null> {
+    if (mode === 'EX') {
+      const ttlSeconds = typeof ttlArg === 'number' ? ttlArg : 0;
+      if (nxArg === 'NX' && this.store.has(key)) {
+        return null;
+      }
+      this.store.set(key, value);
+      if (ttlSeconds > 0) {
+        this.ttlStore.set(key, ttlSeconds);
+      } else {
+        this.ttlStore.delete(key);
+      }
+      return 'OK';
+    }
+    this.store.set(key, value);
+    this.ttlStore.delete(key);
+    return 'OK';
+  }
+
+  async del(key: string): Promise<number> {
+    const existed = this.store.delete(key);
+    this.ttlStore.delete(key);
+    this.setStore.delete(key);
+    this.hashStore.delete(key);
+    this.listStore.delete(key);
+    return existed ? 1 : 0;
+  }
+
+  async ttl(key: string): Promise<number> {
+    return this.ttlStore.get(key) ?? -1;
+  }
+
+  async expire(key: string, seconds: number): Promise<number> {
+    if (seconds > 0) {
+      this.ttlStore.set(key, seconds);
+      return 1;
+    }
+    this.ttlStore.delete(key);
+    return 0;
+  }
+
+  async sadd(key: string, member: string): Promise<number> {
+    const set = this.setStore.get(key) ?? new Set<string>();
+    set.add(member);
+    this.setStore.set(key, set);
+    return set.size;
+  }
+
+  async srem(key: string, member: string): Promise<number> {
+    const set = this.setStore.get(key);
+    if (!set) return 0;
+    const existed = set.delete(member);
+    if (set.size === 0) this.setStore.delete(key);
+    return existed ? 1 : 0;
+  }
+
+  async scard(key: string): Promise<number> {
+    return this.setStore.get(key)?.size ?? 0;
+  }
+
+  async hset(key: string, field: string, value: string): Promise<number> {
+    const hash = this.hashStore.get(key) ?? new Map<string, string>();
+    const existed = hash.has(field) ? 0 : 1;
+    hash.set(field, value);
+    this.hashStore.set(key, hash);
+    return existed;
+  }
+
+  async hdel(key: string, field: string): Promise<number> {
+    const hash = this.hashStore.get(key);
+    if (!hash) return 0;
+    const removed = hash.delete(field) ? 1 : 0;
+    if (hash.size === 0) this.hashStore.delete(key);
+    return removed;
+  }
+
+  async hkeys(key: string): Promise<string[]> {
+    return Array.from(this.hashStore.get(key)?.keys() ?? []);
+  }
+
+  async lpush(key: string, value: string): Promise<number> {
+    const list = this.listStore.get(key) ?? [];
+    list.unshift(value);
+    this.listStore.set(key, list);
+    return list.length;
+  }
+
+  async ltrim(key: string, start: number, stop: number): Promise<void> {
+    const list = this.listStore.get(key);
+    if (!list) return;
+    const normalizedStop = stop < 0 ? list.length + stop : stop;
+    const trimmed = list.slice(start, normalizedStop + 1);
+    this.listStore.set(key, trimmed);
+  }
+
+  async lrange(key: string, start: number, stop: number): Promise<string[]> {
+    const list = this.listStore.get(key) ?? [];
+    const normalizedStop = stop < 0 ? list.length + stop : stop;
+    return list.slice(start, normalizedStop + 1);
+  }
+
+  on(): void {
+    // no-op for tests
+  }
+
+  quit(): Promise<void> {
+    return Promise.resolve();
+  }
+}
+
+class InMemoryQueue {
+  constructor(private readonly name: string) {}
+  async add(jobName: string, data: unknown) {
+    return { id: `${this.name}:${jobName}:${Date.now()}`, data };
+  }
+  async getJobCounts() {
+    return { waiting: 0, active: 0, delayed: 0, failed: 0 };
+  }
+  async getWaitingCount() {
+    return 0;
+  }
+  on(): void {}
+  async close(): Promise<void> {
+    return Promise.resolve();
+  }
+}
+
+function createRedisConnection(): Redis {
+  if (typeof globalThis !== 'undefined' && (globalThis as any)[TEST_REDIS_KEY]) {
+    return (globalThis as any)[TEST_REDIS_KEY] as Redis;
+  }
+  if (process.env.NODE_ENV === 'test') {
+    return new InMemoryRedis() as unknown as Redis;
+  }
+  return new Redis(config.redisUrl);
+}
+
+const redis = createRedisConnection();
+const scanRequestQueue = createQueue(config.queues.scanRequest, { connection: redis });
+const scanVerdictQueue = createQueue(config.queues.scanVerdict, { connection: redis });
+const urlscanQueue = createQueue(config.queues.urlscan, { connection: redis });
+
+function createQueue(name: string, options: { connection: Redis }): Queue {
+  if (typeof globalThis !== 'undefined') {
+    const factory = (globalThis as any)[TEST_QUEUE_FACTORY_KEY];
+    if (typeof factory === 'function') {
+      return factory(name, options) as Queue;
+    }
+  }
+  if (process.env.NODE_ENV === 'test') {
+    return new InMemoryQueue(name) as unknown as Queue;
+  }
+  return new Queue(name, options);
+}
 
 const queueMetricsInterval = setInterval(() => {
   refreshQueueMetrics(scanRequestQueue, config.queues.scanRequest).catch(() => undefined);
@@ -721,11 +885,12 @@ async function main() {
     const started = Date.now();
     const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
     metrics.queueJobWait.labels(queueName).observe(waitSeconds);
-    const { chatId, messageId, url, timestamp } = job.data as {
+    const { chatId, messageId, url, timestamp, rescan } = job.data as {
       chatId?: string;
       messageId?: string;
       url: string;
       timestamp?: number;
+      rescan?: boolean;
     };
     const ingestionTimestamp = typeof timestamp === 'number' ? timestamp : job.timestamp ?? started;
     const hasChatContext = typeof chatId === 'string' && typeof messageId === 'string';

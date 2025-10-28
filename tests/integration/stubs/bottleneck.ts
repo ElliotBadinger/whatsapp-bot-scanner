@@ -13,12 +13,24 @@ class FakeLimiter {
   private queue: QueueEntry<any>[] = [];
   reservoir: number;
   private readonly refreshAmount: number;
+  private readonly refreshInterval?: number;
+  private intervalRef?: NodeJS.Timeout;
 
-  constructor(options: { reservoir?: number; reservoirRefreshAmount?: number } = {}) {
+  constructor(options: { reservoir?: number; reservoirRefreshAmount?: number; reservoirRefreshInterval?: number } = {}) {
     const defaultReservoir = options.reservoir ?? Number.POSITIVE_INFINITY;
     this.reservoir = defaultReservoir;
     this.refreshAmount = options.reservoirRefreshAmount ?? this.reservoir;
+    this.refreshInterval = options.reservoirRefreshInterval;
     instances.push(this);
+
+    if (this.refreshInterval && Number.isFinite(this.refreshInterval)) {
+      this.intervalRef = setInterval(() => {
+        void this.incrementReservoir();
+      }, this.refreshInterval);
+      if (typeof this.intervalRef.unref === 'function') {
+        this.intervalRef.unref();
+      }
+    }
   }
 
   on(event: string, handler: (...args: any[]) => void) {
@@ -65,6 +77,10 @@ class FakeLimiter {
   }
 
   getQueueLength() {
+    return this.queue.length;
+  }
+
+  queued() {
     return this.queue.length;
   }
 }

@@ -10,3 +10,13 @@ process.env.POSTGRES_USER = process.env.POSTGRES_USER || 'wbscanner';
 process.env.POSTGRES_PASSWORD = process.env.POSTGRES_PASSWORD || 'wbscanner';
 process.env.WHOISXML_API_KEY = process.env.WHOISXML_API_KEY || 'test-whois-key';
 process.env.GSB_API_KEY = process.env.GSB_API_KEY || 'test-gsb-key';
+
+import { vi } from 'vitest';
+
+vi.mock('ioredis', () => {
+  const RedisMock = require('ioredis-mock');
+  return {
+    __esModule: true,
+    default: RedisMock,
+  };
+});

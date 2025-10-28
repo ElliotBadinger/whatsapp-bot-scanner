@@ -42,12 +42,25 @@ const refreshInterval = setInterval(async () => {
     if (typeof current === 'number') {
       recordReservoir(current);
     }
-    rateLimiterQueueDepth.labels('virustotal').set(vtLimiter.queued());
+    rateLimiterQueueDepth.labels('virustotal').set(getQueuedJobs());
   } catch (err) {
     logger.debug({ err }, 'Failed to poll VT limiter reservoir');
   }
 }, 10_000);
 refreshInterval.unref();
+
+function getQueuedJobs(): number {
+  const queueFn = (vtLimiter as any)?.queued;
+  if (typeof queueFn === 'function') {
+    try {
+      const value = queueFn.call(vtLimiter);
+      return typeof value === 'number' ? value : 0;
+    } catch {
+      return 0;
+    }
+  }
+  return 0;
+}
 
 function initializeQuotaMetrics(initial: number) {
   apiQuotaRemainingGauge.labels('virustotal').set(initial);
@@ -78,7 +91,7 @@ async function scheduleVtCall<T>(cb: () => Promise<T>): Promise<T> {
       rateLimiterDelay.labels('virustotal').observe(waitSeconds);
     }
     metrics.apiQuotaConsumption.labels('virustotal').inc();
-    rateLimiterQueueDepth.labels('virustotal').set(vtLimiter.queued());
+    rateLimiterQueueDepth.labels('virustotal').set(getQueuedJobs());
 
     const jitterMs = config.vt.requestJitterMs;
     if (jitterMs > 0) {
@@ -95,7 +108,7 @@ async function scheduleVtCall<T>(cb: () => Promise<T>): Promise<T> {
       if (typeof reservoir === 'number') {
         recordReservoir(reservoir);
       }
-      rateLimiterQueueDepth.labels('virustotal').set(vtLimiter.queued());
+      rateLimiterQueueDepth.labels('virustotal').set(getQueuedJobs());
     }
   });
 }

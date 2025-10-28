@@ -65,6 +65,7 @@ describe('control-plane routes', () => {
   });
 
   it('invalidates caches and enqueues rescan job', async () => {
+    pgClient.query.mockResolvedValueOnce({ rows: [{ chat_id: 'chat-123', message_id: 'msg-456' }] });
     const response = await app.inject({
       method: 'POST',
       url: '/rescan',

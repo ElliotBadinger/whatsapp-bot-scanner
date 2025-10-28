@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type Redis from 'ioredis';
 
 const redisState = {
   store: new Map<string, string>(),
+  ttlStore: new Map<string, number>(),
   getMock: vi.fn(async (key: string) => redisState.store.get(key) ?? null),
   setMock: vi.fn(async (key: string, value: string) => {
     redisState.store.set(key, value);
@@ -9,44 +11,13 @@ const redisState = {
   }),
   delMock: vi.fn(async (key: string) => {
     const existed = redisState.store.delete(key);
+    redisState.ttlStore.delete(key);
     return existed ? 1 : 0;
   }),
+  ttlMock: vi.fn(async (key: string) => {
+    return redisState.ttlStore.get(key) ?? -1;
+  }),
 };
-
-vi.mock('ioredis', () => ({
-  __esModule: true,
-  default: class RedisMock {
-    get(key: string) {
-      return redisState.getMock(key);
-    }
-    set(key: string, value: string, _mode?: string, _ttl?: number) {
-      return redisState.setMock(key, value);
-    }
-    del(key: string) {
-      return redisState.delMock(key);
-    }
-    on = vi.fn();
-    quit = vi.fn();
-  },
-}));
-
-vi.mock('bullmq', () => ({
-  Queue: vi.fn().mockImplementation(() => ({
-    add: vi.fn(),
-    on: vi.fn(),
-    getWaitingCount: vi.fn().mockResolvedValue(0),
-  })),
-  Worker: vi.fn().mockImplementation(() => ({
-    on: vi.fn(),
-  })),
-}));
-
-vi.mock('pg', () => ({
-  Client: vi.fn().mockImplementation(() => ({
-    connect: vi.fn(),
-    query: vi.fn(),
-  })),
-}));
 
 vi.mock('undici', () => ({
   __esModule: true,
@@ -55,9 +26,13 @@ vi.mock('undici', () => ({
 
 afterEach(() => {
   redisState.store.clear();
+  redisState.ttlStore.clear();
   redisState.getMock.mockClear();
   redisState.setMock.mockClear();
   redisState.delMock.mockClear();
+  redisState.ttlMock.mockClear();
+  // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+  delete (globalThis as any).__WBSCANNER_TEST_REDIS__;
   vi.clearAllMocks();
 });
 
@@ -79,6 +54,27 @@ describe('Scan orchestrator Redis caching', () => {
         }),
       },
     } as any);
+
+    const redisStub = {
+      get: redisState.getMock,
+      set: vi.fn(async (key: string, value: string, mode?: string, ttlArg?: number, nxMode?: string) => {
+        if (mode === 'EX') {
+          const ttl = typeof ttlArg === 'number' ? ttlArg : 0;
+          if (nxMode === 'NX' && redisState.store.has(key)) {
+            return null;
+          }
+          redisState.ttlStore.set(key, ttl);
+          await redisState.setMock(key, value);
+          return 'OK';
+        }
+        await redisState.setMock(key, value);
+        return 'OK';
+      }),
+      del: redisState.delMock,
+      ttl: redisState.ttlMock,
+    } as unknown as Redis;
+
+    (globalThis as any).__WBSCANNER_TEST_REDIS__ = redisStub;
 
     const orchestrator = await import('../../services/scan-orchestrator/src/index');
     const { fetchGsbAnalysis } = orchestrator.__testables;
