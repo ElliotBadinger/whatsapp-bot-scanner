@@ -48,6 +48,40 @@
 4. Wire execution loop, add smoke-test objective (`--demo`) that exercises end-to-end flow without mutating tracked files.
 5. Document usage in `docs/automation/README.md` (future) and register Makefile target for CI automation.
 
+
+## MCP Server Package
+- Installable Python package lives under `scripts/agent_orchestrator/` with entry point `wbscanner-mcp`.
+- `scripts/agent_orchestrator/mcp_server.py` exposes a FastMCP server that composes AutoGen chat agents (`CodexPlannerChatAgent`, `GeminiExecutorChatAgent`) with the existing `AgentOrchestrator`.
+- Logging flows through `agentlightning.logging.configure_logger`, mirroring Agent Lightning samples; FastMCP usage follows the repo's RAG tooling patterns.
+
+### Installation
+```bash
+cd scripts/agent_orchestrator
+python -m pip install -e .
+# (optional) install research dependencies for richer tracing/features
+python -m pip install -e ../../Research/agent-lightning
+python -m pip install -e ../../Research/autogen/python/packages/autogen-agentchat
+python -m pip install -e ../../Research/autogen/python/packages/autogen-core
+```
+
+### Running the MCP server
+```bash
+wbscanner-mcp  # starts FastMCP with repo defaults
+```
+
+- Codex CLI: `codex mcp --server stdio --command wbscanner-mcp`
+- Gemini CLI: `gemini mcp run --command wbscanner-mcp`
+- MCP tool signature: `delegate_objective(objective, dry_run=True, plan_only=False, config_path=None)`
+
+### Configuration
+- Defaults live in `scripts/agent_orchestrator/config.yaml` (planner timeout 240 s, executor timeout 420 s, reviews enabled, empty `test_commands`).
+- Override by editing the file or supplying `config_path` via the MCP call.
+
+### Research Repo Leverage
+- **Agent Lightning** – logging/bootstrap helpers and FastMCP workflow patterns.
+- **AutoGen** – `BaseChatAgent` wrappers that translate between CLI wrappers and AutoGen task runners.
+- **AgentFlow** – orchestration mirrors the planner → executor → reviewer loop enabling future Flow-GRPO integration.
+
 ## Future Enhancements
 - Incorporate AgentFlow-style memory to let the planner reference previous runs.
 - Swap in Agent Lightning training loops if we later host custom models.

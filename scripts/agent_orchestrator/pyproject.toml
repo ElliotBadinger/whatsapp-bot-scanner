@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wbscanner-mcp"
+version = "0.1.0"
+description = "Codex↔Gemini multi-agent MCP server for whatsapp-bot-scanner"
+authors = [{ name = "WhatsApp Bot Scanner Team" }]
+requires-python = ">=3.10"
+dependencies = [
+  "fastmcp>=0.2.0",
+  "opentelemetry-sdk>=1.24.0",
+  "psutil>=5.9",
+]
+
+[project.scripts]
+wbscanner-mcp = "agent_orchestrator.mcp_server:main"
+
+[tool.setuptools.packages.find]
+where = ["."]

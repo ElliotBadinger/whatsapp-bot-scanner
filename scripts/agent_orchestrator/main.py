@@ -7,7 +7,6 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from string import Template
 from typing import Any, Dict, List, Optional
 
 if __package__ is None:  # pragma: no cover - support `python path/to/main.py`
@@ -16,13 +15,11 @@ if __package__ is None:  # pragma: no cover - support `python path/to/main.py`
         sys.path.insert(0, str(package_dir))
     from agents import CodexAgent, GeminiAgent  # type: ignore
     from config import RunnerConfig, load_config  # type: ignore
+    from utils import build_artifact_blob, load_guidelines, parse_json, render_prompt  # type: ignore
 else:  # pragma: no cover
     from .agents import CodexAgent, GeminiAgent
     from .config import RunnerConfig, load_config
-
-
-PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
-MAX_ARTIFACT_CHARS = 6000
+    from .utils import build_artifact_blob, load_guidelines, parse_json, render_prompt
 
 
 @dataclass
@@ -369,53 +366,7 @@ class AgentOrchestrator:
                 handle.write("\n")
 
 
-def load_guidelines(repo_root: Path) -> str:
-    path = repo_root / "AGENTS.md"
-    if not path.exists():
-        return ""
-    return path.read_text(encoding="utf-8")
 
-
-def render_prompt(name: str, **kwargs: Any) -> str:
-    template_path = PROMPTS_DIR / name
-    template = Template(template_path.read_text(encoding="utf-8"))
-    return template.safe_substitute(**kwargs)
-
-
-def build_artifact_blob(repo_root: Path, artifacts: List[str]) -> str:
-    if not artifacts:
-        return "No artifacts requested by planner."
-
-    parts: List[str] = []
-    for artifact in artifacts:
-        artifact_path = repo_root / artifact
-        header = f"### {artifact}"
-        if artifact_path.exists() and artifact_path.is_file():
-            content = artifact_path.read_text(encoding="utf-8", errors="ignore")
-            truncated = False
-            if len(content) > MAX_ARTIFACT_CHARS:
-                content = content[:MAX_ARTIFACT_CHARS]
-                truncated = True
-            section = f"{header}\n```\n{content}\n```"
-            if truncated:
-                section += "\n<!-- truncated -->"
-        else:
-            section = f"{header}\nFile not found in repository."
-        parts.append(section)
-    return "\n\n".join(parts)
-
-
-def parse_json(raw: str) -> Any:
-    raw = raw.strip()
-    if raw.startswith("```"):
-        lines = raw.splitlines()
-        lines = lines[1:]
-        if lines and lines[-1].strip().startswith("```"):
-            lines = lines[:-1]
-        raw = "\n".join(lines)
-    if not raw:
-        return {}
-    return json.loads(raw)
 
 
 def main() -> None:
