@@ -828,7 +828,7 @@ async function main() {
         logger.warn({ err, phoneNumber: maskPhone(remotePhone), attempt, nextRetryMs: nextDelayMs }, 'Failed to request pairing code automatically.');
       },
       onFallback: () => {
-        pairingOrchestrator.setEnabled(false);
+        pairingOrchestrator?.setEnabled(false);
         allowQrOutput = true;
         logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code retries exhausted; falling back to QR pairing.');
         replayCachedQr();
