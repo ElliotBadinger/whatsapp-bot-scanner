@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import subprocess
 import sys
@@ -100,15 +101,18 @@ class AgentOrchestrator:
         repo_root: Path,
         config: RunnerConfig,
         dry_run: bool = False,
+        planner: Optional[CodexAgent] = None,
+        executor: Optional[GeminiAgent] = None,
+        reviewer: Optional[CodexAgent] = None,
     ) -> None:
         self.repo_root = repo_root
         self.config = config
         self.dry_run = dry_run
         self.guidelines = load_guidelines(repo_root)
         self.run_dir = self._init_run_dir()
-        self.planner = CodexAgent(repo_root, model=config.codex_model)
-        self.reviewer = CodexAgent(repo_root, model=config.codex_model)
-        self.executor = GeminiAgent(repo_root, model=config.gemini_model)
+        self.planner = planner or CodexAgent(repo_root, model=config.codex_model)
+        self.reviewer = reviewer or CodexAgent(repo_root, model=config.codex_model)
+        self.executor = executor or GeminiAgent(repo_root, model=config.gemini_model)
 
     def _init_run_dir(self) -> Path:
         root = self.repo_root / "storage" / "agent_runs"
@@ -119,6 +123,25 @@ class AgentOrchestrator:
         return run_dir
 
     def plan(self, objective: str) -> List[Task]:
+        tasks, _ = self._plan_with_retries(objective)
+        return tasks
+
+    def _plan_with_retries(self, objective: str) -> tuple[List[Task], Dict[str, Any]]:
+        attempts = max(1, self.config.max_replan_attempts)
+        last_error: Optional[Exception] = None
+        for _attempt in range(attempts):
+            try:
+                tasks, payload = self._generate_plan(objective)
+                self._store_plan_payload(payload)
+                return tasks, payload
+            except Exception as exc:  # pragma: no cover - surfaced to caller
+                last_error = exc
+        message = f"Planner failed after {attempts} attempt(s)."
+        if last_error is not None:
+            message = f"{message} Last error: {last_error}"
+        raise RuntimeError(message) from last_error
+
+    def _generate_plan(self, objective: str) -> tuple[List[Task], Dict[str, Any]]:
         prompt = render_prompt(
             "planner.txt",
             objective=objective,
@@ -128,35 +151,59 @@ class AgentOrchestrator:
         plan_run = self.planner.run(prompt, timeout=self.config.codex_timeout_seconds)
         self._write_jsonl(self.run_dir / "planner_events.jsonl", plan_run.events)
 
+        if not plan_run.message:
+            raise ValueError("Planner returned an empty response.")
+
         plan_data = parse_json(plan_run.message)
         if not isinstance(plan_data, dict):
             raise ValueError("Planner response must be a JSON object.")
         tasks_data = plan_data.get("tasks", [])
+        tasks = self._build_tasks(tasks_data)
+
+        payload = {
+            "objective": objective,
+            "notes": plan_data.get("notes"),
+            "tasks": [task.to_dict() for task in tasks],
+        }
+        return tasks, payload
+
+    def _store_plan_payload(self, payload: Dict[str, Any]) -> None:
+        (self.run_dir / "plan.json").write_text(
+            json.dumps(payload, indent=2),
+            encoding="utf-8",
+        )
+
+    def _store_result_payload(self, payload: Dict[str, Any]) -> None:
+        (self.run_dir / "summary.json").write_text(
+            json.dumps(payload, indent=2),
+            encoding="utf-8",
+        )
+
+    def _build_tasks(self, tasks_data: List[Any]) -> List[Task]:
         tasks: List[Task] = []
         for index, raw_task in enumerate(tasks_data, start=1):
             if not isinstance(raw_task, dict):
                 continue
+            artifacts = raw_task.get("artifacts") or []
+            artifact_list = [str(item) for item in artifacts] if isinstance(artifacts, list) else [str(artifacts)]
+            status = str(raw_task.get("status") or "pending")
+            try:
+                attempts = int(raw_task.get("attempts", 0))
+            except (TypeError, ValueError):
+                attempts = 0
             task = Task(
                 id=str(raw_task.get("id") or f"plan-{index}"),
                 title=str(raw_task.get("title") or f"Task {index}"),
                 goal=str(raw_task.get("goal") or ""),
                 context=str(raw_task.get("context") or ""),
-                artifacts=list(raw_task.get("artifacts") or []),
+                artifacts=artifact_list,
+                status=status,
+                attempts=attempts,
             )
             tasks.append(task)
-
-        plan_payload = {
-            "objective": objective,
-            "notes": plan_data.get("notes"),
-            "tasks": [task.to_dict() for task in tasks],
-        }
-        (self.run_dir / "plan.json").write_text(
-            json.dumps(plan_payload, indent=2),
-            encoding="utf-8",
-        )
         return tasks
 
-    def execute_task(self, task: Task, objective: str) -> Dict[str, Any]:
+    def _execute_once(self, task: Task, objective: str) -> Dict[str, Any]:
         task.attempts += 1
         artifacts_blob = build_artifact_blob(self.repo_root, task.artifacts)
         prompt = render_prompt(
@@ -181,14 +228,7 @@ class AgentOrchestrator:
                 ),
                 encoding="utf-8",
             )
-            return {
-                "status": "error",
-                "summary": str(error),
-                "patches": [],
-                "follow_up": [],
-                "returncode": None,
-                "patch_results": [],
-            }
+            raise
 
         raw_path.write_text(
             json.dumps(
@@ -220,10 +260,135 @@ class AgentOrchestrator:
                 if not patch_result.get("applied", False):
                     break
         else:
-            execution["status"] = "skip"
+            execution["status"] = execution.get("status", "skip")
 
         execution["patch_results"] = patch_results
         return execution
+
+    def execute_task_with_retries(self, task: Task, objective: str) -> tuple[Dict[str, Any], List[Dict[str, Any]], Dict[str, Any]]:
+        attempts = max(1, self.config.max_executor_retries)
+        tests: List[Dict[str, Any]] = []
+        review: Dict[str, Any] = {}
+        last_execution: Dict[str, Any] = {}
+        last_error: Optional[Exception] = None
+
+        for attempt in range(1, attempts + 1):
+            try:
+                execution = self._execute_once(task, objective)
+            except Exception as exc:  # pragma: no cover - aggregated below
+                last_error = exc
+                execution = {
+                    "status": "error",
+                    "summary": str(exc),
+                    "patches": [],
+                    "follow_up": [],
+                    "returncode": None,
+                    "patch_results": [],
+                }
+            execution["attempt"] = attempt
+            status = execution.get("status", "skip")
+            last_execution = execution
+
+            if status == "apply":
+                if not self.dry_run:
+                    tests = self.run_tests()
+                if self.config.review_enabled:
+                    review = self.review(task, objective, tests)
+                break
+
+            if status == "skip":
+                break
+        else:
+            if last_error is not None:
+                last_execution.setdefault("summary", str(last_error))
+
+        return last_execution, tests, review
+
+    def run_objective(
+        self,
+        objective: str,
+        plan_only: bool = False,
+        existing_plan: Optional[Dict[str, Any]] = None,
+        plan_source_run: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        if existing_plan is not None:
+            plan_payload = copy.deepcopy(existing_plan)
+            if not isinstance(plan_payload, dict):
+                raise ValueError("Existing plan payload must be a JSON object.")
+            # Hydrate tasks from the provided plan, ensuring fresh pending state.
+            tasks = self._build_tasks(plan_payload.get("tasks", []))
+            if not plan_payload.get("objective"):
+                plan_payload["objective"] = objective
+            for task in tasks:
+                task.status = "pending"
+                task.attempts = 0
+            if plan_source_run:
+                metadata = plan_payload.get("metadata")
+                if not isinstance(metadata, dict):
+                    metadata = {}
+                metadata["source_run"] = plan_source_run
+                plan_payload["metadata"] = metadata
+            # Persist a copy of the plan into the new run directory.
+            self._store_plan_payload(plan_payload)
+        else:
+            tasks, plan_payload = self._plan_with_retries(objective)
+
+        if plan_only:
+            response = {
+                "objective": objective,
+                "plan": plan_payload,
+                "tasks": [task.to_dict() for task in tasks],
+                "results": [],
+                "run_dir": str(self.run_dir.relative_to(self.repo_root)),
+            }
+            if plan_source_run:
+                response.setdefault("metadata", {})
+                response["metadata"]["plan_source_run"] = plan_source_run
+            response["plan_only"] = True
+            response["status"] = "completed"
+            response["run_id"] = self.run_dir.name
+            self._store_result_payload(response)
+            return response
+
+        results: List[Dict[str, Any]] = []
+        for task in tasks:
+            execution, tests, review = self.execute_task_with_retries(task, objective)
+            task.status = execution.get("status", task.status)
+
+            artifact_payload = {
+                "task": task.to_dict(),
+                "execution": execution,
+                "review": review,
+                "tests": tests,
+            }
+            (self.run_dir / f"task_{task.id}.json").write_text(
+                json.dumps(artifact_payload, indent=2),
+                encoding="utf-8",
+            )
+
+            results.append(
+                {
+                    "task": task.to_dict(),
+                    "execution": execution,
+                    "review": review,
+                    "tests": tests,
+                }
+            )
+
+        response: Dict[str, Any] = {
+            "objective": objective,
+            "plan": plan_payload,
+            "results": results,
+            "run_dir": str(self.run_dir.relative_to(self.repo_root)),
+        }
+        if plan_source_run:
+            response.setdefault("metadata", {})
+            response["metadata"]["plan_source_run"] = plan_source_run
+        response["plan_only"] = False
+        response["status"] = "completed"
+        response["run_id"] = self.run_dir.name
+        self._store_result_payload(response)
+        return response
 
     def review(self, task: Task, objective: str, test_results: List[Dict[str, Any]]) -> Dict[str, Any]:
         diff_summary = self._git_diff_stat()
@@ -381,36 +546,10 @@ def main() -> None:
     config = load_config(args.config.resolve())
     orchestrator = AgentOrchestrator(repo_root, config, dry_run=args.dry_run or args.demo)
 
-    tasks = orchestrator.plan(objective)
-    if args.plan_only:
-        return
-
-    for task in tasks:
-        execution = orchestrator.execute_task(task, objective)
-        task.status = execution.get("status", "skip")
-        test_outputs: List[Dict[str, Any]] = []
-        if task.status == "apply" and not orchestrator.dry_run:
-            test_outputs = orchestrator.run_tests()
-        review_payload = (
-            orchestrator.review(task, objective, test_outputs)
-            if orchestrator.config.review_enabled
-            else {}
-        )
-        review_path = orchestrator.run_dir / f"task_{task.id}.json"
-        review_path.write_text(
-            json.dumps(
-                {
-                    "task": task.to_dict(),
-                    "execution": execution,
-                    "review": review_payload,
-                    "tests": test_outputs,
-                },
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
-
-    orchestrator.maybe_commit(args.commit_message)
+    run_result = orchestrator.run_objective(objective, plan_only=args.plan_only)
+    if not args.plan_only:
+        orchestrator.maybe_commit(args.commit_message)
+    print(json.dumps(run_result, indent=2))
 
 
 if __name__ == "__main__":

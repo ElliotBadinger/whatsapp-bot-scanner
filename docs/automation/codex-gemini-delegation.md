@@ -72,12 +72,28 @@ python -m pip install -e ../../Research/autogen/python/packages/autogen-core
 - Codex CLI: `codex mcp --server stdio --command ./scripts/bin/wbscanner-mcp`
 - Gemini CLI: `gemini mcp run --command ./scripts/bin/wbscanner-mcp`
 - (optional) Install a global entrypoint: `npm run mcp:install` (adds `wbscanner-mcp` to your PATH when supported).
-- MCP tool signature: `delegate_objective(objective, dry_run=True, plan_only=False, config_path=None)`
+- MCP tools:
+  - `delegate_objective(objective, dry_run=True, plan_only=False, config_path=None, resume_run_id=None, wait_seconds=45.0)`
+  - `get_run_status(run_id)`
+
+#### Recommended call flow
+1. **Plan pass** – invoke `delegate_objective` with `dry_run=true` and `plan_only=true` to generate a plan without modifying files. The response includes the storage run directory (e.g. `storage/agent_runs/20251029-153522`).
+2. **Execution pass** – invoke `delegate_objective` again with `plan_only=false`, supplying `resume_run_id` set to the previous run directory name. By default the MCP server waits up to 45 s and then returns an `"in_progress"` handle if work continues asynchronously.
+3. **Poll for completion** – call `get_run_status(run_id=...)` to check progress, inspect results, or surface failures once the background run finishes.
+4. Adjust `wait_seconds` to control how long the tool blocks before handing back an asynchronous handle (set `wait_seconds=0` to always return immediately).
+- Every run writes `plan.json` and `summary.json` under `storage/agent_runs/<run_id>`, so you can resume planning or read final output even if the MCP process restarts. Long-running executions require the MCP process to stay alive (e.g., inside the Codex TUI); if you invoke `codex exec` repeatedly, prefer leaving `wait_seconds` high enough for the run to complete in-session.
 
 ### Configuration
 - Defaults live in `scripts/agent_orchestrator/config.yaml` (planner timeout 240 s, executor timeout 420 s, reviews enabled, empty `test_commands`).
 - `max_replan_attempts` and `max_executor_retries` are now enforced for planner/executor loops, so tweak them to balance resiliency vs. latency.
 - Override by editing the file or supplying `config_path` via the MCP call.
+
+### Autogen & AgentFlow Feature Flags
+- Upcoming Autogen integration is gated behind new `autogen.*` keys (see `docs/automation/autogen-agentflow-integration.md`).
+- Shadow mode allows Autogen debates and memory capture without applying patches: `autogen.enabled=false`, `autogen.shadow_mode=true`.
+- AgentFlow memory/policy controls live under `agentflow.*` (e.g., `agentflow.memory.enabled`, `agentflow.policy.mode`). Defaults keep all memory off.
+- Telemetry verbosity is toggled via `telemetry.verbose`; new metrics appear in MCP responses but fall back to legacy schema when disabled.
+- Setting `autogen.mode=legacy` or `autogen.enabled=false` forces the Codex/Gemini CLI path for full backward compatibility.
 
 ### Research Repo Leverage
 - **Agent Lightning** – logging/bootstrap helpers and FastMCP workflow patterns.
@@ -85,6 +101,6 @@ python -m pip install -e ../../Research/autogen/python/packages/autogen-core
 - **AgentFlow** – orchestration mirrors the planner → executor → reviewer loop enabling future Flow-GRPO integration.
 
 ## Future Enhancements
-- Incorporate AgentFlow-style memory to let the planner reference previous runs.
-- Swap in Agent Lightning training loops if we later host custom models.
-- Extend to additional sub-agents (e.g., test-data synthesizer) by adding more CLI adapters under `agents.py`.
+- Enable Autogen specialist agents (refactor, security, docs) in milestone M5 once telemetry confidence is high.
+- Integrate Flow-GRPO reward shaping directly into the planner’s decision loop.
+- Explore remote execution sandboxes so executors can run destructive tests safely.
