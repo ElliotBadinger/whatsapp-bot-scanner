@@ -8,7 +8,7 @@ from concurrent.futures import Future
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -97,6 +97,100 @@ def _register_background_run(run_id: str, run: BackgroundRun) -> None:
 
     run.future.add_done_callback(_on_complete)
     RUN_REGISTRY[run_id] = run
+
+
+def _parse_cursor(cursor: Optional[Union[int, str]]) -> int:
+    if cursor in (None, ""):
+        return 0
+    if isinstance(cursor, int):
+        return max(cursor, 0)
+    try:
+        value = int(str(cursor))
+    except (TypeError, ValueError) as error:  # pragma: no cover - validated in tests
+        raise ValueError("cursor must be an integer offset.") from error
+    return max(value, 0)
+
+
+def _collect_status_updates(run_dir: Path, run_entry: Optional[BackgroundRun]) -> List[Dict[str, Any]]:
+    events: List[Tuple[float, Dict[str, Any]]] = []
+
+    def _append_event(timestamp: float, payload: Dict[str, Any]) -> None:
+        event = dict(payload)
+        event.setdefault("type", "status")
+        event["timestamp"] = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+        events.append((timestamp, event))
+
+    def _record_file_event(path: Path, description: str, *, event_type: str = "artifact") -> None:
+        if not path.exists():
+            return
+        try:
+            timestamp = path.stat().st_mtime
+        except FileNotFoundError:  # pragma: no cover - best effort
+            return
+        _append_event(
+            timestamp,
+            {
+                "type": event_type,
+                "path": str(path.relative_to(REPO_ROOT)),
+                "description": description,
+            },
+        )
+
+    if run_entry is not None:
+        _append_event(
+            run_entry.started_at.timestamp(),
+            {
+                "type": "status",
+                "state": "running",
+                "message": f"Run started (objective: {run_entry.objective})",
+            },
+        )
+    elif run_dir.exists():
+        try:
+            timestamp = run_dir.stat().st_mtime
+        except FileNotFoundError:  # pragma: no cover - race condition guard
+            timestamp = datetime.now(timezone.utc).timestamp()
+        _append_event(
+            timestamp,
+            {
+                "type": "status",
+                "state": "unknown",
+                "message": "Run artifacts detected.",
+            },
+        )
+
+    plan_path = run_dir / "plan.json"
+    _record_file_event(plan_path, "Plan saved.")
+
+    for task_path in sorted(run_dir.glob("task_*.json")):
+        _record_file_event(task_path, f"Task recorded ({task_path.name}).")
+
+    for review_path in sorted(run_dir.glob("review_*.json")):
+        _record_file_event(review_path, f"Review captured ({review_path.name}).")
+
+    for raw_path in sorted(run_dir.glob("executor_*_raw.json")):
+        _record_file_event(raw_path, f"Executor output stored ({raw_path.name}).")
+
+    for diff_path in sorted(run_dir.glob("*.diff")):
+        _record_file_event(diff_path, f"Patch saved ({diff_path.name}).")
+
+    summary_path = run_dir / "summary.json"
+    _record_file_event(summary_path, "Summary saved.")
+
+    if run_entry is not None and run_entry.completed_at is not None:
+        state = "failed" if run_entry.error else "completed"
+        message = f"Run failed: {run_entry.error}" if run_entry.error else "Run completed successfully."
+        _append_event(
+            run_entry.completed_at.timestamp(),
+            {
+                "type": "status",
+                "state": state,
+                "message": message,
+            },
+        )
+
+    events.sort(key=lambda item: item[0])
+    return [event for _, event in events]
 
 
 @mcp.tool(
@@ -228,79 +322,83 @@ async def delegate_objective(
     name="get_run_status",
     description="Retrieve the status of an in-progress or recently completed delegate_objective run.",
 )
-async def get_run_status(run_id: str) -> Dict[str, Any]:
+async def get_run_status(
+    run_id: str,
+    cursor: Optional[Union[int, str]] = None,
+) -> Dict[str, Any]:
     if not run_id:
         raise ValueError("run_id is required.")
 
     run_dir = _resolve_run_dir(run_id)
     run_entry = RUN_REGISTRY.get(run_id)
+    cursor_index = _parse_cursor(cursor)
+
     response: Dict[str, Any] = {
         "run_id": run_id,
         "run_dir": str(run_dir.relative_to(REPO_ROOT)),
     }
 
+    active_run = False
+
     if run_entry is None:
-        # We no longer track the run (process restart or old run). Provide best-effort info.
         summary_path = run_dir / "summary.json"
         if summary_path.is_file():
             summary = json.loads(summary_path.read_text(encoding="utf-8"))
             summary.setdefault("status", "completed")
             summary.setdefault("run_id", run_id)
             summary.setdefault("run_dir", str(run_dir.relative_to(REPO_ROOT)))
-            return summary
-        if run_dir.exists():
+            response = summary
+        elif run_dir.exists():
             response.update(
                 {
                     "status": "unknown",
                     "message": "Run directory exists but no active tracker is available. Inspect artifacts manually.",
                 }
             )
-            return response
-        raise ValueError(f"No data recorded for run_id '{run_id}'.")
+        else:
+            raise ValueError(f"No data recorded for run_id '{run_id}'.")
+    else:
+        if run_entry.result is not None:
+            response.update(
+                {
+                    "status": "completed",
+                    "objective": run_entry.objective,
+                    "result": run_entry.result,
+                    "started_at": run_entry.started_at.isoformat(),
+                    "completed_at": run_entry.completed_at.isoformat() if run_entry.completed_at else None,
+                }
+            )
+        elif run_entry.error is not None:
+            response.update(
+                {
+                    "status": "failed",
+                    "objective": run_entry.objective,
+                    "error": run_entry.error,
+                    "started_at": run_entry.started_at.isoformat(),
+                    "completed_at": run_entry.completed_at.isoformat() if run_entry.completed_at else None,
+                }
+            )
+        else:
+            active_run = True
+            response.update(
+                {
+                    "status": "running",
+                    "objective": run_entry.objective,
+                    "started_at": run_entry.started_at.isoformat(),
+                }
+            )
 
-    if run_entry.result is not None:
-        response.update(
-            {
-                "status": "completed",
-                "objective": run_entry.objective,
-                "result": run_entry.result,
-                "started_at": run_entry.started_at.isoformat(),
-                "completed_at": run_entry.completed_at.isoformat() if run_entry.completed_at else None,
-            }
-        )
         response["plan_only"] = run_entry.plan_only
         if run_entry.plan_source_run:
             response.setdefault("metadata", {})
             response["metadata"]["plan_source_run"] = run_entry.plan_source_run
-        return response
 
-    if run_entry.error is not None:
-        response.update(
-            {
-                "status": "failed",
-                "objective": run_entry.objective,
-                "error": run_entry.error,
-                "started_at": run_entry.started_at.isoformat(),
-                "completed_at": run_entry.completed_at.isoformat() if run_entry.completed_at else None,
-            }
-        )
-        response["plan_only"] = run_entry.plan_only
-        if run_entry.plan_source_run:
-            response.setdefault("metadata", {})
-            response["metadata"]["plan_source_run"] = run_entry.plan_source_run
-        return response
+    updates = _collect_status_updates(run_dir, run_entry)
+    cursor_index = min(cursor_index, len(updates))
+    response["updates"] = updates[cursor_index:]
+    response["cursor"] = str(len(updates))
+    response["has_more"] = active_run
 
-    response.update(
-        {
-            "status": "running",
-            "objective": run_entry.objective,
-            "started_at": run_entry.started_at.isoformat(),
-        }
-    )
-    response["plan_only"] = run_entry.plan_only
-    if run_entry.plan_source_run:
-        response.setdefault("metadata", {})
-        response["metadata"]["plan_source_run"] = run_entry.plan_source_run
     return response
 
 
