@@ -389,9 +389,24 @@ ensure_remote_auth_defaults() {
   fi
   local phone
   phone=$(get_env_var "WA_REMOTE_AUTH_PHONE_NUMBER" || true)
+  local sanitized_default
+  sanitized_default=$(printf '%s' "${REMOTE_AUTH_PHONE_DEFAULT:-}" | tr -cd '0-9')
+  if [ -n "$phone" ]; then
+    local phone_digits
+    phone_digits=$(printf '%s' "$phone" | tr -cd '0-9')
+    case "$phone_digits" in
+      27632710634)
+        if [ -n "$sanitized_default" ]; then
+          set_env_var "WA_REMOTE_AUTH_PHONE_NUMBER" "$sanitized_default"
+          phone="$sanitized_default"
+          log_info "Replaced legacy RemoteAuth phone with default ($(redact_value "$sanitized_default"))."
+        else
+          phone="$phone_digits"
+        fi
+        ;;
+    esac
+  fi
   if [ -z "$phone" ]; then
-    local sanitized_default
-    sanitized_default=$(printf '%s' "${REMOTE_AUTH_PHONE_DEFAULT:-}" | tr -cd '0-9')
     if [ -n "$sanitized_default" ] && [[ "$sanitized_default" =~ ^[0-9]{8,15}$ ]]; then
       set_env_var "WA_REMOTE_AUTH_PHONE_NUMBER" "$sanitized_default"
       phone="$sanitized_default"
