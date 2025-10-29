@@ -2,7 +2,9 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
     networks: [internal]
 
   postgres:
@@ -142,3 +144,4 @@ networks:
 volumes:
   pgdata:
   wa_session:
+  redisdata:

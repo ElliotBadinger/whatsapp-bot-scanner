@@ -3,13 +3,22 @@ WORKDIR /app
 
 COPY tsconfig.base.json /app/
 
+COPY packages/confusable /app/packages/confusable
 COPY packages/shared/package.json packages/shared/tsconfig.json /app/packages/shared/
 COPY packages/shared/src /app/packages/shared/src
-RUN cd /app/packages/shared && npm install && npm run build && npm pack
+RUN cd /app/packages/shared && \
+    npm install --no-audit --progress=false && \
+    npm run build && \
+    npm pack
 
 COPY services/control-plane/package.json services/control-plane/tsconfig.json /app/services/control-plane/
+RUN cd /app/services/control-plane && \
+    npm install ../..//packages/shared/*.tgz --no-audit --progress=false && \
+    npm install --no-audit --progress=false
+
 COPY services/control-plane/src /app/services/control-plane/src
-RUN cd /app/services/control-plane && npm install ../..//packages/shared/*.tgz && npm install && npm run build
+RUN cd /app/services/control-plane && \
+    npm run build
 
 ENV NODE_ENV=production
 USER node
