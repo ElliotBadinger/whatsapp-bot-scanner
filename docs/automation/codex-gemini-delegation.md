@@ -66,15 +66,17 @@ python -m pip install -e ../../Research/autogen/python/packages/autogen-core
 
 ### Running the MCP server
 ```bash
-wbscanner-mcp  # starts FastMCP with repo defaults
+./scripts/bin/wbscanner-mcp  # starts FastMCP with repo defaults
 ```
 
-- Codex CLI: `codex mcp --server stdio --command wbscanner-mcp`
-- Gemini CLI: `gemini mcp run --command wbscanner-mcp`
+- Codex CLI: `codex mcp --server stdio --command ./scripts/bin/wbscanner-mcp`
+- Gemini CLI: `gemini mcp run --command ./scripts/bin/wbscanner-mcp`
+- (optional) Install a global entrypoint: `npm run mcp:install` (adds `wbscanner-mcp` to your PATH when supported).
 - MCP tool signature: `delegate_objective(objective, dry_run=True, plan_only=False, config_path=None)`
 
 ### Configuration
 - Defaults live in `scripts/agent_orchestrator/config.yaml` (planner timeout 240 s, executor timeout 420 s, reviews enabled, empty `test_commands`).
+- `max_replan_attempts` and `max_executor_retries` are now enforced for planner/executor loops, so tweak them to balance resiliency vs. latency.
 - Override by editing the file or supplying `config_path` via the MCP call.
 
 ### Research Repo Leverage
