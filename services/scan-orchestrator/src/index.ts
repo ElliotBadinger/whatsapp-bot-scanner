@@ -195,7 +195,7 @@ function createRedisConnection(): Redis {
   if (process.env.NODE_ENV === 'test') {
     return new InMemoryRedis() as unknown as Redis;
   }
-  return new Redis(config.redisUrl);
+  return new Redis(config.redisUrl, { maxRetriesPerRequest: null });
 }
 
 const redis = createRedisConnection();
@@ -781,6 +781,24 @@ const pg = new PgClient({
   password: config.postgres.password
 });
 
+async function loadManualOverride(urlHash: string, hostname: string): Promise<'allow' | 'deny' | null> {
+  try {
+    const overrideResult = await pg.query(
+      `SELECT status FROM overrides
+         WHERE (url_hash = $1 OR pattern = $2)
+           AND (expires_at IS NULL OR expires_at > NOW())
+         ORDER BY created_at DESC
+         LIMIT 1`,
+      [urlHash, hostname]
+    );
+    const status = overrideResult.rows[0]?.status;
+    return status === 'allow' || status === 'deny' ? status : null;
+  } catch (err) {
+    logger.warn({ err, urlHash, hostname }, 'Failed to load manual override');
+    return null;
+  }
+}
+
 async function main() {
   assertEssentialConfig('scan-orchestrator');
   await pg.connect();
@@ -972,8 +990,6 @@ async function main() {
       const finalUrlObj = new URL(finalUrl);
       const redirectChain = [...(shortenerInfo?.chain ?? []), ...exp.chain.filter(item => !(shortenerInfo?.chain ?? []).includes(item))];
       const heurSignals = extraHeuristics(finalUrlObj);
-      const domainIntel = await fetchDomainIntel(finalUrlObj.hostname, h);
-      const domainAgeDays = domainIntel.ageDays;
       const wasShortened = Boolean(shortenerInfo?.wasShortened);
       const finalUrlMismatch = wasShortened && new URL(norm).hostname !== finalUrlObj.hostname;
 
@@ -983,33 +999,25 @@ async function main() {
         logger.info({ hostname: finalUrlObj.hostname, risk: homoglyphResult.riskLevel, confusables: homoglyphResult.confusableChars }, 'Homoglyph detection');
       }
 
-      let manualOverride: 'allow' | 'deny' | null = null;
-      try {
-        const overrideResult = await pg.query(
-          `SELECT status FROM overrides
-             WHERE (url_hash = $1 OR pattern = $2)
-               AND (expires_at IS NULL OR expires_at > NOW())
-             ORDER BY created_at DESC
-             LIMIT 1`,
-          [h, finalUrlObj.hostname]
-        );
-        if (overrideResult.rows[0]?.status) {
-          manualOverride = overrideResult.rows[0].status as 'allow' | 'deny';
-          metrics.manualOverrideApplied.labels(manualOverride).inc();
-        }
-      } catch (err) {
-        logger.warn({ err, url: finalUrl }, 'Failed to load manual override');
+      const [blocklistResult, domainIntel, manualOverride] = await Promise.all([
+        checkBlocklistsWithRedundancy({
+          finalUrl,
+          hash: h,
+          fallbackLatencyMs: config.gsb.fallbackLatencyMs,
+          gsbApiKeyPresent: Boolean(config.gsb.apiKey),
+          phishtankEnabled: config.phishtank.enabled,
+          fetchGsbAnalysis,
+          fetchPhishtank,
+        }),
+        fetchDomainIntel(finalUrlObj.hostname, h),
+        loadManualOverride(h, finalUrlObj.hostname),
+      ]);
+
+      if (manualOverride) {
+        metrics.manualOverrideApplied.labels(manualOverride).inc();
       }
 
-      const blocklistResult = await checkBlocklistsWithRedundancy({
-        finalUrl,
-        hash: h,
-        fallbackLatencyMs: config.gsb.fallbackLatencyMs,
-        gsbApiKeyPresent: Boolean(config.gsb.apiKey),
-        phishtankEnabled: config.phishtank.enabled,
-        fetchGsbAnalysis,
-        fetchPhishtank,
-      });
+      const domainAgeDays = domainIntel.ageDays;
       const gsbMatches = blocklistResult.gsbMatches;
       const gsbHit = gsbMatches.length > 0;
       if (gsbHit) metrics.gsbHits.inc();
