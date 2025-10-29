@@ -37,7 +37,16 @@ class CodexAgent:
         self.model = model
 
     def run(self, prompt: str, timeout: int = 240) -> CodexRun:
-        cmd = ["codex", "exec", "--json", "-C", str(self.repo_root)]
+        # Disable Codex's MCP client so planner/reviewer calls don't recurse into this server.
+        cmd = [
+            "codex",
+            "exec",
+            "--json",
+            "-C",
+            str(self.repo_root),
+            "--disable",
+            "rmcp_client",
+        ]
         if self.model:
             cmd.extend(["-m", self.model])
         cmd.append(prompt)
@@ -52,8 +61,13 @@ class CodexAgent:
             )
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError(
-                f"Gemini CLI timed out after {timeout}s"
+                f"Codex CLI timed out after {timeout}s"
             ) from exc
+
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"Codex CLI exited with {result.returncode}: {result.stderr.strip()}"
+            )
 
 
         events: List[Dict[str, Any]] = []
@@ -105,6 +119,11 @@ class GeminiAgent:
             raise RuntimeError(
                 f"Gemini CLI timed out after {timeout}s"
             ) from exc
+
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"Gemini CLI exited with {result.returncode}: {result.stderr.strip()}"
+            )
 
         payload: Dict[str, Any] = {}
         response_text = ""
