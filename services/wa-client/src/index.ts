@@ -158,6 +158,55 @@ function createRedisConnection(): Redis {
 const redis = createRedisConnection();
 const scanRequestQueue = new Queue(config.queues.scanRequest, { connection: redis });
 
+const pairingCodeCacheKey = (phone: string) => `wa:pairing:code:${phone}`;
+const pairingAttemptKey = (phone: string) => `wa:pairing:last_attempt:${phone}`;
+
+async function cachePairingCode(phone: string, code: string): Promise<void> {
+  try {
+    const payload = JSON.stringify({ code, storedAt: Date.now() });
+    const ttlSeconds = Math.max(1, Math.ceil(PHONE_PAIRING_CODE_TTL_MS / 1000));
+    await redis.set(pairingCodeCacheKey(phone), payload, 'EX', ttlSeconds);
+  } catch (err) {
+    logger.warn({ err, phoneNumber: maskPhone(phone) }, 'Failed to cache pairing code.');
+  }
+}
+
+async function getCachedPairingCode(phone: string): Promise<{ code: string; storedAt: number } | null> {
+  try {
+    const raw = await redis.get(pairingCodeCacheKey(phone));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { code?: unknown; storedAt?: unknown };
+    if (typeof parsed.code === 'string' && typeof parsed.storedAt === 'number') {
+      return { code: parsed.code, storedAt: parsed.storedAt };
+    }
+    return null;
+  } catch (err) {
+    logger.warn({ err, phoneNumber: maskPhone(phone) }, 'Failed to read cached pairing code.');
+    return null;
+  }
+}
+
+async function recordPairingAttempt(phone: string, timestamp: number): Promise<void> {
+  try {
+    const ttlSeconds = 600;
+    await redis.set(pairingAttemptKey(phone), String(timestamp), 'EX', ttlSeconds);
+  } catch (err) {
+    logger.warn({ err, phoneNumber: maskPhone(phone) }, 'Failed to record pairing attempt.');
+  }
+}
+
+async function getLastPairingAttempt(phone: string): Promise<number | null> {
+  try {
+    const raw = await redis.get(pairingAttemptKey(phone));
+    if (!raw) return null;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  } catch (err) {
+    logger.warn({ err, phoneNumber: maskPhone(phone) }, 'Failed to read last pairing attempt.');
+    return null;
+  }
+}
+
 const globalLimiter = createGlobalTokenBucket(redis, config.wa.globalRatePerHour, config.wa.globalTokenBucketKey);
 const groupLimiter = new RateLimiterRedis({
   storeClient: redis,
@@ -254,6 +303,7 @@ const FORCE_PHONE_PAIRING = config.wa.remoteAuth.disableQrFallback || config.wa.
 const CONFIGURED_MAX_PAIRING_RETRIES = Math.max(1, config.wa.remoteAuth.maxPairingRetries ?? 5);
 const MAX_PAIRING_CODE_RETRIES = FORCE_PHONE_PAIRING ? Number.MAX_SAFE_INTEGER : CONFIGURED_MAX_PAIRING_RETRIES;
 const PAIRING_RETRY_DELAY_MS = Math.max(1000, config.wa.remoteAuth.pairingRetryDelayMs ?? 15000);
+const PHONE_PAIRING_CODE_TTL_MS = 160000;
 
 const ackWatchers = new Map<string, NodeJS.Timeout>();
 let currentWaState: string | null = null;
@@ -721,11 +771,19 @@ async function main() {
   let allowQrOutput = !shouldRequestPhonePairing;
   let qrSuppressedLogged = false;
   let cachedQr: string | null = null;
+  let pairingCodeDelivered = false;
+  let pairingCodeExpiryTimer: NodeJS.Timeout | null = null;
+  let pairingFallbackTimer: NodeJS.Timeout | null = null;
+  let lastPairingAttemptMs = 0;
 
   const performPairingCodeRequest = async (): Promise<string | null> => {
     const pageHandle = (client as unknown as { pupPage?: { evaluate?: (...args: any[]) => Promise<unknown> } }).pupPage;
     if (!pageHandle || typeof pageHandle.evaluate !== 'function') {
       throw new Error('Puppeteer page handle unavailable for pairing');
+    }
+    if (remotePhone) {
+      lastPairingAttemptMs = Date.now();
+      void recordPairingAttempt(remotePhone, lastPairingAttemptMs);
     }
     const interval = Math.max(60000, config.wa.remoteAuth.pairingDelayMs ?? 0);
     const outcome = await pageHandle.evaluate(async (phoneNumber: string, showNotification: boolean, intervalMs: number) => {
@@ -806,6 +864,28 @@ async function main() {
     return typeof outcome === 'string' ? outcome : null;
   };
 
+  function cancelPairingCodeRefresh() {
+    if (pairingCodeExpiryTimer) {
+      clearTimeout(pairingCodeExpiryTimer);
+      pairingCodeExpiryTimer = null;
+    }
+  }
+
+  function schedulePairingCodeRefresh(delayMs: number) {
+    cancelPairingCodeRefresh();
+    const normalized = Math.max(1000, delayMs);
+    pairingCodeExpiryTimer = setTimeout(() => {
+      pairingCodeExpiryTimer = null;
+      if (remoteSessionActive) {
+        return;
+      }
+      pairingCodeDelivered = false;
+      pairingOrchestrator?.setCodeDelivered(false);
+      requestPairingCodeWithRetry(0);
+      startPairingFallbackTimer();
+    }, normalized);
+  }
+
   const rateLimitDelayMs = Math.max(60000, PAIRING_RETRY_DELAY_MS);
   const pairingOrchestrator = shouldRequestPhonePairing && remotePhone
     ? new PairingOrchestrator({
@@ -822,6 +902,10 @@ async function main() {
         return code;
       },
       onSuccess: (code, attempt) => {
+        if (remotePhone) {
+          void cachePairingCode(remotePhone, code);
+          schedulePairingCodeRefresh(PHONE_PAIRING_CODE_TTL_MS);
+        }
         logger.info({ phoneNumber: maskPhone(remotePhone), attempt, code }, 'Requested phone-number pairing code from WhatsApp.');
       },
       onError: (err, attempt, nextDelayMs) => {
@@ -829,6 +913,7 @@ async function main() {
       },
       onFallback: () => {
         pairingOrchestrator?.setEnabled(false);
+        cancelPairingCodeRefresh();
         allowQrOutput = true;
         logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code retries exhausted; falling back to QR pairing.');
         replayCachedQr();
@@ -846,21 +931,73 @@ async function main() {
 
   const clearPairingRetry = () => {
     pairingOrchestrator?.cancel();
+    cancelPairingCodeRefresh();
   };
 
   const requestPairingCodeWithRetry = (delayMs = 0) => {
-    if (!remotePhone) return;
-    pairingOrchestrator?.schedule(delayMs);
+    if (!remotePhone || pairingCodeDelivered || remoteSessionActive) return;
+    const now = Date.now();
+    let effectiveDelay = Math.max(0, delayMs);
+    if (lastPairingAttemptMs > 0) {
+      const sinceLast = now - lastPairingAttemptMs;
+      if (sinceLast < rateLimitDelayMs) {
+        effectiveDelay = Math.max(effectiveDelay, rateLimitDelayMs - sinceLast);
+      }
+    }
+    pairingOrchestrator?.schedule(effectiveDelay);
   };
-  let pairingCodeDelivered = false;
-  let pairingFallbackTimer: NodeJS.Timeout | null = null;
 
+  if (remotePhone) {
+    const [cachedPairingCode, recordedAttempt] = await Promise.all([
+      getCachedPairingCode(remotePhone),
+      getLastPairingAttempt(remotePhone),
+    ]);
+    if (typeof recordedAttempt === 'number') {
+      lastPairingAttemptMs = recordedAttempt;
+    }
+    if (cachedPairingCode) {
+      const ageMs = Date.now() - cachedPairingCode.storedAt;
+      const remainingMs = PHONE_PAIRING_CODE_TTL_MS - ageMs;
+      if (remainingMs > 1000) {
+        pairingCodeDelivered = true;
+        pairingOrchestrator?.setCodeDelivered(true);
+        schedulePairingCodeRefresh(remainingMs);
+        logger.info({ pairingCode: cachedPairingCode.code, phoneNumber: maskPhone(remotePhone), remainingMs }, 'Reusing cached phone-number pairing code still within validity window.');
+        if (config.wa.qrTerminal) {
+          process.stdout.write(`\nWhatsApp pairing code for ${maskPhone(remotePhone)}: ${cachedPairingCode.code}\nOpen WhatsApp > Linked devices > Link with phone number and enter this code.\n`);
+        }
+      }
+    }
+  }
   const cancelPairingFallback = () => {
     if (pairingFallbackTimer) {
       clearTimeout(pairingFallbackTimer);
       pairingFallbackTimer = null;
     }
   };
+
+  function startPairingFallbackTimer() {
+    if (pairingFallbackTimer || !pairingOrchestrator || !remotePhone || pairingCodeDelivered || remoteSessionActive) {
+      return;
+    }
+    pairingFallbackTimer = setTimeout(() => {
+      pairingFallbackTimer = null;
+      if (!pairingCodeDelivered && !remoteSessionActive) {
+        metrics.waSessionReconnects.labels('pairing_code_timeout').inc();
+        if (FORCE_PHONE_PAIRING) {
+          logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code not received within timeout; QR fallback disabled. Ensure WhatsApp is open to Linked Devices > Link with phone number.');
+          requestPairingCodeWithRetry(Math.max(PAIRING_RETRY_DELAY_MS, 60000));
+          startPairingFallbackTimer();
+        } else {
+          allowQrOutput = true;
+          logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code not received within timeout; enabling QR fallback.');
+          clearPairingRetry();
+          pairingOrchestrator.setEnabled(false);
+          replayCachedQr();
+        }
+      }
+    }, pairingTimeoutMs);
+  }
 
   const emitQr = (qr: string, source: 'live' | 'cached') => {
     if (config.wa.qrTerminal) {
@@ -905,6 +1042,10 @@ async function main() {
         cancelPairingFallback();
         clearPairingRetry();
         pairingOrchestrator?.setCodeDelivered(true);
+        if (remotePhone) {
+          void cachePairingCode(remotePhone, code);
+        }
+        schedulePairingCodeRefresh(PHONE_PAIRING_CODE_TTL_MS);
         logger.info({ pairingCode: code, phoneNumber: maskPhone(remotePhone) }, 'Enter this pairing code in WhatsApp > Linked devices > Link with phone number.');
         if (config.wa.qrTerminal) {
           process.stdout.write(`\nWhatsApp pairing code for ${maskPhone(remotePhone)}: ${code}\nOpen WhatsApp > Linked devices > Link with phone number and enter this code.\n`);
@@ -1578,30 +1719,14 @@ async function main() {
 
   await client.initialize();
 
-  if (pairingOrchestrator) {
-    const initialDelay = config.wa.remoteAuth.pairingDelayMs && config.wa.remoteAuth.pairingDelayMs > 0
+  if (pairingOrchestrator && !pairingCodeDelivered) {
+    const configuredDelay = config.wa.remoteAuth.pairingDelayMs && config.wa.remoteAuth.pairingDelayMs > 0
       ? config.wa.remoteAuth.pairingDelayMs
       : 5000;
+    const initialDelay = Math.max(rateLimitDelayMs, configuredDelay);
     requestPairingCodeWithRetry(initialDelay);
   }
-
-  if (pairingOrchestrator && remotePhone) {
-    pairingFallbackTimer = setTimeout(() => {
-      if (!pairingCodeDelivered && !remoteSessionActive) {
-        metrics.waSessionReconnects.labels('pairing_code_timeout').inc();
-        if (FORCE_PHONE_PAIRING) {
-          logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code not received within timeout; QR fallback disabled. Ensure WhatsApp is open to Linked Devices > Link with phone number.');
-          requestPairingCodeWithRetry(Math.max(PAIRING_RETRY_DELAY_MS, 60000));
-        } else {
-          allowQrOutput = true;
-          logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code not received within timeout; enabling QR fallback.');
-          clearPairingRetry();
-          pairingOrchestrator.setEnabled(false);
-          replayCachedQr();
-        }
-      }
-    }, pairingTimeoutMs);
-  }
+  startPairingFallbackTimer();
 
   await app.listen({ host: '0.0.0.0', port: 3000 });
 }
