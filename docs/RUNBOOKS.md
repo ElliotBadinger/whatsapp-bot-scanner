@@ -50,7 +50,10 @@ Rollback:
 - `docker compose rollback` (if using compose profiles with tags) or redeploy previous images.
 
 RemoteAuth Operations:
-- Enable RemoteAuth by setting `WA_AUTH_STRATEGY=remote`, `WA_REMOTE_AUTH_STORE=redis`, and providing a data key (either `WA_REMOTE_AUTH_DATA_KEY` base64 plaintext, or `WA_REMOTE_AUTH_ENCRYPTED_DATA_KEY` with `WA_REMOTE_AUTH_KMS_KEY_ID`/Vault transit envs). Redeploy wa-client to apply.
+- RemoteAuth is enabled by default (`WA_AUTH_STRATEGY=remote`). Ensure a base64 data key is present (`WA_REMOTE_AUTH_DATA_KEY`) or supply an encrypted key with `WA_REMOTE_AUTH_ENCRYPTED_DATA_KEY` plus the appropriate KMS/Vault settings before deploying wa-client.
+- Drive phone-number pairing with `WA_REMOTE_AUTH_AUTO_PAIR=true` and provide a digits-only `WA_REMOTE_AUTH_PHONE_NUMBER`. Use `WA_REMOTE_AUTH_RETRY_DELAY_MS` (default 15s) and `WA_REMOTE_AUTH_MAX_RETRIES` to tune how often wa-client re-requests a code. Set `WA_REMOTE_AUTH_DISABLE_QR_FALLBACK=true` to keep the client in phone-number mode without ever surfacing QR codes (you must open WhatsApp → Linked Devices → Link with phone number on the device to generate the code).
+- Set `WA_REMOTE_AUTH_PHONE_NUMBER` (digits only, for example `12025550123`) if you plan to request pairing codes by phone number. Leave it blank to rely on QR-only pairing.
+- Opt-in to automatic phone pairing with `WA_REMOTE_AUTH_AUTO_PAIR=true` once you are ready to receive codes immediately after the stack boots. Keep WhatsApp open on the target device and navigate to **Linked Devices** before starting the services. If disabled (default), wa-client emits a QR code for first-time linking.
 - Session snapshots live under the Redis key prefix `remoteauth:v1:<WA_AUTH_CLIENT_ID>`; clear a session with `DEL remoteauth:v1:<clientId>:RemoteAuth-<clientId>` before re-pairing.
 - Rotate encryption keys by generating a new data key, updating the env var(s), and recycling wa-client pods; old ciphertext becomes unreadable after rotation.
 - Health queue `wa-health` carries state transitions; investigate repeated `CONFLICT` events or `reset_state` jobs via Bull board.

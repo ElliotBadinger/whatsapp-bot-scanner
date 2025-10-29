@@ -181,6 +181,11 @@ export const config = {
     remoteAuth: {
       store: (process.env.WA_REMOTE_AUTH_STORE || 'redis').toLowerCase(),
       clientId: process.env.WA_AUTH_CLIENT_ID || 'default',
+      autoPair: (process.env.WA_REMOTE_AUTH_AUTO_PAIR || 'false') === 'true',
+      pairingDelayMs: parsePositiveInt(process.env.WA_REMOTE_AUTH_AUTO_PAIR_DELAY_MS, 0, { minimum: 0 }),
+      pairingRetryDelayMs: parsePositiveInt(process.env.WA_REMOTE_AUTH_RETRY_DELAY_MS, 15000, { minimum: 1000 }),
+      maxPairingRetries: parsePositiveInt(process.env.WA_REMOTE_AUTH_MAX_RETRIES, 5, { minimum: 1 }),
+      disableQrFallback: (process.env.WA_REMOTE_AUTH_DISABLE_QR_FALLBACK || 'false') === 'true',
       kmsKeyId: (process.env.WA_REMOTE_AUTH_KMS_KEY_ID || '').trim() || undefined,
       encryptedDataKey: (process.env.WA_REMOTE_AUTH_ENCRYPTED_DATA_KEY || '').trim() || undefined,
       dataKey: (process.env.WA_REMOTE_AUTH_DATA_KEY || '').trim() || undefined,
@@ -192,11 +197,15 @@ export const config = {
       failureWindowSeconds: parsePositiveInt(process.env.WA_AUTH_FAILURE_WINDOW_SECONDS, 900, { minimum: 60 }),
       resetDebounceSeconds: parsePositiveInt(process.env.WA_RESET_DEBOUNCE_SECONDS, 60, { minimum: 15 }),
       backupIntervalMs: parsePositiveInt(process.env.WA_REMOTE_AUTH_BACKUP_INTERVAL_MS, 300000, { minimum: 60000 }),
-      dataPath: process.env.WA_REMOTE_AUTH_DATA_PATH || './data/remote-session'
+      dataPath: process.env.WA_REMOTE_AUTH_DATA_PATH || './data/remote-session',
+      phoneNumber: (() => {
+        const raw = (process.env.WA_REMOTE_AUTH_PHONE_NUMBER || '').replace(/\D/g, '');
+        return raw.length > 4 ? raw : undefined;
+      })(),
     },
     authStrategy: (() => {
-      const raw = (process.env.WA_AUTH_STRATEGY || 'local').toLowerCase();
-      return raw === 'remote' ? 'remote' : 'local';
+      const raw = (process.env.WA_AUTH_STRATEGY || 'remote').toLowerCase();
+      return raw === 'local' ? 'local' : 'remote';
     })() as 'local' | 'remote',
     puppeteerArgs: (() => {
       const raw = process.env.WA_PUPPETEER_ARGS;
@@ -206,6 +215,7 @@ export const config = {
       return raw.split(',').map((segment) => segment.trim()).filter((segment) => segment.length > 0);
     })(),
     verdictAckTimeoutSeconds: parsePositiveInt(process.env.WA_VERDICT_ACK_TIMEOUT_SECONDS, 30),
+    verdictAckMaxRetries: parsePositiveInt(process.env.WA_VERDICT_ACK_MAX_RETRIES, 5),
     verdictMaxRetries: parsePositiveInt(process.env.WA_VERDICT_MAX_RETRIES, 3),
     membershipAutoApprovePerHour: parsePositiveInt(process.env.WA_MEMBERSHIP_AUTO_APPROVE_PER_HOUR, 10),
     membershipGlobalHourlyLimit: parsePositiveInt(process.env.WA_MEMBERSHIP_GLOBAL_HOURLY_LIMIT, 100),
