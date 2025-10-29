@@ -1,0 +1,10 @@
+max_replan_attempts: 1
+max_executor_retries: 2
+review_enabled: true
+test_commands: []
+auto_commit: false
+push_branch: null
+codex_model: null
+gemini_model: null
+codex_timeout_seconds: 240
+gemini_timeout_seconds: 420
