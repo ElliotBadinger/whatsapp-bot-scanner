@@ -31,9 +31,12 @@ except ImportError:  # pragma: no cover - fallback logger
         return logger
 
 try:  # pragma: no cover
+    import fastmcp as _fastmcp_module
     from fastmcp import FastMCP
 except ImportError as error:  # pragma: no cover
     raise ImportError("fastmcp is required. Install via `pip install fastmcp`.") from error
+else:
+    _fastmcp_module.settings.show_cli_banner = False  # type: ignore[attr-defined]
 
 if __package__ is None:  # pragma: no cover - script execution
     package_dir = Path(__file__).resolve().parent
@@ -305,7 +308,7 @@ def main() -> None:
     """Launch the FastMCP server."""
 
     LOGGER.info("Starting wbscanner Codex↔Gemini MCP server.")
-    mcp.run()
+    mcp.run(show_banner=False)
 
 
 if __name__ == "__main__":
