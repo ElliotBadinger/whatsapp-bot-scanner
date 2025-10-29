@@ -254,6 +254,31 @@ const ackWatchers = new Map<string, NodeJS.Timeout>();
 let currentWaState: string | null = null;
 let botWid: string | null = null;
 
+function hydrateParticipantList(chat: GroupChat): Promise<GroupParticipant[]> {
+  const maybeParticipants = (chat as unknown as { participants?: GroupParticipant[] }).participants;
+  if (maybeParticipants && maybeParticipants.length > 0) {
+    return Promise.resolve(maybeParticipants);
+  }
+  const fetchParticipants = (chat as unknown as { fetchParticipants?: () => Promise<GroupParticipant[]> }).fetchParticipants;
+  if (typeof fetchParticipants === 'function') {
+    return fetchParticipants().catch(() => maybeParticipants ?? []);
+  }
+  return Promise.resolve(maybeParticipants ?? []);
+}
+
+function expandWidVariants(id: string | undefined): string[] {
+  if (!id) return [];
+  if (!id.includes('@')) return [id];
+  const [user, domain] = id.split('@');
+  if (domain === 'c.us') {
+    return [id, `${user}@lid`];
+  }
+  if (domain === 'lid') {
+    return [id, `${user}@c.us`];
+  }
+  return [id];
+}
+
 function contextKey(context: VerdictContext): string {
   return `${context.chatId}:${context.messageId}:${context.urlHash}`;
 }
@@ -682,13 +707,6 @@ async function main() {
   );
   if (shouldRequestPhonePairing && remotePhone) {
     logger.info({ phoneNumber: maskPhone(remotePhone) }, 'Auto pairing enabled; open WhatsApp > Linked Devices on the target device before continuing.');
-  }
-  if (shouldRequestPhonePairing && remotePhone) {
-    clientOptions.pairWithPhoneNumber = {
-      phoneNumber: remotePhone,
-      showNotification: true,
-      intervalMs: 180000,
-    };
   }
 
   const client = new Client(clientOptions);
@@ -1414,6 +1432,16 @@ async function main() {
   await client.initialize();
 
   if (shouldRequestPhonePairing && remotePhone) {
+    try {
+      await client.requestPairingCode(remotePhone, true, Math.max(60000, config.wa.remoteAuth.pairingDelayMs ?? 0));
+    } catch (err) {
+      allowQrOutput = true;
+      logger.warn({ err, phoneNumber: maskPhone(remotePhone) }, 'Failed to request pairing code automatically; falling back to QR.');
+      replayCachedQr();
+    }
+  }
+
+  if (shouldRequestPhonePairing && remotePhone) {
     pairingFallbackTimer = setTimeout(() => {
       if (!pairingCodeDelivered && !remoteSessionActive) {
         allowQrOutput = true;
@@ -1447,12 +1475,16 @@ export async function handleAdminCommand(client: Client, msg: Message, existingC
   const chat = existingChat ?? (await msg.getChat());
   if (!(chat as GroupChat).isGroup) return;
   const gc = chat as GroupChat;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const participants = (gc as any).participants as Array<GroupParticipant> || [];
+  const participants = await hydrateParticipantList(gc);
   const senderId = msg.author || (msg.fromMe && botWid ? botWid : undefined);
-  const sender = senderId ? participants.find((p) => p.id._serialized === senderId) : undefined;
-  const isSelfCommand = msg.fromMe || (botWid !== null && senderId === botWid);
-  if (!isSelfCommand && !sender?.isAdmin && !sender?.isSuperAdmin) return;
+  const senderVariants = expandWidVariants(senderId);
+  const sender = participants.find((p) => senderVariants.includes(p.id._serialized));
+  const isSelfCommand = msg.fromMe || (botWid !== null && senderVariants.includes(botWid));
+  logger.info({ chatId: gc.id._serialized, senderId, senderVariants, isSelfCommand, participantCount: participants.length }, 'Received admin command');
+  if (!isSelfCommand && !sender?.isAdmin && !sender?.isSuperAdmin) {
+    logger.info({ chatId: gc.id._serialized, senderId }, 'Ignoring command from non-admin sender');
+    return;
+  }
 
   const parts = (msg.body || '').trim().split(/\s+/);
   const cmd = parts[1];
