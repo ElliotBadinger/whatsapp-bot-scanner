@@ -16,6 +16,14 @@ DO_PULL=false
 BRANCH_NAME=""
 FROM_TARBALL=""
 
+# Default RemoteAuth phone number used when WA_REMOTE_AUTH_PHONE_NUMBER is unset.
+REMOTE_AUTH_PHONE_DEFAULT="+27681687002"
+
+# Environment toggles
+if [ "${SETUP_NONINTERACTIVE:-}" = "1" ] || [ "${CI:-}" = "true" ]; then
+  NONINTERACTIVE=true
+fi
+
 # Tracking arrays for post-run summaries
 MISSING_KEYS=()
 DISABLED_FEATURES=()
@@ -51,6 +59,10 @@ Options:
   --branch=<name>   Checkout the specified git branch before running.
   --from=<tarball>  Use a local project tarball (for air-gapped setups). Extracts into current directory if repo missing.
   -h, --help        Show this help.
+
+Environment flags:
+  SETUP_NONINTERACTIVE=1  Force non-interactive mode without passing the CLI flag.
+  CI=true                 Implies --noninteractive (useful for pipelines).
 
 Examples:
   chmod +x setup.sh
@@ -312,6 +324,10 @@ generate_secret() {
   openssl rand -hex 32
 }
 
+generate_base64_secret() {
+  openssl rand -base64 32 | tr -d '\n'
+}
+
 ensure_secret() {
   local key="$1"
   local description="$2"
@@ -332,6 +348,102 @@ disable_integration() {
   set_env_var "$flag_key" "false"
   log_warn "$reason"
   record_disabled_feature "$reason"
+}
+
+prompt_remote_auth_phone() {
+  while true; do
+    printf "Enter WhatsApp phone number for RemoteAuth (digits only, e.g., 12025550123). Type 'skip' to fall back to QR pairing: "
+    read -r phone_input || phone_input=""
+    phone_input=$(printf '%s' "$phone_input" | tr -d '[:space:]')
+    if [ -z "$phone_input" ]; then
+      log_warn "Phone number cannot be empty."
+      continue
+    fi
+    if [ "$phone_input" = "skip" ]; then
+      log_warn "Skipping phone-number pairing; QR pairing will be required."
+      return 1
+    fi
+    if [[ "$phone_input" =~ ^[0-9]{8,15}$ ]]; then
+      set_env_var "WA_REMOTE_AUTH_PHONE_NUMBER" "$phone_input"
+      log_info "Configured RemoteAuth phone number ($(redact_value "$phone_input"))."
+      return 0
+    fi
+    log_warn "Invalid phone number '$phone_input'. Provide 8-15 digits, no symbols."
+  done
+}
+
+ensure_remote_auth_defaults() {
+  local strategy
+  strategy=$(get_env_var "WA_AUTH_STRATEGY" || true)
+  if [ -z "$strategy" ] || [ "$strategy" = "local" ]; then
+    set_env_var "WA_AUTH_STRATEGY" "remote"
+    log_info "Defaulted WA_AUTH_STRATEGY to remote."
+  fi
+  local data_key
+  data_key=$(get_env_var "WA_REMOTE_AUTH_DATA_KEY" || true)
+  if [ -z "$data_key" ]; then
+    local generated
+    generated=$(generate_base64_secret)
+    set_env_var "WA_REMOTE_AUTH_DATA_KEY" "$generated"
+    log_info "Generated RemoteAuth data key (stored in .env as $(redact_value "$generated"))."
+  fi
+  local phone
+  phone=$(get_env_var "WA_REMOTE_AUTH_PHONE_NUMBER" || true)
+  if [ -z "$phone" ]; then
+    local sanitized_default
+    sanitized_default=$(printf '%s' "${REMOTE_AUTH_PHONE_DEFAULT:-}" | tr -cd '0-9')
+    if [ -n "$sanitized_default" ] && [[ "$sanitized_default" =~ ^[0-9]{8,15}$ ]]; then
+      set_env_var "WA_REMOTE_AUTH_PHONE_NUMBER" "$sanitized_default"
+      phone="$sanitized_default"
+      log_info "Defaulted RemoteAuth phone number to $(redact_value "$sanitized_default")."
+    else
+      if [ "$NONINTERACTIVE" = "true" ]; then
+        log_warn "WA_REMOTE_AUTH_PHONE_NUMBER not set; setup cannot auto-request pairing codes. Provide a digits-only number to enable phone-number pairing."
+      else
+        if prompt_remote_auth_phone; then
+          phone=$(get_env_var "WA_REMOTE_AUTH_PHONE_NUMBER" || true)
+        else
+          phone=""
+        fi
+        if [ -z "$phone" ]; then
+          log_warn "RemoteAuth phone number remains unset; QR pairing will be required."
+        fi
+      fi
+    fi
+  fi
+  if [ -n "$phone" ]; then
+    log_info "RemoteAuth pairing will target phone $(redact_value "$phone")."
+    configure_remote_auth_autopair "$phone"
+  fi
+}
+
+configure_remote_auth_autopair() {
+  local phone="$1"
+  local auto_pair
+  auto_pair=$(get_env_var "WA_REMOTE_AUTH_AUTO_PAIR" || true)
+  if [ -n "$auto_pair" ]; then
+    return
+  fi
+  if [ "$NONINTERACTIVE" = "true" ]; then
+    set_env_var "WA_REMOTE_AUTH_AUTO_PAIR" "false"
+    log_info "RemoteAuth auto pairing disabled by default in non-interactive mode."
+    return
+  fi
+  log_section "RemoteAuth Phone Pairing"
+  log_info "Auto pairing immediately requests a WhatsApp code for $(redact_value "$phone")."
+  log_info "Before enabling, open WhatsApp on that device, ensure it is online, and navigate to Linked Devices."
+  printf "Automatically request a phone pairing code on startup? (y/N): "
+  read -r auto_reply || auto_reply=""
+  case "$auto_reply" in
+    [Yy]*)
+      set_env_var "WA_REMOTE_AUTH_AUTO_PAIR" "true"
+      log_info "Enabled auto pairing. Keep WhatsApp open; the code will display shortly after services start."
+      ;;
+    *)
+      set_env_var "WA_REMOTE_AUTH_AUTO_PAIR" "false"
+      log_warn "Auto pairing disabled; setup will show a QR code for initial linking."
+      ;;
+  esac
 }
 
 prompt_for_key() {
@@ -470,6 +582,7 @@ prepare_env() {
   else
     ensure_secret "URLSCAN_CALLBACK_SECRET" "urlscan callback verifier"
   fi
+  ensure_remote_auth_defaults
   local vt_rpm
   vt_rpm=$(get_env_var "VT_REQUESTS_PER_MINUTE" || true)
   [ -z "$vt_rpm" ] && vt_rpm="4"
@@ -664,12 +777,24 @@ clean_up_stack() {
 build_and_launch() {
   log_section "Building containers"
   run_with_spinner "make build" make -C "$ROOT_DIR" build
+
+  log_section "Resetting Docker stack"
+  run_with_spinner "Stopping existing stack" "${DOCKER_COMPOSE[@]}" down --remove-orphans || true
+  run_with_spinner "Pruning stopped containers" "${DOCKER_COMPOSE[@]}" rm -f || true
+
   log_section "Preparing WhatsApp session storage"
   run_with_spinner "Aligning wa-client session volume" \
     "${DOCKER_COMPOSE[@]}" run --rm --no-deps --user root --entrypoint /bin/sh \
     wa-client -c "mkdir -p /app/services/wa-client/data/session && chown -R pptruser:pptruser /app/services/wa-client/data"
   log_section "Starting stack"
+  set +e
   run_with_spinner "make up" make -C "$ROOT_DIR" up
+  local up_status=$?
+  set -e
+  if [ $up_status -ne 0 ]; then
+    log_warn "Initial make up failed (exit $up_status); retrying with docker compose up -d."
+    run_with_spinner "docker compose up" "${DOCKER_COMPOSE[@]}" up -d
+  fi
 }
 
 wait_for_service() {
@@ -766,8 +891,22 @@ tail_wa_logs() {
     log_warn "Skipping interactive WhatsApp pairing instructions (--noninteractive)."
     return
   fi
-  log_section "WhatsApp QR Pairing"
-  log_info "A QR code will appear below. Open WhatsApp > Linked Devices > Link a Device and scan it."
+  local strategy
+  strategy=$(get_env_var "WA_AUTH_STRATEGY" || true)
+  strategy=$(printf '%s' "${strategy:-remote}" | tr '[:upper:]' '[:lower:]')
+  local phone
+  phone=$(get_env_var "WA_REMOTE_AUTH_PHONE_NUMBER" || true)
+  local autopair
+  autopair=$(get_env_var "WA_REMOTE_AUTH_AUTO_PAIR" || true)
+  if [ "$strategy" = "remote" ] && [ -n "$phone" ] && [ "$autopair" = "true" ]; then
+    log_section "WhatsApp RemoteAuth Pairing"
+    log_info "Watch for a phone-number pairing code targeting $(redact_value "$phone")."
+    log_info "Open WhatsApp > Linked Devices > Link with phone number and enter the code shown in the logs."
+    log_info "If automatic pairing fails, the client will fall back to displaying a QR code."
+  else
+    log_section "WhatsApp QR Pairing"
+    log_info "A QR code will appear below. Open WhatsApp > Linked Devices > Link a Device and scan it."
+  fi
   log_info "This log view will exit automatically once the client reports 'WhatsApp client ready'."
   {
     "${DOCKER_COMPOSE[@]}" logs --no-color --tail 5 wa-client || true
