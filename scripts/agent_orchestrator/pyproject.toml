@@ -17,5 +17,6 @@ dependencies = [
 [project.scripts]
 wbscanner-mcp = "agent_orchestrator.mcp_server:main"
 
-[tool.setuptools.packages.find]
-where = ["."]
+[tool.setuptools]
+packages = ["agent_orchestrator"]
+package-dir = { agent_orchestrator = "." }
