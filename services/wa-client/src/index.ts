@@ -249,8 +249,10 @@ const maskPhone = (phone?: string): string => {
   return `****${phone.slice(-4)}`;
 };
 const DEFAULT_PAIRING_CODE_TIMEOUT_MS = 120000;
-const MAX_PAIRING_CODE_RETRIES = 5;
-const PAIRING_RETRY_DELAY_MS = 15000;
+const FORCE_PHONE_PAIRING = config.wa.remoteAuth.disableQrFallback || config.wa.remoteAuth.autoPair;
+const CONFIGURED_MAX_PAIRING_RETRIES = Math.max(1, config.wa.remoteAuth.maxPairingRetries ?? 5);
+const MAX_PAIRING_CODE_RETRIES = FORCE_PHONE_PAIRING ? Number.MAX_SAFE_INTEGER : CONFIGURED_MAX_PAIRING_RETRIES;
+const PAIRING_RETRY_DELAY_MS = Math.max(1000, config.wa.remoteAuth.pairingRetryDelayMs ?? 15000);
 
 const ackWatchers = new Map<string, NodeJS.Timeout>();
 let currentWaState: string | null = null;
@@ -735,7 +737,7 @@ async function main() {
       throw new Error('Puppeteer page handle unavailable for pairing');
     }
     const interval = Math.max(60000, config.wa.remoteAuth.pairingDelayMs ?? 0);
-    const code = await pageHandle.evaluate(async (phoneNumber: string, showNotification: boolean, intervalMs: number) => {
+    const outcome = await pageHandle.evaluate(async (phoneNumber: string, showNotification: boolean, intervalMs: number) => {
       const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
       const globalWindow = window as unknown as {
         AuthStore?: { PairingCodeLinkUtils?: any; AppState?: { state?: string } };
@@ -781,11 +783,36 @@ async function main() {
         }
       }, intervalMs);
 
-      const firstCode = await requestCode();
-      globalWindow.onCodeReceivedEvent?.(firstCode);
-      return firstCode ?? null;
+      try {
+        const firstCode = await requestCode();
+        globalWindow.onCodeReceivedEvent?.(firstCode);
+        if (typeof firstCode === 'string' && firstCode.length > 0) {
+          return { ok: true, code: firstCode };
+        }
+        return { ok: false, reason: 'empty_code', state: globalWindow.AuthStore?.AppState?.state };
+      } catch (err: any) {
+        const raw = typeof err === 'object' && err !== null
+          ? Object.assign({}, err, { message: err?.message, stack: err?.stack })
+          : err;
+        return {
+          ok: false,
+          reason: err?.message ?? String(err ?? 'unknown'),
+          stack: err?.stack,
+          state: globalWindow.AuthStore?.AppState?.state,
+          hasUtils: Boolean(globalWindow.AuthStore?.PairingCodeLinkUtils),
+          rawError: raw,
+        };
+      }
     }, remotePhone, true, interval);
-    return typeof code === 'string' ? code : null;
+    if (outcome && typeof outcome === 'object' && 'ok' in outcome) {
+      const payload = outcome as { ok?: unknown; code?: unknown; reason?: unknown }; // loose shape from browser context
+      if (payload.ok === true && typeof payload.code === 'string' && payload.code.length > 0) {
+        return payload.code;
+      }
+      const errPayload = JSON.stringify(payload);
+      throw new Error(`pairing_code_request_failed:${errPayload}`);
+    }
+    return typeof outcome === 'string' ? outcome : null;
   };
 
   const requestPairingCodeWithRetry = (delayMs = 0) => {
@@ -806,15 +833,23 @@ async function main() {
         logger.info({ phoneNumber: maskPhone(remotePhone), attempt: pairingRetryAttempts, code }, 'Requested phone-number pairing code from WhatsApp.');
         pairingRetryAttempts = 0;
       } catch (err) {
-        logger.warn({ err, phoneNumber: maskPhone(remotePhone), attempt: pairingRetryAttempts }, 'Failed to request pairing code automatically.');
+        const errMessage = err instanceof Error ? err.message : String(err ?? 'unknown');
+        const backoffMs = errMessage.includes('rate-overlimit') ? Math.max(60000, PAIRING_RETRY_DELAY_MS) : PAIRING_RETRY_DELAY_MS;
+        logger.warn({ err, phoneNumber: maskPhone(remotePhone), attempt: pairingRetryAttempts, nextRetryMs: backoffMs }, 'Failed to request pairing code automatically.');
         if (pairingRetryAttempts >= MAX_PAIRING_CODE_RETRIES) {
+          if (FORCE_PHONE_PAIRING) {
+            logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code retries exhausted; QR fallback disabled. Ensure WhatsApp is on Linked Devices > Link with phone number, will continue retrying.');
+            pairingRetryAttempts = 0;
+            requestPairingCodeWithRetry(backoffMs);
+            return;
+          }
           allowQrOutput = true;
           logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code retries exhausted; falling back to QR pairing.');
           replayCachedQr();
           clearPairingRetry();
           return;
         }
-        requestPairingCodeWithRetry(PAIRING_RETRY_DELAY_MS);
+        requestPairingCodeWithRetry(backoffMs);
         return;
       }
       pairingRetryTimeout = null;
@@ -1554,11 +1589,16 @@ async function main() {
   if (shouldRequestPhonePairing && remotePhone) {
     pairingFallbackTimer = setTimeout(() => {
       if (!pairingCodeDelivered && !remoteSessionActive) {
-        allowQrOutput = true;
         metrics.waSessionReconnects.labels('pairing_code_timeout').inc();
-        logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code not received within timeout; enabling QR fallback.');
-        clearPairingRetry();
-        replayCachedQr();
+        if (FORCE_PHONE_PAIRING) {
+          logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code not received within timeout; QR fallback disabled. Ensure WhatsApp is open to Linked Devices > Link with phone number.');
+          requestPairingCodeWithRetry(Math.max(PAIRING_RETRY_DELAY_MS, 60000));
+        } else {
+          allowQrOutput = true;
+          logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code not received within timeout; enabling QR fallback.');
+          clearPairingRetry();
+          replayCachedQr();
+        }
       }
     }, pairingTimeoutMs);
   }
