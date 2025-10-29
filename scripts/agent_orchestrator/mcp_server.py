@@ -4,17 +4,20 @@ import asyncio
 import json
 import logging
 import sys
+from concurrent.futures import Future
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-# Ensure agent-lightning utilities are importable when running in-place.
+# Ensure research logging helpers are importable when running in-place.
 AGENT_LIGHTNING_PATH = REPO_ROOT / "Research" / "agent-lightning"
 if AGENT_LIGHTNING_PATH.exists() and str(AGENT_LIGHTNING_PATH) not in sys.path:
     sys.path.insert(0, str(AGENT_LIGHTNING_PATH))
 
-try:  # pragma: no cover
+try:  # pragma: no cover - optional dependency
     from agentlightning.logging import configure_logger
 except ImportError:  # pragma: no cover - fallback logger
     def configure_logger(level: int = logging.INFO, name: str = "wbscanner.mcp") -> logging.Logger:
@@ -32,124 +35,65 @@ try:  # pragma: no cover
 except ImportError as error:  # pragma: no cover
     raise ImportError("fastmcp is required. Install via `pip install fastmcp`.") from error
 
-if __package__ is None:  # pragma: no cover
+if __package__ is None:  # pragma: no cover - script execution
     package_dir = Path(__file__).resolve().parent
     if str(package_dir) not in sys.path:
         sys.path.insert(0, str(package_dir))
-    from cli_agents import CodexPlannerChatAgent, GeminiExecutorChatAgent  # type: ignore
     from config import RunnerConfig, load_config  # type: ignore
-    from main import AgentOrchestrator, Task  # type: ignore
-    from utils import load_guidelines, parse_json  # type: ignore
+    from main import AgentOrchestrator  # type: ignore
 else:  # pragma: no cover
-    from .cli_agents import CodexPlannerChatAgent, GeminiExecutorChatAgent
     from .config import RunnerConfig, load_config
-    from .main import AgentOrchestrator, Task
-    from .utils import load_guidelines, parse_json
+    from .main import AgentOrchestrator
 
 LOGGER = configure_logger(name="wbscanner.mcp")
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "config.yaml"
 
+
+@dataclass
+class BackgroundRun:
+    objective: str
+    run_dir: Path
+    future: Future
+    plan_source_run: Optional[str] = None
+    plan_only: bool = False
+    started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    completed_at: Optional[datetime] = None
+    result: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+RUN_REGISTRY: Dict[str, BackgroundRun] = {}
+
 mcp = FastMCP(name="wbscanner codex-gemini orchestrator")
 
 
-async def _run_planner(
-    objective: str,
-    planner_agent: CodexPlannerChatAgent,
-) -> Dict[str, Any]:
-    """Invoke the Codex planner through AutoGen and parse the JSON response."""
-
-    planner_result = await planner_agent.run(task=objective)
-    if not planner_result.messages:
-        raise ValueError("Planner produced no messages.")
-
-    plan_text = getattr(planner_result.messages[-1], "content", "")
-    if not plan_text:
-        raise ValueError("Planner returned an empty response.")
-
-    plan_data = parse_json(plan_text)
-    if not isinstance(plan_data, dict):
-        raise ValueError("Planner response must be a JSON object.")
-    return plan_data
+def _resolve_run_dir(run_id: str) -> Path:
+    base_dir = (REPO_ROOT / "storage" / "agent_runs").resolve()
+    run_dir = (base_dir / run_id).resolve()
+    run_dir.relative_to(base_dir)  # Raises ValueError if outside base dir
+    return run_dir
 
 
-async def _run_executor(
-    payload: Dict[str, Any],
-    executor_agent: GeminiExecutorChatAgent,
-) -> Dict[str, Any]:
-    """Invoke the Gemini executor via AutoGen and parse its JSON response."""
-
-    executor_result = await executor_agent.run(task=json.dumps(payload, indent=2))
-    if not executor_result.messages:
-        raise ValueError("Executor produced no messages.")
-
-    executor_text = getattr(executor_result.messages[-1], "content", "")
-    if not executor_text:
-        raise ValueError("Executor returned an empty response.")
-
-    execution = parse_json(executor_text)
-    if not isinstance(execution, dict):
-        raise ValueError("Executor response must be a JSON object.")
-    return execution
+def _load_plan(run_id: str) -> Dict[str, Any]:
+    run_dir = _resolve_run_dir(run_id)
+    plan_path = run_dir / "plan.json"
+    if not plan_path.is_file():
+        raise ValueError(f"No stored plan found for run_id '{run_id}'. Expected {plan_path}.")
+    return json.loads(plan_path.read_text(encoding="utf-8"))
 
 
-def _materialize_tasks(plan_json: Dict[str, Any]) -> List[Task]:
-    """Transform planner JSON into Task dataclass instances."""
+def _register_background_run(run_id: str, run: BackgroundRun) -> None:
+    def _on_complete(future: Future) -> None:
+        try:
+            run.result = future.result()
+        except Exception as exc:  # pragma: no cover - surfaced via get_run_status
+            run.error = str(exc)
+        finally:
+            run.completed_at = datetime.now(timezone.utc)
+            LOGGER.info("Background run %s finished (error=%s).", run_id, bool(run.error))
 
-    raw_tasks = plan_json.get("tasks", [])
-    tasks: List[Task] = []
-    for index, raw_task in enumerate(raw_tasks, start=1):
-        if not isinstance(raw_task, dict):
-            continue
-        task = Task(
-            id=str(raw_task.get("id") or f"plan-{index}"),
-            title=str(raw_task.get("title") or f"Task {index}"),
-            goal=str(raw_task.get("goal") or ""),
-            context=str(raw_task.get("context") or ""),
-            artifacts=list(raw_task.get("artifacts") or []),
-        )
-        tasks.append(task)
-    return tasks
-
-
-def _task_payload(objective: str, task: Task) -> Dict[str, Any]:
-    """Construct a serialized payload for the executor."""
-
-    return {"objective": objective, "task": task.to_dict()}
-
-
-def _store_plan(
-    run_dir: Path,
-    objective: str,
-    plan_json: Dict[str, Any],
-    tasks: List[Task],
-) -> None:
-    """Persist plan metadata for traceability."""
-
-    payload = {
-        "objective": objective,
-        "notes": plan_json.get("notes"),
-        "tasks": [task.to_dict() for task in tasks],
-    }
-    (run_dir / "plan.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
-
-
-def _store_task_artifacts(
-    run_dir: Path,
-    task: Task,
-    execution: Dict[str, Any],
-    review: Dict[str, Any],
-    tests: List[Dict[str, Any]],
-) -> None:
-    """Persist per-task execution artifacts."""
-
-    payload = {
-        "task": task.to_dict(),
-        "execution": execution,
-        "review": review,
-        "tests": tests,
-    }
-    path = run_dir / f"task_{task.id}.json"
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    run.future.add_done_callback(_on_complete)
+    RUN_REGISTRY[run_id] = run
 
 
 @mcp.tool(
@@ -161,90 +105,200 @@ async def delegate_objective(
     dry_run: bool = True,
     plan_only: bool = False,
     config_path: Optional[str] = None,
+    resume_run_id: Optional[str] = None,
+    wait_seconds: Optional[float] = 45.0,
 ) -> Dict[str, Any]:
     """Expose the multi-agent orchestration loop as an MCP tool."""
 
-    LOGGER.info("Starting MCP delegation. objective=%s dry_run=%s plan_only=%s", objective, dry_run, plan_only)
     if not objective:
         raise ValueError("Objective is required.")
 
     config_file = Path(config_path) if config_path else DEFAULT_CONFIG_PATH
     config: RunnerConfig = load_config(config_file)
 
+    plan_payload: Optional[Dict[str, Any]] = None
+    plan_source_run: Optional[str] = None
+    if resume_run_id:
+        plan_payload = _load_plan(resume_run_id)
+        plan_source_run = resume_run_id
+
     orchestrator = AgentOrchestrator(REPO_ROOT, config, dry_run=dry_run)
-    guidelines = orchestrator.guidelines or load_guidelines(REPO_ROOT)
+    loop = asyncio.get_running_loop()
 
-    planner_agent = CodexPlannerChatAgent(
-        codex=orchestrator.planner,
-        guidelines=guidelines,
-        git_status=orchestrator._git_status,
-        objective_hint=objective,
-        timeout_seconds=config.codex_timeout_seconds,
+    LOGGER.info(
+        (
+            "Starting MCP delegation. objective=%s dry_run=%s plan_only=%s "
+            "attempts(plan/exec)=%s/%s resume_run_id=%s"
+        ),
+        objective,
+        dry_run,
+        plan_only,
+        config.max_replan_attempts,
+        config.max_executor_retries,
+        resume_run_id,
     )
-    plan_json = await _run_planner(objective, planner_agent)
-    tasks = _materialize_tasks(plan_json)
-    _store_plan(orchestrator.run_dir, objective, plan_json, tasks)
 
-    if plan_only:
-        LOGGER.info("Plan-only mode enabled; returning early.")
+    future = loop.run_in_executor(
+        None,
+        lambda: orchestrator.run_objective(
+            objective,
+            plan_only=plan_only,
+            existing_plan=plan_payload,
+            plan_source_run=plan_source_run,
+        ),
+    )
+
+    wait_timeout = None
+    if wait_seconds is not None:
+        wait_timeout = max(0.0, float(wait_seconds))
+
+    if wait_timeout == 0.0:
+        run_id = orchestrator.run_dir.name
+        _register_background_run(
+            run_id,
+            BackgroundRun(
+                objective=objective,
+                run_dir=orchestrator.run_dir,
+                future=future,
+                plan_source_run=plan_source_run,
+                plan_only=plan_only,
+            ),
+        )
         return {
+            "status": "in_progress",
             "objective": objective,
-            "plan": plan_json,
-            "tasks": [task.to_dict() for task in tasks],
+            "run_id": run_id,
             "run_dir": str(orchestrator.run_dir.relative_to(REPO_ROOT)),
+            "plan_only": plan_only,
+            "message": (
+                "Planning continues asynchronously. Poll get_run_status to retrieve the plan."
+                if plan_only
+                else "Execution scheduled asynchronously. Poll get_run_status to monitor progress."
+            ),
         }
 
-    executor_agent = GeminiExecutorChatAgent(
-        gemini=orchestrator.executor,
-        repo_root=REPO_ROOT,
-        guidelines=guidelines,
-        git_status=orchestrator._git_status,
-        timeout_seconds=config.gemini_timeout_seconds,
-    )
-
-    results: List[Dict[str, Any]] = []
-    for task in tasks:
-        execution = await _run_executor(_task_payload(objective, task), executor_agent)
-        execution.setdefault("returncode", None)
-
-        patches = execution.get("patches") or []
-        if execution.get("status") == "apply" and isinstance(patches, list):
-            patch_results: List[Dict[str, Any]] = []
-            for index, patch in enumerate(patches, start=1):
-                result = orchestrator._apply_patch(task, patch, index)
-                patch_results.append(result)
-                if not result.get("applied", False):
-                    break
-            execution["patch_results"] = patch_results
+    wrapped_future = asyncio.wrap_future(future)
+    done, _ = await asyncio.wait({wrapped_future}, timeout=wait_timeout)
+    if wrapped_future in done:
+        result = wrapped_future.result()
+        if plan_only:
+            LOGGER.info(
+                "Plan completed within wait window. tasks=%s",
+                len(result.get("tasks", [])),
+            )
         else:
-            execution["status"] = execution.get("status", "skip")
-            execution["patch_results"] = []
+            LOGGER.info(
+                "Delegation completed within wait window. tasks=%s",
+                len(result.get("results", result.get("tasks", []))),
+            )
+        return result
 
-        tests: List[Dict[str, Any]] = []
-        if execution.get("status") == "apply" and not orchestrator.dry_run:
-            tests = orchestrator.run_tests()
+    run_id = orchestrator.run_dir.name
+    background_run = BackgroundRun(
+        objective=objective,
+        run_dir=orchestrator.run_dir,
+        future=future,
+        plan_source_run=plan_source_run,
+        plan_only=plan_only,
+    )
+    _register_background_run(run_id, background_run)
 
-        review: Dict[str, Any] = {}
-        if orchestrator.config.review_enabled and execution.get("status") == "apply":
-            review = orchestrator.review(task, objective, tests)
+    LOGGER.info(
+        "Delegation still running after %.1fs; returning in-progress handle run_id=%s.",
+        wait_timeout,
+        run_id,
+    )
+    return {
+        "status": "in_progress",
+        "objective": objective,
+        "run_id": run_id,
+        "run_dir": str(orchestrator.run_dir.relative_to(REPO_ROOT)),
+        "plan_only": plan_only,
+        "message": (
+            "Planning continues asynchronously. Use get_run_status to retrieve the plan."
+            if plan_only
+            else "Execution continuing asynchronously. Use get_run_status to check progress."
+        ),
+    }
 
-        _store_task_artifacts(orchestrator.run_dir, task, execution, review, tests)
-        results.append(
+@mcp.tool(
+    name="get_run_status",
+    description="Retrieve the status of an in-progress or recently completed delegate_objective run.",
+)
+async def get_run_status(run_id: str) -> Dict[str, Any]:
+    if not run_id:
+        raise ValueError("run_id is required.")
+
+    run_dir = _resolve_run_dir(run_id)
+    run_entry = RUN_REGISTRY.get(run_id)
+    response: Dict[str, Any] = {
+        "run_id": run_id,
+        "run_dir": str(run_dir.relative_to(REPO_ROOT)),
+    }
+
+    if run_entry is None:
+        # We no longer track the run (process restart or old run). Provide best-effort info.
+        summary_path = run_dir / "summary.json"
+        if summary_path.is_file():
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            summary.setdefault("status", "completed")
+            summary.setdefault("run_id", run_id)
+            summary.setdefault("run_dir", str(run_dir.relative_to(REPO_ROOT)))
+            return summary
+        if run_dir.exists():
+            response.update(
+                {
+                    "status": "unknown",
+                    "message": "Run directory exists but no active tracker is available. Inspect artifacts manually.",
+                }
+            )
+            return response
+        raise ValueError(f"No data recorded for run_id '{run_id}'.")
+
+    if run_entry.result is not None:
+        response.update(
             {
-                "task": task.to_dict(),
-                "execution": execution,
-                "review": review,
-                "tests": tests,
+                "status": "completed",
+                "objective": run_entry.objective,
+                "result": run_entry.result,
+                "started_at": run_entry.started_at.isoformat(),
+                "completed_at": run_entry.completed_at.isoformat() if run_entry.completed_at else None,
             }
         )
+        response["plan_only"] = run_entry.plan_only
+        if run_entry.plan_source_run:
+            response.setdefault("metadata", {})
+            response["metadata"]["plan_source_run"] = run_entry.plan_source_run
+        return response
 
-    LOGGER.info("Delegation completed. tasks=%d", len(results))
-    return {
-        "objective": objective,
-        "plan": plan_json,
-        "results": results,
-        "run_dir": str(orchestrator.run_dir.relative_to(REPO_ROOT)),
-    }
+    if run_entry.error is not None:
+        response.update(
+            {
+                "status": "failed",
+                "objective": run_entry.objective,
+                "error": run_entry.error,
+                "started_at": run_entry.started_at.isoformat(),
+                "completed_at": run_entry.completed_at.isoformat() if run_entry.completed_at else None,
+            }
+        )
+        response["plan_only"] = run_entry.plan_only
+        if run_entry.plan_source_run:
+            response.setdefault("metadata", {})
+            response["metadata"]["plan_source_run"] = run_entry.plan_source_run
+        return response
+
+    response.update(
+        {
+            "status": "running",
+            "objective": run_entry.objective,
+            "started_at": run_entry.started_at.isoformat(),
+        }
+    )
+    response["plan_only"] = run_entry.plan_only
+    if run_entry.plan_source_run:
+        response.setdefault("metadata", {})
+        response["metadata"]["plan_source_run"] = run_entry.plan_source_run
+    return response
 
 
 def main() -> None:
@@ -256,4 +310,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
