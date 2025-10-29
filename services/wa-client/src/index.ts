@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
-import { Client, LocalAuth, Message, GroupChat, GroupNotification, MessageMedia, Reaction, MessageAck, Call, Contact } from 'whatsapp-web.js';
+import { Client, LocalAuth, RemoteAuth, Message, GroupChat, GroupNotification, MessageMedia, Reaction, MessageAck, Call, Contact, GroupParticipant } from 'whatsapp-web.js';
+import type { ClientOptions } from 'whatsapp-web.js';
 import QRCode from 'qrcode-terminal';
 import { Queue, Worker, JobsOptions } from 'bullmq';
 import { createHash } from 'node:crypto';
@@ -23,6 +24,9 @@ import { RateLimiterRedis } from 'rate-limiter-flexible';
 import { createGlobalTokenBucket, GLOBAL_TOKEN_BUCKET_ID } from './limiters';
 import { MessageStore, VerdictContext, VerdictAttemptPayload } from './message-store';
 import { GroupStore } from './group-store';
+import { loadEncryptionMaterials } from './crypto/dataKeyProvider';
+import { createRemoteAuthStore } from './remoteAuthStore';
+import type { RedisRemoteAuthStore } from './remoteAuthStore';
 
 function createRedisConnection(): Redis {
   if (process.env.NODE_ENV === 'test') {
@@ -147,7 +151,7 @@ function createRedisConnection(): Redis {
 
     return new InMemoryRedis() as unknown as Redis;
   }
-  return new Redis(config.redisUrl);
+  return new Redis(config.redisUrl, { maxRetriesPerRequest: null });
 }
 
 const redis = createRedisConnection();
@@ -178,6 +182,52 @@ const membershipGroupLimiter = new RateLimiterRedis({
   points: Math.max(1, config.wa.membershipAutoApprovePerHour),
   duration: 3600,
 });
+
+interface RemoteAuthContext {
+  store: RedisRemoteAuthStore;
+  sessionName: string;
+  sessionExists: boolean;
+}
+
+interface AuthResolution {
+  strategy: LocalAuth | RemoteAuth;
+  remote?: RemoteAuthContext;
+}
+
+async function resolveAuthStrategy(redisInstance: Redis): Promise<AuthResolution> {
+  if (config.wa.authStrategy === 'remote') {
+    if (config.wa.remoteAuth.store !== 'redis') {
+      throw new Error(`Unsupported RemoteAuth store "${config.wa.remoteAuth.store}". Only Redis is supported.`);
+    }
+    const materials = await loadEncryptionMaterials(config.wa.remoteAuth, logger);
+    const store = createRemoteAuthStore({
+      redis: redisInstance,
+      logger,
+      prefix: `remoteauth:v1:${config.wa.remoteAuth.clientId}`,
+      materials,
+      clientId: config.wa.remoteAuth.clientId,
+    });
+    const sessionName = config.wa.remoteAuth.clientId ? `RemoteAuth-${config.wa.remoteAuth.clientId}` : 'RemoteAuth';
+    const sessionExists = await store.sessionExists({ session: sessionName });
+    logger.info({ clientId: config.wa.remoteAuth.clientId, sessionExists }, 'Initialising RemoteAuth strategy');
+    const strategy = new RemoteAuth({
+      clientId: config.wa.remoteAuth.clientId,
+      dataPath: config.wa.remoteAuth.dataPath,
+      store,
+      backupSyncIntervalMs: config.wa.remoteAuth.backupIntervalMs,
+    });
+    return {
+      strategy,
+      remote: {
+        store,
+        sessionName,
+        sessionExists,
+      },
+    };
+  }
+  logger.info('Initialising LocalAuth strategy');
+  return { strategy: new LocalAuth({ dataPath: './data/session' }) };
+}
 const membershipGlobalLimiter = new RateLimiterRedis({
   storeClient: redis,
   keyPrefix: 'membership_global',
@@ -193,6 +243,12 @@ const consentStatusKey = (chatId: string) => `wa:consent:status:${chatId}`;
 const consentPendingSetKey = 'wa:consent:pending';
 const membershipPendingKey = (chatId: string) => `wa:membership:pending:${chatId}`;
 const VERDICT_ACK_TARGET = 2;
+const maskPhone = (phone?: string): string => {
+  if (!phone) return '';
+  if (phone.length <= 4) return phone;
+  return `****${phone.slice(-4)}`;
+};
+const DEFAULT_PAIRING_CODE_TIMEOUT_MS = 120000;
 
 const ackWatchers = new Map<string, NodeJS.Timeout>();
 let currentWaState: string | null = null;
@@ -604,17 +660,114 @@ async function main() {
 
   await refreshConsentGauge();
 
-  const client = new Client({
-    puppeteer: { headless: config.wa.headless },
-    authStrategy: new LocalAuth({ dataPath: './data/session' })
+  const authResolution = await resolveAuthStrategy(redis);
+  const clientOptions: ClientOptions = {
+    puppeteer: {
+      headless: config.wa.headless,
+      args: config.wa.puppeteerArgs,
+    },
+    authStrategy: authResolution.strategy,
+  };
+
+  const remotePhone = config.wa.remoteAuth.phoneNumber;
+  if (!config.wa.remoteAuth.autoPair) {
+    logger.info('RemoteAuth auto pairing disabled; a QR code will be displayed for first-time linking.');
+  }
+  let remoteSessionActive = authResolution.remote?.sessionExists ?? false;
+  const shouldRequestPhonePairing = Boolean(
+    authResolution.remote &&
+    remotePhone &&
+    !remoteSessionActive &&
+    config.wa.remoteAuth.autoPair
+  );
+  if (shouldRequestPhonePairing && remotePhone) {
+    logger.info({ phoneNumber: maskPhone(remotePhone) }, 'Auto pairing enabled; open WhatsApp > Linked Devices on the target device before continuing.');
+  }
+  if (shouldRequestPhonePairing && remotePhone) {
+    clientOptions.pairWithPhoneNumber = {
+      phoneNumber: remotePhone,
+      showNotification: true,
+      intervalMs: 180000,
+    };
+  }
+
+  const client = new Client(clientOptions);
+  const pairingTimeoutMs = config.wa.remoteAuth.pairingDelayMs > 0
+    ? config.wa.remoteAuth.pairingDelayMs
+    : DEFAULT_PAIRING_CODE_TIMEOUT_MS;
+  let allowQrOutput = !shouldRequestPhonePairing;
+  let qrSuppressedLogged = false;
+  let cachedQr: string | null = null;
+  let pairingCodeDelivered = false;
+  let pairingFallbackTimer: NodeJS.Timeout | null = null;
+
+  const cancelPairingFallback = () => {
+    if (pairingFallbackTimer) {
+      clearTimeout(pairingFallbackTimer);
+      pairingFallbackTimer = null;
+    }
+  };
+
+  const emitQr = (qr: string, source: 'live' | 'cached') => {
+    if (config.wa.qrTerminal) {
+      QRCode.generate(qr, { small: false });
+      process.stdout.write('\nOpen WhatsApp > Linked Devices > Link a Device and scan the QR code above.\n');
+    }
+    metrics.waQrCodesGenerated.inc();
+    logger.info({ source }, 'WhatsApp QR code ready for scanning');
+  };
+
+  const replayCachedQr = () => {
+    if (!cachedQr) {
+      logger.warn('QR fallback requested but no cached QR available; restart wa-client to render a new code.');
+      return;
+    }
+    emitQr(cachedQr, 'cached');
+  };
+
+  client.on('qr', (qr: string) => {
+    cachedQr = qr;
+    if (!allowQrOutput) {
+      if (!qrSuppressedLogged) {
+        qrSuppressedLogged = true;
+        logger.info({ phoneNumber: maskPhone(remotePhone) }, 'QR code generated but suppressed while requesting phone-number pairing.');
+      }
+      return;
+    }
+    emitQr(qr, 'live');
   });
 
-  client.on('qr', qr => {
-    if (config.wa.qrTerminal) QRCode.generate(qr, { small: true });
-    metrics.waQrCodesGenerated.inc();
-  });
+  if (authResolution.remote) {
+    client.on('remote_session_saved', () => {
+      remoteSessionActive = true;
+      cancelPairingFallback();
+      logger.info({ clientId: config.wa.remoteAuth.clientId }, 'RemoteAuth session synchronized');
+    });
+    if (remotePhone) {
+      client.on('code', code => {
+        pairingCodeDelivered = true;
+        cancelPairingFallback();
+        logger.info({ pairingCode: code, phoneNumber: maskPhone(remotePhone) }, 'Enter this pairing code in WhatsApp > Linked devices > Link with phone number.');
+        if (config.wa.qrTerminal) {
+          process.stdout.write(`\nWhatsApp pairing code for ${maskPhone(remotePhone)}: ${code}\nOpen WhatsApp > Linked devices > Link with phone number and enter this code.\n`);
+        }
+      });
+    }
+    if (!remoteSessionActive) {
+      if (!remotePhone) {
+        allowQrOutput = true;
+        logger.warn('RemoteAuth session not found and WA_REMOTE_AUTH_PHONE_NUMBER is unset; falling back to QR pairing.');
+      } else {
+        logger.info({ clientId: config.wa.remoteAuth.clientId, phoneNumber: maskPhone(remotePhone) }, 'RemoteAuth session not found; awaiting phone-number pairing code from WhatsApp.');
+      }
+    } else {
+      logger.info({ clientId: config.wa.remoteAuth.clientId }, 'RemoteAuth session found; reusing existing credentials.');
+    }
+  }
+
   client.on('ready', async () => {
     logger.info('WhatsApp client ready');
+    cancelPairingFallback();
     waSessionStatusGauge.labels('ready').set(1);
     waSessionStatusGauge.labels('disconnected').set(0);
     metrics.waSessionReconnects.labels('ready').inc();
@@ -639,6 +792,7 @@ async function main() {
   });
   client.on('disconnected', (r) => {
     logger.warn({ r }, 'Disconnected');
+    cancelPairingFallback();
     waSessionStatusGauge.labels('ready').set(0);
     waSessionStatusGauge.labels('disconnected').set(1);
     metrics.waSessionReconnects.labels('disconnected').inc();
@@ -1262,6 +1416,18 @@ async function main() {
   }, { connection: redis });
 
   await client.initialize();
+
+  if (shouldRequestPhonePairing && remotePhone) {
+    pairingFallbackTimer = setTimeout(() => {
+      if (!pairingCodeDelivered && !remoteSessionActive) {
+        allowQrOutput = true;
+        metrics.waSessionReconnects.labels('pairing_code_timeout').inc();
+        logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code not received within timeout; enabling QR fallback.');
+        replayCachedQr();
+      }
+    }, pairingTimeoutMs);
+  }
+
   await app.listen({ host: '0.0.0.0', port: 3000 });
 }
 
@@ -1286,9 +1452,11 @@ export async function handleAdminCommand(client: Client, msg: Message, existingC
   if (!(chat as GroupChat).isGroup) return;
   const gc = chat as GroupChat;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const participants = (gc as any).participants as Array<{ id: { _serialized: string }, isAdmin: boolean, isSuperAdmin: boolean }> || [];
-  const sender = participants.find((p) => p.id._serialized === (msg.author || msg.from));
-  if (!sender?.isAdmin && !sender?.isSuperAdmin) return;
+  const participants = (gc as any).participants as Array<GroupParticipant> || [];
+  const senderId = msg.author || (msg.fromMe && botWid ? botWid : undefined);
+  const sender = senderId ? participants.find((p) => p.id._serialized === senderId) : undefined;
+  const isSelfCommand = msg.fromMe || (botWid !== null && senderId === botWid);
+  if (!isSelfCommand && !sender?.isAdmin && !sender?.isSuperAdmin) return;
 
   const parts = (msg.body || '').trim().split(/\s+/);
   const cmd = parts[1];
