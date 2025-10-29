@@ -11,6 +11,7 @@
     "build": "npm -ws run build",
     "dev": "npm -ws --if-present run dev",
     "test": "npm -ws --if-present test",
+    "postinstall": "bash scripts/install-wbscanner-mcp.sh",
     "test:integration": "npm --workspace tests/integration run test",
     "test:e2e": "npm --workspace tests/e2e run test",
     "test:fast": "npm run test:integration && npm run test:e2e",
@@ -19,6 +20,7 @@
     "seed": "node scripts/run-seeds.js",
     "test:load": "node tests/load/http-load.js",
     "validate:config": "node scripts/validate-config.js",
+    "mcp:install": "bash scripts/install-wbscanner-mcp.sh",
     "prebuild": "npm run validate:config",
     "export:wwebjs-docs": "node scripts/export-wwebjs-docs.mjs"
   },
