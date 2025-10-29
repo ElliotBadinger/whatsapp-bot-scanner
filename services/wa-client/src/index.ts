@@ -836,36 +836,39 @@ async function main() {
       const sender = msg.author || msg.from;
       const senderHash = sha256(sender);
       const timestampMs = typeof msg.timestamp === 'number' ? msg.timestamp * 1000 : Date.now();
+      const body = msg.body || '';
 
-      await messageStore.recordMessageCreate({
+      const baseRecord = {
         chatId,
         messageId,
         senderId: sender,
         senderIdHash: senderHash,
         timestamp: timestampMs,
-        body: msg.body || '',
-        normalizedUrls: [],
-        urlHashes: [],
-      });
+        body,
+      } as const;
+
+      const urls = extractUrls(body);
+      metrics.ingestionRate.inc();
+      metrics.urlsPerMessage.observe(urls.length);
 
       if (config.wa.consentOnJoin) {
         const consentStatus = await getConsentStatus(chatId);
         if (consentStatus !== 'granted') {
           metrics.waMessagesDropped.labels('consent_pending').inc();
+          await messageStore.recordMessageCreate({ ...baseRecord, normalizedUrls: [], urlHashes: [] });
           return;
         }
       }
 
-      const urls = extractUrls((msg.body || ''));
-      metrics.ingestionRate.inc();
-      metrics.urlsPerMessage.observe(urls.length);
       if (urls.length === 0) {
         metrics.waMessagesDropped.labels('no_url').inc();
+        await messageStore.recordMessageCreate({ ...baseRecord, normalizedUrls: [], urlHashes: [] });
         return;
       }
       metrics.waMessagesWithUrls.labels(chatType).inc(urls.length);
       if (!chat.isGroup) {
         metrics.waMessagesDropped.labels('non_group').inc();
+        await messageStore.recordMessageCreate({ ...baseRecord, normalizedUrls: [], urlHashes: [] });
         return; // Only groups per spec
       }
 
@@ -911,18 +914,11 @@ async function main() {
           timestamp: Date.now()
         }, jobOpts);
       }
-      if (normalizedUrls.length > 0) {
-        await messageStore.recordMessageCreate({
-          chatId,
-          messageId,
-          senderId: sender,
-          senderIdHash: senderHash,
-          timestamp: timestampMs,
-          body: msg.body || '',
-          normalizedUrls,
-          urlHashes,
-        });
-      }
+      await messageStore.recordMessageCreate({
+        ...baseRecord,
+        normalizedUrls,
+        urlHashes,
+      });
     } catch (e) {
       logger.error({ err: e, chatId: sanitizeLogValue((msg as any)?.from) }, 'Failed to process incoming WhatsApp message');
     }
