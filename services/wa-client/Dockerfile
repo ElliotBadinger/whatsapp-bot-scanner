@@ -7,16 +7,23 @@ WORKDIR /app
 COPY tsconfig.base.json /app/
 
 # Install shared package
+COPY packages/confusable /app/packages/confusable
 COPY packages/shared/package.json packages/shared/tsconfig.json /app/packages/shared/
 COPY packages/shared/src /app/packages/shared/src
-RUN cd /app/packages/shared && npm install && npm run build && npm pack
+RUN cd /app/packages/shared && \
+    npm install --no-audit --progress=false && \
+    npm run build && \
+    npm pack
 
-# Install service and link shared tarball
+# Install service
 COPY services/wa-client/package.json services/wa-client/tsconfig.json /app/services/wa-client/
+RUN cd /app/services/wa-client && \
+    npm install ../..//packages/shared/*.tgz --no-audit --progress=false && \
+    npm install --no-audit --progress=false
+
 COPY services/wa-client/src /app/services/wa-client/src
 RUN cd /app/services/wa-client && \
-    npm install ../..//packages/shared/*.tgz && \
-    npm install && npm run build
+    npm run build
 
 RUN mkdir -p /app/services/wa-client/data && chown -R pptruser:pptruser /app/services/wa-client
 
