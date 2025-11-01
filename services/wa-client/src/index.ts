@@ -1386,8 +1386,11 @@ async function main() {
 
   client.on('message_revoke_me', async (msg: Message) => {
     try {
-      const chat = await msg.getChat();
-      const chatId = chat.id._serialized;
+      const chatId = msg.fromMe ? msg.to : msg.from;
+      if (!chatId) {
+        return;
+      }
+      // Use message identifiers instead of msg.getChat() because revoke events expose `from`/`to` directly.
       const messageId = msg.id._serialized || msg.id.id;
       await messageStore.recordRevocation(chatId, messageId, 'me', Date.now());
       metrics.waMessageRevocations.labels('me').inc();
