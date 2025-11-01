@@ -25,6 +25,15 @@ chmod +x setup.sh   # one time
 ## Non-Interactive / CI Mode
 Use `./setup.sh --dry-run --noninteractive` (or set `SETUP_NONINTERACTIVE=1`) to exercise preflight, env configuration, and validation without prompts. Integrations default to disabled and missing keys are listed at the end.
 
+### CI/Test Harness Overrides
+When automating smoke checks (e.g., in CI), add the following environment variables to avoid mutating your local `.env` or requiring Docker:
+
+- `SETUP_ENV_PATH=/tmp/wbscanner.env` writes artifacts to an isolated file.
+- `SETUP_SKIP_PREREQUISITES=1` skips host dependency checks (use only in controlled pipelines).
+- `SETUP_SKIP_DOCKER=1` and `SETUP_SKIP_PORT_CHECKS=1` bypass Docker/port probing during dry runs.
+
+These toggles are intentionally undocumented in the interactive wizard and should not be used for real onboarding runs.
+
 ## Troubleshooting
 - Port conflicts: adjust `REVERSE_PROXY_PORT` or `CONTROL_PLANE_PORT` in `.env` and re-run with `--clean`.
 - Reset stack entirely: `./setup.sh --reset` (destroys database + WhatsApp session volumes).
