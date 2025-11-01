@@ -1,5 +1,12 @@
 # Runbooks
 
+## Setup Transcript Review
+- Ask the operator to upload the latest `logs/setup-YYYYMMDD-HHmm.md` **and** companion `.json` from the run they escalated; both live on the workstation where `./setup.sh` was executed.
+- In the Markdown header confirm `Final status`, `Resume hint`, and `Mode changes`. If status is `failed`, advise them to re-run `./setup.sh --resume=<checkpoint>` using the hint (preflight|environment|containers).
+- Review the `Decisions` JSON section for toggled integrations, Docker profiles, and quick actions. Share the `--quick=preflight` or `--quick=resume-docker` shortcuts when the same stage needs to be replayed.
+- If sensitive values appear, remind operators that secrets are auto-redacted in the transcript; still request they purge caches afterwards with `./setup.sh --quick=purge-caches`.
+- Attach the Markdown artifact to Jira/Linear tickets and archive the JSON copy in the Support Ops transcript store for downstream analytics.
+
 WA Session Recovery (QR):
 - `docker compose logs -f wa-client` and wait for QR output.
 - Scan QR with the prototype device.
