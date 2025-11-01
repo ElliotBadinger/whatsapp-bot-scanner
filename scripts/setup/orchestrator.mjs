@@ -21,6 +21,47 @@ import { registerHotkeys } from './ui/hotkeys.mjs';
 import { registerPhase, clearPhases, runPhases } from './phases/registry.mjs';
 import { pluginsForStage, clearPlugins } from './plugins/registry.mjs';
 import { registerBuiltinPlugins } from './plugins/builtin.mjs';
+
+function handleRemoteAuthLog(context, output, event) {
+  const message = event.msg || '';
+  if (/Using raw RemoteAuth data key/i.test(message)) {
+    output.note('Detected RemoteAuth data key in environment. Ensure device secrets stay secure.');
+    return;
+  }
+  if (/Initialising RemoteAuth strategy/i.test(message)) {
+    output.info('Initialising RemoteAuth session…');
+    return;
+  }
+  if (/Auto pairing enabled/i.test(message)) {
+    output.info('Auto pairing enabled; keep WhatsApp open on the target device.');
+    return;
+  }
+  if (/RemoteAuth session not found/i.test(message)) {
+    output.info('No existing RemoteAuth session found. Waiting for the phone-number pairing code.');
+    return;
+  }
+  if (/QR code generated/i.test(message)) {
+    output.warn('QR code suppressed while phone-number pairing is in progress. Disable auto pairing if you prefer the QR flow.');
+    return;
+  }
+  if (/Requested phone-number pairing code/i.test(message) && event.code) {
+    output.heading('Phone Number Pairing Code');
+    output.success(`Code: ${event.code}`);
+    if (Number.isFinite(event.attempt)) {
+      output.info(`Attempt: ${event.attempt}`);
+    }
+    if (event.phoneNumber) {
+      output.info(`Phone: ${event.phoneNumber}`);
+    }
+    context.log('remoteAuthCode', { code: event.code, attempt: event.attempt });
+    return;
+  }
+  if (/WhatsApp client ready/i.test(message)) {
+    output.success('WhatsApp client reports ready.');
+    return;
+  }
+  output.note(message);
+}
 import { REQUIRED_COMMANDS, PORT_CHECKS, WAIT_FOR_SERVICES } from './utils/constants.mjs';
 import { redactPair } from './utils/redact.mjs';
 import { describeHotkeys } from './ui/hotkeys.mjs';
@@ -828,10 +869,33 @@ async function tailWhatsappLogs(context, runtime, output) {
     });
     tail.stdout.on('data', chunk => {
       const text = chunk.toString();
-      process.stdout.write(text);
-      if (text.includes('WhatsApp client ready')) {
-        tail.kill('SIGINT');
-        resolve();
+      const lines = text.split(/\r?\n/);
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (!line) continue;
+        let parsed = null;
+        if (line.startsWith('{') && line.endsWith('}')) {
+          try {
+            parsed = JSON.parse(line);
+          } catch {
+            parsed = null;
+          }
+        }
+        if (parsed && parsed.msg) {
+          handleRemoteAuthLog(context, output, parsed);
+          if (/WhatsApp client ready/i.test(parsed.msg)) {
+            tail.kill('SIGINT');
+            resolve();
+            return;
+          }
+          continue;
+        }
+        output.note(line);
+        if (line.includes('WhatsApp client ready')) {
+          tail.kill('SIGINT');
+          resolve();
+          return;
+        }
       }
     });
     tail.on('error', () => resolve());
