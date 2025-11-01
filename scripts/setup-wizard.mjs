@@ -25,6 +25,7 @@ import { Listr } from 'listr2';
 import { execa } from 'execa';
 import { createDefaultModeManager, MODES } from './ui/mode-manager.mjs';
 import { promptConfirm, promptInput, promptMultiSelect, promptToggle } from './ui/prompt-runner.mjs';
+import { createSetupLogger } from './setup-logger.mjs';
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const ROOT_DIR = path.resolve(path.dirname(SCRIPT_PATH), '..');
@@ -173,6 +174,8 @@ const modeManager = createDefaultModeManager();
 const transcriptMetadata = { modeHistory: [] };
 let activePromptDepth = 0;
 
+const setupLogger = createSetupLogger({ rootDir: ROOT_DIR });
+
 const SKIP_PREREQ_CHECKS = process.env.SETUP_SKIP_PREREQUISITES === '1';
 const SKIP_DOCKER_CHECKS = process.env.SETUP_SKIP_DOCKER === '1';
 const SKIP_PORT_CHECKS = process.env.SETUP_SKIP_PORT_CHECKS === '1';
@@ -297,6 +300,16 @@ function acknowledgementFor(change) {
 
 modeManager.on('change', change => {
   transcriptMetadata.modeHistory.push(change);
+  setupLogger.recordDecision('mode-change', {
+    mode: change?.mode,
+    source: change?.source,
+    acknowledgement: acknowledgementFor(change)
+  });
+  setupLogger.updateMetadata({
+    currentMode: modeManager.getMode(),
+    modeHistory: modeManager.getHistory().slice(),
+    preferencePath: modeManager.getPreferencePath()
+  });
   if (activePromptDepth === 0) {
     flushExpertOverflow();
     console.log(chalk.magentaBright(`⇄ ${acknowledgementFor(change)}`));
@@ -306,16 +319,24 @@ modeManager.on('change', change => {
 modeManager.on('error', error => {
   if (error && error.message) {
     logWarn(`Could not persist setup mode preference: ${error.message}`);
+    setupLogger.recordDecision('mode-preference-error', { message: error.message });
   }
 });
 
 async function confirmPrompt(options) {
   if (CLI_FLAGS.noninteractive || !isTTY()) {
-    return options.initial ?? true;
+    const response = options.initial ?? true;
+    setupLogger.recordPrompt('confirm', options, response, {
+      interactive: false,
+      reason: CLI_FLAGS.noninteractive ? 'noninteractive' : 'tty-unavailable'
+    });
+    return response;
   }
   activePromptDepth += 1;
   try {
-    return await promptConfirm({ ...options, modeManager });
+    const answer = await promptConfirm({ ...options, modeManager });
+    setupLogger.recordPrompt('confirm', options, answer, { interactive: true });
+    return answer;
   } finally {
     activePromptDepth = Math.max(0, activePromptDepth - 1);
   }
@@ -323,11 +344,18 @@ async function confirmPrompt(options) {
 
 async function togglePrompt(options) {
   if (CLI_FLAGS.noninteractive || !isTTY()) {
-    return options.initial ?? false;
+    const response = options.initial ?? false;
+    setupLogger.recordPrompt('toggle', options, response, {
+      interactive: false,
+      reason: CLI_FLAGS.noninteractive ? 'noninteractive' : 'tty-unavailable'
+    });
+    return response;
   }
   activePromptDepth += 1;
   try {
-    return await promptToggle({ ...options, modeManager });
+    const answer = await promptToggle({ ...options, modeManager });
+    setupLogger.recordPrompt('toggle', options, answer, { interactive: true });
+    return answer;
   } finally {
     activePromptDepth = Math.max(0, activePromptDepth - 1);
   }
@@ -339,11 +367,17 @@ async function multiSelectPrompt(options) {
     for (const choice of options.choices || []) {
       if (choice.initial) defaults.push(choice.value ?? choice.name);
     }
+    setupLogger.recordPrompt('multi-select', options, defaults, {
+      interactive: false,
+      reason: CLI_FLAGS.noninteractive ? 'noninteractive' : 'tty-unavailable'
+    });
     return defaults;
   }
   activePromptDepth += 1;
   try {
-    return await promptMultiSelect({ ...options, modeManager });
+    const answer = await promptMultiSelect({ ...options, modeManager });
+    setupLogger.recordPrompt('multi-select', options, answer, { interactive: true });
+    return answer;
   } finally {
     activePromptDepth = Math.max(0, activePromptDepth - 1);
   }
@@ -351,14 +385,70 @@ async function multiSelectPrompt(options) {
 
 async function inputPrompt(options) {
   if (CLI_FLAGS.noninteractive || !isTTY()) {
-    return options.initialValue ?? '';
+    const response = options.initialValue ?? '';
+    setupLogger.recordPrompt('input', options, response, {
+      interactive: false,
+      reason: CLI_FLAGS.noninteractive ? 'noninteractive' : 'tty-unavailable'
+    });
+    return response;
   }
   activePromptDepth += 1;
   try {
-    return await promptInput({ ...options, modeManager });
+    const answer = await promptInput({ ...options, modeManager });
+    setupLogger.recordPrompt('input', options, answer, { interactive: true });
+    return answer;
   } finally {
     activePromptDepth = Math.max(0, activePromptDepth - 1);
   }
+}
+
+function instrumentTaskDefinitions(definitions) {
+  return definitions.map(entry => {
+    if (!entry || typeof entry !== 'object') return entry;
+    const instrumented = { ...entry };
+    if (typeof entry.task === 'function') {
+      instrumented.task = async (ctx, task) => {
+        const tracker = setupLogger.startTask(entry.title || task?.title || 'task', {
+          category: 'listr',
+          parent: task?.parent?.title
+        });
+        try {
+          const result = await entry.task(ctx, task);
+          tracker.complete('success');
+          return result;
+        } catch (error) {
+          tracker.complete('error', { message: error?.message });
+          throw error;
+        }
+      };
+    }
+
+    if (typeof entry.enabled === 'function') {
+      instrumented.enabled = (...args) => {
+        const enabled = entry.enabled(...args);
+        setupLogger.recordDecision('task-enabled', {
+          title: entry.title,
+          enabled: Boolean(enabled)
+        });
+        return enabled;
+      };
+    }
+
+    if (typeof entry.skip === 'function') {
+      instrumented.skip = async (...args) => {
+        const result = await entry.skip(...args);
+        if (result) {
+          setupLogger.recordDecision('task-skip', {
+            title: entry.title,
+            reason: typeof result === 'string' ? result : 'skipped'
+          });
+        }
+        return result;
+      };
+    }
+
+    return instrumented;
+  });
 }
 
 async function persistTranscriptMetadata() {
@@ -407,6 +497,20 @@ async function parseArgs() {
   if (CLI_FLAGS.mode) {
     await modeManager.setMode(CLI_FLAGS.mode, 'cli');
   }
+
+  setupLogger.updateMetadata({
+    flags: { ...CLI_FLAGS },
+    cliArguments: args,
+    environmentSkips: {
+      prerequisites: SKIP_PREREQ_CHECKS,
+      docker: SKIP_DOCKER_CHECKS,
+      ports: SKIP_PORT_CHECKS
+    }
+  });
+  setupLogger.recordDecision('cli-flags', {
+    flags: { ...CLI_FLAGS },
+    args
+  });
 }
 
 function printHelp() {
@@ -740,12 +844,14 @@ function redact(value) {
 function recordMissingKey(message) {
   if (!MISSING_KEYS.includes(message)) {
     MISSING_KEYS.push(message);
+    setupLogger.recordDecision('missing-key', { message });
   }
 }
 
 function recordDisabledFeature(message) {
   if (!DISABLED_FEATURES.includes(message)) {
     DISABLED_FEATURES.push(message);
+    setupLogger.recordDecision('disabled-feature', { message });
   }
 }
 
@@ -1481,13 +1587,16 @@ async function pathExists(target) {
 
 async function runWithSpinner(label, task) {
   const spinner = ora({ text: label, color: 'cyan' }).start();
+  const tracker = setupLogger.startTask(label, { category: 'spinner' });
   const start = process.hrtime.bigint();
   try {
     await task();
     const duration = Number(process.hrtime.bigint() - start) / 1e6;
     spinner.succeed(`${label} (${humanize(duration)})`);
+    tracker.complete('success', { durationMs: duration });
   } catch (error) {
     spinner.fail(`${label} failed`);
+    tracker.complete('error', { message: error?.message });
     throw error;
   }
 }
@@ -1497,29 +1606,55 @@ function humanize(milliseconds) {
 }
 
 async function main() {
+  let exitCode = 0;
+  let fatalError = null;
+  let transcriptPaths = null;
+
   try {
+    setupLogger.beginRun({
+      currentMode: modeManager.getMode(),
+      modeHistory: transcriptMetadata.modeHistory,
+      flags: { ...CLI_FLAGS },
+      environment: {
+        nodeVersion: process.version,
+        platform: process.platform,
+        release: os.release(),
+        arch: process.arch
+      }
+    });
+
     await modeManager.init();
     transcriptMetadata.modeHistory = modeManager.getHistory().slice();
+    setupLogger.updateMetadata({
+      currentMode: modeManager.getMode(),
+      modeHistory: transcriptMetadata.modeHistory
+    });
+
     await parseArgs();
     transcriptMetadata.modeHistory = modeManager.getHistory().slice();
     CLI_FLAGS.mode = modeManager.getMode();
     process.env.WBSCANNER_SETUP_MODE = modeManager.getMode();
+    setupLogger.updateMetadata({
+      currentMode: modeManager.getMode(),
+      modeHistory: transcriptMetadata.modeHistory
+    });
+
     await ensureNodeVersion();
     await welcome();
     await planWizard();
 
     const tasks = new Listr(
-      [
+      instrumentTaskDefinitions([
         {
           title: 'Preflight checks',
           task: () =>
             new Listr(
-              [
+              instrumentTaskDefinitions([
                 { title: 'Ensure repository structure', task: ensureRepo },
                 { title: 'Validate host prerequisites', task: preflightChecks },
                 { title: 'Checkout branch (if requested)', task: checkoutBranch },
                 { title: 'Pull updates (if requested)', task: pullUpdates }
-              ],
+              ]),
               { concurrent: false }
             )
         },
@@ -1548,12 +1683,12 @@ async function main() {
           title: 'Wait for services',
           task: () =>
             new Listr(
-              [
+              instrumentTaskDefinitions([
                 { title: 'Core containers', task: waitForFoundations },
                 { title: 'WhatsApp pairing logs', task: tailWhatsappLogs },
                 { title: 'WhatsApp ready check', task: waitForWhatsappReady },
                 { title: 'Reverse proxy health', task: waitForReverseProxy }
-              ],
+              ]),
               { sequential: true }
             )
         },
@@ -1561,7 +1696,7 @@ async function main() {
           title: 'Smoke test',
           task: smokeTest
         }
-      ],
+      ]),
       {
         renderer: CLI_FLAGS.noninteractive || !isTTY() ? 'verbose' : 'default',
         rendererOptions: {
@@ -1582,8 +1717,40 @@ async function main() {
     flushExpertOverflow();
     logSuccess('Setup complete. Re-run ./setup.sh anytime; operations are idempotent.');
   } catch (error) {
-    logError(error.message || 'Setup halted due to an unexpected error.');
-    process.exit(1);
+    fatalError = error;
+    exitCode = 1;
+    logError(error?.message || 'Setup halted due to an unexpected error.');
+  } finally {
+    try {
+      transcriptPaths = await setupLogger.finalize({
+        exitCode,
+        metadata: {
+          currentMode: modeManager.getMode(),
+          modeHistory: modeManager.getHistory().slice(),
+          missingKeys: MISSING_KEYS.slice(),
+          disabledIntegrations: DISABLED_FEATURES.slice()
+        },
+        issues: {
+          missingKeys: MISSING_KEYS.slice(),
+          disabledIntegrations: DISABLED_FEATURES.slice()
+        },
+        error: fatalError
+          ? { message: fatalError.message, stack: fatalError.stack }
+          : undefined
+      });
+    } catch (loggerError) {
+      logWarn(`Unable to persist setup transcript: ${loggerError.message}`);
+    }
+
+    if (transcriptPaths) {
+      const relativeMd = path.relative(ROOT_DIR, transcriptPaths.mdPath);
+      const relativeJson = path.relative(ROOT_DIR, transcriptPaths.jsonPath);
+      logInfo(`Setup transcript saved to ${relativeMd} (JSON: ${relativeJson}).`);
+    }
+  }
+
+  if (exitCode !== 0) {
+    process.exit(exitCode);
   }
 }
 
