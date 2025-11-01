@@ -22,6 +22,16 @@ chmod +x setup.sh   # one time
 5. **WhatsApp pairing:** Choose between RemoteAuth auto-pairing or QR flow, with optional audio cues from the pairing watcher.
 6. **Postrun dashboard:** Observability URLs, control-plane token, missing integrations, and troubleshooting guidance are summarised.
 
+## Onboarding Modes & Controls
+- **Guided vs Expert:** Guided remains the default narrative; press `v` (or pass `--mode=expert`) to collapse messaging into ≤10 lines per phase. The preference is cached in `.setup/preferences.json` for future runs.
+- **Hotkeys:** `v` toggle verbosity, `g` open/close the glossary, `r` surface recovery shortcuts, `h` list all hotkeys, `q` request a safe abort. All cues respect `NO_COLOR=1` and `FORCE_HIGH_CONTRAST=1`.
+- **Recovery toolkit:** `--quick=preflight` re-runs dependency checks, `--quick=resume-docker` jumps straight to container launch, and `--quick=purge-caches` wipes `.setup/` plus recent transcripts. Combine with `--resume=<preflight|environment|containers>` to pick a checkpoint.
+- **Artifacts:** Every run exports `logs/setup-YYYYMMDD-HHmm.md` and `.json` with secrets redacted, decisions recorded, and resume hints for support. Attach the Markdown file when opening tickets.
+- **Contextual help:** “Why this matters” callouts accompany risky prompts, and the glossary hotkey expands definitions for terms like *checkpoint*, *transcript*, and *quick action*.
+- **Accessibility:** Long-running phases emit audible bells and a plain-text caption; keyboard-only navigation mirrors the hotkeys above.
+
+![Guided vs Expert toggle](./assets/setup-mode-toggle.gif)
+
 ## Non-Interactive / CI Mode
 Use `./setup.sh --dry-run --noninteractive` (or set `SETUP_NONINTERACTIVE=1`) to exercise preflight, env configuration, and validation without prompts. Integrations default to disabled and missing keys are listed at the end.
 
