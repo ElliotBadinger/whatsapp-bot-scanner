@@ -55,7 +55,9 @@ export class SetupContext extends EventEmitter {
     const message = typeof err === 'string' ? err : err?.message || 'Unknown error';
     this.errors.push(message);
     this.transcript.record('error', { message });
-    this.emit('error', { message });
+    if (this.listenerCount('error') > 0) {
+      this.emit('error', { message, original: err });
+    }
   }
 
   markCheckpoint(id, status = 'completed') {
