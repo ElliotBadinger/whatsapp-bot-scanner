@@ -25,6 +25,9 @@ chmod +x setup.sh   # one time
 ## Non-Interactive / CI Mode
 Use `./setup.sh --dry-run --noninteractive` (or set `SETUP_NONINTERACTIVE=1`) to exercise preflight, env configuration, and validation without prompts. Integrations default to disabled and missing keys are listed at the end.
 
+- `--skip-preflight` lets CI or constrained sandboxes bypass Docker/command detection (combine with `--dry-run`).
+- `--skip-api-validation` keeps the wizard from calling external APIs when running offline.
+
 ## Troubleshooting
 - Port conflicts: adjust `REVERSE_PROXY_PORT` or `CONTROL_PLANE_PORT` in `.env` and re-run with `--clean`.
 - Reset stack entirely: `./setup.sh --reset` (destroys database + WhatsApp session volumes).

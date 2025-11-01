@@ -155,10 +155,13 @@ const CLI_FLAGS = {
   pull: false,
   branch: '',
   fromTarball: '',
-  dryRun: false
+  dryRun: false,
+  skipPreflight: false,
+  skipApiValidation: false
 };
 
 let dockerComposeCommand = ['docker', 'compose'];
+let stackWasStopped = false;
 
 const envEntries = [];
 let envLoaded = false;
@@ -197,6 +200,8 @@ function parseArgs() {
     else if (arg.startsWith('--branch=')) CLI_FLAGS.branch = arg.split('=')[1];
     else if (arg.startsWith('--from=')) CLI_FLAGS.fromTarball = arg.split('=')[1];
     else if (arg === '--dry-run') CLI_FLAGS.dryRun = true;
+    else if (arg === '--skip-preflight') CLI_FLAGS.skipPreflight = true;
+    else if (arg === '--skip-api-validation') CLI_FLAGS.skipApiValidation = true;
     else if (arg === '-h' || arg === '--help') {
       printHelp();
       process.exit(0);
@@ -223,6 +228,8 @@ Options:
   --branch=<name>     Checkout the specified git branch before running.
   --from=<tarball>    Use a local project tarball (air-gapped installs).
   --dry-run           Run preflight + planning only; skip Docker build/run.
+  --skip-preflight     Bypass host prerequisite checks (useful for CI with limited tooling).
+  --skip-api-validation Skip outbound API validation calls.
   -h, --help          Show this message.
 
 Environment flags:
@@ -375,6 +382,10 @@ async function detectDockerCompose() {
 }
 
 async function preflightChecks() {
+  if (CLI_FLAGS.skipPreflight) {
+    logWarn('Skipping preflight checks (--skip-preflight provided). Docker requirements were not verified.');
+    return;
+  }
   console.log(formatHeading('Preflight Checks'));
   for (const cmd of REQUIRED_COMMANDS) {
     try {
@@ -753,6 +764,12 @@ async function runConfigValidation() {
 
 async function verifyApiKeys() {
   console.log(formatHeading('Validating API keys'));
+  if (CLI_FLAGS.skipApiValidation) {
+    logWarn('Skipping outbound API validation (--skip-api-validation provided).');
+    await notePhishTank();
+    logInfo('API key validation skipped.');
+    return;
+  }
   await Promise.all([
     validateVirusTotal(),
     validateGoogleSafeBrowsing(),
@@ -917,6 +934,7 @@ async function cleanUpStack() {
     await runWithSpinner('docker compose down -v --remove-orphans', () =>
       execa(dockerComposeCommand[0], [...dockerComposeCommand.slice(1), 'down', '-v', '--remove-orphans'], { cwd: ROOT_DIR })
     );
+    stackWasStopped = true;
     return;
   }
 
@@ -925,6 +943,7 @@ async function cleanUpStack() {
     await runWithSpinner('docker compose down', () =>
       execa(dockerComposeCommand[0], [...dockerComposeCommand.slice(1), 'down'], { cwd: ROOT_DIR })
     );
+    stackWasStopped = true;
   }
 }
 
@@ -939,9 +958,14 @@ async function buildAndLaunch() {
   );
 
   console.log(formatHeading('Resetting Docker stack'));
-  await runWithSpinner('Stopping existing stack', () =>
-    execa(dockerComposeCommand[0], [...dockerComposeCommand.slice(1), 'down', '--remove-orphans'], { cwd: ROOT_DIR })
-  );
+  if (stackWasStopped) {
+    logInfo('Stack already stopped earlier; skipping docker compose down.');
+  } else {
+    await runWithSpinner('Stopping existing stack', () =>
+      execa(dockerComposeCommand[0], [...dockerComposeCommand.slice(1), 'down', '--remove-orphans'], { cwd: ROOT_DIR })
+    );
+    stackWasStopped = true;
+  }
   await runWithSpinner('Pruning stopped containers', () =>
     execa(dockerComposeCommand[0], [...dockerComposeCommand.slice(1), 'rm', '-f'], { cwd: ROOT_DIR })
   );
