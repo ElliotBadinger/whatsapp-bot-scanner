@@ -1039,6 +1039,8 @@ async function main() {
       }
 
       let urlhausResult: UrlhausResult | null = null;
+      let urlhausError: Error | null = null;
+      let urlhausConsulted = false;
       const shouldQueryUrlhaus =
         !gsbHit && (
           !config.vt.apiKey ||
@@ -1047,8 +1049,87 @@ async function main() {
           !vtStats
         );
       if (shouldQueryUrlhaus) {
+        urlhausConsulted = true;
         const urlhausResponse = await fetchUrlhaus(finalUrl, h);
         urlhausResult = urlhausResponse.result;
+        urlhausError = urlhausResponse.error;
+      }
+
+      const summarizeReason = (input?: string | null) => {
+        if (!input) return 'unavailable';
+        const trimmed = input.trim();
+        if (trimmed.length === 0) return 'unavailable';
+        return trimmed.length > 80 ? `${trimmed.slice(0, 77)}...` : trimmed;
+      };
+
+      type ProviderState = {
+        key: string;
+        name: string;
+        consulted: boolean;
+        available: boolean;
+        reason?: string;
+      };
+
+      const providerStates: ProviderState[] = [
+        {
+          key: 'gsb',
+          name: 'Google Safe Browsing',
+          consulted: true,
+          available: !blocklistResult.gsbResult.error,
+          reason: blocklistResult.gsbResult.error ? summarizeReason(blocklistResult.gsbResult.error.message) : undefined,
+        },
+      ];
+
+      if (blocklistResult.phishtankNeeded) {
+        providerStates.push({
+          key: 'phishtank',
+          name: 'Phishtank',
+          consulted: true,
+          available: !blocklistResult.phishtankError,
+          reason: blocklistResult.phishtankError ? summarizeReason(blocklistResult.phishtankError.message) : undefined,
+        });
+      }
+
+      const vtConsulted = !gsbHit && !phishtankHit && Boolean(config.vt.apiKey);
+      if (vtConsulted) {
+        let vtReason: string | undefined;
+        if (!vtStats) {
+          vtReason = vtQuotaExceeded ? 'quota_exhausted' : summarizeReason(vtError?.message ?? null);
+        }
+        providerStates.push({
+          key: 'virustotal',
+          name: 'VirusTotal',
+          consulted: true,
+          available: Boolean(vtStats) || (!vtError && !vtQuotaExceeded),
+          reason: vtStats ? undefined : vtReason,
+        });
+      }
+
+      if (urlhausConsulted) {
+        providerStates.push({
+          key: 'urlhaus',
+          name: 'URLhaus',
+          consulted: true,
+          available: !urlhausError,
+          reason: urlhausError ? summarizeReason(urlhausError.message) : undefined,
+        });
+      }
+
+      const consultedProviders = providerStates.filter((state) => state.consulted);
+      const availableProviders = consultedProviders.filter((state) => state.available);
+      const degradedProviders = consultedProviders.filter((state) => !state.available);
+      const degradedMode = consultedProviders.length > 0 && availableProviders.length === 0
+        ? {
+            providers: degradedProviders.map((state) => ({
+              name: state.name,
+              reason: state.reason ?? 'unavailable',
+            })),
+          }
+        : undefined;
+
+      if (degradedMode) {
+        metrics.degradedModeEvents.inc();
+        logger.warn({ url: finalUrl, urlHash: h, providers: degradedMode.providers }, 'Operating in degraded mode with no external providers available');
       }
 
       const signals = {
@@ -1168,6 +1249,7 @@ async function main() {
         shortener: shortenerInfo ? { provider: shortenerInfo.provider, chain: shortenerInfo.chain } : undefined,
         finalUrlMismatch,
         decidedAt,
+        degradedMode,
       };
       await setJsonCache(CACHE_LABELS.verdict, cacheKey, res, ttl);
 

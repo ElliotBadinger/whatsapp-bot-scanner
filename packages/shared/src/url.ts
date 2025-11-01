@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { URL } from 'node:url';
 import { isPrivateHostname } from './ssrf';
 import { request } from 'undici';
-import punycode from 'punycode';
+import { toASCII } from 'punycode/';
 import { parse } from 'tldts';
 import { isKnownShortener } from './url-shortener';
 
@@ -21,7 +21,7 @@ export function normalizeUrl(raw: string): string | null {
     if (!['http:','https:'].includes(u.protocol)) return null;
     u.hostname = u.hostname.toLowerCase();
     // IDN -> ASCII
-    u.hostname = punycode.toASCII(u.hostname);
+    u.hostname = toASCII(u.hostname);
     // strip default ports
     if ((u.protocol === 'http:' && u.port === '80') || (u.protocol === 'https:' && u.port === '443')) {
       u.port = '';

@@ -2,6 +2,7 @@ FROM node:20-alpine
 WORKDIR /app
 
 COPY tsconfig.base.json /app/
+COPY types /app/types
 
 COPY packages/confusable /app/packages/confusable
 COPY packages/shared/package.json packages/shared/tsconfig.json /app/packages/shared/

@@ -198,6 +198,7 @@ export const config = {
       resetDebounceSeconds: parsePositiveInt(process.env.WA_RESET_DEBOUNCE_SECONDS, 60, { minimum: 15 }),
       backupIntervalMs: parsePositiveInt(process.env.WA_REMOTE_AUTH_BACKUP_INTERVAL_MS, 300000, { minimum: 60000 }),
       dataPath: process.env.WA_REMOTE_AUTH_DATA_PATH || './data/remote-session',
+      forceNewSession: (process.env.WA_REMOTE_AUTH_FORCE_NEW_SESSION || 'false') === 'true',
       phoneNumber: (() => {
         const raw = (process.env.WA_REMOTE_AUTH_PHONE_NUMBER || '').replace(/\D/g, '');
         return raw.length > 4 ? raw : undefined;

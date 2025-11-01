@@ -10,6 +10,8 @@ process.env.POSTGRES_PORT = process.env.POSTGRES_PORT || '5432';
 process.env.POSTGRES_DB = process.env.POSTGRES_DB || 'wbscanner';
 process.env.POSTGRES_USER = process.env.POSTGRES_USER || 'wbscanner';
 process.env.POSTGRES_PASSWORD = process.env.POSTGRES_PASSWORD || 'wbscanner';
+process.env.WA_AUTH_STRATEGY = process.env.WA_AUTH_STRATEGY || 'remote';
+process.env.WA_REMOTE_AUTH_DATA_KEY = process.env.WA_REMOTE_AUTH_DATA_KEY || Buffer.from('jest-remote-auth-key-placeholder-32', 'utf8').toString('base64');
 
 jest.mock('ioredis', () => {
   const Redis = require('ioredis-mock');

@@ -5,12 +5,15 @@ import type { config } from '@wbscanner/shared';
 export interface RemoteAuthCryptoConfig {
   store: string;
   clientId: string;
+  autoPair?: boolean;
+  pairingDelayMs?: number;
   kmsKeyId?: string;
   encryptedDataKey?: string;
   dataKey?: string;
   vaultTransitPath?: string;
   vaultToken?: string;
   vaultAddress?: string;
+  phoneNumber?: string;
 }
 
 export interface EncryptionMaterials {

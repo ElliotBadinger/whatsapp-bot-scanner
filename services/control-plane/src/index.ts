@@ -135,7 +135,7 @@ function createRedisConnection(): Redis {
 
     return new InMemoryRedis() as unknown as Redis;
   }
-  return new Redis(config.redisUrl);
+  return new Redis(config.redisUrl, { maxRetriesPerRequest: null });
 }
 
 function getSharedRedis(): Redis {
