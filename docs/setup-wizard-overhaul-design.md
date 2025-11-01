@@ -17,7 +17,7 @@
 - **Configuration Handling:** Load and persist `.env` edits through an idempotent parser/serializer (no reliance on sed/awk). Secrets generated with `crypto.randomBytes`.
 - **API Key Capture:** Present grouped integrations with guidance, defaults, and “remind me later” toggles that flow into a post-run checklist.
 - **WhatsApp Pairing:** Offer a side-by-side explanation of RemoteAuth auto-pair vs QR flow, capture preference, and surface next steps or optional watcher launch.
-- **Testing Hooks:** Introduce a dry-run flag plus task-level unit exercises (`npm run test --workspace tests/setup-wizard` TBD) so CI can cover preflight + env mutations.
+- **Testing Hooks:** Introduce a dry-run flag plus skip toggles (`--skip-preflight`, `--skip-api-validation`) so CI or air-gapped reviews can cover env mutations without Docker/network dependencies. Task-level unit exercises (`npm run test --workspace tests/setup-wizard` TBD) remain a follow-up.
 
 ## Flow Outline
 1. **Welcome & Mode Selection:** Boxed introduction, explain estimated duration, confirm readiness.
