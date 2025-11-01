@@ -18,14 +18,13 @@ import { setTimeout as sleep } from 'node:timers/promises';
 
 import boxen from 'boxen';
 import chalk from 'chalk';
-import enquirer from 'enquirer';
 import humanizeDuration from 'humanize-duration';
 import logSymbols from 'log-symbols';
 import ora from 'ora';
 import { Listr } from 'listr2';
 import { execa } from 'execa';
-
-const { Confirm, Toggle, MultiSelect, Input } = enquirer;
+import { createDefaultModeManager, MODES } from './ui/mode-manager.mjs';
+import { promptConfirm, promptInput, promptMultiSelect, promptToggle } from './ui/prompt-runner.mjs';
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const ROOT_DIR = path.resolve(path.dirname(SCRIPT_PATH), '..');
@@ -161,13 +160,18 @@ const CLI_FLAGS = {
   pull: false,
   branch: '',
   fromTarball: '',
-  dryRun: false
+  dryRun: false,
+  mode: ''
 };
 
 let dockerComposeCommand = ['docker', 'compose'];
 
 const envEntries = [];
 let envLoaded = false;
+
+const modeManager = createDefaultModeManager();
+const transcriptMetadata = { modeHistory: [] };
+let activePromptDepth = 0;
 
 const SKIP_PREREQ_CHECKS = process.env.SETUP_SKIP_PREREQUISITES === '1';
 const SKIP_DOCKER_CHECKS = process.env.SETUP_SKIP_DOCKER === '1';
@@ -177,27 +181,203 @@ function isTTY() {
   return process.stdout.isTTY && !process.env.CI;
 }
 
-function formatHeading(text) {
-  return chalk.cyan.bold(`\n==> ${text}\n`);
+let currentPhaseTitle = '';
+let phaseLineCount = 0;
+let expertOverflow = [];
+
+function printHeading(title, copy = {}) {
+  flushExpertOverflow();
+  currentPhaseTitle = title;
+  phaseLineCount = 0;
+
+  const mode = modeManager.getMode();
+  if (mode === MODES.EXPERT) {
+    const summary = copy.expert || title;
+    const line = `\n${chalk.cyan.bold(`▶ ${summary}`)}`;
+    console.log(line);
+    phaseLineCount += countRenderableLines(line);
+    return;
+  }
+
+  const lines = [''];
+  lines.push(chalk.cyan.bold(`⇒ ${title}`));
+  if (copy.guided) {
+    lines.push(chalk.dim(copy.guided));
+  }
+  lines.push('');
+  const output = lines.join('\n');
+  console.log(output);
+  phaseLineCount += countRenderableLines(output);
+}
+
+function countRenderableLines(text) {
+  return text.split('\n').filter(Boolean).length;
+}
+
+function flushExpertOverflow() {
+  if (expertOverflow.length === 0) return;
+  const summary = `${logSymbols.info} ${chalk.cyan(`Additional details: ${expertOverflow.join(' • ')}`)}`;
+  console.log(summary);
+  phaseLineCount += 1;
+  expertOverflow = [];
+}
+
+const GUIDED_PREFIX = {
+  info: chalk.blue('Heads-up:'),
+  success: chalk.green('Great news:'),
+  warning: chalk.yellow('Let’s pause:'),
+  error: chalk.red('We hit a snag:')
+};
+
+function stripSymbol(line) {
+  const firstSpace = line.indexOf(' ');
+  if (firstSpace === -1) return line;
+  return line.slice(firstSpace + 1).trim();
+}
+
+function emitLog(level, message, { allowOverflow = false } = {}) {
+  const mode = modeManager.getMode();
+  const symbol = level === 'success'
+    ? logSymbols.success
+    : level === 'warning'
+      ? logSymbols.warning
+      : level === 'error'
+        ? logSymbols.error
+        : logSymbols.info;
+
+  let line;
+  if (mode === MODES.GUIDED) {
+    const prefix = GUIDED_PREFIX[level] || GUIDED_PREFIX.info;
+    line = `${symbol} ${prefix} ${message}`;
+  } else {
+    line = `${symbol} ${message}`;
+  }
+
+  if (mode === MODES.EXPERT && allowOverflow && currentPhaseTitle) {
+    if (phaseLineCount >= 9) {
+      expertOverflow.push(stripSymbol(line));
+      return;
+    }
+  }
+
+  if (mode === MODES.EXPERT && level !== 'info') {
+    flushExpertOverflow();
+  }
+
+  console.log(line);
+  phaseLineCount += countRenderableLines(line);
 }
 
 function logInfo(message) {
-  console.log(`${logSymbols.info} ${message}`);
+  emitLog('info', message, { allowOverflow: true });
 }
 
 function logWarn(message) {
-  console.log(`${logSymbols.warning} ${chalk.yellow(message)}`);
+  emitLog('warning', message);
 }
 
 function logSuccess(message) {
-  console.log(`${logSymbols.success} ${chalk.green(message)}`);
+  emitLog('success', message, { allowOverflow: true });
 }
 
 function logError(message) {
-  console.error(`${logSymbols.error} ${chalk.red(message)}`);
+  flushExpertOverflow();
+  emitLog('error', message);
 }
 
-function parseArgs() {
+function acknowledgementFor(change) {
+  if (!change || !change.mode) return '';
+  const persisted = modeManager.getPreferencePath();
+  const tail = persisted ? ` Preference saved to ${persisted}.` : '';
+  if (change.mode === MODES.EXPERT) {
+    return `Switched to Expert mode — condensed output enabled.${tail}`;
+  }
+  return `Switched to Guided mode — richer context enabled.${tail}`;
+}
+
+modeManager.on('change', change => {
+  transcriptMetadata.modeHistory.push(change);
+  if (activePromptDepth === 0) {
+    flushExpertOverflow();
+    console.log(chalk.magentaBright(`⇄ ${acknowledgementFor(change)}`));
+  }
+});
+
+modeManager.on('error', error => {
+  if (error && error.message) {
+    logWarn(`Could not persist setup mode preference: ${error.message}`);
+  }
+});
+
+async function confirmPrompt(options) {
+  if (CLI_FLAGS.noninteractive || !isTTY()) {
+    return options.initial ?? true;
+  }
+  activePromptDepth += 1;
+  try {
+    return await promptConfirm({ ...options, modeManager });
+  } finally {
+    activePromptDepth = Math.max(0, activePromptDepth - 1);
+  }
+}
+
+async function togglePrompt(options) {
+  if (CLI_FLAGS.noninteractive || !isTTY()) {
+    return options.initial ?? false;
+  }
+  activePromptDepth += 1;
+  try {
+    return await promptToggle({ ...options, modeManager });
+  } finally {
+    activePromptDepth = Math.max(0, activePromptDepth - 1);
+  }
+}
+
+async function multiSelectPrompt(options) {
+  if (CLI_FLAGS.noninteractive || !isTTY()) {
+    const defaults = [];
+    for (const choice of options.choices || []) {
+      if (choice.initial) defaults.push(choice.value ?? choice.name);
+    }
+    return defaults;
+  }
+  activePromptDepth += 1;
+  try {
+    return await promptMultiSelect({ ...options, modeManager });
+  } finally {
+    activePromptDepth = Math.max(0, activePromptDepth - 1);
+  }
+}
+
+async function inputPrompt(options) {
+  if (CLI_FLAGS.noninteractive || !isTTY()) {
+    return options.initialValue ?? '';
+  }
+  activePromptDepth += 1;
+  try {
+    return await promptInput({ ...options, modeManager });
+  } finally {
+    activePromptDepth = Math.max(0, activePromptDepth - 1);
+  }
+}
+
+async function persistTranscriptMetadata() {
+  const outputPath = path.join(ROOT_DIR, 'storage', 'setup-wizard-metadata.json');
+  const payload = {
+    generatedAt: new Date().toISOString(),
+    currentMode: modeManager.getMode(),
+    preferencePath: modeManager.getPreferencePath(),
+    history: transcriptMetadata.modeHistory
+  };
+  try {
+    await fs.mkdir(path.dirname(outputPath), { recursive: true });
+    await fs.writeFile(outputPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+  } catch (error) {
+    logWarn(`Unable to persist setup transcript metadata: ${error.message}`);
+  }
+}
+
+async function parseArgs() {
   const args = process.argv.slice(2);
   for (const arg of args) {
     if (arg === '--clean') CLI_FLAGS.clean = true;
@@ -207,6 +387,9 @@ function parseArgs() {
     else if (arg.startsWith('--branch=')) CLI_FLAGS.branch = arg.split('=')[1];
     else if (arg.startsWith('--from=')) CLI_FLAGS.fromTarball = arg.split('=')[1];
     else if (arg === '--dry-run') CLI_FLAGS.dryRun = true;
+    else if (arg.startsWith('--mode=')) CLI_FLAGS.mode = arg.split('=')[1];
+    else if (arg === '--guided') CLI_FLAGS.mode = MODES.GUIDED;
+    else if (arg === '--expert') CLI_FLAGS.mode = MODES.EXPERT;
     else if (arg === '-h' || arg === '--help') {
       printHelp();
       process.exit(0);
@@ -219,6 +402,10 @@ function parseArgs() {
 
   if (process.env.SETUP_NONINTERACTIVE === '1' || process.env.CI === 'true') {
     CLI_FLAGS.noninteractive = true;
+  }
+
+  if (CLI_FLAGS.mode) {
+    await modeManager.setMode(CLI_FLAGS.mode, 'cli');
   }
 }
 
@@ -233,6 +420,9 @@ Options:
   --branch=<name>     Checkout the specified git branch before running.
   --from=<tarball>    Use a local project tarball (air-gapped installs).
   --dry-run           Run preflight + planning only; skip Docker build/run.
+  --mode=<mode>       Choose Guided (default) or Expert verbosity.
+  --guided            Shortcut for --mode=guided.
+  --expert            Shortcut for --mode=expert.
   -h, --help          Show this message.
 
 Environment flags:
@@ -258,18 +448,23 @@ async function welcome() {
     logInfo('Running in non-interactive mode.');
     return;
   }
+  const mode = modeManager.getMode();
   const box = boxen(
     [
-      chalk.bold('WhatsApp Bot Scanner • Guided Setup'),
+      chalk.bold('WhatsApp Bot Scanner • Setup Wizard'),
       '',
-      'We will walk through 4 phases:',
-      '  1. Check your tools and repo state',
-      '  2. Configure environment + API keys',
-      '  3. Build and launch Docker stack',
-      '  4. Confirm WhatsApp pairing & next steps',
+      mode === MODES.EXPERT
+        ? 'Expert mode trims narration. Tap v at any point if you want more context.'
+        : 'Guided mode adds context. Press v anytime for a compact Expert view.',
       '',
-      'Estimated duration: ~8–12 minutes (downloads may vary)',
-      'You can cancel anytime with Ctrl+C; changes will be saved up to that point.'
+      'We will work through four phases:',
+      '  1. Verify tools and repository state',
+      '  2. Configure environment & API keys',
+      '  3. Build and launch the Docker stack',
+      '  4. Confirm WhatsApp pairing and next steps',
+      '',
+      'Estimated duration: ~8–12 minutes (downloads may vary).',
+      'You can cancel anytime with Ctrl+C; progress is saved between runs.'
     ].join('\n'),
     {
       padding: { top: 1, bottom: 1, left: 2, right: 2 },
@@ -279,10 +474,10 @@ async function welcome() {
     }
   );
   console.log(box);
-  const confirm = await new Confirm({
-    name: 'ready',
-    message: 'Ready to begin the guided setup?'
-  }).run();
+  const confirm = await confirmPrompt({
+    message: mode === MODES.EXPERT ? 'Ready to kick off the setup run?' : 'Ready to begin the guided setup?',
+    initial: true
+  });
   if (!confirm) {
     logWarn('Setup cancelled by user.');
     process.exit(0);
@@ -294,17 +489,14 @@ async function planWizard() {
     return;
   }
 
-  const selections = await new MultiSelect({
-    name: 'actions',
-    message: 'Choose any prep steps you would like us to handle before provisioning',
-    hint: 'Space to toggle, Enter to confirm',
-    limit: 5,
+  const selections = await multiSelectPrompt({
+    message: 'Select any prep work for the wizard to handle up front.',
     choices: [
       { name: 'pull', message: 'Pull latest git commits and container images', value: 'pull', initial: true },
       { name: 'clean', message: 'Stop running containers from previous setup', value: 'clean', initial: true },
       { name: 'reset', message: 'Full reset (delete database + WhatsApp session)', value: 'reset', initial: false }
     ]
-  }).run();
+  });
 
   CLI_FLAGS.pull = selections.includes('pull');
   CLI_FLAGS.clean = selections.includes('clean');
@@ -313,30 +505,33 @@ async function planWizard() {
     CLI_FLAGS.clean = true;
   }
 
-  const branchQuestion = await new Toggle({
-    name: 'branchToggle',
-    message: 'Do you want to checkout a specific git branch before continuing?',
-    enabled: 'Yes',
-    disabled: 'No',
+  const branchQuestion = await togglePrompt({
+    message: 'Checkout a specific git branch before continuing?',
+    enabledLabel: 'Yes',
+    disabledLabel: 'No',
     initial: false
-  }).run();
+  });
 
   if (branchQuestion) {
-    const branchName = await new Input({
-      name: 'branch',
+    const branchName = await inputPrompt({
       message: 'Enter branch name',
-      validate: value => value.trim().length === 0 ? 'Branch name cannot be empty.' : true
-    }).run();
+      initialValue: '',
+      validate: value => value.trim().length === 0 ? 'Branch name cannot be empty.' : true,
+      transform: value => value.trim()
+    });
     CLI_FLAGS.branch = branchName.trim();
   }
 
-  console.log(formatHeading('Plan Summary'));
+  printHeading('Plan Summary', {
+    guided: 'Here is the to-do list we will follow next.',
+    expert: 'Plan summary'
+  });
   console.log(`• Pull latest code/images: ${CLI_FLAGS.pull ? chalk.green('Yes') : chalk.gray('No')}`);
   console.log(`• Stop existing containers: ${CLI_FLAGS.clean ? chalk.green('Yes') : chalk.gray('No')}`);
   console.log(`• Full reset (remove volumes): ${CLI_FLAGS.reset ? chalk.yellow('Yes – destructive') : chalk.gray('No')}`);
   console.log(`• Target branch: ${CLI_FLAGS.branch ? chalk.green(CLI_FLAGS.branch) : chalk.gray('Stay on current')}`);
   console.log('');
-  const proceed = await new Confirm({ name: 'go', message: 'Proceed with this plan?' }).run();
+  const proceed = await confirmPrompt({ name: 'go', message: 'Proceed with this plan?', initial: true });
   if (!proceed) {
     logWarn('Setup cancelled before making changes.');
     process.exit(0);
@@ -385,7 +580,10 @@ async function detectDockerCompose() {
 }
 
 async function preflightChecks() {
-  console.log(formatHeading('Preflight Checks'));
+  printHeading('Preflight Checks', {
+    guided: 'Let’s make sure your workstation has the required tooling.',
+    expert: 'Preflight checks'
+  });
   if (SKIP_PREREQ_CHECKS) {
     logWarn('Skipping prerequisite checks (SETUP_SKIP_PREREQUISITES=1). Use only for CI pipelines.');
     logSuccess('Prerequisite checks skipped by configuration.');
@@ -431,7 +629,10 @@ async function preflightChecks() {
 
 async function checkoutBranch() {
   if (!CLI_FLAGS.branch) return;
-  console.log(formatHeading(`Checking out branch ${CLI_FLAGS.branch}`));
+  printHeading(`Checking out branch ${CLI_FLAGS.branch}`, {
+    guided: 'Switching branches before provisioning continues.',
+    expert: `Checkout ${CLI_FLAGS.branch}`
+  });
   if (!(await pathExists(path.join(ROOT_DIR, '.git')))) {
     throw new Error('--branch requires a git repository.');
   }
@@ -443,7 +644,10 @@ async function checkoutBranch() {
 
 async function pullUpdates() {
   if (!CLI_FLAGS.pull) return;
-  console.log(formatHeading('Pulling latest updates'));
+  printHeading('Pulling latest updates', {
+    guided: 'Fetching the newest code and container images.',
+    expert: 'Sync code and images'
+  });
   if (await pathExists(path.join(ROOT_DIR, '.git'))) {
     await runWithSpinner('git pull', () =>
       execa('git', ['pull', '--ff-only'], { cwd: ROOT_DIR })
@@ -574,7 +778,10 @@ async function promptForApiKeys() {
       continue;
     }
 
-    console.log(formatHeading(`${integration.title} API Key`));
+    printHeading(`${integration.title} API Key`, {
+      guided: `Let's capture your ${integration.title} credentials (${integration.importance}).`,
+      expert: `${integration.title} API key`
+    });
     if (integration.docs) {
       logInfo(integration.docs);
     }
@@ -582,10 +789,11 @@ async function promptForApiKeys() {
       logInfo(step);
     }
 
-    const answer = await new Input({
-      name: 'apiKey',
-      message: `Paste ${integration.title} API key (leave blank to skip for now)`
-    }).run();
+    const answer = await inputPrompt({
+      message: `Paste ${integration.title} API key (leave blank to skip for now)`,
+      initialValue: '',
+      transform: value => value.trim()
+    });
 
     if (!answer.trim()) {
       if (integration.flag) {
@@ -641,14 +849,18 @@ function cleanDigits(input = '') {
 }
 
 async function promptForPhone(defaultDigits) {
-  console.log(formatHeading('WhatsApp RemoteAuth Phone'));
+  printHeading('WhatsApp RemoteAuth Phone', {
+    guided: 'Share the phone number that should receive WhatsApp pairing codes (digits only).',
+    expert: 'RemoteAuth phone'
+  });
   logInfo('Provide the phone number WhatsApp should send pairing codes to (digits only).');
   logInfo('Type "skip" to use QR-code pairing instead.');
   while (true) {
-    const answer = await new Input({
-      name: 'phone',
-      message: 'WhatsApp phone number'
-    }).run();
+    const answer = await inputPrompt({
+      message: 'WhatsApp phone number',
+      initialValue: defaultDigits || '',
+      transform: value => value.trim()
+    });
     const trimmed = answer.trim();
     if (!trimmed) {
       logWarn('Phone number cannot be empty.');
@@ -674,14 +886,17 @@ async function configureAutoPair(phoneDigits) {
     return;
   }
 
-  console.log(formatHeading('Linking your WhatsApp'));
+  printHeading('Linking your WhatsApp', {
+    guided: 'Decide whether we should request the WhatsApp phone-code automatically.',
+    expert: 'RemoteAuth automation'
+  });
   logInfo(`We can request a one-time code automatically and display it for ${redact(phoneDigits)}.`);
   logInfo('If you prefer to scan a QR code yourself, choose “No” and we will show the QR in the logs.');
-  const enable = await new Confirm({
+  const enable = await confirmPrompt({
     name: 'autopair',
     message: 'Request phone-number code automatically when services start?',
     initial: true
-  }).run();
+  });
   setEnvVar('WA_REMOTE_AUTH_AUTO_PAIR', enable ? 'true' : 'false');
   if (enable) {
     logSuccess('Auto pairing enabled. The pairing watcher can alert you when the code arrives.');
@@ -721,11 +936,11 @@ async function checkPorts() {
       }
     }
     if (!CLI_FLAGS.noninteractive) {
-      await new Confirm({
+      await confirmPrompt({
         name: 'continue',
         message: 'Continue despite port conflicts?',
         initial: false
-      }).run();
+      });
     }
   } else {
     logSuccess('No blocking port collisions detected.');
@@ -757,7 +972,10 @@ async function isPortInUse(port) {
 }
 
 async function prepareEnvironment() {
-  console.log(formatHeading('Preparing Environment'));
+  printHeading('Preparing Environment', {
+    guided: 'Let’s wire up your .env file and capture integration credentials.',
+    expert: 'Prepare environment'
+  });
   await ensureEnvFile();
   await configureSecrets();
   await promptForApiKeys();
@@ -775,14 +993,20 @@ async function runConfigValidation() {
     logWarn('Node.js not detected; skipping scripts/validate-config.js validation.');
     return;
   }
-  console.log(formatHeading('Validating configuration'));
+  printHeading('Validating configuration', {
+    guided: 'Running scripts/validate-config.js for a sanity check.',
+    expert: 'Validate config'
+  });
   await runWithSpinner('node scripts/validate-config.js', () =>
     execa('node', [scriptPath], { cwd: ROOT_DIR, stdout: 'inherit', stderr: 'inherit' })
   );
 }
 
 async function verifyApiKeys() {
-  console.log(formatHeading('Validating API keys'));
+  printHeading('Validating API keys', {
+    guided: 'Pinging each provider to confirm credentials are working.',
+    expert: 'API key validation'
+  });
   await Promise.all([
     validateVirusTotal(),
     validateGoogleSafeBrowsing(),
@@ -930,14 +1154,17 @@ async function fetchWithTimeout(url, options = {}) {
 
 async function cleanUpStack() {
   if (CLI_FLAGS.reset) {
-    console.log(formatHeading('Reset Requested'));
+    printHeading('Reset Requested', {
+      guided: 'A full reset removes database data and the WhatsApp session volume.',
+      expert: 'Reset requested'
+    });
     logWarn('Reset will delete Postgres data and the WhatsApp session volume.');
     if (!CLI_FLAGS.noninteractive) {
-      const confirm = await new Confirm({
+      const confirm = await confirmPrompt({
         name: 'confirmReset',
         message: 'Proceed with destructive reset (DB + WhatsApp session will be deleted)?',
         initial: false
-      }).run();
+      });
       if (!confirm) {
         CLI_FLAGS.reset = false;
         logWarn('Reset aborted by user.');
@@ -951,7 +1178,10 @@ async function cleanUpStack() {
   }
 
   if (CLI_FLAGS.clean) {
-    console.log(formatHeading('Stopping existing stack'));
+    printHeading('Stopping existing stack', {
+      guided: 'Stopping any containers from previous runs before we rebuild.',
+      expert: 'Stop stack'
+    });
     await runWithSpinner('docker compose down', () =>
       execa(dockerComposeCommand[0], [...dockerComposeCommand.slice(1), 'down'], { cwd: ROOT_DIR })
     );
@@ -963,12 +1193,18 @@ async function buildAndLaunch() {
     logInfo('Dry run requested: skipping Docker build and launch.');
     return;
   }
-  console.log(formatHeading('Building containers'));
+  printHeading('Building containers', {
+    guided: 'Building workspace images; this may take a few minutes on first run.',
+    expert: 'Build containers'
+  });
   await runWithSpinner('make build', () =>
     execa('make', ['build'], { cwd: ROOT_DIR, stdio: 'inherit' })
   );
 
-  console.log(formatHeading('Resetting Docker stack'));
+  printHeading('Resetting Docker stack', {
+    guided: 'Stopping any stale services before the new stack comes online.',
+    expert: 'Reset docker stack'
+  });
   await runWithSpinner('Stopping existing stack', () =>
     execa(dockerComposeCommand[0], [...dockerComposeCommand.slice(1), 'down', '--remove-orphans'], { cwd: ROOT_DIR })
   );
@@ -976,7 +1212,10 @@ async function buildAndLaunch() {
     execa(dockerComposeCommand[0], [...dockerComposeCommand.slice(1), 'rm', '-f'], { cwd: ROOT_DIR })
   );
 
-  console.log(formatHeading('Preparing WhatsApp session storage'));
+  printHeading('Preparing WhatsApp session storage', {
+    guided: 'Ensuring the RemoteAuth volume has the right ownership.',
+    expert: 'Prep WhatsApp volume'
+  });
   await runWithSpinner('Aligning wa-client session volume', () =>
     execa(
       dockerComposeCommand[0],
@@ -985,7 +1224,10 @@ async function buildAndLaunch() {
     )
   );
 
-  console.log(formatHeading('Starting stack'));
+  printHeading('Starting stack', {
+    guided: 'Bringing services online. We will watch health checks next.',
+    expert: 'Start stack'
+  });
   try {
     await runWithSpinner('make up', () =>
       execa('make', ['up'], { cwd: ROOT_DIR, stdio: 'inherit' })
@@ -1000,7 +1242,10 @@ async function buildAndLaunch() {
 
 async function waitForFoundations() {
   if (CLI_FLAGS.dryRun) return;
-  console.log(formatHeading('Waiting for core services'));
+  printHeading('Waiting for core services', {
+    guided: 'Watching containers until Postgres, Redis, and orchestrators report healthy.',
+    expert: 'Service readiness'
+  });
   for (const { service, label } of WAIT_FOR) {
     await waitForContainerHealth(service, label);
   }
@@ -1070,7 +1315,10 @@ async function tailWhatsappLogs() {
     logWarn('Skipping WhatsApp log tail (--noninteractive or --dry-run).');
     return;
   }
-  console.log(formatHeading('WhatsApp Pairing'));
+  printHeading('WhatsApp Pairing', {
+    guided: 'Streaming WhatsApp client logs until the session is ready.',
+    expert: 'WhatsApp pairing logs'
+  });
   const strategy = (getEnvVar('WA_AUTH_STRATEGY') || 'remote').toLowerCase();
   const phone = cleanDigits(getEnvVar('WA_REMOTE_AUTH_PHONE_NUMBER'));
   const autoPair = (getEnvVar('WA_REMOTE_AUTH_AUTO_PAIR') || '').toLowerCase() === 'true';
@@ -1110,7 +1358,10 @@ async function waitForWhatsappReady() {
 
 async function smokeTest() {
   if (CLI_FLAGS.dryRun) return;
-  console.log(formatHeading('Smoke Test'));
+  printHeading('Smoke Test', {
+    guided: 'Pinging the control plane through the reverse proxy.',
+    expert: 'Smoke test'
+  });
   const token = getEnvVar('CONTROL_PLANE_API_TOKEN');
   if (!token) {
     logWarn('Control plane token missing; cannot run authenticated smoke test.');
@@ -1135,7 +1386,10 @@ async function smokeTest() {
 
 function printObservability() {
   if (CLI_FLAGS.dryRun) return;
-  console.log(formatHeading('Observability & Access'));
+  printHeading('Observability & Access', {
+    guided: 'Quick links for dashboards and API access tokens.',
+    expert: 'Observability'
+  });
   const reversePort = getEnvVar('REVERSE_PROXY_PORT') || '8088';
   logInfo(`Reverse proxy: http://localhost:${reversePort}`);
   logInfo(`Control plane UI: http://localhost:${reversePort}/`);
@@ -1150,13 +1404,19 @@ function printObservability() {
 
 function printPostrunGaps() {
   if (MISSING_KEYS.length > 0) {
-    console.log(formatHeading('Pending API Keys'));
+    printHeading('Pending API Keys', {
+      guided: 'The following integrations still need API keys.',
+      expert: 'Missing keys'
+    });
     for (const entry of MISSING_KEYS) {
       logWarn(entry);
     }
   }
   if (DISABLED_FEATURES.length > 0) {
-    console.log(formatHeading('Disabled Integrations'));
+    printHeading('Disabled Integrations', {
+      guided: 'Features we turned off until credentials arrive.',
+      expert: 'Disabled integrations'
+    });
     for (const entry of DISABLED_FEATURES) {
       logWarn(entry);
     }
@@ -1164,7 +1424,10 @@ function printPostrunGaps() {
 }
 
 function printTroubleshooting() {
-  console.log(formatHeading('Troubleshooting Tips'));
+  printHeading('Troubleshooting Tips', {
+    guided: 'Keep these in your back pocket if anything misbehaves.',
+    expert: 'Troubleshooting'
+  });
   for (const line of TROUBLESHOOTING_LINES) {
     logInfo(line);
   }
@@ -1181,11 +1444,11 @@ async function offerPairingWatcher() {
     logWarn('Node.js not detected; cannot launch pairing watcher automatically.');
     return;
   }
-  const startWatcher = await new Confirm({
+  const startWatcher = await confirmPrompt({
     name: 'watcher',
     message: 'Start the pairing code watcher (plays audio when code arrives)?',
     initial: true
-  }).run();
+  });
   if (startWatcher) {
     logInfo('Press Ctrl+C when you are done listening for codes.');
     try {
@@ -1235,7 +1498,12 @@ function humanize(milliseconds) {
 
 async function main() {
   try {
-    parseArgs();
+    await modeManager.init();
+    transcriptMetadata.modeHistory = modeManager.getHistory().slice();
+    await parseArgs();
+    transcriptMetadata.modeHistory = modeManager.getHistory().slice();
+    CLI_FLAGS.mode = modeManager.getMode();
+    process.env.WBSCANNER_SETUP_MODE = modeManager.getMode();
     await ensureNodeVersion();
     await welcome();
     await planWizard();
@@ -1310,6 +1578,8 @@ async function main() {
     printPostrunGaps();
     printTroubleshooting();
     await offerPairingWatcher();
+    await persistTranscriptMetadata();
+    flushExpertOverflow();
     logSuccess('Setup complete. Re-run ./setup.sh anytime; operations are idempotent.');
   } catch (error) {
     logError(error.message || 'Setup halted due to an unexpected error.');
