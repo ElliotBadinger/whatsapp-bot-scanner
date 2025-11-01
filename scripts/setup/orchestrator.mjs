@@ -520,6 +520,27 @@ async function createPromptHelpers(context) {
   };
 }
 
+async function ensurePromptsOrAbort(context, output) {
+  try {
+    await ensurePromptModules();
+    return true;
+  } catch (error) {
+    if (error instanceof MissingDependencyError) {
+      const message = `Dependency "${error.packageName}" is required by the setup wizard. Run npm install in the repository root, then retry.`;
+      output.error(message);
+      context.appendError(message);
+      try {
+        await context.finalize('failed');
+      } catch (finalizeError) {
+        output.error(`Additionally failed to write setup artifacts: ${formatCliError(finalizeError)}.`);
+      }
+      process.exitCode = 1;
+      return false;
+    }
+    throw error;
+  }
+}
+
 async function runEnvironmentPlugins(context, runtime, output) {
   const available = pluginsForStage('environment', context);
   if (available.length === 0) return;
@@ -1285,11 +1306,19 @@ export async function runSetup(argv = process.argv.slice(2)) {
   }
 
   if (!flags.quick) {
+    if (!flags.noninteractive) {
+      const ready = await ensurePromptsOrAbort(context, output);
+      if (!ready) return;
+    }
     await showWelcome(context, output);
   } else {
     output.note('Quick action bypassed welcome banner.');
   }
   if (!flags.quick) {
+    if (!flags.noninteractive) {
+      const ready = await ensurePromptsOrAbort(context, output);
+      if (!ready) return;
+    }
     await runPlanningFlow(context, output);
   } else {
     output.note('Skipping planning wizard because a quick action was requested.');
