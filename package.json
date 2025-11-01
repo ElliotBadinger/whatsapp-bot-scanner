@@ -30,5 +30,15 @@
     "ioredis-mock": "^5.8.0",
     "turndown": "^7.2.1",
     "vitest": "^1.6.0"
+  },
+  "dependencies": {
+    "boxen": "^7.1.1",
+    "chalk": "^5.6.2",
+    "enquirer": "^2.4.1",
+    "execa": "^8.0.1",
+    "humanize-duration": "^3.33.1",
+    "listr2": "^5.0.8",
+    "log-symbols": "^5.1.0",
+    "ora": "^6.3.1"
   }
 }
