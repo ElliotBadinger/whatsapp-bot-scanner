@@ -61,6 +61,26 @@ describe('handleSelfMessageRevoke', () => {
     expect(recordMetric).toHaveBeenCalled();
   });
 
+  it('skips status broadcast revocations', async () => {
+    const message = createMessage({ id: { _serialized: 'false_status@broadcast', remote: 'status@broadcast' } as any });
+    const snapshot: SessionSnapshot = { state: 'ready', wid: 'bot@c.us' };
+    const recordRevocation = jest.fn(async () => undefined) as jest.MockedFunction<RecordRevocationFn>;
+    const messageStore = { recordRevocation } as any;
+    const recordMetric = jest.fn();
+    const logger = createLogger();
+
+    const result = await handleSelfMessageRevoke(message, {
+      snapshot,
+      logger: logger as any,
+      messageStore,
+      recordMetric,
+    });
+
+    expect(result).toBe('skipped');
+    expect(recordRevocation).not.toHaveBeenCalled();
+    expect(recordMetric).not.toHaveBeenCalled();
+  });
+
   it('throws enriched error when chat lookup fails', async () => {
     const error = new Error('Evaluation failed: b');
     const getChat = jest.fn(async () => { throw error; });
