@@ -117,6 +117,60 @@ if (source === 'stdin') {
 
 const rl = readline.createInterface({ input: inputStream });
 
+function triggerPairingAlert(code, attempt, maskedPhone, expiresAt) {
+  bell(3);
+  speak(`WhatsApp pairing code ${code} is ready. It expires in two minutes.`);
+  console.log('\n=== WhatsApp Pairing Code Available ===');
+  console.log(` Code:       ${code}`);
+  console.log(` Attempt:    ${attempt}`);
+  console.log(` Phone:      ${maskedPhone}`);
+  console.log(` Expires at: ${expiresAt.toLocaleTimeString()}`);
+  console.log('======================================\n');
+  activeCode = code;
+  expiryTimestamp = expiresAt.getTime();
+  scheduleReminder(maskedPhone);
+}
+
+function handleRateLimitEvent(parsed) {
+  const maskedPhone = formatPhone(parsed?.phoneNumber);
+  const nextAt = formatWhen(parsed?.nextRetryAt);
+  const delay = prettyDelay(parsed?.nextRetryMs);
+  console.log(`[watch] Rate limited for ${maskedPhone}. Next retry in ~${delay} (${nextAt}).`);
+  cancelReminder();
+}
+
+function handlePairingLine(parsed) {
+  const maskedPhone = formatPhone(parsed?.phoneNumber);
+  const code = parsed?.code ?? 'UNKNOWN';
+  const attempt = parsed?.attempt ?? 'n/a';
+  const expiresAt = new Date(Date.now() + PAIRING_CODE_TTL_MS);
+  triggerPairingAlert(code, attempt, maskedPhone, expiresAt);
+}
+
+if (source === 'docker') {
+  console.log('[watch] Live mode. Commands: d=demo alert, q=quit\n');
+  if (process.stdin.isTTY) {
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdin.on('data', (chunk) => {
+      const key = chunk.toString().trim().toLowerCase();
+      if (key === 'q') {
+        shutdown();
+        process.exit(0);
+      }
+      if (key === 'd') {
+        const demoCode = `DEMO${Math.random().toString(36).toUpperCase().slice(2, 6)}`;
+        const masked = '****DEMO';
+        const expiresAt = new Date(Date.now() + PAIRING_CODE_TTL_MS);
+        console.log('[watch] Running demo alert...');
+        triggerPairingAlert(demoCode, 'demo', masked, expiresAt);
+      }
+    });
+  } else {
+    console.log('[watch] (stdin not TTY; demo shortcuts disabled)');
+  }
+}
+
 rl.on('line', (rawLine) => {
   const line = sanitize(rawLine);
   if (!line) return;
@@ -132,30 +186,12 @@ rl.on('line', (rawLine) => {
 
   const message = parsed?.msg ?? line;
   if (message.includes('Requested phone-number pairing code')) {
-    const maskedPhone = formatPhone(parsed?.phoneNumber);
-    const code = parsed?.code ?? 'UNKNOWN';
-    const attempt = parsed?.attempt ?? 'n/a';
-    const expiresAt = new Date(Date.now() + PAIRING_CODE_TTL_MS);
-    bell(3);
-    speak(`WhatsApp pairing code ${code} is ready. It expires in two minutes.`);
-    console.log('\n=== WhatsApp Pairing Code Available ===');
-    console.log(` Code:       ${code}`);
-    console.log(` Attempt:    ${attempt}`);
-    console.log(` Phone:      ${maskedPhone}`);
-    console.log(` Expires at: ${expiresAt.toLocaleTimeString()}`);
-    console.log('======================================\n');
-    activeCode = code;
-    expiryTimestamp = expiresAt.getTime();
-    scheduleReminder(maskedPhone);
+    handlePairingLine(parsed);
     return;
   }
 
   if (message.includes('Failed to request pairing code automatically') && parsed?.rateLimited) {
-    const maskedPhone = formatPhone(parsed?.phoneNumber);
-    const nextAt = formatWhen(parsed?.nextRetryAt);
-    const delay = prettyDelay(parsed?.nextRetryMs);
-    console.log(`[watch] Rate limited for ${maskedPhone}. Next retry in ~${delay} (${nextAt}).`);
-    cancelReminder();
+    handleRateLimitEvent(parsed);
     return;
   }
 
