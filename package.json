@@ -21,6 +21,7 @@
     "test:load": "node tests/load/http-load.js",
     "validate:config": "node scripts/validate-config.js",
     "mcp:install": "bash scripts/install-wbscanner-mcp.sh",
+    "watch:pairing-code": "node scripts/watch-pairing-code.js",
     "prebuild": "npm run validate:config",
     "export:wwebjs-docs": "node scripts/export-wwebjs-docs.mjs"
   },
