@@ -9,12 +9,19 @@ import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 
 const PAIRING_CODE_TTL_MS = 160_000;
+const REMINDER_INTERVAL_MS = 30_000;
 
-function bell() {
-  try {
-    process.stdout.write('\x07');
-  } catch {
-    // ignore
+let activeReminder = null;
+let activeCode = null;
+let expiryTimestamp = 0;
+
+function bell(times = 1) {
+  for (let i = 0; i < times; i += 1) {
+    try {
+      process.stdout.write('\x07');
+    } catch {
+      // ignore
+    }
   }
 }
 
@@ -48,16 +55,67 @@ function sanitize(line) {
   return line.trim();
 }
 
-const docker = spawn('docker', ['compose', 'logs', '-f', 'wa-client'], {
-  stdio: ['ignore', 'pipe', 'inherit'],
-});
+function speak(text) {
+  const volume = process.env.WATCH_PAIRING_VOLUME ?? '0.8';
+  let voiceCmd = null;
+  if (process.platform === 'darwin') {
+    voiceCmd = spawn('say', ['-v', 'Ava', '-r', '180', text]);
+  } else {
+    voiceCmd = spawn('espeak', ['-a', String(Number(volume) * 200), text]);
+  }
+  voiceCmd.on('error', () => {
+    // ignore speech errors; bell + console output still work
+  });
+}
 
-docker.on('error', (err) => {
-  console.error('[watch-pairing-code] Failed to start docker compose logs:', err.message);
-  process.exitCode = 1;
-});
+function cancelReminder() {
+  if (activeReminder) {
+    clearInterval(activeReminder);
+    activeReminder = null;
+  }
+  activeCode = null;
+  expiryTimestamp = 0;
+}
 
-const rl = readline.createInterface({ input: docker.stdout });
+function scheduleReminder(maskedPhone) {
+  cancelReminder();
+  activeReminder = setInterval(() => {
+    if (!activeCode) {
+      cancelReminder();
+      return;
+    }
+    const remaining = expiryTimestamp - Date.now();
+    if (remaining <= 0) {
+      console.log(`[watch] Code ${activeCode} for ${maskedPhone} likely expired.`);
+      cancelReminder();
+      return;
+    }
+    bell(2);
+    speak(`Reminder. Enter WhatsApp pairing code ${activeCode}. ${Math.ceil(remaining / 1000)} seconds remain.`);
+  }, REMINDER_INTERVAL_MS);
+}
+
+const source = process.env.WATCH_PAIRING_SOURCE === 'stdin' ? 'stdin' : 'docker';
+
+let docker;
+let inputStream;
+
+if (source === 'stdin') {
+  inputStream = process.stdin;
+  console.log('[watch] Reading pairing events from STDIN (test mode).');
+} else {
+  docker = spawn('docker', ['compose', 'logs', '-f', 'wa-client'], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  docker.on('error', (err) => {
+    console.error('[watch-pairing-code] Failed to start docker compose logs:', err.message);
+    process.exitCode = 1;
+  });
+  inputStream = docker.stdout;
+}
+
+const rl = readline.createInterface({ input: inputStream });
 
 rl.on('line', (rawLine) => {
   const line = sanitize(rawLine);
@@ -78,13 +136,17 @@ rl.on('line', (rawLine) => {
     const code = parsed?.code ?? 'UNKNOWN';
     const attempt = parsed?.attempt ?? 'n/a';
     const expiresAt = new Date(Date.now() + PAIRING_CODE_TTL_MS);
-    bell();
+    bell(3);
+    speak(`WhatsApp pairing code ${code} is ready. It expires in two minutes.`);
     console.log('\n=== WhatsApp Pairing Code Available ===');
     console.log(` Code:       ${code}`);
     console.log(` Attempt:    ${attempt}`);
     console.log(` Phone:      ${maskedPhone}`);
     console.log(` Expires at: ${expiresAt.toLocaleTimeString()}`);
     console.log('======================================\n');
+    activeCode = code;
+    expiryTimestamp = expiresAt.getTime();
+    scheduleReminder(maskedPhone);
     return;
   }
 
@@ -93,18 +155,20 @@ rl.on('line', (rawLine) => {
     const nextAt = formatWhen(parsed?.nextRetryAt);
     const delay = prettyDelay(parsed?.nextRetryMs);
     console.log(`[watch] Rate limited for ${maskedPhone}. Next retry in ~${delay} (${nextAt}).`);
+    cancelReminder();
     return;
   }
 
   if (message.includes('Pairing code not received within timeout')) {
     const maskedPhone = formatPhone(parsed?.phoneNumber);
     console.log(`[watch] No code received yet for ${maskedPhone}. Keeping QR suppressed.`);
+    cancelReminder();
   }
 });
 
 const shutdown = () => {
   rl.close();
-  if (!docker.killed) {
+  if (docker && !docker.killed) {
     docker.kill('SIGINT');
   }
 };
