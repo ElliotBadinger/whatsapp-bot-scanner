@@ -22,7 +22,41 @@ import { registerPhase, clearPhases, runPhases } from './phases/registry.mjs';
 import { pluginsForStage, clearPlugins } from './plugins/registry.mjs';
 import { registerBuiltinPlugins } from './plugins/builtin.mjs';
 
-function handleRemoteAuthLog(context, output, event) {
+function ensureRemoteAuthState(runtime) {
+  if (!runtime.remoteAuthState) {
+    runtime.remoteAuthState = {
+      lastQrAt: 0,
+      lastHintAt: 0,
+      lastCode: null
+    };
+  }
+  return runtime.remoteAuthState;
+}
+
+function shouldThrottle(state, key, intervalMs) {
+  const now = Date.now();
+  if (now - state[key] < intervalMs) return true;
+  state[key] = now;
+  return false;
+}
+
+function announcePairingCode(context, output, runtime, { code, attempt, phone }) {
+  const state = ensureRemoteAuthState(runtime);
+  if (state.lastCode === code) return;
+  state.lastCode = code;
+  output.heading('Phone Number Pairing Code');
+  output.success(`Code: ${code}`);
+  if (Number.isFinite(attempt)) {
+    output.info(`Attempt: ${attempt}`);
+  }
+  if (phone) {
+    output.info(`Phone: ${phone}`);
+  }
+  context.log('remoteAuthCode', { code, attempt, phone });
+}
+
+function handleRemoteAuthLog(context, runtime, output, event) {
+  const state = ensureRemoteAuthState(runtime);
   const message = event.msg || '';
   if (/Using raw RemoteAuth data key/i.test(message)) {
     output.note('Detected RemoteAuth data key in environment. Ensure device secrets stay secure.');
@@ -33,27 +67,29 @@ function handleRemoteAuthLog(context, output, event) {
     return;
   }
   if (/Auto pairing enabled/i.test(message)) {
-    output.info('Auto pairing enabled; keep WhatsApp open on the target device.');
+    if (!shouldThrottle(state, 'lastHintAt', 5_000)) {
+      output.info('Auto pairing enabled; keep WhatsApp open on the target device.');
+    }
     return;
   }
   if (/RemoteAuth session not found/i.test(message)) {
-    output.info('No existing RemoteAuth session found. Waiting for the phone-number pairing code.');
+    if (!shouldThrottle(state, 'lastHintAt', 5_000)) {
+      output.info('No existing RemoteAuth session found. Waiting for the phone-number pairing code.');
+    }
     return;
   }
   if (/QR code generated/i.test(message)) {
-    output.warn('QR code suppressed while phone-number pairing is in progress. Disable auto pairing if you prefer the QR flow.');
+    if (!shouldThrottle(state, 'lastQrAt', 30_000)) {
+      output.warn('QR code suppressed while phone-number pairing is in progress. Disable auto pairing if you prefer the QR flow.');
+    }
     return;
   }
   if (/Requested phone-number pairing code/i.test(message) && event.code) {
-    output.heading('Phone Number Pairing Code');
-    output.success(`Code: ${event.code}`);
-    if (Number.isFinite(event.attempt)) {
-      output.info(`Attempt: ${event.attempt}`);
-    }
-    if (event.phoneNumber) {
-      output.info(`Phone: ${event.phoneNumber}`);
-    }
-    context.log('remoteAuthCode', { code: event.code, attempt: event.attempt });
+    announcePairingCode(context, output, runtime, {
+      code: event.code,
+      attempt: event.attempt,
+      phone: event.phoneNumber
+    });
     return;
   }
   if (/WhatsApp client ready/i.test(message)) {
@@ -62,6 +98,56 @@ function handleRemoteAuthLog(context, output, event) {
   }
   output.note(message);
 }
+
+function handleRemoteAuthLine(context, runtime, output, line) {
+  const state = ensureRemoteAuthState(runtime);
+  if (/WhatsApp pairing code for/i.test(line)) {
+    const codeMatch = line.match(/code for .*?:\s*([A-Z0-9]{6,8})/i);
+    const phoneMatch = line.match(/for\s+(\*+[\dA-Z]+)/i);
+    if (codeMatch) {
+      announcePairingCode(context, output, runtime, {
+        code: codeMatch[1].toUpperCase(),
+        attempt: null,
+        phone: phoneMatch ? phoneMatch[1] : null
+      });
+      return true;
+    }
+  }
+  if (/Open WhatsApp > Linked Devices/i.test(line)) {
+    if (!shouldThrottle(state, 'lastHintAt', 5_000)) {
+      output.info('Open WhatsApp → Linked Devices → follow the on-screen prompt to finish linking.');
+    }
+    return true;
+  }
+  if (/QR code ready for scanning/i.test(line)) {
+    if (!shouldThrottle(state, 'lastQrAt', 30_000)) {
+      output.warn('QR code available for scanning. If you expected phone-number pairing, wait for the SMS or disable auto pairing.');
+    }
+    return true;
+  }
+  return false;
+}
+
+function formatCliError(error) {
+  if (!error) return 'unknown error';
+  if (error.shortMessage) return error.shortMessage;
+  if (error.stderr) {
+    const stderr = String(error.stderr).trim();
+    if (stderr) {
+      const lines = stderr.split('\n').filter(Boolean);
+      return lines.at(-1);
+    }
+  }
+  if (error.stdout) {
+    const stdout = String(error.stdout).trim();
+    if (stdout) {
+      const lines = stdout.split('\n').filter(Boolean);
+      return lines.at(-1);
+    }
+  }
+  return error.message || String(error);
+}
+
 import { REQUIRED_COMMANDS, PORT_CHECKS, WAIT_FOR_SERVICES } from './utils/constants.mjs';
 import { redactPair } from './utils/redact.mjs';
 import { describeHotkeys } from './ui/hotkeys.mjs';
@@ -338,16 +424,29 @@ async function pullUpdates(context, runtime, output) {
   if (!context.flags.pull) return;
   output.heading('Pulling latest updates');
   const gitPath = path.join(ROOT_DIR, '.git');
+  let hasGit = true;
   try {
     await fs.access(gitPath);
-    await runWithSpinner(context, 'git fetch', () =>
-      execa('git', ['fetch', '--all', '--prune'], { cwd: ROOT_DIR })
-    );
-    await runWithSpinner(context, 'git pull', () =>
-      execa('git', ['pull', '--ff-only'], { cwd: ROOT_DIR })
-    );
   } catch {
-    output.warn('Git repository not detected; skipping git pull.');
+    hasGit = false;
+  }
+  if (hasGit) {
+    try {
+      await runWithSpinner(context, 'git fetch', () =>
+        execa('git', ['fetch', '--all', '--prune'], { cwd: ROOT_DIR })
+      );
+    } catch (error) {
+      output.warn(`git fetch skipped (${formatCliError(error)}).`);
+    }
+    try {
+      await runWithSpinner(context, 'git pull', () =>
+        execa('git', ['pull', '--ff-only'], { cwd: ROOT_DIR })
+      );
+    } catch (error) {
+      output.warn(`git pull skipped (${formatCliError(error)}). Run git pull manually if you need the latest commits.`);
+    }
+  } else {
+    output.warn('Git repository not detected; skipping git fetch/pull.');
   }
   await runWithSpinner(context, 'docker compose pull', () =>
     execa(runtime.dockerComposeCommand[0], [...runtime.dockerComposeCommand.slice(1), 'pull'], { cwd: ROOT_DIR })
@@ -882,12 +981,15 @@ async function tailWhatsappLogs(context, runtime, output) {
           }
         }
         if (parsed && parsed.msg) {
-          handleRemoteAuthLog(context, output, parsed);
+          handleRemoteAuthLog(context, runtime, output, parsed);
           if (/WhatsApp client ready/i.test(parsed.msg)) {
             tail.kill('SIGINT');
             resolve();
             return;
           }
+          continue;
+        }
+        if (handleRemoteAuthLine(context, runtime, output, line)) {
           continue;
         }
         output.note(line);
@@ -1118,6 +1220,12 @@ export async function runSetup(argv = process.argv.slice(2)) {
     context.setMode(flags.mode, { reason: 'flag' });
   }
   const output = createOutput(context);
+  context.on('preferenceWriteFailed', ({ error }) => {
+    output.warn(`Unable to update cached setup preferences (.setup/preferences.json): ${formatCliError(error)}. Run ./setup.sh --quick=purge-caches if ownership needs resetting.`);
+  });
+  context.on('transcriptWriteFailed', ({ error }) => {
+    output.error(`Failed to write setup transcript under ./logs: ${formatCliError(error)}.`);
+  });
 
   const runtime = {
     envFile: new EnvFile(ENV_PATH, ENV_TEMPLATE_PATH),
@@ -1131,7 +1239,10 @@ export async function runSetup(argv = process.argv.slice(2)) {
 
   if (flags.quick === 'purge-caches') {
     await purgeSetupCaches(context, output);
-    await context.finalize('success');
+    const result = await context.finalize('success');
+    if (result?.warnings?.some(w => w.type === 'preferences')) {
+      output.warn('Cache purge completed, but ./.setup/preferences.json remains unwritable. Adjust permissions if you want mode persistence.');
+    }
     return;
   }
   if (flags.quick === 'preflight') {
@@ -1165,12 +1276,30 @@ export async function runSetup(argv = process.argv.slice(2)) {
   try {
     await runPhases(context, { startAt: flags.resume ?? undefined, stopAfter: flags.stopAfter ?? undefined });
     output.success('Setup complete. Re-run ./setup.sh anytime; operations are idempotent.');
-    await context.finalize('success');
+    const result = await context.finalize('success');
+    if (result?.warnings?.length) {
+      for (const warning of result.warnings) {
+        if (warning.type === 'preferences') {
+          output.warn('Setup completed, but we could not persist your preferred mode. Fix permissions on ./.setup/ or purge caches before the next run.');
+        }
+      }
+    }
   } catch (error) {
     context.appendError(error);
     output.error(error.message || 'Setup halted due to an unexpected error.');
     context.setResumeHint(context.currentPhase?.id);
-    await context.finalize('failed');
+    try {
+      const result = await context.finalize('failed');
+      if (result?.warnings?.length) {
+        for (const warning of result.warnings) {
+          if (warning.type === 'preferences') {
+            output.warn('Unable to update ./.setup/preferences.json while exiting. You may need to fix file permissions or run ./setup.sh --quick=purge-caches.');
+          }
+        }
+      }
+    } catch (finalizeError) {
+      output.error(`Additionally failed to write setup artifacts: ${formatCliError(finalizeError)}.`);
+    }
     process.exitCode = 1;
   } finally {
     cleanupHotkeys();

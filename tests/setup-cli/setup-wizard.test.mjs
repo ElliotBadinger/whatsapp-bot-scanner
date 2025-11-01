@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import os from 'node:os';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -68,6 +68,26 @@ describe('Transcript artifacts', () => {
     expect(JSON.stringify(json)).not.toContain('abcdef0123456789');
     expect(transcript).not.toContain('abcdef0123456789');
     expect(json.events.length).toBeGreaterThan(0);
+  });
+});
+
+describe('Finalize warnings', () => {
+  it('continues when preferences cache is not writable', async () => {
+    const root = await createTempRoot();
+    const context = new SetupContext(root);
+    await context.initialize();
+    const originalWriteFile = fs.writeFile;
+    const spy = vi.spyOn(fs, 'writeFile').mockImplementation(async (file, ...args) => {
+      if (String(file).includes('preferences.json')) {
+        const error = new Error('EACCES: permission denied');
+        error.code = 'EACCES';
+        throw error;
+      }
+      return originalWriteFile(file, ...args);
+    });
+    const result = await context.finalize('success');
+    spy.mockRestore();
+    expect(result.warnings.some(w => w.type === 'preferences')).toBe(true);
   });
 });
 
