@@ -6,7 +6,7 @@ import { Queue, Worker, JobsOptions } from 'bullmq';
 import { createHash } from 'node:crypto';
 import Redis from 'ioredis';
 import path from 'node:path';
-import { promises as fs, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import {
   config,
   logger,
@@ -27,6 +27,11 @@ import { GroupStore } from './group-store';
 import { loadEncryptionMaterials } from './crypto/dataKeyProvider';
 import { createRemoteAuthStore } from './remoteAuthStore';
 import type { RedisRemoteAuthStore } from './remoteAuthStore';
+import { resetRemoteSessionArtifacts } from './session/cleanup';
+import { describeSession, isSessionReady, type SessionSnapshot } from './session/guards';
+import { enrichEvaluationError } from './session/errors';
+import { safeGetGroupChatById } from './utils/chatLookup';
+import { handleSelfMessageRevoke } from './handlers/selfRevoke';
 import { PairingOrchestrator } from './pairingOrchestrator';
 
 function createRedisConnection(): Redis {
@@ -261,18 +266,13 @@ async function resolveAuthStrategy(redisInstance: Redis): Promise<AuthResolution
     let sessionExists = await store.sessionExists({ session: sessionName });
     if (sessionExists && config.wa.remoteAuth.forceNewSession) {
       logger.info({ clientId: config.wa.remoteAuth.clientId }, 'Force-new-session enabled; removing stored RemoteAuth session');
-      try {
-        await store.delete({ session: sessionName });
-        sessionExists = false;
-      } catch (err) {
-        logger.warn({ err, session: sessionName }, 'Failed to delete RemoteAuth session while forcing relink');
-      }
-      const resolvedDataPath = path.resolve(config.wa.remoteAuth.dataPath || './data/remote-session');
-      try {
-        await fs.rm(resolvedDataPath, { recursive: true, force: true });
-      } catch (err) {
-        logger.warn({ err, resolvedDataPath }, 'Failed to clean RemoteAuth data path while forcing relink');
-      }
+      await resetRemoteSessionArtifacts({
+        store,
+        sessionName,
+        dataPath: config.wa.remoteAuth.dataPath || './data/remote-session',
+        logger,
+      });
+      sessionExists = false;
     }
     logger.info({ clientId: config.wa.remoteAuth.clientId, sessionExists }, 'Initialising RemoteAuth strategy');
     const strategy = new RemoteAuth({
@@ -323,6 +323,10 @@ const PHONE_PAIRING_CODE_TTL_MS = 160000;
 const ackWatchers = new Map<string, NodeJS.Timeout>();
 let currentWaState: string | null = null;
 let botWid: string | null = null;
+
+function snapshotSession(): SessionSnapshot {
+  return { state: currentWaState, wid: botWid };
+}
 
 function hydrateParticipantList(chat: GroupChat): Promise<GroupParticipant[]> {
   const maybeParticipants = (chat as unknown as { participants?: GroupParticipant[] }).participants;
@@ -511,15 +515,37 @@ async function deliverVerdictMessage(
     logger.warn({ err, messageId: job.messageId }, 'Failed to hydrate original message by id');
   }
 
+  const snapshot = snapshotSession();
+  if (!isSessionReady(snapshot)) {
+    logger.debug({ job, session: describeSession(snapshot) }, 'Skipping verdict delivery because session is not ready');
+    return false;
+  }
+
   let chat: GroupChat | null = null;
   try {
     if (targetMessage) {
-      chat = await targetMessage.getChat() as GroupChat;
+      chat = await targetMessage.getChat().catch((err) => {
+        throw enrichEvaluationError(err, {
+          operation: 'deliverVerdictMessage:getChat',
+          chatId: (targetMessage.id as any)?.remote ?? job.chatId,
+          messageId: targetMessage.id?._serialized,
+          snapshot,
+        });
+      }) as GroupChat;
     } else {
-      chat = await client.getChatById(job.chatId) as GroupChat;
+      chat = await safeGetGroupChatById({
+        client,
+        chatId: job.chatId,
+        snapshot,
+        logger,
+      });
     }
   } catch (err) {
     logger.warn({ err, chatId: job.chatId }, 'Unable to load chat for verdict delivery');
+    return false;
+  }
+
+  if (!chat) {
     return false;
   }
 
@@ -1123,6 +1149,7 @@ async function main() {
     logger.error({ m }, 'Auth failure');
     waSessionStatusGauge.labels('ready').set(0);
     metrics.waSessionReconnects.labels('auth_failure').inc();
+    botWid = null;
   });
   client.on('change_state', (state) => {
     const label = typeof state === 'string' ? state.toLowerCase() : 'unknown';
@@ -1143,6 +1170,7 @@ async function main() {
     waSessionStatusGauge.labels('disconnected').set(1);
     metrics.waSessionReconnects.labels('disconnected').inc();
     updateSessionStateGauge('disconnected');
+    botWid = null;
   });
   client.on('incoming_call', async (call: Call) => {
     metrics.waIncomingCalls.labels('received').inc();
@@ -1349,9 +1377,22 @@ async function main() {
   });
 
   client.on('message_revoke_everyone', async (msg: Message, revoked?: Message) => {
+    const snapshot = snapshotSession();
+    if (!isSessionReady(snapshot)) {
+      logger.debug({ messageId: msg.id?._serialized, session: describeSession(snapshot) }, 'Skipping group revoke handler because session is not ready');
+      return;
+    }
     try {
       const original = revoked ?? msg;
-      const chat = await original.getChat();
+      const chat = await original.getChat().catch((err) => {
+        const fallbackChat = (original.id as any)?.remote ?? undefined;
+        throw enrichEvaluationError(err, {
+          operation: 'message_revoke_everyone:getChat',
+          chatId: fallbackChat,
+          messageId: original.id?._serialized,
+          snapshot,
+        });
+      });
       if (!(chat as GroupChat).isGroup) {
         return;
       }
@@ -1385,12 +1426,14 @@ async function main() {
   });
 
   client.on('message_revoke_me', async (msg: Message) => {
+    const snapshot = snapshotSession();
     try {
-      const chat = await msg.getChat();
-      const chatId = chat.id._serialized;
-      const messageId = msg.id._serialized || msg.id.id;
-      await messageStore.recordRevocation(chatId, messageId, 'me', Date.now());
-      metrics.waMessageRevocations.labels('me').inc();
+      await handleSelfMessageRevoke(msg, {
+        snapshot,
+        logger,
+        messageStore,
+        recordMetric: () => metrics.waMessageRevocations.labels('me').inc(),
+      });
     } catch (err) {
       logger.warn({ err }, 'Failed to record self message revoke');
     }
