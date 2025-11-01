@@ -47,6 +47,80 @@ fi
 
 SPINNER_PID=""
 
+prompt_yes_no() {
+  local prompt="$1"
+  local default="${2:-N}"
+  local normalized_default
+  normalized_default=$(printf '%s' "$default" | tr '[:lower:]' '[:upper:]')
+  local suffix="[y/N]"
+  if [ "$normalized_default" = "Y" ]; then
+    suffix="[Y/n]"
+  fi
+  while true; do
+    printf "%s %s " "$prompt" "$suffix"
+    read -r reply || reply=""
+    reply=$(printf '%s' "$reply" | tr -d '[:space:]')
+    if [ -z "$reply" ]; then
+      reply="$normalized_default"
+    fi
+    case "$(printf '%s' "$reply" | tr '[:lower:]' '[:upper:]')" in
+      Y|YES) return 0 ;;
+      N|NO) return 1 ;;
+      *) printf "Please answer y or n.\n" ;;
+    esac
+  done
+}
+
+show_welcome() {
+  cat <<'WELCOME'
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ WhatsApp Bot Scanner • Guided Setup                      ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+We’ll walk through the install step by step:
+  1. Check your tools (Docker, Node, etc.)
+  2. Capture API keys and WhatsApp options
+  3. Build the stack and wait for services
+  4. Share the follow-up checklist
+
+Answer the prompts in plain English (y/n). Press Ctrl+C at any time to stop.
+WELCOME
+  if prompt_yes_no "Ready to begin?" "Y"; then
+    printf "\n"
+  else
+    log_warn "Setup cancelled by user."
+    exit 0
+  fi
+}
+
+interactive_planner() {
+  if [ "$NONINTERACTIVE" = "true" ]; then
+    return
+  fi
+
+  show_welcome
+
+  if [ "$DO_PULL" = "false" ] && [ -d "$ROOT_DIR/.git" ]; then
+    if prompt_yes_no "Would you like to pull the latest code and Docker images?" "Y"; then
+      DO_PULL=true
+    fi
+  fi
+
+  if [ "$RESET_RUN" = "false" ] && [ "$CLEAN_RUN" = "false" ]; then
+    if prompt_yes_no "Stop any running containers from a previous setup?" "Y"; then
+      CLEAN_RUN=true
+    fi
+  fi
+
+  if [ "$RESET_RUN" = "false" ]; then
+    if prompt_yes_no "Do you need a full reset (delete database + WhatsApp session)?" "N"; then
+      RESET_RUN=true
+      CLEAN_RUN=true
+    fi
+  fi
+
+  printf "\n%s\n" "Perfect. Sit tight while we prepare everything..."
+}
+
 usage() {
   cat <<'USAGE'
 Usage: ./setup.sh [options]
@@ -444,21 +518,21 @@ configure_remote_auth_autopair() {
     log_info "RemoteAuth auto pairing disabled by default in non-interactive mode."
     return
   fi
-  log_section "RemoteAuth Phone Pairing"
-  log_info "Auto pairing immediately requests a WhatsApp code for $(redact_value "$phone")."
-  log_info "Before enabling, open WhatsApp on that device, ensure it is online, and navigate to Linked Devices."
-  printf "Automatically request a phone pairing code on startup? (y/N): "
-  read -r auto_reply || auto_reply=""
-  case "$auto_reply" in
-    [Yy]*)
-      set_env_var "WA_REMOTE_AUTH_AUTO_PAIR" "true"
-      log_info "Enabled auto pairing. Keep WhatsApp open; the code will display shortly after services start."
-      ;;
-    *)
-      set_env_var "WA_REMOTE_AUTH_AUTO_PAIR" "false"
-      log_warn "Auto pairing disabled; setup will show a QR code for initial linking."
-      ;;
-  esac
+  printf "\n"
+  log_section "Linking your WhatsApp"
+  cat <<EOF
+We can automatically ask WhatsApp for a one-time code and read it from the logs.
+Keep the phone for $(redact_value "$phone") on the Linked Devices screen so it
+can receive the code immediately. If you’d rather scan a QR code yourself,
+choose “no” and we’ll show the QR in the logs instead.
+EOF
+  if prompt_yes_no "Request the phone-number code automatically when services start?" "Y"; then
+    set_env_var "WA_REMOTE_AUTH_AUTO_PAIR" "true"
+    log_info "Auto pairing enabled. The pairing watcher can alert you when the code arrives."
+  else
+    set_env_var "WA_REMOTE_AUTH_AUTO_PAIR" "false"
+    log_warn "Auto pairing disabled; you will scan a QR code after the stack starts."
+  fi
 }
 
 prompt_for_key() {
@@ -912,12 +986,13 @@ tail_wa_logs() {
   local phone
   phone=$(get_env_var "WA_REMOTE_AUTH_PHONE_NUMBER" || true)
   local autopair
-  autopair=$(get_env_var "WA_REMOTE_AUTH_AUTO_PAIR" || true)
+  autopair=$(printf '%s' "$(get_env_var "WA_REMOTE_AUTH_AUTO_PAIR" || true)" | tr '[:upper:]' '[:lower:]')
   if [ "$strategy" = "remote" ] && [ -n "$phone" ] && [ "$autopair" = "true" ]; then
     log_section "WhatsApp RemoteAuth Pairing"
     log_info "Watch for a phone-number pairing code targeting $(redact_value "$phone")."
     log_info "Open WhatsApp > Linked Devices > Link with phone number and enter the code shown in the logs."
     log_info "If automatic pairing fails, the client will fall back to displaying a QR code."
+    log_info "Tip: keep a separate terminal handy to run \`npm run watch:pairing-code\` for audible alerts."
   else
     log_section "WhatsApp QR Pairing"
     log_info "A QR code will appear below. Open WhatsApp > Linked Devices > Link a Device and scan it."
@@ -1030,8 +1105,42 @@ print_postrun_gaps() {
   fi
 }
 
+offer_pairing_watcher() {
+  if [ "$NONINTERACTIVE" = "true" ]; then
+    return
+  fi
+  local strategy
+  strategy=$(get_env_var "WA_AUTH_STRATEGY" || true)
+  strategy=$(printf '%s' "${strategy:-remote}" | tr '[:upper:]' '[:lower:]')
+  if [ "$strategy" != "remote" ]; then
+    return
+  fi
+  local autopair
+  autopair=$(get_env_var "WA_REMOTE_AUTH_AUTO_PAIR" || true)
+  autopair=$(printf '%s' "${autopair:-false}" | tr '[:upper:]' '[:lower:]')
+  if [ "$autopair" != "true" ]; then
+    log_info "Need audio cues later? Run \`npm run watch:pairing-code\` whenever you’re ready."
+    return
+  fi
+  if ! command -v node >/dev/null 2>&1; then
+    log_warn "Node.js not detected; skipping pairing watcher prompt. Launch it manually once Node is installed."
+    return
+  fi
+  printf "\n"
+  log_section "Pairing Code Alert"
+  log_info "We can launch an audible watcher that rings and speaks when the code arrives."
+  log_info "Leave it running until you hear \"WhatsApp client ready\" in the logs."
+  if prompt_yes_no "Start the pairing code watcher in this terminal now?" "Y"; then
+    log_info "Press Ctrl+C when you’re done listening for codes."
+    npm run --silent watch:pairing-code || log_warn "Watcher exited unexpectedly. You can run npm run watch:pairing-code again later."
+  else
+    log_info "No problem. Run \`npm run watch:pairing-code\` later if you change your mind."
+  fi
+}
+
 main() {
   parse_args "$@"
+  interactive_planner
   if [ "$NONINTERACTIVE" = "true" ]; then
     log_warn "Running in --noninteractive mode. Third-party integrations stay limited until you edit .env with API keys."
   fi
@@ -1052,6 +1161,7 @@ main() {
   print_observability
   print_postrun_gaps
   print_troubleshooting
+  offer_pairing_watcher
   log_success "Setup complete. Re-run ./setup.sh anytime; operations are idempotent."
 }
 
