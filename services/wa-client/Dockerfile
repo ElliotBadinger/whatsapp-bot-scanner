@@ -5,6 +5,7 @@ USER root
 WORKDIR /app
 
 COPY tsconfig.base.json /app/
+COPY types /app/types
 
 # Install shared package
 COPY packages/confusable /app/packages/confusable

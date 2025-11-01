@@ -6,7 +6,7 @@ import { Queue, Worker, JobsOptions } from 'bullmq';
 import { createHash } from 'node:crypto';
 import Redis from 'ioredis';
 import path from 'node:path';
-import { readFileSync } from 'node:fs';
+import { promises as fs, readFileSync } from 'node:fs';
 import {
   config,
   logger,
@@ -258,7 +258,22 @@ async function resolveAuthStrategy(redisInstance: Redis): Promise<AuthResolution
       clientId: config.wa.remoteAuth.clientId,
     });
     const sessionName = config.wa.remoteAuth.clientId ? `RemoteAuth-${config.wa.remoteAuth.clientId}` : 'RemoteAuth';
-    const sessionExists = await store.sessionExists({ session: sessionName });
+    let sessionExists = await store.sessionExists({ session: sessionName });
+    if (sessionExists && config.wa.remoteAuth.forceNewSession) {
+      logger.info({ clientId: config.wa.remoteAuth.clientId }, 'Force-new-session enabled; removing stored RemoteAuth session');
+      try {
+        await store.delete({ session: sessionName });
+        sessionExists = false;
+      } catch (err) {
+        logger.warn({ err, session: sessionName }, 'Failed to delete RemoteAuth session while forcing relink');
+      }
+      const resolvedDataPath = path.resolve(config.wa.remoteAuth.dataPath || './data/remote-session');
+      try {
+        await fs.rm(resolvedDataPath, { recursive: true, force: true });
+      } catch (err) {
+        logger.warn({ err, resolvedDataPath }, 'Failed to clean RemoteAuth data path while forcing relink');
+      }
+    }
     logger.info({ clientId: config.wa.remoteAuth.clientId, sessionExists }, 'Initialising RemoteAuth strategy');
     const strategy = new RemoteAuth({
       clientId: config.wa.remoteAuth.clientId,
@@ -425,6 +440,7 @@ interface VerdictJobData {
   decidedAt?: number;
   redirectChain?: string[];
   shortener?: { provider: string; chain: string[] } | null;
+  degradedMode?: { providers: Array<{ name: string; reason: string }> } | null;
 }
 
 async function collectVerdictMedia(job: VerdictJobData): Promise<Array<{ media: MessageMedia; type: 'screenshot' | 'ioc' }>> {
@@ -507,6 +523,29 @@ async function deliverVerdictMessage(
     return false;
   }
 
+  if (!isRetry && job.degradedMode?.providers?.length) {
+    const lines = [
+      '⚠️ Scanner degraded: external intelligence providers are unavailable.',
+      ...job.degradedMode.providers.map((provider) => `- ${provider.name}: ${provider.reason}`),
+      'Verdicts rely on cached data and heuristics until providers recover.',
+    ];
+    const message = lines.join('\n');
+    try {
+      await chat.sendMessage(message);
+      metrics.waGroupEvents.labels('scanner_degraded').inc();
+    } catch (err) {
+      logger.warn({ err, chatId: job.chatId }, 'Failed to send degraded mode notification');
+    }
+    await groupStore.recordEvent({
+      chatId: job.chatId,
+      type: 'scanner_degraded',
+      timestamp: Date.now(),
+      details: JSON.stringify(job.degradedMode.providers),
+    }).catch((err) => {
+      logger.warn({ err, chatId: job.chatId }, 'Failed to record degraded mode event');
+    });
+  }
+
   const verdictText = formatGroupVerdict(job.verdict, job.reasons, job.url);
   let reply: Message | null = null;
   try {
@@ -547,6 +586,7 @@ async function deliverVerdictMessage(
     attachments: attachmentMeta,
     redirectChain: job.redirectChain,
     shortener: job.shortener ?? null,
+    degradedProviders: job.degradedMode?.providers ?? null,
   });
 
   if (job.verdict === 'malicious' && targetMessage) {
@@ -1756,13 +1796,13 @@ export async function handleAdminCommand(client: Client, msg: Message, existingC
   const senderVariants = expandWidVariants(senderId);
   const sender = participants.find((p) => senderVariants.includes(p.id._serialized));
   const isSelfCommand = msg.fromMe || (botWid !== null && senderVariants.includes(botWid));
-  logger.info({ chatId: gc.id._serialized, senderId, senderVariants, isSelfCommand, participantCount: participants.length }, 'Received admin command');
+  const parts = (msg.body || '').trim().split(/\s+/);
+  logger.info({ chatId: gc.id._serialized, senderId, senderVariants, isSelfCommand, participantCount: participants.length, command: parts[1] ?? null }, 'Received admin command');
   if (!isSelfCommand && !sender?.isAdmin && !sender?.isSuperAdmin) {
     logger.info({ chatId: gc.id._serialized, senderId }, 'Ignoring command from non-admin sender');
     return;
   }
 
-  const parts = (msg.body || '').trim().split(/\s+/);
   const cmd = parts[1];
   if (!cmd) return;
   const base = resolveControlPlaneBase();
@@ -1780,9 +1820,19 @@ export async function handleAdminCommand(client: Client, msg: Message, existingC
     const resp = await fetch(`${base}/groups/${encodeURIComponent(chat.id._serialized)}/unmute`, { method: 'POST', headers: authHeaders }).catch(() => null);
     await chat.sendMessage(resp && resp.ok ? 'Scanner unmuted.' : 'Unmute failed.');
   } else if (cmd === 'status') {
-    const resp = await fetch(`${base}/status`, { headers: { authorization: `Bearer ${token}` } }).catch(() => null);
-    const json = resp && resp.ok ? await resp.json() : {};
-    await chat.sendMessage(`Scanner status: scans=${json.scans||0}, malicious=${json.malicious||0}`);
+    try {
+      const resp = await fetch(`${base}/status`, { headers: { authorization: `Bearer ${token}` } });
+      if (!resp.ok) {
+        logger.warn({ status: resp.status, chatId: gc.id._serialized }, 'Status command fetch failed');
+        await chat.sendMessage('Scanner status temporarily unavailable.');
+        return;
+      }
+      const json = await resp.json().catch(() => ({}));
+      await chat.sendMessage(`Scanner status: scans=${json.scans ?? 0}, malicious=${json.malicious ?? 0}`);
+    } catch (err) {
+      logger.warn({ err, chatId: gc.id._serialized }, 'Failed to handle status command');
+      await chat.sendMessage('Scanner status temporarily unavailable.');
+    }
   } else if (cmd === 'rescan' && parts[2]) {
     const rescanUrl = parts[2];
     const resp = await fetch(`${base}/rescan`, {

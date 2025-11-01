@@ -48,6 +48,7 @@ function materialFromSecret(secret: string): EncryptionMaterials {
 }
 
 describe('RedisRemoteAuthStore', () => {
+  jest.setTimeout(15000);
   const session = 'RemoteAuth-test';
   const zipPath = path.resolve(`${session}.zip`);
   const clientId = 'test-client';

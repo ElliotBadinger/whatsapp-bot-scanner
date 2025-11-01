@@ -315,6 +315,18 @@ export const metrics = {
     labelNames: ['outcome'],
     registers: [register],
   }),
+  waVerdictDelivery: new client.Counter({
+    name: 'wbscanner_wa_verdict_delivery_total',
+    help: 'Verdict delivery outcomes recorded by result',
+    labelNames: ['outcome'],
+    registers: [register],
+  }),
+  waVerdictDeliveryRetries: new client.Counter({
+    name: 'wbscanner_wa_verdict_delivery_retries_total',
+    help: 'Verdict resend attempts triggered by ack workflows',
+    labelNames: ['reason'],
+    registers: [register],
+  }),
   waVerdictAttachmentsSent: new client.Counter({
     name: 'wbscanner_wa_verdict_attachments_total',
     help: 'Media attachments delivered alongside verdicts by type',
@@ -354,6 +366,18 @@ export const metrics = {
     name: 'wbscanner_wa_session_state',
     help: 'Current WhatsApp client state indicator (1 for current state, 0 otherwise)',
     labelNames: ['state'],
+    registers: [register],
+  }),
+  waStateChanges: new client.Counter({
+    name: 'wbscanner_wa_state_changes_total',
+    help: 'WhatsApp state transition events emitted by wa-client',
+    labelNames: ['event', 'state'],
+    registers: [register],
+  }),
+  waConsecutiveAuthFailures: new client.Gauge({
+    name: 'wbscanner_wa_auth_consecutive_failures',
+    help: 'Count of consecutive authentication failures per client instance',
+    labelNames: ['client'],
     registers: [register],
   }),
   waIncomingCalls: new client.Counter({

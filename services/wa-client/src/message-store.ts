@@ -15,6 +15,7 @@ export interface VerdictAttemptPayload {
   attachments?: { screenshot?: boolean; ioc?: boolean };
   redirectChain?: string[];
   shortener?: { provider: string; chain: string[] } | null;
+  degradedProviders?: Array<{ name: string; reason: string }> | null;
 }
 
 export interface VerdictRecord {
@@ -33,6 +34,7 @@ export interface VerdictRecord {
   attachments?: { screenshot?: boolean; ioc?: boolean };
   redirectChain?: string[];
   shortener?: { provider: string; chain: string[] } | null;
+  degradedProviders?: Array<{ name: string; reason: string }> | null;
 }
 
 export interface MessageEditRecord {
@@ -259,6 +261,7 @@ export class MessageStore {
       attachments: payload.attachments ?? existing?.attachments,
       redirectChain: payload.redirectChain ?? existing?.redirectChain,
       shortener: payload.shortener ?? existing?.shortener ?? null,
+      degradedProviders: payload.degradedProviders ?? existing?.degradedProviders ?? null,
     };
     if (payload.ack !== undefined) {
       verdictRecord.ackHistory.push({ ack: payload.ack ?? null, at: now });
