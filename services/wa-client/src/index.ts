@@ -27,7 +27,7 @@ import { GroupStore } from './group-store';
 import { loadEncryptionMaterials } from './crypto/dataKeyProvider';
 import { createRemoteAuthStore } from './remoteAuthStore';
 import type { RedisRemoteAuthStore } from './remoteAuthStore';
-import { resetRemoteSessionArtifacts } from './session/cleanup';
+import { resetRemoteSessionArtifacts, ensureRemoteSessionDirectories } from './session/cleanup';
 import { describeSession, isSessionReady, type SessionSnapshot } from './session/guards';
 import { enrichEvaluationError } from './session/errors';
 import { safeGetGroupChatById } from './utils/chatLookup';
@@ -273,7 +273,11 @@ async function resolveAuthStrategy(redisInstance: Redis): Promise<AuthResolution
         logger,
       });
       sessionExists = false;
+      process.env.WA_REMOTE_AUTH_FORCE_NEW_SESSION = 'false';
+      config.wa.remoteAuth.forceNewSession = false;
+      logger.info({ clientId: config.wa.remoteAuth.clientId }, 'Force-new-session flag cleared after cleanup to prevent repeated resets.');
     }
+    await ensureRemoteSessionDirectories(config.wa.remoteAuth.dataPath || './data/remote-session', logger);
     logger.info({ clientId: config.wa.remoteAuth.clientId, sessionExists }, 'Initialising RemoteAuth strategy');
     const strategy = new RemoteAuth({
       clientId: config.wa.remoteAuth.clientId,
