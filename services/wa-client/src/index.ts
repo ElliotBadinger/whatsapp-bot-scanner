@@ -974,8 +974,15 @@ async function main() {
         }
         logger.info({ phoneNumber: maskPhone(remotePhone), attempt, code }, 'Requested phone-number pairing code from WhatsApp.');
       },
-      onError: (err, attempt, nextDelayMs) => {
-        logger.warn({ err, phoneNumber: maskPhone(remotePhone), attempt, nextRetryMs: nextDelayMs }, 'Failed to request pairing code automatically.');
+      onError: (err, attempt, nextDelayMs, meta) => {
+        logger.warn({
+          err,
+          phoneNumber: maskPhone(remotePhone),
+          attempt,
+          nextRetryMs: nextDelayMs,
+          nextRetryAt: meta?.holdUntil ? new Date(meta.holdUntil).toISOString() : undefined,
+          rateLimited: meta?.rateLimited ?? false,
+        }, 'Failed to request pairing code automatically.');
       },
       onFallback: () => {
         pairingOrchestrator?.setEnabled(false);
@@ -984,8 +991,15 @@ async function main() {
         logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code retries exhausted; falling back to QR pairing.');
         replayCachedQr();
       },
-      onForcedRetry: () => {
-        logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code retries exhausted; QR fallback disabled. Ensure WhatsApp is on Linked Devices > Link with phone number, will continue retrying.');
+      onForcedRetry: (err, attempt, nextDelayMs, meta) => {
+        logger.warn({
+          err,
+          phoneNumber: maskPhone(remotePhone),
+          attempt,
+          nextRetryMs: nextDelayMs,
+          nextRetryAt: meta?.holdUntil ? new Date(meta.holdUntil).toISOString() : undefined,
+          rateLimited: meta?.rateLimited ?? false,
+        }, 'Pairing code retries exhausted; QR fallback disabled. Ensure WhatsApp is on Linked Devices > Link with phone number, continuing retries with extended backoff.');
       },
     })
     : null;
