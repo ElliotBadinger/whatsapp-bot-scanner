@@ -19,6 +19,7 @@
 - **Accessible feedback:** Listr2 task list and ora timers provide textual progress and elapsed time; palette honours `NO_COLOR`, and every spinner emits a descriptive message.
 - **RemoteAuth clarity:** Dedicated RemoteAuth explainer compares auto-pair vs QR, sanitises legacy numbers, and defaults sensibly for non-interactive runs.
 - **Postrun dashboard:** Observability links, pending keys, disabled integrations, and an FAQ land in one place so operators leave with clear next steps.
+- **Automation-friendly overrides:** Hidden environment toggles (`SETUP_ENV_PATH`, `SETUP_SKIP_*`) keep CI smoke tests isolated from real operator assets.
 
 ## Open Questions / Research Prompts
 

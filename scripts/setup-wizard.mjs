@@ -29,8 +29,14 @@ const { Confirm, Toggle, MultiSelect, Input } = enquirer;
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const ROOT_DIR = path.resolve(path.dirname(SCRIPT_PATH), '..');
-const ENV_PATH = path.join(ROOT_DIR, '.env');
-const ENV_TEMPLATE_PATH = path.join(ROOT_DIR, '.env.example');
+
+function resolveWithinRoot(target, fallback) {
+  if (!target) return path.join(ROOT_DIR, fallback);
+  return path.isAbsolute(target) ? target : path.join(ROOT_DIR, target);
+}
+
+const ENV_PATH = resolveWithinRoot(process.env.SETUP_ENV_PATH, '.env');
+const ENV_TEMPLATE_PATH = resolveWithinRoot(process.env.SETUP_ENV_TEMPLATE_PATH, '.env.example');
 
 const DOCKER_COMPOSE_FALLBACK = ['docker-compose'];
 
@@ -162,6 +168,10 @@ let dockerComposeCommand = ['docker', 'compose'];
 
 const envEntries = [];
 let envLoaded = false;
+
+const SKIP_PREREQ_CHECKS = process.env.SETUP_SKIP_PREREQUISITES === '1';
+const SKIP_DOCKER_CHECKS = process.env.SETUP_SKIP_DOCKER === '1';
+const SKIP_PORT_CHECKS = process.env.SETUP_SKIP_PORT_CHECKS === '1';
 
 function isTTY() {
   return process.stdout.isTTY && !process.env.CI;
@@ -376,13 +386,28 @@ async function detectDockerCompose() {
 
 async function preflightChecks() {
   console.log(formatHeading('Preflight Checks'));
-  for (const cmd of REQUIRED_COMMANDS) {
+  if (SKIP_PREREQ_CHECKS) {
+    logWarn('Skipping prerequisite checks (SETUP_SKIP_PREREQUISITES=1). Use only for CI pipelines.');
+    logSuccess('Prerequisite checks skipped by configuration.');
+    return;
+  }
+
+  const skipDocker = CLI_FLAGS.dryRun && SKIP_DOCKER_CHECKS;
+  const commandList = skipDocker ? REQUIRED_COMMANDS.filter(cmd => cmd.name !== 'docker') : REQUIRED_COMMANDS;
+
+  for (const cmd of commandList) {
     try {
       await execa('command', ['-v', cmd.name], { stdio: 'ignore', shell: true });
     } catch {
       throw new Error(`Missing required command: ${cmd.name}\nInstall hint: ${cmd.hint}`);
     }
   }
+  if (skipDocker) {
+    logWarn('Docker availability checks skipped for dry run (SETUP_SKIP_DOCKER=1).');
+    logSuccess('Prerequisite checks complete (Docker skipped).');
+    return;
+  }
+
   await detectDockerCompose();
 
   try {
@@ -676,6 +701,11 @@ async function validateQueueNames() {
 }
 
 async function checkPorts() {
+  if (SKIP_PORT_CHECKS) {
+    logWarn('Skipping port collision scan (SETUP_SKIP_PORT_CHECKS=1).');
+    return;
+  }
+
   const collisions = [];
   for (const { port, label, envHint } of PORT_CHECKS) {
     if (await isPortInUse(port)) {
