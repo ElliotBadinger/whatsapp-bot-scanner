@@ -91,14 +91,33 @@ export class SetupContext extends EventEmitter {
   }
 
   async finalize(status) {
-    await writePreferences(this.rootDir, this.preferences);
-    const { transcriptPath, jsonPath } = await this.transcript.finalize({
-      status,
-      errors: this.errors,
-      decisions: this.decisions,
-      resumeHint: this.resumeCheckpoint
-    });
-    this.emit('finalized', { transcriptPath, jsonPath, status });
-    return { transcriptPath, jsonPath };
+    const warnings = [];
+    try {
+      await writePreferences(this.rootDir, this.preferences);
+    } catch (error) {
+      const message = error?.message || 'Failed to persist setup preferences.';
+      this.transcript.record('warning', { scope: 'preferences', message });
+      this.emit('preferenceWriteFailed', { error });
+      warnings.push({ type: 'preferences', error });
+    }
+
+    let transcriptPath = null;
+    let jsonPath = null;
+    try {
+      const artifact = await this.transcript.finalize({
+        status,
+        errors: this.errors,
+        decisions: this.decisions,
+        resumeHint: this.resumeCheckpoint
+      });
+      transcriptPath = artifact.transcriptPath;
+      jsonPath = artifact.jsonPath;
+    } catch (error) {
+      this.emit('transcriptWriteFailed', { error });
+      throw error;
+    }
+
+    this.emit('finalized', { transcriptPath, jsonPath, status, warnings });
+    return { transcriptPath, jsonPath, warnings };
   }
 }
