@@ -21,11 +21,6 @@ import { registerPhase, clearPhases, runPhases } from './phases/registry.mjs';
 import { pluginsForStage, clearPlugins } from './plugins/registry.mjs';
 import { registerBuiltinPlugins } from './plugins/builtin.mjs';
 
-let Confirm;
-let Toggle;
-let MultiSelect;
-let Input;
-
 class MissingDependencyError extends Error {
   constructor(packageName, cause) {
     super(`Missing dependency: ${packageName}`);
@@ -35,11 +30,18 @@ class MissingDependencyError extends Error {
   }
 }
 
+let enquirerApi = null;
+
 async function ensurePromptModules() {
-  if (Confirm && Toggle && MultiSelect && Input) return;
+  if (enquirerApi) return enquirerApi;
   try {
     const enquirer = await import('enquirer');
-    ({ Confirm, Toggle, MultiSelect, Input } = enquirer);
+    const api = enquirer.default ?? enquirer;
+    if (!api || typeof api.prompt !== 'function') {
+      throw new Error('enquirer export missing prompt helper');
+    }
+    enquirerApi = api;
+    return enquirerApi;
   } catch (error) {
     throw new MissingDependencyError('enquirer', error);
   }
@@ -252,7 +254,7 @@ async function showWelcome(context, output) {
     output.info('Running in non-interactive mode.');
     return;
   }
-  await ensurePromptModules();
+  const prompt = await createPromptHelpers(context);
   const banner = boxen(
     [
       chalk.bold('WhatsApp Bot Scanner • Adaptive Setup'),
@@ -269,11 +271,11 @@ async function showWelcome(context, output) {
     { padding: { top: 1, bottom: 1, left: 2, right: 2 }, borderStyle: 'round', borderColor: 'cyan' }
   );
   console.log(banner);
-  const confirm = await new Confirm({
+  const confirm = await prompt.confirm({
     name: 'ready',
     message: 'Ready to begin the guided setup?',
     initial: true
-  }).run();
+  });
   if (!confirm) {
     output.warn('Setup cancelled by user.');
     await context.finalize('cancelled');
@@ -284,8 +286,8 @@ async function showWelcome(context, output) {
 
 async function runPlanningFlow(context, output) {
   if (context.flags.noninteractive || !process.stdout.isTTY) return;
-  await ensurePromptModules();
-  const selections = await new MultiSelect({
+  const prompt = await createPromptHelpers(context);
+  const selections = await prompt.multiSelect({
     name: 'actions',
     message: 'Choose any prep steps to run before provisioning',
     hint: 'Space to toggle, Enter to confirm',
@@ -295,27 +297,27 @@ async function runPlanningFlow(context, output) {
       { name: 'clean', message: 'Stop running containers from previous setup', value: 'clean', initial: true },
       { name: 'reset', message: 'Full reset (delete database + WhatsApp session)', value: 'reset', initial: false }
     ]
-  }).run();
+  });
   context.flags.pull = selections.includes('pull');
   context.flags.clean = selections.includes('clean');
   context.flags.reset = selections.includes('reset');
   if (context.flags.reset) {
     context.flags.clean = true;
   }
-  const branchToggle = await new Toggle({
+  const branchToggle = await prompt.toggle({
     name: 'branchToggle',
     message: 'Checkout a specific git branch before continuing?',
     enabled: 'Yes',
     disabled: 'No',
     initial: Boolean(context.flags.branch)
-  }).run();
+  });
   if (branchToggle) {
-    const branchName = await new Input({
+    const branchName = await prompt.input({
       name: 'branch',
       message: 'Enter branch name',
       initial: context.flags.branch,
       validate: value => (value.trim().length === 0 ? 'Branch name cannot be empty.' : true)
-    }).run();
+    });
     context.flags.branch = branchName.trim();
   }
   output.heading('Plan Summary');
@@ -323,7 +325,7 @@ async function runPlanningFlow(context, output) {
   output.info(`Stop existing containers: ${context.flags.clean ? 'Yes' : 'No'}`);
   output.info(`Full reset (volumes): ${context.flags.reset ? 'Yes – destructive' : 'No'}`);
   output.info(`Target branch: ${context.flags.branch || 'Stay on current'}`);
-  const proceed = await new Confirm({ name: 'proceed', message: 'Proceed with this plan?', initial: true }).run();
+  const proceed = await prompt.confirm({ name: 'proceed', message: 'Proceed with this plan?', initial: true });
   if (!proceed) {
     output.warn('Setup cancelled before making changes.');
     await context.finalize('cancelled');
@@ -503,19 +505,49 @@ function recordDisabledFeature(context, runtime, message) {
 }
 
 async function createPromptHelpers(context) {
-  await ensurePromptModules();
+  let enquirer;
+  const getEnquirer = async () => {
+    if (!enquirer) {
+      enquirer = await ensurePromptModules();
+    }
+    return enquirer;
+  };
   return {
     async confirm(options) {
       if (context.flags.noninteractive) return options.initial ?? false;
-      return new Confirm(options).run();
+      const api = await getEnquirer();
+      if (typeof api.confirm === 'function') {
+        return api.confirm(options);
+      }
+      const result = await api.prompt({ type: 'confirm', name: options.name ?? 'value', initial: options.initial, message: options.message, enabled: options.enabled, disabled: options.disabled });
+      return result[options.name ?? 'value'];
     },
     async input(options) {
       if (context.flags.noninteractive) return options.initial ?? '';
-      return new Input(options).run();
+      const api = await getEnquirer();
+      if (typeof api.input === 'function') {
+        return api.input(options);
+      }
+      const result = await api.prompt({ type: 'input', name: options.name ?? 'value', message: options.message, initial: options.initial, validate: options.validate });
+      return result[options.name ?? 'value'];
     },
     async toggle(options) {
       if (context.flags.noninteractive) return options.initial ?? false;
-      return new Toggle(options).run();
+      const api = await getEnquirer();
+      if (typeof api.toggle === 'function') {
+        return api.toggle(options);
+      }
+      const result = await api.prompt({ type: 'toggle', name: options.name ?? 'value', message: options.message, enabled: options.enabled, disabled: options.disabled, initial: options.initial });
+      return result[options.name ?? 'value'];
+    },
+    async multiSelect(options) {
+      if (context.flags.noninteractive) return options.initial ?? [];
+      const api = await getEnquirer();
+      if (typeof api.multiselect === 'function') {
+        return api.multiselect(options);
+      }
+      const result = await api.prompt({ type: 'multiselect', name: options.name ?? 'value', message: options.message, choices: options.choices, hint: options.hint, initial: options.initial, limit: options.limit });
+      return result[options.name ?? 'value'];
     }
   };
 }
@@ -567,8 +599,8 @@ function createRecoveryManager(context, output) {
 }
 
 async function purgeSetupCaches(context, output) {
-  const cacheDir = path.join(ROOT_DIR, '.setup');
-  const logsDir = path.join(ROOT_DIR, 'logs');
+  const cacheDir = process.env.SETUP_CACHE_DIR ? path.resolve(process.env.SETUP_CACHE_DIR) : path.join(ROOT_DIR, '.setup');
+  const logsDir = process.env.SETUP_LOGS_DIR ? path.resolve(process.env.SETUP_LOGS_DIR) : path.join(ROOT_DIR, 'logs');
   await fs.rm(cacheDir, { recursive: true, force: true });
   let removedLogs = [];
   try {
@@ -762,17 +794,17 @@ async function promptForApiKeys(context, runtime, output) {
     output.warn('Skipping interactive API key prompts (--noninteractive).');
     return;
   }
-  await ensurePromptModules();
+  const prompt = await createPromptHelpers(context);
   const env = runtime.envFile;
   const vtInfo = API_INTEGRATIONS.find(item => item.key === 'VT_API_KEY');
   if (vtInfo) {
     output.note(`VirusTotal: ${vtInfo.docs}`);
   }
-  const vt = await new Input({
+  const vt = await prompt.input({
     name: 'vt',
     message: 'VirusTotal API key (leave blank to skip)',
     initial: env.get('VT_API_KEY')
-  }).run();
+  });
   if (vt) {
     env.set('VT_API_KEY', vt);
     output.info('VirusTotal API key stored (redacted).');
@@ -782,11 +814,11 @@ async function promptForApiKeys(context, runtime, output) {
   if (gsbInfo) {
     output.note(`Google Safe Browsing: ${gsbInfo.docs}`);
   }
-  const gsb = await new Input({
+  const gsb = await prompt.input({
     name: 'gsb',
     message: 'Google Safe Browsing API key (leave blank to skip)',
     initial: env.get('GSB_API_KEY')
-  }).run();
+  });
   if (gsb) {
     env.set('GSB_API_KEY', gsb);
     context.recordDecision('gsb.apiKeyProvided', true);
@@ -800,10 +832,10 @@ async function configureRemoteAuth(context, runtime, output) {
     output.info(`WhatsApp auth strategy: ${strategy}`);
     return;
   }
-  await ensurePromptModules();
+  const prompt = await createPromptHelpers(context);
   output.heading('WhatsApp Remote Auth');
   const phoneInitial = env.get('WA_REMOTE_AUTH_PHONE_NUMBER') || DEFAULT_REMOTE_AUTH_PHONE;
-  const phoneDigits = await new Input({
+  const phoneDigits = await prompt.input({
     name: 'phone',
     message: 'Phone number for pairing SMS (international format)',
     initial: phoneInitial,
@@ -812,13 +844,13 @@ async function configureRemoteAuth(context, runtime, output) {
       if (digits.length < 10) return 'Enter a valid international number.';
       return true;
     }
-  }).run();
+  });
   env.set('WA_REMOTE_AUTH_PHONE_NUMBER', phoneDigits);
-  const autopair = await new Confirm({
+  const autopair = await prompt.confirm({
     name: 'autopair',
     message: 'Automatically request phone-number code on stack start?',
     initial: (env.get('WA_REMOTE_AUTH_AUTO_PAIR') || 'true').toLowerCase() === 'true'
-  }).run();
+  });
   env.set('WA_REMOTE_AUTH_AUTO_PAIR', autopair ? 'true' : 'false');
   output.info(`Remote auth auto pairing: ${autopair ? 'enabled' : 'disabled'}`);
   context.recordDecision('remoteAuth.autoPair', autopair);
@@ -1122,12 +1154,12 @@ async function offerPairingWatcher(context, output) {
     output.warn('Node.js not detected; cannot launch pairing watcher automatically.');
     return;
   }
-  await ensurePromptModules();
-  const startWatcher = await new Confirm({
+  const prompt = await createPromptHelpers(context);
+  const startWatcher = await prompt.confirm({
     name: 'watcher',
     message: 'Start the pairing code watcher (plays audio when code arrives)?',
     initial: true
-  }).run();
+  });
   if (startWatcher) {
     output.info('Press Ctrl+C when you are done listening for codes.');
     try {

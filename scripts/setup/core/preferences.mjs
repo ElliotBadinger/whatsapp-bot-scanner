@@ -9,7 +9,8 @@ const DEFAULT_PREFERENCES = {
 };
 
 function getPreferencesPath(rootDir) {
-  const cacheDir = path.join(rootDir, '.setup');
+  const overrideDir = process.env.SETUP_CACHE_DIR;
+  const cacheDir = overrideDir ? path.resolve(overrideDir) : path.join(rootDir, '.setup');
   return { cacheDir, filePath: path.join(cacheDir, 'preferences.json') };
 }
 

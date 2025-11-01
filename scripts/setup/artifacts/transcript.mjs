@@ -19,6 +19,7 @@ function formatDuration(ms) {
 export class Transcript {
   constructor(rootDir) {
     this.rootDir = rootDir;
+    this.logsDir = process.env.SETUP_LOGS_DIR ? path.resolve(process.env.SETUP_LOGS_DIR) : path.join(rootDir, 'logs');
     this.events = [];
     this.metadata = {
       modeChanges: [],
@@ -59,12 +60,11 @@ export class Transcript {
   async finalize({ status, errors = [], decisions = {}, resumeHint = null } = {}) {
     const endedAt = Date.now();
     const duration = endedAt - this.startedAt;
-    const logsDir = path.join(this.rootDir, 'logs');
-    await fs.mkdir(logsDir, { recursive: true });
+    await fs.mkdir(this.logsDir, { recursive: true });
     const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15);
     const baseName = `setup-${stamp}`;
-    const transcriptPath = path.join(logsDir, `${baseName}.md`);
-    const jsonPath = path.join(logsDir, `${baseName}.json`);
+    const transcriptPath = path.join(this.logsDir, `${baseName}.md`);
+    const jsonPath = path.join(this.logsDir, `${baseName}.json`);
     const header = [
       `# WhatsApp Bot Scanner • Setup Transcript`,
       ``,
