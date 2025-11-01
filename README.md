@@ -12,9 +12,8 @@ Production-ready, containerized system that ingests WhatsApp group messages, det
 
 Quick start:
 
-- Copy `.env.example` to `.env` and fill in API keys.
-- `make build && make up`
-- Open Grafana at `http://localhost:3002` (admin/admin) for dashboards.
+- Run `./setup.sh` to launch the guided onboarding wizard (Node.js 18+, Docker, and CLI prerequisites required). See [`docs/getting-started.md`](docs/getting-started.md) for a detailed walkthrough.
+- After setup completes, open Grafana at `http://localhost:3002` (admin/admin) for dashboards.
 - (Optional) `make test-load` to exercise `/healthz` endpoints; tune with `LOAD_TARGET_URL`, `LOAD_CONCURRENCY`, and `LOAD_DURATION_SECONDS`.
 
 Services:
