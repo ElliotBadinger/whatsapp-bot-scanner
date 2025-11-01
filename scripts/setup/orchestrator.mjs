@@ -8,7 +8,6 @@ import crypto from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 import boxen from 'boxen';
 import chalk from 'chalk';
-import enquirer from 'enquirer';
 import humanizeDuration from 'humanize-duration';
 import ora from 'ora';
 import { execa } from 'execa';
@@ -21,6 +20,30 @@ import { registerHotkeys } from './ui/hotkeys.mjs';
 import { registerPhase, clearPhases, runPhases } from './phases/registry.mjs';
 import { pluginsForStage, clearPlugins } from './plugins/registry.mjs';
 import { registerBuiltinPlugins } from './plugins/builtin.mjs';
+
+let Confirm;
+let Toggle;
+let MultiSelect;
+let Input;
+
+class MissingDependencyError extends Error {
+  constructor(packageName, cause) {
+    super(`Missing dependency: ${packageName}`);
+    this.name = 'MissingDependencyError';
+    this.packageName = packageName;
+    this.cause = cause;
+  }
+}
+
+async function ensurePromptModules() {
+  if (Confirm && Toggle && MultiSelect && Input) return;
+  try {
+    const enquirer = await import('enquirer');
+    ({ Confirm, Toggle, MultiSelect, Input } = enquirer);
+  } catch (error) {
+    throw new MissingDependencyError('enquirer', error);
+  }
+}
 
 function ensureRemoteAuthState(runtime) {
   if (!runtime.remoteAuthState) {
@@ -152,8 +175,6 @@ import { REQUIRED_COMMANDS, PORT_CHECKS, WAIT_FOR_SERVICES } from './utils/const
 import { redactPair } from './utils/redact.mjs';
 import { describeHotkeys } from './ui/hotkeys.mjs';
 
-const { Confirm, Toggle, MultiSelect, Input } = enquirer;
-
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const ROOT_DIR = path.resolve(path.dirname(SCRIPT_PATH), '..', '..');
 const ENV_PATH = path.join(ROOT_DIR, '.env');
@@ -231,6 +252,7 @@ async function showWelcome(context, output) {
     output.info('Running in non-interactive mode.');
     return;
   }
+  await ensurePromptModules();
   const banner = boxen(
     [
       chalk.bold('WhatsApp Bot Scanner • Adaptive Setup'),
@@ -262,6 +284,7 @@ async function showWelcome(context, output) {
 
 async function runPlanningFlow(context, output) {
   if (context.flags.noninteractive || !process.stdout.isTTY) return;
+  await ensurePromptModules();
   const selections = await new MultiSelect({
     name: 'actions',
     message: 'Choose any prep steps to run before provisioning',
@@ -479,7 +502,8 @@ function recordDisabledFeature(context, runtime, message) {
   context.log('disabledFeature', { message });
 }
 
-function createPromptHelpers(context) {
+async function createPromptHelpers(context) {
+  await ensurePromptModules();
   return {
     async confirm(options) {
       if (context.flags.noninteractive) return options.initial ?? false;
@@ -500,7 +524,7 @@ async function runEnvironmentPlugins(context, runtime, output) {
   const available = pluginsForStage('environment', context);
   if (available.length === 0) return;
   output.heading('Advanced options');
-  const prompt = createPromptHelpers(context);
+  const prompt = await createPromptHelpers(context);
   for (const plugin of available) {
     output.note(`Plugin: ${plugin.title} — ${plugin.description}`);
     if (typeof plugin.run === 'function') {
@@ -717,6 +741,7 @@ async function promptForApiKeys(context, runtime, output) {
     output.warn('Skipping interactive API key prompts (--noninteractive).');
     return;
   }
+  await ensurePromptModules();
   const env = runtime.envFile;
   const vtInfo = API_INTEGRATIONS.find(item => item.key === 'VT_API_KEY');
   if (vtInfo) {
@@ -754,6 +779,7 @@ async function configureRemoteAuth(context, runtime, output) {
     output.info(`WhatsApp auth strategy: ${strategy}`);
     return;
   }
+  await ensurePromptModules();
   output.heading('WhatsApp Remote Auth');
   const phoneInitial = env.get('WA_REMOTE_AUTH_PHONE_NUMBER') || DEFAULT_REMOTE_AUTH_PHONE;
   const phoneDigits = await new Input({
@@ -1075,6 +1101,7 @@ async function offerPairingWatcher(context, output) {
     output.warn('Node.js not detected; cannot launch pairing watcher automatically.');
     return;
   }
+  await ensurePromptModules();
   const startWatcher = await new Confirm({
     name: 'watcher',
     message: 'Start the pairing code watcher (plays audio when code arrives)?',
@@ -1285,8 +1312,13 @@ export async function runSetup(argv = process.argv.slice(2)) {
       }
     }
   } catch (error) {
-    context.appendError(error);
-    output.error(error.message || 'Setup halted due to an unexpected error.');
+    if (error instanceof MissingDependencyError) {
+      output.error(`Dependency "${error.packageName}" is required by the setup wizard. Run npm install in the repository root, then retry.`);
+      context.appendError(`Missing dependency: ${error.packageName}`);
+    } else {
+      context.appendError(error);
+      output.error(error.message || 'Setup halted due to an unexpected error.');
+    }
     context.setResumeHint(context.currentPhase?.id);
     try {
       const result = await context.finalize('failed');
