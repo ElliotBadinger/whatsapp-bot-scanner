@@ -28,6 +28,18 @@ import { loadEncryptionMaterials } from './crypto/dataKeyProvider';
 import { createRemoteAuthStore } from './remoteAuthStore';
 import type { RedisRemoteAuthStore } from './remoteAuthStore';
 import { PairingOrchestrator } from './pairingOrchestrator';
+import {
+  markClientReady,
+  markClientDisconnected,
+  setCurrentSessionState,
+  getCurrentSessionState,
+  setBotWid,
+  getBotWid,
+  SessionNotReadyError,
+} from './state/runtimeSession';
+import { forceRemoteSessionReset } from './session/cleanup';
+import { resolveChatForVerdict, ChatLookupError } from './utils/chatResolver';
+import { handleSelfMessageRevoke } from './events/messageRevoke';
 
 function createRedisConnection(): Redis {
   if (process.env.NODE_ENV === 'test') {
@@ -261,17 +273,15 @@ async function resolveAuthStrategy(redisInstance: Redis): Promise<AuthResolution
     let sessionExists = await store.sessionExists({ session: sessionName });
     if (sessionExists && config.wa.remoteAuth.forceNewSession) {
       logger.info({ clientId: config.wa.remoteAuth.clientId }, 'Force-new-session enabled; removing stored RemoteAuth session');
-      try {
-        await store.delete({ session: sessionName });
+      const resetResult = await forceRemoteSessionReset({
+        sessionName,
+        dataPath: config.wa.remoteAuth.dataPath || './data/remote-session',
+        deleteRemoteSession: async (session) => store.delete({ session }),
+        clearAckWatchers: clearAllAckWatchers,
+        logger,
+      });
+      if (resetResult.remoteSessionDeleted) {
         sessionExists = false;
-      } catch (err) {
-        logger.warn({ err, session: sessionName }, 'Failed to delete RemoteAuth session while forcing relink');
-      }
-      const resolvedDataPath = path.resolve(config.wa.remoteAuth.dataPath || './data/remote-session');
-      try {
-        await fs.rm(resolvedDataPath, { recursive: true, force: true });
-      } catch (err) {
-        logger.warn({ err, resolvedDataPath }, 'Failed to clean RemoteAuth data path while forcing relink');
       }
     }
     logger.info({ clientId: config.wa.remoteAuth.clientId, sessionExists }, 'Initialising RemoteAuth strategy');
@@ -321,8 +331,13 @@ const PAIRING_RETRY_DELAY_MS = Math.max(1000, config.wa.remoteAuth.pairingRetryD
 const PHONE_PAIRING_CODE_TTL_MS = 160000;
 
 const ackWatchers = new Map<string, NodeJS.Timeout>();
-let currentWaState: string | null = null;
-let botWid: string | null = null;
+
+function clearAllAckWatchers(): void {
+  for (const handle of ackWatchers.values()) {
+    clearTimeout(handle);
+  }
+  ackWatchers.clear();
+}
 
 function hydrateParticipantList(chat: GroupChat): Promise<GroupParticipant[]> {
   const maybeParticipants = (chat as unknown as { participants?: GroupParticipant[] }).participants;
@@ -504,23 +519,26 @@ async function deliverVerdictMessage(
   context: VerdictContext,
   isRetry = false
 ): Promise<boolean> {
-  let targetMessage: Message | null = null;
+  let chat: GroupChat;
+  let targetMessage: Message | null;
   try {
-    targetMessage = await client.getMessageById(job.messageId);
+    const resolution = await resolveChatForVerdict({
+      client,
+      logger,
+      chatId: job.chatId,
+      messageId: job.messageId,
+    });
+    chat = resolution.chat;
+    targetMessage = resolution.targetMessage;
   } catch (err) {
-    logger.warn({ err, messageId: job.messageId }, 'Failed to hydrate original message by id');
-  }
-
-  let chat: GroupChat | null = null;
-  try {
-    if (targetMessage) {
-      chat = await targetMessage.getChat() as GroupChat;
+    if (err instanceof SessionNotReadyError) {
+      logger.warn({ chatId: job.chatId, state: err.state }, 'WhatsApp session not ready; postponing verdict delivery');
+    } else if (err instanceof ChatLookupError) {
+      logger.warn({ err: err.causeError, chatId: job.chatId }, 'Unable to load chat for verdict delivery');
     } else {
-      chat = await client.getChatById(job.chatId) as GroupChat;
+      logger.warn({ err, chatId: job.chatId }, 'Unexpected error while loading chat for verdict delivery');
     }
-  } catch (err) {
-    logger.warn({ err, chatId: job.chatId }, 'Unable to load chat for verdict delivery');
-    return false;
+    throw err;
   }
 
   if (!isRetry && job.degradedMode?.providers?.length) {
@@ -668,6 +686,16 @@ async function scheduleAckWatch(context: VerdictContext, retry: () => Promise<vo
       metrics.waVerdictRetryAttempts.labels('retry').inc();
       await retry();
     } catch (err) {
+      if (err instanceof SessionNotReadyError) {
+        logger.warn({ context, state: err.state }, 'Ack retry deferred because session is not ready');
+        await scheduleAckWatch(context, retry);
+        return;
+      }
+      if (err instanceof ChatLookupError) {
+        logger.warn({ err: err.causeError, context }, 'Ack retry failed due to missing chat; will retry later');
+        await scheduleAckWatch(context, retry);
+        return;
+      }
       logger.error({ err, context }, 'Ack timeout handler failed');
     }
   }, timeoutSeconds * 1000);
@@ -730,10 +758,11 @@ function sanitizeLogValue(value: string | undefined): string | undefined {
 }
 
 function updateSessionStateGauge(state: string): void {
-  if (currentWaState) {
-    metrics.waSessionState.labels(currentWaState).set(0);
+  const previous = getCurrentSessionState();
+  if (previous) {
+    metrics.waSessionState.labels(previous).set(0);
   }
-  currentWaState = state;
+  setCurrentSessionState(state);
   metrics.waSessionState.labels(state).set(1);
 }
 
@@ -1112,7 +1141,8 @@ async function main() {
     waSessionStatusGauge.labels('disconnected').set(0);
     metrics.waSessionReconnects.labels('ready').inc();
     updateSessionStateGauge('ready');
-    botWid = client.info?.wid?._serialized || null;
+    markClientReady();
+    setBotWid(client.info?.wid?._serialized || null);
     try {
       await rehydrateAckWatchers(client);
     } catch (err) {
@@ -1123,11 +1153,16 @@ async function main() {
     logger.error({ m }, 'Auth failure');
     waSessionStatusGauge.labels('ready').set(0);
     metrics.waSessionReconnects.labels('auth_failure').inc();
+    markClientDisconnected();
   });
   client.on('change_state', (state) => {
     const label = typeof state === 'string' ? state.toLowerCase() : 'unknown';
     metrics.waSessionReconnects.labels(`state_${label}`).inc();
     updateSessionStateGauge(String(state));
+    const normalizedState = String(state).toUpperCase();
+    if (['UNPAIRED', 'UNPAIRED_IDLE', 'DISCONNECTED', 'OPENING', 'SMB_TOS_BLOCK'].includes(normalizedState)) {
+      markClientDisconnected();
+    }
     logger.info({ state }, 'WhatsApp client state change');
     if ((pairingOrchestrator?.canSchedule() ?? false) && remotePhone) {
       const normalizedState = String(state).toUpperCase();
@@ -1143,6 +1178,7 @@ async function main() {
     waSessionStatusGauge.labels('disconnected').set(1);
     metrics.waSessionReconnects.labels('disconnected').inc();
     updateSessionStateGauge('disconnected');
+    markClientDisconnected();
   });
   client.on('incoming_call', async (call: Call) => {
     metrics.waIncomingCalls.labels('received').inc();
@@ -1385,18 +1421,7 @@ async function main() {
   });
 
   client.on('message_revoke_me', async (msg: Message) => {
-    try {
-      const chatId = msg.fromMe ? msg.to : msg.from;
-      if (!chatId) {
-        return;
-      }
-      // Use message identifiers instead of msg.getChat() because revoke events expose `from`/`to` directly.
-      const messageId = msg.id._serialized || msg.id.id;
-      await messageStore.recordRevocation(chatId, messageId, 'me', Date.now());
-      metrics.waMessageRevocations.labels('me').inc();
-    } catch (err) {
-      logger.warn({ err }, 'Failed to record self message revoke');
-    }
+    await handleSelfMessageRevoke({ messageStore, metrics, logger }, msg);
   });
 
   client.on('message_reaction', async (reaction: Reaction) => {
@@ -1600,7 +1625,8 @@ async function main() {
       for (const member of recipients) {
         await removePendingMembership(chatId, member).catch(() => undefined);
       }
-      const includesBot = !!botWid && recipients.includes(botWid);
+      const currentBotWid = getBotWid();
+      const includesBot = !!currentBotWid && recipients.includes(currentBotWid);
       if (includesBot) {
         await clearConsentState(chatId);
         metrics.waGroupEvents.labels('bot_removed').inc();
@@ -1795,10 +1821,11 @@ export async function handleAdminCommand(client: Client, msg: Message, existingC
   if (!(chat as GroupChat).isGroup) return;
   const gc = chat as GroupChat;
   const participants = await hydrateParticipantList(gc);
-  const senderId = msg.author || (msg.fromMe && botWid ? botWid : undefined);
+  const currentBotWid = getBotWid();
+  const senderId = msg.author || (msg.fromMe && currentBotWid ? currentBotWid : undefined);
   const senderVariants = expandWidVariants(senderId);
   const sender = participants.find((p) => senderVariants.includes(p.id._serialized));
-  const isSelfCommand = msg.fromMe || (botWid !== null && senderVariants.includes(botWid));
+  const isSelfCommand = msg.fromMe || (currentBotWid !== null && senderVariants.includes(currentBotWid));
   const parts = (msg.body || '').trim().split(/\s+/);
   logger.info({ chatId: gc.id._serialized, senderId, senderVariants, isSelfCommand, participantCount: participants.length, command: parts[1] ?? null }, 'Received admin command');
   if (!isSelfCommand && !sender?.isAdmin && !sender?.isSuperAdmin) {
