@@ -48,3 +48,20 @@ export async function resetRemoteSessionArtifacts(options: RemoteSessionCleanupO
     logger.warn({ err, resolvedDataPath }, 'Failed to recreate RemoteAuth data directories during force reset');
   }
 }
+
+export async function ensureRemoteSessionDirectories(dataPath: string, logger: Logger): Promise<void> {
+  const resolvedDataPath = path.resolve(dataPath || './data/remote-session');
+  const tempSessionPath = path.join(resolvedDataPath, 'wwebjs_temp_session_default', 'Default');
+  try {
+    await fs.mkdir(tempSessionPath, { recursive: true });
+  } catch (err) {
+    logger.error({ err, resolvedDataPath }, 'Unable to create RemoteAuth session directories');
+    throw err;
+  }
+  try {
+    await fs.access(tempSessionPath);
+  } catch (err) {
+    logger.error({ err, resolvedDataPath }, 'RemoteAuth temp session directory still missing after creation attempt');
+    throw err;
+  }
+}

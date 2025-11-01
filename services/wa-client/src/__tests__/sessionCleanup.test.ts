@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { resetRemoteSessionArtifacts, type RemoteSessionCleanupOptions } from '../session/cleanup';
+import { ensureRemoteSessionDirectories, resetRemoteSessionArtifacts, type RemoteSessionCleanupOptions } from '../session/cleanup';
 
 const createdPaths: string[] = [];
 const createdFiles: string[] = [];
@@ -14,6 +14,26 @@ afterEach(async () => {
   for (const dir of createdPaths.splice(0)) {
     await fs.rm(dir, { force: true, recursive: true }).catch(() => {});
   }
+});
+
+describe('ensureRemoteSessionDirectories', () => {
+  it('creates required temp session directories', async () => {
+    const baseDir = await fs.mkdtemp(path.join(tmpdir(), 'wa-session-ensure-'));
+    createdPaths.push(baseDir);
+    const dataPath = path.join(baseDir, 'remote-session');
+    const logger = {
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    };
+
+    await ensureRemoteSessionDirectories(dataPath, logger as any);
+
+    const defaultDir = path.join(dataPath, 'wwebjs_temp_session_default', 'Default');
+    const stats = await fs.stat(defaultDir);
+    expect(stats.isDirectory()).toBe(true);
+    expect(logger.error).not.toHaveBeenCalled();
+  });
 });
 
 describe('resetRemoteSessionArtifacts', () => {
