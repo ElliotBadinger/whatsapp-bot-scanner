@@ -105,7 +105,10 @@ class RemoteAuth extends BaseAuthStrategy {
         /* Compress & Store Session */
         const pathExists = await this.isValidPath(this.userDataDir);
         if (pathExists) {
-            await this.compressSession();
+            const compressed = await this.compressSession();
+            if (!compressed) {
+                return;
+            }
             await this.store.save({session: this.sessionName});
             await fs.promises.unlink(`${this.sessionName}.zip`);
             await fs.promises.rm(`${this.tempDir}`, {
@@ -146,6 +149,10 @@ class RemoteAuth extends BaseAuthStrategy {
         const stream = fs.createWriteStream(`${this.sessionName}.zip`);
 
         await fs.copy(this.userDataDir, this.tempDir).catch(() => {});
+        const tempDirExists = await this.isValidPath(this.tempDir);
+        if (!tempDirExists) {
+            return false;
+        }
         await this.deleteMetadata();
         return new Promise((resolve, reject) => {
             archive
@@ -153,7 +160,7 @@ class RemoteAuth extends BaseAuthStrategy {
                 .on('error', err => reject(err))
                 .pipe(stream);
 
-            stream.on('close', () => resolve());
+            stream.on('close', () => resolve(true));
             archive.finalize();
         });
     }
@@ -171,25 +178,32 @@ class RemoteAuth extends BaseAuthStrategy {
     }
 
     async deleteMetadata() {
-        const sessionDirs = [this.tempDir, path.join(this.tempDir, 'Default')];
-        for (const dir of sessionDirs) {
-            const sessionFiles = await fs.promises.readdir(dir);
-            for (const element of sessionFiles) {
-                if (!this.requiredDirs.includes(element)) {
-                    const dirElement = path.join(dir, element);
-                    const stats = await fs.promises.lstat(dirElement);
-    
-                    if (stats.isDirectory()) {
-                        await fs.promises.rm(dirElement, {
-                            recursive: true,
-                            force: true,
-                            maxRetries: this.rmMaxRetries,
-                        }).catch(() => {});
-                    } else {
-                        await fs.promises.unlink(dirElement).catch(() => {});
+        try {
+            const sessionDirs = [this.tempDir, path.join(this.tempDir, 'Default')];
+            for (const dir of sessionDirs) {
+                const sessionFiles = await fs.promises.readdir(dir);
+                for (const element of sessionFiles) {
+                    if (!this.requiredDirs.includes(element)) {
+                        const dirElement = path.join(dir, element);
+                        const stats = await fs.promises.lstat(dirElement);
+
+                        if (stats.isDirectory()) {
+                            await fs.promises.rm(dirElement, {
+                                recursive: true,
+                                force: true,
+                                maxRetries: this.rmMaxRetries,
+                            }).catch(() => {});
+                        } else {
+                            await fs.promises.unlink(dirElement).catch(() => {});
+                        }
                     }
                 }
             }
+        } catch (error) {
+            if (error?.code === 'ENOENT' || error?.syscall === 'lstat') {
+                return;
+            }
+            throw error;
         }
     }
 
