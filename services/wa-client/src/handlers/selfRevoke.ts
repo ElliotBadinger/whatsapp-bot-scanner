@@ -21,6 +21,12 @@ export async function handleSelfMessageRevoke(msg: Message, deps: SelfRevokeDepe
     return 'skipped';
   }
 
+  const rawChatId = (msg.id as any)?.remote ?? msg.from ?? '';
+  if (typeof rawChatId === 'string' && rawChatId.includes('status@broadcast')) {
+    logger.debug({ messageId: msg.id?._serialized }, 'Skipping self revoke for status broadcast message');
+    return 'skipped';
+  }
+
   const chat = await msg.getChat().catch((err) => {
     throw enrichEvaluationError(err, {
       operation: 'message_revoke_me:getChat',
