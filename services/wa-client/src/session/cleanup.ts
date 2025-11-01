@@ -1,51 +1,67 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { Logger } from 'pino';
-import { resetRuntimeSessionState } from '../state/runtimeSession';
+import type { RedisRemoteAuthStore } from '../remoteAuthStore';
 
-export interface ForceRemoteSessionResetOptions {
+export interface RemoteSessionCleanupOptions {
+  store: Pick<RedisRemoteAuthStore, 'delete'>;
   sessionName: string;
   dataPath: string;
-  deleteRemoteSession: (session: string) => Promise<void>;
-  clearAckWatchers: () => void;
-  logger: Pick<Logger, 'info' | 'warn'>;
-  fsImpl?: typeof fs;
+  logger: Logger;
 }
 
-export interface ForceRemoteSessionResetResult {
-  remoteSessionDeleted: boolean;
-  dataPath: string;
+function resolveZipPath(sessionName: string): string {
+  return path.resolve(`${sessionName}.zip`);
 }
 
-export async function forceRemoteSessionReset(options: ForceRemoteSessionResetOptions): Promise<ForceRemoteSessionResetResult> {
-  const { sessionName, dataPath, deleteRemoteSession, clearAckWatchers, logger } = options;
-  const fsModule = options.fsImpl ?? fs;
-  const resolvedDataPath = path.resolve(dataPath);
-  let remoteSessionDeleted = false;
+async function removeIfExists(targetPath: string, options?: { recursive?: boolean }): Promise<void> {
+  await fs.rm(targetPath, { force: true, recursive: options?.recursive ?? false }).catch((err: unknown) => {
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return;
+    throw err;
+  });
+}
 
+export async function resetRemoteSessionArtifacts(options: RemoteSessionCleanupOptions): Promise<void> {
+  const { store, sessionName, dataPath, logger } = options;
   try {
-    await deleteRemoteSession(sessionName);
-    remoteSessionDeleted = true;
-    logger.info({ session: sessionName }, 'Deleted RemoteAuth session while forcing relink');
+    await store.delete({ session: sessionName });
   } catch (err) {
-    logger.warn({ err, session: sessionName }, 'Failed to delete RemoteAuth session while forcing relink');
+    logger.warn({ err, session: sessionName }, 'Failed to delete RemoteAuth session record from Redis');
   }
 
-  try {
-    await fsModule.rm(resolvedDataPath, { recursive: true, force: true });
-    await fsModule.mkdir(resolvedDataPath, { recursive: true });
-    logger.info({ resolvedDataPath }, 'Reset RemoteAuth data path while forcing relink');
-  } catch (err) {
-    logger.warn({ err, resolvedDataPath }, 'Failed to clean RemoteAuth data path while forcing relink');
-  }
+  const resolvedDataPath = path.resolve(dataPath || './data/remote-session');
+  const zipPath = resolveZipPath(sessionName);
+
+  await removeIfExists(zipPath).catch((err) => {
+    logger.warn({ err, zipPath }, 'Failed to delete RemoteAuth snapshot archive during force reset');
+  });
+
+  await removeIfExists(resolvedDataPath, { recursive: true }).catch((err) => {
+    logger.warn({ err, resolvedDataPath }, 'Failed to remove RemoteAuth data directory during force reset');
+  });
 
   try {
-    clearAckWatchers();
+    await fs.mkdir(resolvedDataPath, { recursive: true });
+    const tempSessionPath = path.join(resolvedDataPath, 'wwebjs_temp_session_default', 'Default');
+    await fs.mkdir(tempSessionPath, { recursive: true });
   } catch (err) {
-    logger.warn({ err }, 'Failed to clear ack watchers during session reset');
+    logger.warn({ err, resolvedDataPath }, 'Failed to recreate RemoteAuth data directories during force reset');
   }
+}
 
-  resetRuntimeSessionState();
-
-  return { remoteSessionDeleted, dataPath: resolvedDataPath };
+export async function ensureRemoteSessionDirectories(dataPath: string, logger: Logger): Promise<void> {
+  const resolvedDataPath = path.resolve(dataPath || './data/remote-session');
+  const tempSessionPath = path.join(resolvedDataPath, 'wwebjs_temp_session_default', 'Default');
+  try {
+    await fs.mkdir(tempSessionPath, { recursive: true });
+  } catch (err) {
+    logger.error({ err, resolvedDataPath }, 'Unable to create RemoteAuth session directories');
+    throw err;
+  }
+  try {
+    await fs.access(tempSessionPath);
+  } catch (err) {
+    logger.error({ err, resolvedDataPath }, 'RemoteAuth temp session directory still missing after creation attempt');
+    throw err;
+  }
 }

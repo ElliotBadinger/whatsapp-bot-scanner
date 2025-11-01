@@ -1,6 +1,8 @@
 import type Redis from 'ioredis';
 import type { Logger } from 'pino';
 import type { Client, GroupChat, Message } from 'whatsapp-web.js';
+import { safeGetGroupChatById } from './chatLookup';
+import type { SessionSnapshot } from '../session/guards';
 
 const CHAT_CURSOR_KEY = (chatId: string) => `wa:chat:${chatId}:cursor`;
 const KNOWN_CHATS_KEY = 'wa:chats:known';
@@ -32,14 +34,22 @@ interface HistorySyncParams {
   redis: Redis;
   logger: Logger;
   chatId: string;
+  snapshot?: SessionSnapshot;
   limit?: number;
   onMessage: (msg: Message, chat: GroupChat) => Promise<void>;
 }
 
 export async function syncChatHistory(params: HistorySyncParams): Promise<number> {
-  const { client, redis, logger, chatId, limit = 200, onMessage } = params;
+  const { client, redis, logger, chatId, snapshot, limit = 200, onMessage } = params;
   const cursor = await getChatCursor(redis, chatId);
-  const chat = await client.getChatById(chatId).catch(() => null);
+  const effectiveSnapshot: SessionSnapshot = snapshot ?? { state: 'ready', wid: 'history-sync' };
+  const chat = await safeGetGroupChatById({
+    client,
+    chatId,
+    snapshot: effectiveSnapshot,
+    logger,
+    suppressError: !snapshot,
+  });
   if (!chat || !(chat as GroupChat).isGroup) return 0;
   const groupChat = chat as GroupChat;
   await rememberChat(redis, chatId);
