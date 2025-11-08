@@ -803,6 +803,10 @@ async function main() {
   assertEssentialConfig('scan-orchestrator');
   await pg.connect();
   const app = Fastify();
+  
+  const workers: Worker[] = [];
+  let isShuttingDown = false;
+
   app.get('/healthz', async () => ({ ok: true }));
   app.get('/metrics', async (_req, reply) => {
     reply.header('Content-Type', register.contentType);
@@ -898,7 +902,7 @@ async function main() {
     reply.send({ ok: true });
   });
 
-  new Worker(config.queues.scanRequest, async (job) => {
+  const scanRequestWorker = new Worker(config.queues.scanRequest, async (job) => {
     const queueName = config.queues.scanRequest;
     const started = Date.now();
     const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
@@ -1288,9 +1292,10 @@ async function main() {
       await refreshQueueMetrics(scanRequestQueue, queueName).catch(() => undefined);
     }
   }, { connection: redis, concurrency: config.orchestrator.concurrency });
+  workers.push(scanRequestWorker);
 
   if (config.urlscan.enabled && config.urlscan.apiKey) {
-    new Worker(config.queues.urlscan, async (job) => {
+    const urlscanWorker = new Worker(config.queues.urlscan, async (job) => {
       const queueName = config.queues.urlscan;
       const started = Date.now();
       const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
@@ -1351,9 +1356,64 @@ async function main() {
         await refreshQueueMetrics(urlscanQueue, queueName).catch(() => undefined);
       }
     }, { connection: redis, concurrency: config.urlscan.concurrency });
+    workers.push(urlscanWorker);
   }
 
   await app.listen({ host: '0.0.0.0', port: 3001 });
+
+  async function gracefulShutdown(signal: string): Promise<void> {
+    if (isShuttingDown) {
+      logger.warn({ signal }, 'Shutdown already in progress, ignoring signal');
+      return;
+    }
+    isShuttingDown = true;
+    logger.info({ signal }, 'Graceful shutdown initiated');
+
+    try {
+      await app.close();
+      logger.info('Fastify server closed');
+    } catch (err) {
+      logger.error({ err }, 'Error closing Fastify server');
+    }
+
+    for (const worker of workers) {
+      try {
+        await worker.close();
+        logger.info({ workerName: worker.name }, 'Worker closed');
+      } catch (err) {
+        logger.error({ err, workerName: worker.name }, 'Error closing worker');
+      }
+    }
+
+    try {
+      await scanRequestQueue.close();
+      await scanVerdictQueue.close();
+      await urlscanQueue.close();
+      logger.info('Queues closed');
+    } catch (err) {
+      logger.error({ err }, 'Error closing queues');
+    }
+
+    try {
+      await redis.quit();
+      logger.info('Redis connection closed');
+    } catch (err) {
+      logger.error({ err }, 'Error closing Redis connection');
+    }
+
+    try {
+      await pg.end();
+      logger.info('PostgreSQL connection closed');
+    } catch (err) {
+      logger.error({ err }, 'Error closing PostgreSQL connection');
+    }
+
+    logger.info('Graceful shutdown complete');
+    process.exit(0);
+  }
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 }
 
 if (process.env.NODE_ENV !== 'test') {
