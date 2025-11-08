@@ -330,8 +330,9 @@ export async function buildServer(options: BuildOptions = {}) {
     }
   });
 
+  let purgeInterval: NodeJS.Timeout | null = null;
   if (process.env.NODE_ENV !== 'test') {
-    setInterval(async () => {
+    purgeInterval = setInterval(async () => {
       try {
         await pgClient.query("DELETE FROM scans WHERE last_seen_at < now() - interval '30 days'");
         await pgClient.query("DELETE FROM messages WHERE posted_at < now() - interval '30 days'");
@@ -339,13 +340,51 @@ export async function buildServer(options: BuildOptions = {}) {
     }, 24 * 60 * 60 * 1000);
   }
 
-  return { app, pgClient, ownsClient };
+  return { app, pgClient, ownsClient, purgeInterval };
 }
 
 async function main() {
   assertControlPlaneToken();
-  const { app } = await buildServer();
+  const { app, pgClient, ownsClient, purgeInterval } = await buildServer();
   await app.listen({ host: '0.0.0.0', port: config.controlPlane.port });
+
+  let isShuttingDown = false;
+
+  async function gracefulShutdown(signal: string): Promise<void> {
+    if (isShuttingDown) {
+      logger.warn({ signal }, 'Shutdown already in progress, ignoring signal');
+      return;
+    }
+    isShuttingDown = true;
+    logger.info({ signal }, 'Graceful shutdown initiated');
+
+    if (purgeInterval) {
+      clearInterval(purgeInterval);
+      logger.info('Purge interval cleared');
+    }
+
+    try {
+      await app.close();
+      logger.info('Fastify server closed');
+    } catch (err) {
+      logger.error({ err }, 'Error closing Fastify server');
+    }
+
+    if (ownsClient) {
+      try {
+        await pgClient.end();
+        logger.info('PostgreSQL connection closed');
+      } catch (err) {
+        logger.error({ err }, 'Error closing PostgreSQL connection');
+      }
+    }
+
+    logger.info('Graceful shutdown complete');
+    process.exit(0);
+  }
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 }
 
 if (process.env.NODE_ENV !== 'test') {

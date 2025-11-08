@@ -1757,7 +1757,7 @@ async function main() {
   });
 
   // Consume verdicts
-  new Worker(config.queues.scanVerdict, async (job) => {
+  const verdictWorker = new Worker(config.queues.scanVerdict, async (job) => {
     const queueName = config.queues.scanVerdict;
     const started = Date.now();
     const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
@@ -1830,6 +1830,58 @@ async function main() {
   startPairingFallbackTimer();
 
   await app.listen({ host: '0.0.0.0', port: 3000 });
+
+  let isShuttingDown = false;
+
+  async function gracefulShutdown(signal: string): Promise<void> {
+    if (isShuttingDown) {
+      logger.warn({ signal }, 'Shutdown already in progress, ignoring signal');
+      return;
+    }
+    isShuttingDown = true;
+    logger.info({ signal }, 'Graceful shutdown initiated');
+
+    try {
+      await app.close();
+      logger.info('Fastify server closed');
+    } catch (err) {
+      logger.error({ err }, 'Error closing Fastify server');
+    }
+
+    try {
+      await verdictWorker.close();
+      logger.info('Verdict worker closed');
+    } catch (err) {
+      logger.error({ err }, 'Error closing verdict worker');
+    }
+
+    try {
+      await scanRequestQueue.close();
+      logger.info('Scan request queue closed');
+    } catch (err) {
+      logger.error({ err }, 'Error closing scan request queue');
+    }
+
+    try {
+      await client.destroy();
+      logger.info('WhatsApp client destroyed');
+    } catch (err) {
+      logger.error({ err }, 'Error destroying WhatsApp client');
+    }
+
+    try {
+      await redis.quit();
+      logger.info('Redis connection closed');
+    } catch (err) {
+      logger.error({ err }, 'Error closing Redis connection');
+    }
+
+    logger.info('Graceful shutdown complete');
+    process.exit(0);
+  }
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 }
 
 function sha256(s: string) { return createHash('sha256').update(s).digest('hex'); }
