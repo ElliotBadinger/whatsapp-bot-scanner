@@ -38,6 +38,7 @@ import {
   detectHomoglyphs,
   assertEssentialConfig,
 } from '@wbscanner/shared';
+import { EnhancedSecurityAnalyzer } from './enhanced-security';
 import {
   checkBlocklistsWithRedundancy,
   shouldQueryPhishtank,
@@ -802,6 +803,10 @@ async function loadManualOverride(urlHash: string, hostname: string): Promise<'a
 async function main() {
   assertEssentialConfig('scan-orchestrator');
   await pg.connect();
+  
+  const enhancedSecurity = new EnhancedSecurityAnalyzer(redis);
+  await enhancedSecurity.start();
+  
   const app = Fastify();
   app.get('/healthz', async () => ({ ok: true }));
   app.get('/metrics', async (_req, reply) => {
@@ -999,6 +1004,96 @@ async function main() {
         logger.info({ hostname: finalUrlObj.hostname, risk: homoglyphResult.riskLevel, confusables: homoglyphResult.confusableChars }, 'Homoglyph detection');
       }
 
+      const enhancedSecurityResult = await enhancedSecurity.analyze(finalUrl, h);
+      
+      if (enhancedSecurityResult.verdict === 'malicious' && enhancedSecurityResult.confidence === 'high' && enhancedSecurityResult.skipExternalAPIs) {
+        logger.info({ url: finalUrl, score: enhancedSecurityResult.score, reasons: enhancedSecurityResult.reasons }, 'Tier 1 high-confidence threat detected, skipping external APIs');
+        
+        const signals = {
+          gsbThreatTypes: [],
+          phishtankVerified: false,
+          urlhausListed: false,
+          vtMalicious: undefined,
+          vtSuspicious: undefined,
+          vtHarmless: undefined,
+          domainAgeDays: undefined,
+          redirectCount: redirectChain.length,
+          wasShortened,
+          finalUrlMismatch,
+          manualOverride: null,
+          homoglyph: homoglyphResult,
+          ...heurSignals,
+          enhancedSecurityScore: enhancedSecurityResult.score,
+          enhancedSecurityReasons: enhancedSecurityResult.reasons,
+        };
+        
+        const verdictResult = scoreFromSignals(signals);
+        const verdict = 'malicious';
+        const { score, reasons } = verdictResult;
+        const enhancedReasons = [...reasons, ...enhancedSecurityResult.reasons];
+        
+        const cacheTtl = config.orchestrator.cacheTtl.malicious;
+        const verdictPayload = {
+          url: norm,
+          finalUrl,
+          verdict,
+          score,
+          reasons: enhancedReasons,
+          cacheTtl,
+          redirectChain,
+          wasShortened,
+          finalUrlMismatch,
+          homoglyph: homoglyphResult,
+          enhancedSecurity: {
+            tier1Score: enhancedSecurityResult.score,
+            confidence: enhancedSecurityResult.confidence,
+          },
+          decidedAt: Date.now(),
+        };
+        
+        await setJsonCache(CACHE_LABELS.verdict, cacheKey, verdictPayload, cacheTtl);
+        await pg.query(
+          `INSERT INTO scans (url_hash, url, final_url, verdict, score, reasons, cache_ttl, redirect_chain, was_shortened, final_url_mismatch, homoglyph_detected, homoglyph_risk_level, decided_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
+           ON CONFLICT (url_hash) DO UPDATE SET
+             final_url=EXCLUDED.final_url,
+             verdict=EXCLUDED.verdict,
+             score=EXCLUDED.score,
+             reasons=EXCLUDED.reasons,
+             cache_ttl=EXCLUDED.cache_ttl,
+             redirect_chain=EXCLUDED.redirect_chain,
+             was_shortened=EXCLUDED.was_shortened,
+             final_url_mismatch=EXCLUDED.final_url_mismatch,
+             homoglyph_detected=EXCLUDED.homoglyph_detected,
+             homoglyph_risk_level=EXCLUDED.homoglyph_risk_level,
+             decided_at=now()`,
+          [h, norm, finalUrl, verdict, score, JSON.stringify(enhancedReasons), cacheTtl, JSON.stringify(redirectChain), wasShortened, finalUrlMismatch, homoglyphResult.detected, homoglyphResult.riskLevel]
+        ).catch((err: Error) => {
+          logger.error({ err, url: norm }, 'failed to persist enhanced security verdict');
+        });
+        
+        metrics.verdictScore.observe(score);
+        for (const reason of enhancedReasons) {
+          metrics.verdictReasons.labels(normalizeVerdictReason(reason)).inc();
+        }
+        
+        const verdictLatencySeconds = Math.max(0, (Date.now() - ingestionTimestamp) / 1000);
+        metrics.verdictLatency.observe(verdictLatencySeconds);
+        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
+        metrics.queueCompleted.labels(queueName).inc();
+        
+        if (hasChatContext) {
+          await scanVerdictQueue.add('verdict', {
+            chatId,
+            messageId,
+            ...verdictPayload,
+          }, { removeOnComplete: true });
+        }
+        
+        await enhancedSecurity.recordVerdict(finalUrl, 'malicious', enhancedSecurityResult.score / 3.0);
+        return;
+      }
+
       const [blocklistResult, domainIntel, manualOverride] = await Promise.all([
         checkBlocklistsWithRedundancy({
           finalUrl,
@@ -1146,10 +1241,16 @@ async function main() {
         manualOverride,
         homoglyph: homoglyphResult,
         ...heurSignals,
+        enhancedSecurityScore: enhancedSecurityResult.score,
+        enhancedSecurityReasons: enhancedSecurityResult.reasons,
       };
       const verdictResult = scoreFromSignals(signals);
       const verdict = verdictResult.level;
-      const { score, reasons } = verdictResult;
+      let { score, reasons } = verdictResult;
+      
+      if (enhancedSecurityResult.reasons.length > 0) {
+        reasons = [...reasons, ...enhancedSecurityResult.reasons];
+      }
       const baselineVerdict = scoreFromSignals({ ...signals, manualOverride: null }).level;
 
       metrics.verdictScore.observe(score);
@@ -1271,6 +1372,15 @@ async function main() {
       } else {
         logger.info({ url: finalUrl, jobId: job.id, rescan: Boolean(rescan) }, 'Completed scan without chat context; skipping messaging flow');
       }
+      
+      await enhancedSecurity.recordVerdict(
+        finalUrl,
+        verdict === 'malicious' ? 'malicious' : verdict === 'suspicious' ? 'suspicious' : 'benign',
+        score / 15.0
+      ).catch((err) => {
+        logger.warn({ err, url: finalUrl }, 'failed to record verdict for collaborative learning');
+      });
+      
       metrics.verdictCounter.labels(verdict).inc();
       const totalProcessingSeconds = (Date.now() - started) / 1000;
       metrics.verdictLatency.observe(Math.max(0, (Date.now() - ingestionTimestamp) / 1000));
@@ -1354,6 +1464,18 @@ async function main() {
   }
 
   await app.listen({ host: '0.0.0.0', port: 3001 });
+  
+  const shutdown = async () => {
+    logger.info('Shutting down scan orchestrator...');
+    await enhancedSecurity.stop();
+    await app.close();
+    await pg.end();
+    await redis.quit();
+    process.exit(0);
+  };
+  
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 }
 
 if (process.env.NODE_ENV !== 'test') {
