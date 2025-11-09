@@ -179,6 +179,12 @@ This package centralizes configuration, logging, telemetry, and all security-con
   - `virustotal.ts` applies Bottleneck scheduling, jitter, and quota projection.
   - `gsb.ts` wraps threatMatches lookup.
   - `phishtank.ts`, `urlhaus.ts`, `whoisxml.ts`, `rdap.ts`, and `urlscan.ts` each encapsulate API request/response parsing and common retry semantics.
+- **Enhanced Security Modules** (`packages/shared/src/reputation/*`). Zero-cost intelligence layers that operate before querying rate-limited external services:
+  - `dns-intelligence.ts` performs DNSBL queries (Spamhaus, SURBL, URIBL), DNSSEC validation, and fast-flux network detection with parallel execution and adaptive caching.
+  - `certificate-intelligence.ts` analyzes TLS certificates for self-signed status, age, SAN count, chain validity, and Certificate Transparency log presence.
+  - `advanced-heuristics.ts` calculates Shannon entropy for hostnames/paths, detects keyboard walks, analyzes subdomain patterns, and matches suspicious URL patterns.
+  - `local-threat-db.ts` maintains OpenPhish feed integration with Redis storage, collaborative learning from historical verdicts, and auto-flagging after multiple malicious reports.
+  - `http-fingerprint.ts` performs HEAD requests with human-like behavior (random user agents, jitter delays), analyzes security headers, and detects suspicious redirects.
 - **Circuit breaker utilities** (`packages/shared/src/circuit-breaker.ts:20`). Lightweight breaker with sliding window failure tracking and `withRetry` helper for exponential backoff.
 - **Error types** (`packages/shared/src/errors.ts:1`). Distinguishes quota exhaustion and feature toggles.
 - **Types** (`packages/shared/src/types`). Shared discriminated unions for queue payloads, urlscan responses, and verdict envelopes.
