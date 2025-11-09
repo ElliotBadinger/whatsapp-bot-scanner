@@ -155,6 +155,30 @@ export const config = {
       malicious: parseInt(process.env.CACHE_TTL_MALICIOUS_SECONDS || '900', 10),
     }
   },
+  enhancedSecurity: {
+    enabled: (process.env.ENHANCED_SECURITY_ENABLED || 'true') === 'true',
+    dnsbl: {
+      enabled: (process.env.DNSBL_ENABLED || 'true') === 'true',
+      timeoutMs: parseInt(process.env.DNSBL_TIMEOUT_MS || '2000', 10),
+    },
+    certIntel: {
+      enabled: (process.env.CERT_INTEL_ENABLED || 'true') === 'true',
+      timeoutMs: parseInt(process.env.CERT_INTEL_TIMEOUT_MS || '3000', 10),
+      ctCheckEnabled: (process.env.CERT_INTEL_CT_CHECK_ENABLED || 'true') === 'true',
+    },
+    localThreatDb: {
+      enabled: (process.env.LOCAL_THREAT_DB_ENABLED || 'true') === 'true',
+      feedUrl: process.env.OPENPHISH_FEED_URL || 'https://openphish.com/feed.txt',
+      updateIntervalMs: parseInt(process.env.OPENPHISH_UPDATE_INTERVAL_MS || '7200000', 10),
+    },
+    httpFingerprint: {
+      enabled: (process.env.HTTP_FINGERPRINT_ENABLED || 'true') === 'true',
+      timeoutMs: parseInt(process.env.HTTP_FINGERPRINT_TIMEOUT_MS || '2000', 10),
+    },
+    heuristics: {
+      entropyThreshold: parseFloat(process.env.ENHANCED_HEURISTICS_ENTROPY_THRESHOLD || '4.5'),
+    },
+  },
   controlPlane: {
     port: parseInt(process.env.CONTROL_PLANE_PORT || '8080', 10),
     get token(): string {
