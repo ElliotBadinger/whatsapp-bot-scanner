@@ -7,44 +7,14 @@ services:
       - redisdata:/data
     networks: [internal]
 
-  postgres:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-wbscanner}
-      POSTGRES_USER: ${POSTGRES_USER:-wbscanner}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wbscanner}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL","pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    restart: unless-stopped
-    networks: [internal]
-
-  migrate:
-    image: node:20-alpine
-    depends_on:
-      postgres:
-        condition: service_healthy
-    working_dir: /app
-    entrypoint: ["node","scripts/run-migrations.js"]
-    env_file: [.env]
-    volumes:
-      - ./:/app:ro
-    networks: [internal]
-
   seed:
     image: node:20-alpine
-    depends_on:
-      postgres:
-        condition: service_healthy
     working_dir: /app
     entrypoint: ["node","scripts/run-seeds.js"]
     env_file: [.env]
     volumes:
       - ./:/app:ro
+      - wbscanner_data:/app/data
     networks: [internal]
 
   wa-client:
@@ -73,9 +43,9 @@ services:
     env_file: [.env]
     depends_on:
       - redis
-      - postgres
-      - migrate
     networks: [internal]
+    volumes:
+      - wbscanner_data:/app/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL","wget -qO- http://127.0.0.1:3001/healthz || exit 1"]
@@ -90,10 +60,9 @@ services:
       context: .
       dockerfile: services/control-plane/Dockerfile
     env_file: [.env]
-    depends_on:
-      - postgres
-      - migrate
     networks: [internal]
+    volumes:
+      - wbscanner_data:/app/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL","wget --header=\"Authorization: Bearer ${CONTROL_PLANE_API_TOKEN}\" -qO- http://127.0.0.1:8080/healthz || exit 1"]
@@ -155,8 +124,8 @@ networks:
     driver: bridge
 
 volumes:
-  pgdata:
   wa_session:
   redisdata:
+  wbscanner_data:
   prometheus_data:
   uptime_kuma_data:

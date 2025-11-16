@@ -72,6 +72,7 @@ export const config = {
     path: process.env.SQLITE_DB_PATH || './data/wbscanner.db',
     readonly: process.env.SQLITE_READONLY === 'true',
     verbose: process.env.SQLITE_VERBOSE === 'true',
+    migrationsDir: process.env.SQLITE_MIGRATIONS_DIR || './db/migrations-sqlite',
   },
   queues: {
     scanRequest: ensureQueueName(process.env.SCAN_REQUEST_QUEUE || 'scan-request', 'SCAN_REQUEST_QUEUE'),

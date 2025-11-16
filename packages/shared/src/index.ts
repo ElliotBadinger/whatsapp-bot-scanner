@@ -2,6 +2,7 @@ export * from './log';
 export * from './metrics';
 export * from './config';
 export * from './database/sqlite';
+export * from './database/migrate';
 export * from './url';
 export * from './ssrf';
 export * from './scoring';
