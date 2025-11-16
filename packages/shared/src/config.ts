@@ -68,12 +68,10 @@ const featureFlags = {
 export const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
   redisUrl: process.env.REDIS_URL || 'redis://localhost:6379/0',
-  postgres: {
-    host: process.env.POSTGRES_HOST || 'localhost',
-    port: parseInt(process.env.POSTGRES_PORT || '5432', 10),
-    db: process.env.POSTGRES_DB || 'wbscanner',
-    user: process.env.POSTGRES_USER || 'wbscanner',
-    password: process.env.POSTGRES_PASSWORD || 'wbscanner',
+  sqlite: {
+    path: process.env.SQLITE_DB_PATH || './data/wbscanner.db',
+    readonly: process.env.SQLITE_READONLY === 'true',
+    verbose: process.env.SQLITE_VERBOSE === 'true',
   },
   queues: {
     scanRequest: ensureQueueName(process.env.SCAN_REQUEST_QUEUE || 'scan-request', 'SCAN_REQUEST_QUEUE'),
@@ -264,7 +262,7 @@ export function assertEssentialConfig(serviceName: string): void {
   if (!config.vt.apiKey?.trim()) missing.push('VT_API_KEY');
   if (!config.gsb.apiKey?.trim()) missing.push('GSB_API_KEY');
   if (!config.redisUrl?.trim()) missing.push('REDIS_URL');
-  if (!config.postgres.host?.trim()) missing.push('POSTGRES_HOST');
+  if (!config.sqlite.path?.trim()) missing.push('SQLITE_DB_PATH');
 
   if (missing.length > 0) {
     logger.error({ service: serviceName, missing }, 'Missing required environment variables');
