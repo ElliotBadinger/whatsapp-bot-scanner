@@ -10,6 +10,7 @@
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {
+    "better-sqlite3": "^11.7.0",
     "bottleneck": "^2.19.5",
     "bullmq": "^5.7.8",
     "confusable": "file:../confusable",
@@ -30,6 +31,7 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
     "@types/jest": "^29.5.12",
     "@types/node": "^20.11.30",
     "eslint": "^9.38.0",
