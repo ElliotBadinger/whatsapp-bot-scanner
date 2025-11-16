@@ -114,26 +114,39 @@ services:
     networks: [internal, public]
     restart: unless-stopped
 
+  who-dat:
+    image: carlosabalde/who-dat:latest
+    environment:
+      - WHO_DAT_WHOIS_SERVER=whois.verisign-grs.com
+      - WHO_DAT_CACHE_ENABLED=true
+      - WHO_DAT_CACHE_TTL=3600
+    networks: [internal]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   prometheus:
     image: prom/prometheus:latest
     command: ["--config.file=/etc/prometheus/prometheus.yml"]
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
     networks: [internal]
     restart: unless-stopped
 
-  grafana:
-    image: grafana/grafana:11.0.0
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
     volumes:
-      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
-      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - uptime_kuma_data:/app/data
     ports:
-      - "3002:3000"
+      - "3001:3001"
     networks: [internal]
     restart: unless-stopped
+    environment:
+      - UPTIME_KUMA_PORT=3001
 
 networks:
   internal:
@@ -145,3 +158,5 @@ volumes:
   pgdata:
   wa_session:
   redisdata:
+  prometheus_data:
+  uptime_kuma_data:
