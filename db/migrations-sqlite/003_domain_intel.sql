@@ -1,0 +1,3 @@
+-- This migration is intentionally empty.
+-- The changes from the corresponding PostgreSQL migration have been consolidated
+-- into the initial `001_init.sql` SQLite migration file.
