@@ -25,7 +25,7 @@ Production-ready, containerized system that ingests WhatsApp group messages, det
 Quick start:
 
 - Run `./setup.sh` to launch the guided onboarding wizard (Node.js 18+, Docker, and CLI prerequisites required). See [`docs/getting-started.md`](docs/getting-started.md) for a detailed walkthrough.
-- After setup completes, open Grafana at `http://localhost:3002` (admin/admin) for dashboards.
+- After setup completes, open Uptime Kuma at `http://localhost:3001` for GUI monitoring and alerting.
 - (Optional) `make test-load` to exercise `/healthz` endpoints; tune with `LOAD_TARGET_URL`, `LOAD_CONCURRENCY`, and `LOAD_DURATION_SECONDS`.
 
 Services:
@@ -34,7 +34,8 @@ Services:
 - `scan-orchestrator`: Normalization, expansion, reputation checks, scoring, caching, DB writes.
 - `control-plane`: Admin API for overrides, mutes, status, metrics.
 - `reverse-proxy`: Nginx fronting the control-plane.
-- `redis`, `postgres`, `prometheus`, `grafana`.
+- `who-dat`: Self-hosted WHOIS service (unlimited, quota-free domain lookups).
+- `redis`, `postgres`, `prometheus`, `uptime-kuma`.
 
 Operational notes:
 
@@ -44,6 +45,8 @@ Operational notes:
 
 Documentation located in `docs/` covers architecture, security, operations, and runbooks.
 See [`docs/COST_MODEL.md`](docs/COST_MODEL.md) for VirusTotal quota guidance and observability metrics.
+See [`docs/WHOIS_MIGRATION.md`](docs/WHOIS_MIGRATION.md) for WHOIS service migration details.
+See [`docs/MONITORING.md`](docs/MONITORING.md) for monitoring setup with Uptime Kuma.
 
 ## Deploying with Railway
 
