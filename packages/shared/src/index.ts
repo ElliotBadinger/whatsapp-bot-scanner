@@ -11,6 +11,7 @@ export * from './reputation/urlhaus';
 export * from './reputation/phishtank';
 export * from './reputation/urlscan';
 export * from './reputation/whoisxml';
+export * from './reputation/whodat';
 export * from './reputation/dns-intelligence';
 export * from './reputation/certificate-intelligence';
 export * from './reputation/advanced-heuristics';

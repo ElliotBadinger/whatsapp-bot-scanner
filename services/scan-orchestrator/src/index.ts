@@ -31,6 +31,7 @@ import {
   resolveShortener,
   whoisXmlLookup,
   disableWhoisXmlForMonth,
+  whoDatLookup,
   CircuitBreaker,
   CircuitState,
   withRetry,
@@ -263,6 +264,7 @@ const CIRCUIT_LABELS = {
   vt: 'virustotal',
   urlscan: 'urlscan',
   whoisxml: 'whoisxml',
+  whodat: 'whodat',
 } as const;
 
 const cacheRatios = new Map<string, { hits: number; misses: number }>();
@@ -398,6 +400,7 @@ const urlhausCircuit = makeCircuit(CIRCUIT_LABELS.urlhaus);
 const vtCircuit = makeCircuit(CIRCUIT_LABELS.vt);
 const urlscanCircuit = makeCircuit(CIRCUIT_LABELS.urlscan);
 const whoisCircuit = makeCircuit(CIRCUIT_LABELS.whoisxml);
+const whodatCircuit = makeCircuit(CIRCUIT_LABELS.whodat);
 
 function recordLatency(service: string, ms?: number) {
   if (typeof ms === 'number' && ms >= 0) {
@@ -726,7 +729,7 @@ async function resolveShortenerWithCache(url: string, hash: string): Promise<Sho
 
 interface DomainIntelResult {
   ageDays?: number;
-  source: 'rdap' | 'whoisxml' | 'none';
+  source: 'rdap' | 'whoisxml' | 'whodat' | 'none';
   registrar?: string;
 }
 
@@ -735,6 +738,40 @@ async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainI
   if (rdapAge !== undefined) {
     return { ageDays: rdapAge, source: 'rdap' };
   }
+  
+  // Try who-dat first if enabled (self-hosted, no quota limits)
+  if (config.whodat.enabled) {
+    const cacheKey = `url:analysis:${hash}:whodat`;
+    const cached = await getJsonCache<{ ageDays?: number; registrar?: string }>(
+      CACHE_LABELS.whois,
+      cacheKey,
+      ANALYSIS_TTLS.whois
+    );
+    if (cached) {
+      return { ageDays: cached.ageDays, registrar: cached.registrar, source: 'whodat' };
+    }
+    try {
+      const start = Date.now();
+      const response = await whodatCircuit.execute(() =>
+        withRetry(() => whoDatLookup(hostname), {
+          retries: 2,
+          baseDelayMs: 1000,
+          factor: 2,
+          retryable: shouldRetry,
+        })
+      );
+      recordLatency(CIRCUIT_LABELS.whodat, Date.now() - start);
+      const ageDays = response?.record?.estimatedDomainAgeDays;
+      const registrar = response?.record?.registrarName;
+      await setJsonCache(CACHE_LABELS.whois, cacheKey, { ageDays, registrar }, ANALYSIS_TTLS.whois);
+      return { ageDays, registrar, source: 'whodat' };
+    } catch (err) {
+      recordError(CIRCUIT_LABELS.whodat, err);
+      logger.warn({ err, hostname }, 'Who-dat lookup failed, falling back to WhoisXML if available');
+    }
+  }
+  
+  // Fallback to WhoisXML if who-dat failed or is disabled
   if (!config.whoisxml.enabled || !config.whoisxml.apiKey) {
     return { ageDays: undefined, source: 'none' };
   }

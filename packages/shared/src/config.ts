@@ -131,11 +131,16 @@ export const config = {
     },
   },
   whoisxml: {
-    enabled: ((process.env.WHOISXML_ENABLE ?? process.env.WHOISXML_ENABLED) || 'true') === 'true',
+    enabled: ((process.env.WHOISXML_ENABLE ?? process.env.WHOISXML_ENABLED) || 'false') === 'true',
     apiKey: process.env.WHOISXML_API_KEY || '',
     timeoutMs: parseInt(process.env.WHOISXML_TIMEOUT_MS || '5000', 10),
     monthlyQuota: parsePositiveInt(process.env.WHOISXML_MONTHLY_QUOTA, 500),
     quotaAlertThreshold: parsePositiveInt(process.env.WHOISXML_QUOTA_ALERT_THRESHOLD, 100, { minimum: 1 }),
+  },
+  whodat: {
+    enabled: (process.env.WHODAT_ENABLED || 'true') === 'true',
+    baseUrl: process.env.WHODAT_BASE_URL || 'http://who-dat:8080',
+    timeoutMs: parseInt(process.env.WHODAT_TIMEOUT_MS || '5000', 10),
   },
   shortener: {
     unshortenEndpoint: process.env.UNSHORTEN_ENDPOINT || 'https://unshorten.me/json/',
