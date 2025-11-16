@@ -1,10 +1,11 @@
 import Fastify from 'fastify';
 import Redis from 'ioredis';
 import { Queue, Worker } from 'bullmq';
-import { Client as PgClient } from 'pg';
 import {
   config,
   logger,
+  createDatabase,
+  MigrationRunner,
   register,
   metrics,
   externalLatency,
@@ -811,25 +812,21 @@ async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainI
   }
 }
 
-const pg = new PgClient({
-  host: config.postgres.host,
-  port: config.postgres.port,
-  database: config.postgres.db,
-  user: config.postgres.user,
-  password: config.postgres.password
-});
+const db = createDatabase(config.sqlite);
+const migrationRunner = new MigrationRunner(db);
+migrationRunner.runMigrations(config.sqlite.migrationsDir);
 
 async function loadManualOverride(urlHash: string, hostname: string): Promise<'allow' | 'deny' | null> {
   try {
-    const overrideResult = await pg.query(
+    const overrideResult = db.get<{ status: 'allow' | 'deny' }>(
       `SELECT status FROM overrides
-         WHERE (url_hash = $1 OR pattern = $2)
-           AND (expires_at IS NULL OR expires_at > NOW())
+         WHERE (url_hash = ? OR pattern = ?)
+           AND (expires_at IS NULL OR expires_at > strftime('%s', 'now') * 1000)
          ORDER BY created_at DESC
          LIMIT 1`,
       [urlHash, hostname]
     );
-    const status = overrideResult.rows[0]?.status;
+    const status = overrideResult?.status;
     return status === 'allow' || status === 'deny' ? status : null;
   } catch (err) {
     logger.warn({ err, urlHash, hostname }, 'Failed to load manual override');
@@ -839,7 +836,6 @@ async function loadManualOverride(urlHash: string, hostname: string): Promise<'a
 
 async function main() {
   assertEssentialConfig('scan-orchestrator');
-  await pg.connect();
   
   const enhancedSecurity = new EnhancedSecurityAnalyzer(redis);
   await enhancedSecurity.start();
@@ -920,22 +916,24 @@ async function main() {
       logger.warn({ err, uuid }, 'failed to download urlscan artifacts');
     }
 
-    await pg.query(
-      `UPDATE scans
-         SET urlscan_status=$1,
-             urlscan_completed_at=now(),
-             urlscan_result=$2,
-             urlscan_screenshot_path=COALESCE($4, urlscan_screenshot_path),
-             urlscan_dom_path=COALESCE($5, urlscan_dom_path),
-             urlscan_artifact_stored_at=CASE
-               WHEN $4 IS NOT NULL OR $5 IS NOT NULL THEN now()
-               ELSE urlscan_artifact_stored_at
-             END
-       WHERE url_hash=$3`,
-      ['completed', JSON.stringify(body), urlHashValue, artifacts?.screenshotPath ?? null, artifacts?.domPath ?? null]
-    ).catch((err: Error) => {
+    try {
+      db.run(
+        `UPDATE scans
+           SET urlscan_status=?,
+               urlscan_completed_at=strftime('%s', 'now') * 1000,
+               urlscan_result=?,
+               urlscan_screenshot_path=COALESCE(?, urlscan_screenshot_path),
+               urlscan_dom_path=COALESCE(?, urlscan_dom_path),
+               urlscan_artifact_stored_at=CASE
+                 WHEN ? IS NOT NULL OR ? IS NOT NULL THEN strftime('%s', 'now') * 1000
+                 ELSE urlscan_artifact_stored_at
+               END
+         WHERE url_hash=?`,
+        ['completed', JSON.stringify(body), artifacts?.screenshotPath ?? null, artifacts?.domPath ?? null, artifacts?.screenshotPath ?? null, artifacts?.domPath ?? null, urlHashValue]
+      );
+    } catch (err) {
       logger.error({ err }, 'failed to persist urlscan callback');
-    });
+    }
 
     reply.send({ ok: true });
   });
@@ -1089,25 +1087,27 @@ async function main() {
         };
         
         await setJsonCache(CACHE_LABELS.verdict, cacheKey, verdictPayload, cacheTtl);
-        await pg.query(
-          `INSERT INTO scans (url_hash, url, final_url, verdict, score, reasons, cache_ttl, redirect_chain, was_shortened, final_url_mismatch, homoglyph_detected, homoglyph_risk_level, decided_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
-           ON CONFLICT (url_hash) DO UPDATE SET
-             final_url=EXCLUDED.final_url,
-             verdict=EXCLUDED.verdict,
-             score=EXCLUDED.score,
-             reasons=EXCLUDED.reasons,
-             cache_ttl=EXCLUDED.cache_ttl,
-             redirect_chain=EXCLUDED.redirect_chain,
-             was_shortened=EXCLUDED.was_shortened,
-             final_url_mismatch=EXCLUDED.final_url_mismatch,
-             homoglyph_detected=EXCLUDED.homoglyph_detected,
-             homoglyph_risk_level=EXCLUDED.homoglyph_risk_level,
-             decided_at=now()`,
-          [h, norm, finalUrl, verdict, score, JSON.stringify(enhancedReasons), cacheTtl, JSON.stringify(redirectChain), wasShortened, finalUrlMismatch, homoglyphResult.detected, homoglyphResult.riskLevel]
-        ).catch((err: Error) => {
+        try {
+          db.run(
+            `INSERT INTO scans (url_hash, normalized_url, final_url, verdict, score, reasons, cache_ttl, redirect_chain_summary, was_shortened, final_url_mismatch, homoglyph_detected, homoglyph_risk_level, decided_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%s', 'now') * 1000)
+             ON CONFLICT (url_hash) DO UPDATE SET
+               final_url=excluded.final_url,
+               verdict=excluded.verdict,
+               score=excluded.score,
+               reasons=excluded.reasons,
+               cache_ttl=excluded.cache_ttl,
+               redirect_chain_summary=excluded.redirect_chain_summary,
+               was_shortened=excluded.was_shortened,
+               final_url_mismatch=excluded.final_url_mismatch,
+               homoglyph_detected=excluded.homoglyph_detected,
+               homoglyph_risk_level=excluded.homoglyph_risk_level,
+               decided_at=strftime('%s', 'now') * 1000`,
+            [h, norm, finalUrl, verdict, score, JSON.stringify(enhancedReasons), cacheTtl, JSON.stringify(redirectChain), wasShortened, finalUrlMismatch, homoglyphResult.detected, homoglyphResult.riskLevel]
+          );
+        } catch (err) {
           logger.error({ err, url: norm }, 'failed to persist enhanced security verdict');
-        });
+        }
         
         metrics.verdictScore.observe(score);
         for (const reason of enhancedReasons) {
@@ -1391,19 +1391,30 @@ async function main() {
       };
       await setJsonCache(CACHE_LABELS.verdict, cacheKey, res, ttl);
 
-      await pg.query(`INSERT INTO scans (url_hash, normalized_url, verdict, score, reasons, vt_stats, gsafebrowsing_hit, domain_age_days, redirect_chain_summary, cache_ttl, source_kind, urlscan_status, whois_source, whois_registrar, shortener_provider)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-        ON CONFLICT (url_hash) DO UPDATE SET last_seen_at=now(), verdict=EXCLUDED.verdict, score=EXCLUDED.score, reasons=EXCLUDED.reasons, vt_stats=EXCLUDED.vt_stats, gsafebrowsing_hit=EXCLUDED.gsafebrowsing_hit, domain_age_days=EXCLUDED.domain_age_days, redirect_chain_summary=EXCLUDED.redirect_chain_summary, cache_ttl=EXCLUDED.cache_ttl, urlscan_status=COALESCE(EXCLUDED.urlscan_status, scans.urlscan_status), whois_source=COALESCE(EXCLUDED.whois_source, scans.whois_source), whois_registrar=COALESCE(EXCLUDED.whois_registrar, scans.whois_registrar), shortener_provider=COALESCE(EXCLUDED.shortener_provider, scans.shortener_provider)`,
-        [h, finalUrl, verdict, score, JSON.stringify(reasons), JSON.stringify(vtStats || {}), blocklistHit, domainAgeDays ?? null, JSON.stringify(redirectChain), ttl, 'wa', enqueuedUrlscan ? 'queued' : null, domainIntel.source === 'none' ? null : domainIntel.source, domainIntel.registrar ?? null, shortenerInfo?.provider ?? null]
-      );
+      try {
+        db.run(`INSERT INTO scans (url_hash, normalized_url, verdict, score, reasons, vt_stats, gsafebrowsing_hit, domain_age_days, redirect_chain_summary, cache_ttl, source_kind, urlscan_status, whois_source, whois_registrar, shortener_provider)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          ON CONFLICT (url_hash) DO UPDATE SET last_seen_at=strftime('%s', 'now') * 1000, verdict=excluded.verdict, score=excluded.score, reasons=excluded.reasons, vt_stats=excluded.vt_stats, gsafebrowsing_hit=excluded.gsafebrowsing_hit, domain_age_days=excluded.domain_age_days, redirect_chain_summary=excluded.redirect_chain_summary, cache_ttl=excluded.cache_ttl, urlscan_status=COALESCE(excluded.urlscan_status, scans.urlscan_status), whois_source=COALESCE(excluded.whois_source, scans.whois_source), whois_registrar=COALESCE(excluded.whois_registrar, scans.whois_registrar), shortener_provider=COALESCE(excluded.shortener_provider, scans.shortener_provider)`,
+          [h, finalUrl, verdict, score, JSON.stringify(reasons), JSON.stringify(vtStats || {}), blocklistHit, domainAgeDays ?? null, JSON.stringify(redirectChain), ttl, 'wa', enqueuedUrlscan ? 'queued' : null, domainIntel.source === 'none' ? null : domainIntel.source, domainIntel.registrar ?? null, shortenerInfo?.provider ?? null]
+        );
+      } catch (err) {
+        logger.error({ err, url: finalUrl }, 'failed to persist scan verdict');
+      }
+
       if (enqueuedUrlscan) {
-        await pg.query('UPDATE scans SET urlscan_status=$1 WHERE url_hash=$2', ['queued', h]).catch(() => undefined);
+        try {
+          db.run('UPDATE scans SET urlscan_status=? WHERE url_hash=?', ['queued', h]);
+        } catch (err) {
+          logger.error({ err, urlHash: h }, 'failed to update urlscan status');
+        }
       }
       if (chatId && messageId) {
-        await pg.query(`INSERT INTO messages (chat_id, message_id, url_hash, verdict, posted_at)
-        VALUES ($1,$2,$3,$4,now()) ON CONFLICT DO NOTHING`, [chatId, messageId, h, verdict]).catch((err) => {
+        try {
+          db.run(`INSERT INTO messages (chat_id, message_id, url_hash, verdict, posted_at)
+          VALUES (?,?,?,?,strftime('%s', 'now') * 1000) ON CONFLICT DO NOTHING`, [chatId, messageId, h, verdict]);
+        } catch (err) {
           logger.warn({ err, chatId, messageId }, 'failed to persist message metadata for scan');
-        });
+        }
 
         await scanVerdictQueue.add('verdict', { ...res, chatId, messageId }, { removeOnComplete: true });
       } else {
@@ -1474,10 +1485,14 @@ async function main() {
             'EX',
             config.urlscan.uuidTtlSeconds
           );
-          await pg.query(
-            `UPDATE scans SET urlscan_uuid=$1, urlscan_status=$2, urlscan_submitted_at=now(), urlscan_result_url=$3 WHERE url_hash=$4`,
-            [submission.uuid, 'submitted', submission.result ?? null, urlHashValue]
-          );
+          try {
+            db.run(
+              `UPDATE scans SET urlscan_uuid=?, urlscan_status=?, urlscan_submitted_at=strftime('%s', 'now') * 1000, urlscan_result_url=? WHERE url_hash=?`,
+              [submission.uuid, 'submitted', submission.result ?? null, urlHashValue]
+            );
+          } catch (err) {
+            logger.error({ err, urlHash: urlHashValue }, 'failed to update urlscan status');
+          }
         }
         metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
         metrics.queueCompleted.labels(queueName).inc();
@@ -1487,10 +1502,14 @@ async function main() {
       } catch (err) {
         recordError(CIRCUIT_LABELS.urlscan, err);
         logger.error({ err, url }, 'urlscan submission failed');
-        await pg.query(
-          `UPDATE scans SET urlscan_status=$1, urlscan_completed_at=now() WHERE url_hash=$2`,
-          ['failed', urlHashValue]
-        ).catch(() => undefined);
+        try {
+          db.run(
+            `UPDATE scans SET urlscan_status=?, urlscan_completed_at=strftime('%s', 'now') * 1000 WHERE url_hash=?`,
+            ['failed', urlHashValue]
+          );
+        } catch (err) {
+          logger.error({ err, urlHash: urlHashValue }, 'failed to update urlscan status');
+        }
         metrics.queueFailures.labels(queueName).inc();
         metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
         throw err;
@@ -1506,7 +1525,7 @@ async function main() {
     logger.info('Shutting down scan orchestrator...');
     await enhancedSecurity.stop();
     await app.close();
-    await pg.end();
+    db.close();
     await redis.quit();
     process.exit(0);
   };

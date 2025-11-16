@@ -17,14 +17,16 @@ jest.mock('bullmq', () => {
   };
 });
 
-jest.mock('pg', () => {
-  return {
-    Client: jest.fn().mockImplementation(() => ({
-      connect: jest.fn().mockResolvedValue(null),
-      query: jest.fn().mockResolvedValue({ rows: [] }),
-      end: jest.fn().mockResolvedValue(null),
-    })),
-  };
+jest.mock('better-sqlite3', () => {
+  return jest.fn().mockImplementation(() => ({
+    prepare: jest.fn().mockReturnThis(),
+    run: jest.fn(),
+    all: jest.fn().mockReturnValue([]),
+    get: jest.fn().mockReturnValue(undefined),
+    close: jest.fn(),
+    pragma: jest.fn(),
+    transaction: jest.fn().mockImplementation((fn) => fn()),
+  }));
 });
 
 import { __testables } from '../index';
