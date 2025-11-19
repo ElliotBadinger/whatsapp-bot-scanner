@@ -32,3 +32,6 @@ storage/*
 !storage/.gitkeep
 
 whatsapp-web.js/
+
+# Research
+Research/
