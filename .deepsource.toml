@@ -1,18 +1,41 @@
 version = 1
 
+# ============================================================================
+# DOCKER SECURITY & BEST PRACTICES
+# ============================================================================
 [[analyzers]]
 name = "docker"
 enabled = true
 
+  [analyzers.meta]
+  # Scan for security vulnerabilities and best practices in Dockerfiles
+  dockerfile_paths = [
+    "**/Dockerfile",
+    "**/Dockerfile.*"
+  ]
+
+# ============================================================================
+# JAVASCRIPT/TYPESCRIPT - CODE QUALITY, SECURITY & PERFORMANCE
+# ============================================================================
 [[analyzers]]
 name = "javascript"
 enabled = true
 
   [analyzers.meta]
-  plugins = ["react"]
-  environment = ["nodejs"]
+  plugins = [
+    "react",
+    "security",      # Security vulnerability detection
+    "performance"    # Performance anti-patterns detection
+  ]
+  environment = ["nodejs", "browser"]
   style_guide = "airbnb"
   dialect = "typescript"
+  
+  # Enable dependency scanning for npm packages
+  dependency_file_paths = [
+    "package.json",
+    "services/*/package.json"
+  ]
 
   [[analyzers.exclude_patterns]]
   paths = [
@@ -22,29 +45,119 @@ enabled = true
     "**/build/**",
     "**/.next/**",
     "**/Research/**",
-    "**/whatsapp-web.js/**"
+    "**/whatsapp-web.js/**",
+    "**/*.min.js",
+    "**/*.bundle.js"
   ]
 
-# Security: Detect hardcoded secrets (API keys, tokens, passwords)
+# ============================================================================
+# PYTHON - SECURITY, PERFORMANCE & CODE QUALITY
+# ============================================================================
+[[analyzers]]
+name = "python"
+enabled = true
+
+  [analyzers.meta]
+  # Runtime version for compatibility checks
+  runtime_version = "3.x"
+  
+  # Enable security-focused checks
+  # Detects: SQL injection, command injection, XSS, insecure crypto, etc.
+  skip_doc_coverage = ["module", "magic", "init"]
+  
+  # Dependency scanning for Python packages
+  dependency_file_paths = [
+    "requirements.txt",
+    "requirements/*.txt",
+    "Pipfile",
+    "pyproject.toml"
+  ]
+
+  [[analyzers.exclude_patterns]]
+  paths = [
+    "**/venv/**",
+    "**/.venv/**",
+    "**/env/**",
+    "**/__pycache__/**",
+    "**/*.pyc",
+    "**/Research/**"
+  ]
+
+# ============================================================================
+# SECRETS DETECTION - PREVENT CREDENTIAL LEAKS
+# ============================================================================
 [[analyzers]]
 name = "secrets"
 enabled = true
 
-# Security: Analyze shell scripts for bugs and security issues
+  [analyzers.meta]
+  # Scan for hardcoded secrets, API keys, tokens, passwords
+  # Includes: AWS keys, GitHub tokens, private keys, database credentials, etc.
+  
+  [[analyzers.exclude_patterns]]
+  paths = [
+    "**/node_modules/**",
+    "**/Research/**",
+    "**/.env.example",
+    "**/test/**/*.mock.*"
+  ]
+
+# ============================================================================
+# SHELL SCRIPT SECURITY & QUALITY
+# ============================================================================
 [[analyzers]]
 name = "shell"
 enabled = true
 
-# Security: Detect SQL injection vulnerabilities and bad practices
+  [analyzers.meta]
+  # Detects: Command injection, unsafe variable usage, quoting issues
+  # Supports: bash, sh, zsh
+  
+  [[analyzers.exclude_patterns]]
+  paths = [
+    "**/node_modules/**",
+    "**/Research/**"
+  ]
+
+# ============================================================================
+# SQL SECURITY & PERFORMANCE
+# ============================================================================
 [[analyzers]]
 name = "sql"
 enabled = true
 
-# Test Coverage Analyzer
+  [analyzers.meta]
+  # Detects: SQL injection, inefficient queries, missing indexes
+  # Supports: PostgreSQL, MySQL, SQLite
+  
+  [[analyzers.exclude_patterns]]
+  paths = [
+    "**/node_modules/**",
+    "**/Research/**",
+    "**/migrations/**/*.sql"  # Migration files often have special syntax
+  ]
+
+# ============================================================================
+# TEST COVERAGE TRACKING
+# ============================================================================
 [[analyzers]]
 name = "test-coverage"
 enabled = true
 
+  [analyzers.meta]
+  # Track test coverage across all services
+  coverage_file_paths = [
+    "coverage/lcov.info",
+    "services/*/coverage/lcov.info"
+  ]
+
+# ============================================================================
+# CODE FORMATTING - PRETTIER
+# ============================================================================
 [[transformers]]
 name = "prettier"
 enabled = true
+
+  [transformers.meta]
+  # Auto-format code on commit
+  config_file = ".prettierrc"
