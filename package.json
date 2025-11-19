@@ -20,16 +20,20 @@
     "seed": "node scripts/run-seeds.js",
     "test:load": "node tests/load/http-load.js",
     "validate:config": "node scripts/validate-config.js",
+    "validate": "bash scripts/validate-compilation.sh",
     "mcp:install": "bash scripts/install-wbscanner-mcp.sh",
     "watch:pairing-code": "node scripts/watch-pairing-code.js",
     "prebuild": "npm run validate:config",
-    "export:wwebjs-docs": "node scripts/export-wwebjs-docs.mjs"
+    "export:wwebjs-docs": "node scripts/export-wwebjs-docs.mjs",
+    "ds:status": "node scripts/deepsource-api.js status",
+    "ds:issues": "node scripts/deepsource-api.js issues",
+    "ds:metrics": "node scripts/deepsource-api.js metrics"
   },
   "devDependencies": {
     "cheerio": "^1.1.2",
-    "ioredis-mock": "^5.8.0",
+    "ioredis-mock": "^8.0.0",
     "turndown": "^7.2.1",
-    "vitest": "^1.6.0"
+    "vitest": "^4.0.10"
   },
   "dependencies": {
     "boxen": "^7.1.1",

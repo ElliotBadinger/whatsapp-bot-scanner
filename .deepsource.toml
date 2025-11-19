@@ -1,0 +1,50 @@
+version = 1
+
+[[analyzers]]
+name = "docker"
+enabled = true
+
+[[analyzers]]
+name = "javascript"
+enabled = true
+
+  [analyzers.meta]
+  plugins = ["react"]
+  environment = ["nodejs"]
+  style_guide = "airbnb"
+  dialect = "typescript"
+
+  [[analyzers.exclude_patterns]]
+  paths = [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/coverage/**",
+    "**/build/**",
+    "**/.next/**",
+    "**/Research/**",
+    "**/whatsapp-web.js/**"
+  ]
+
+# Security: Detect hardcoded secrets (API keys, tokens, passwords)
+[[analyzers]]
+name = "secrets"
+enabled = true
+
+# Security: Analyze shell scripts for bugs and security issues
+[[analyzers]]
+name = "shell"
+enabled = true
+
+# Security: Detect SQL injection vulnerabilities and bad practices
+[[analyzers]]
+name = "sql"
+enabled = true
+
+# Test Coverage Analyzer
+[[analyzers]]
+name = "test-coverage"
+enabled = true
+
+[[transformers]]
+name = "prettier"
+enabled = true
