@@ -527,7 +527,7 @@ class AgentOrchestrator:
     def _write_jsonl(path: Path, events: List[Dict[str, Any]]) -> None:
         with path.open("w", encoding="utf-8") as handle:
             for event in events:
-                handle.write(json.dumps(event))
+                json.dump(event, handle)
                 handle.write("\n")
 
 
