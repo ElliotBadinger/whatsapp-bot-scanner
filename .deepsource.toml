@@ -22,8 +22,11 @@ name = "javascript"
 enabled = true
 dependency_file_paths = [
   "package.json",
-  "services/*/package.json",
-  "packages/*/package.json"
+  "services/wa-client/package.json",
+  "services/scan-orchestrator/package.json",
+  "services/control-plane/package.json",
+  "packages/shared/package.json",
+  "packages/confusable/package.json"
 ]
 
   [analyzers.meta]
