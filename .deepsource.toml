@@ -60,14 +60,6 @@ enabled = true
   # Enable security-focused checks
   # Detects: SQL injection, command injection, XSS, insecure crypto, etc.
   skip_doc_coverage = ["module", "magic", "init"]
-  
-  # Dependency scanning for Python packages
-  dependency_file_paths = [
-    "requirements.txt",
-    "requirements/*.txt",
-    "Pipfile",
-    "pyproject.toml"
-  ]
 
   [[analyzers.exclude_patterns]]
   paths = [
