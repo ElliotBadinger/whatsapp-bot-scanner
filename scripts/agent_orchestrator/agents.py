@@ -58,7 +58,7 @@ class CodexAgent:
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-            )
+            check=True)
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError(
                 f"Codex CLI timed out after {timeout}s"
@@ -114,7 +114,7 @@ class GeminiAgent:
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-            )
+            check=True)
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError(
                 f"Gemini CLI timed out after {timeout}s"

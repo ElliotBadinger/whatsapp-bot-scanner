@@ -420,7 +420,7 @@ class AgentOrchestrator:
                 cwd=self.repo_root,
                 capture_output=True,
                 text=True,
-            )
+            check=True)
             results.append(
                 {
                     "command": command,
@@ -468,7 +468,7 @@ class AgentOrchestrator:
             input=diff,
             text=True,
             capture_output=True,
-        )
+        check=True)
         if check.returncode != 0:
             return {
                 "applied": False,
@@ -484,7 +484,7 @@ class AgentOrchestrator:
             input=diff,
             text=True,
             capture_output=True,
-        )
+        check=True)
         if apply.returncode != 0:
             return {
                 "applied": False,
@@ -499,7 +499,7 @@ class AgentOrchestrator:
             cwd=self.repo_root,
             capture_output=True,
             text=True,
-        )
+        check=True)
         return result.stdout.strip()
 
     def _git_diff_stat(self) -> str:
@@ -508,7 +508,7 @@ class AgentOrchestrator:
             cwd=self.repo_root,
             capture_output=True,
             text=True,
-        )
+        check=True)
         return result.stdout.strip()
 
     def _git_diff_patch(self) -> str:
@@ -517,7 +517,7 @@ class AgentOrchestrator:
             cwd=self.repo_root,
             capture_output=True,
             text=True,
-        )
+        check=True)
         diff = result.stdout
         if len(diff) > 8000:
             diff = diff[:8000] + "\n... (diff truncated) ..."
