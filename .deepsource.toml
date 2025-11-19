@@ -22,11 +22,7 @@ name = "javascript"
 enabled = true
 
   [analyzers.meta]
-  plugins = [
-    "react",
-    "security",      # Security vulnerability detection
-    "performance"    # Performance anti-patterns detection
-  ]
+  plugins = ["react"]
   environment = ["nodejs", "browser"]
   style_guide = "airbnb"
   dialect = "typescript"
@@ -59,7 +55,7 @@ enabled = true
 
   [analyzers.meta]
   # Runtime version for compatibility checks
-  runtime_version = "3.x"
+  runtime_version = "3.x.x"
   
   # Enable security-focused checks
   # Detects: SQL injection, command injection, XSS, insecure crypto, etc.
@@ -143,13 +139,6 @@ enabled = true
 [[analyzers]]
 name = "test-coverage"
 enabled = true
-
-  [analyzers.meta]
-  # Track test coverage across all services
-  coverage_file_paths = [
-    "coverage/lcov.info",
-    "services/*/coverage/lcov.info"
-  ]
 
 # ============================================================================
 # CODE FORMATTING - PRETTIER
