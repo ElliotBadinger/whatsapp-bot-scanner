@@ -2,50 +2,25 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--save", "60", "1", "--appendonly", "yes"]
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
+    mem_limit: 512m
+    ports:
+      - "6379:6379"
     volumes:
       - redisdata:/data
     networks: [internal]
 
-  postgres:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-wbscanner}
-      POSTGRES_USER: ${POSTGRES_USER:-wbscanner}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wbscanner}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL","pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    restart: unless-stopped
-    networks: [internal]
-
   migrate:
-    image: node:20-alpine
-    depends_on:
-      postgres:
-        condition: service_healthy
+    build:
+      context: .
+      dockerfile: scripts/Dockerfile.migrate
     working_dir: /app
-    entrypoint: ["node","scripts/run-migrations.js"]
     env_file: [.env]
+    mem_limit: 512m
     volumes:
-      - ./:/app:ro
+      - sqldata:/app/storage
     networks: [internal]
-
-  seed:
-    image: node:20-alpine
-    depends_on:
-      postgres:
-        condition: service_healthy
-    working_dir: /app
-    entrypoint: ["node","scripts/run-seeds.js"]
-    env_file: [.env]
-    volumes:
-      - ./:/app:ro
-    networks: [internal]
+    restart: "no"
 
   wa-client:
     build:
@@ -55,14 +30,19 @@ services:
     depends_on:
       - redis
     networks: [internal]
+    mem_limit: 1g
+    environment:
+      - NODE_OPTIONS=--max-old-space-size=768
+      - REDIS_URL=redis://redis:6379
     volumes:
       - wa_session:/app/services/wa-client/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL","wget -qO- http://127.0.0.1:3000/healthz || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 10
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     security_opt:
       - no-new-privileges:true
 
@@ -73,15 +53,22 @@ services:
     env_file: [.env]
     depends_on:
       - redis
-      - postgres
       - migrate
     networks: [internal]
+    mem_limit: 1g
+    environment:
+      - NODE_OPTIONS=--max-old-space-size=768
+      - SQLITE_DB_PATH=/app/storage/wbscanner.db
+      - REDIS_URL=redis://redis:6379
     restart: unless-stopped
+    volumes:
+      - sqldata:/app/storage
     healthcheck:
       test: ["CMD-SHELL","wget -qO- http://127.0.0.1:3001/healthz || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 10
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     security_opt:
       - no-new-privileges:true
 
@@ -91,10 +78,15 @@ services:
       dockerfile: services/control-plane/Dockerfile
     env_file: [.env]
     depends_on:
-      - postgres
       - migrate
     networks: [internal]
+    mem_limit: 512m
+    environment:
+      - NODE_OPTIONS=--max-old-space-size=384
+      - SQLITE_DB_PATH=/app/storage/wbscanner.db
     restart: unless-stopped
+    volumes:
+      - sqldata:/app/storage
     healthcheck:
       test: ["CMD-SHELL","wget --header=\"Authorization: Bearer ${CONTROL_PLANE_API_TOKEN}\" -qO- http://127.0.0.1:8080/healthz || exit 1"]
       interval: 10s
@@ -107,30 +99,49 @@ services:
     image: nginx:alpine
     depends_on:
       - control-plane
+    mem_limit: 256m
     volumes:
       - ./reverse-proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./services/landing-page:/usr/share/nginx/html:ro
     ports:
       - "${REVERSE_PROXY_PORT:-8088}:8088"
     networks: [internal, public]
     restart: unless-stopped
 
-  who-dat:
-    image: carlosabalde/who-dat:latest
+#   who-dat:
+#     image: carlosabalde/who-dat:latest
+#     environment:
+#       - WHO_DAT_WHOIS_SERVER=whois.verisign-grs.com
+#       - WHO_DAT_CACHE_ENABLED=true
+#       - WHO_DAT_CACHE_TTL=3600
+#     networks: [internal]
+#     restart: unless-stopped
+#     healthcheck:
+#       test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+#       interval: 30s
+#       timeout: 10s
+#       retries: 3
+
+  grafana:
+    image: grafana/grafana:latest
+    depends_on:
+      - prometheus
+    ports:
+      - "3002:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
     environment:
-      - WHO_DAT_WHOIS_SERVER=whois.verisign-grs.com
-      - WHO_DAT_CACHE_ENABLED=true
-      - WHO_DAT_CACHE_TTL=3600
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
     networks: [internal]
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
   prometheus:
     image: prom/prometheus:latest
     command: ["--config.file=/etc/prometheus/prometheus.yml"]
+    mem_limit: 1g
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -139,6 +150,7 @@ services:
 
   uptime-kuma:
     image: louislam/uptime-kuma:1
+    mem_limit: 512m
     volumes:
       - uptime_kuma_data:/app/data
     ports:
@@ -155,8 +167,9 @@ networks:
     driver: bridge
 
 volumes:
-  pgdata:
+  sqldata:
   wa_session:
   redisdata:
   prometheus_data:
   uptime_kuma_data:
+  grafana_data:

@@ -1,8 +1,12 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "types": ["vitest/globals"],
-    "outDir": "dist"
+    "baseUrl": ".",
+    "outDir": "dist",
+    "paths": {
+      "@wbscanner/shared": ["../../packages/shared/dist/index.d.ts"],
+      "@wbscanner/shared/*": ["../../packages/shared/dist/*.d.ts"]
+    }
   },
   "include": ["**/*.ts"]
 }

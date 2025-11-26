@@ -1,5 +1,6 @@
 import { request } from 'undici';
 import { config } from '../config';
+import { HttpError } from '../http-errors';
 
 export interface PhishtankLookupResult {
   inDatabase: boolean;
@@ -36,17 +37,27 @@ export async function phishtankLookup(url: string, timeoutMs = config.phishtank.
   });
 
   if (res.statusCode === 429) {
-    const err = new Error('Phishtank rate limited');
-    (err as any).code = 429;
+    const err = new Error('Phishtank rate limited') as HttpError;
+    err.code = 429;
     throw err;
   }
   if (res.statusCode >= 500) {
-    const err = new Error(`Phishtank error: ${res.statusCode}`);
-    (err as any).statusCode = res.statusCode;
+    const err = new Error(`Phishtank error: ${res.statusCode}`) as HttpError;
+    err.statusCode = res.statusCode;
     throw err;
   }
 
-  const json: any = await res.body.json();
+  const json = await res.body.json() as {
+    results?: {
+      in_database?: boolean;
+      verified?: boolean;
+      verified_at?: string;
+      url?: string;
+      phish_id?: number;
+      submission_time?: string;
+      phishtank_url?: string;
+    };
+  };
   const results = json?.results;
   if (!results) {
     return { inDatabase: false, verified: false, latencyMs: Date.now() - start };

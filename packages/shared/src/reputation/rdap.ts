@@ -7,8 +7,13 @@ export async function domainAgeDaysFromRdap(hostname: string, timeoutMs = 5000):
   const url = `https://rdap.org/domain/${domain}`;
   const res = await request(url, { headersTimeout: timeoutMs, bodyTimeout: timeoutMs }).catch(() => null);
   if (!res || res.statusCode >= 400) return undefined;
-  const json: any = await res.body.json();
-  const events: any[] = json?.events || [];
+  const json = await res.body.json() as {
+    events?: Array<{
+      eventAction?: string;
+      eventDate?: string;
+    }>;
+  };
+  const events = json?.events || [];
   const reg = events.find(e => e.eventAction === 'registration' || e.eventAction === 'registered');
   if (!reg?.eventDate) return undefined;
   const regDate = new Date(reg.eventDate);

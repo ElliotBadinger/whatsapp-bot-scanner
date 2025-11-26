@@ -22,7 +22,7 @@ import {
 } from '@wbscanner/shared';
 import { RateLimiterRedis } from 'rate-limiter-flexible';
 import { createGlobalTokenBucket, GLOBAL_TOKEN_BUCKET_ID } from './limiters';
-import { MessageStore, VerdictContext, VerdictAttemptPayload } from './message-store';
+import { MessageStore, VerdictContext } from './message-store';
 import { GroupStore } from './group-store';
 import { loadEncryptionMaterials } from './crypto/dataKeyProvider';
 import { createRemoteAuthStore } from './remoteAuthStore';
@@ -33,6 +33,7 @@ import { enrichEvaluationError } from './session/errors';
 import { safeGetGroupChatById } from './utils/chatLookup';
 import { handleSelfMessageRevoke } from './handlers/selfRevoke';
 import { PairingOrchestrator } from './pairingOrchestrator';
+import { SessionManager } from './session/sessionManager';
 
 function createRedisConnection(): Redis {
   if (process.env.NODE_ENV === 'test') {
@@ -148,7 +149,7 @@ function createRedisConnection(): Redis {
         return list.slice(start, normalizedStop + 1);
       }
 
-      on(): void {}
+      on(): void { }
 
       quit(): Promise<void> {
         return Promise.resolve();
@@ -162,6 +163,7 @@ function createRedisConnection(): Redis {
 
 const redis = createRedisConnection();
 const scanRequestQueue = new Queue(config.queues.scanRequest, { connection: redis });
+const sessionManager = new SessionManager(redis, logger);
 
 const pairingCodeCacheKey = (phone: string) => `wa:pairing:code:${phone}`;
 const pairingAttemptKey = (phone: string) => `wa:pairing:last_attempt:${phone}`;
@@ -265,17 +267,27 @@ async function resolveAuthStrategy(redisInstance: Redis): Promise<AuthResolution
     const sessionName = config.wa.remoteAuth.clientId ? `RemoteAuth-${config.wa.remoteAuth.clientId}` : 'RemoteAuth';
     let sessionExists = await store.sessionExists({ session: sessionName });
     if (sessionExists && config.wa.remoteAuth.forceNewSession) {
-      logger.info({ clientId: config.wa.remoteAuth.clientId }, 'Force-new-session enabled; removing stored RemoteAuth session');
-      await resetRemoteSessionArtifacts({
-        store,
-        sessionName,
-        dataPath: config.wa.remoteAuth.dataPath || './data/remote-session',
-        logger,
-      });
+      logger.info({ clientId: config.wa.remoteAuth.clientId }, 'Force-new-session enabled; backing up and removing stored RemoteAuth session');
+
+      // Soft delete: Rename the key instead of deleting it
+      const backupKey = `${store.key(sessionName)}:backup:${Date.now()}`;
+      try {
+        await redisInstance.rename(store.key(sessionName), backupKey);
+        logger.info({ backupKey }, 'Previous session backed up.');
+      } catch (err) {
+        logger.warn({ err }, 'Failed to backup session during force-new-session reset; proceeding with deletion.');
+        await resetRemoteSessionArtifacts({
+          store,
+          sessionName,
+          dataPath: config.wa.remoteAuth.dataPath || './data/remote-session',
+          logger,
+        });
+      }
+
       sessionExists = false;
       process.env.WA_REMOTE_AUTH_FORCE_NEW_SESSION = 'false';
       config.wa.remoteAuth.forceNewSession = false;
-      logger.info({ clientId: config.wa.remoteAuth.clientId }, 'Force-new-session flag cleared after cleanup to prevent repeated resets.');
+      logger.info({ clientId: config.wa.remoteAuth.clientId }, 'Force-new-session flag cleared after cleanup.');
     }
     await ensureRemoteSessionDirectories(config.wa.remoteAuth.dataPath || './data/remote-session', logger);
     logger.info({ clientId: config.wa.remoteAuth.clientId, sessionExists }, 'Initialising RemoteAuth strategy');
@@ -327,6 +339,8 @@ const PHONE_PAIRING_CODE_TTL_MS = 160000;
 const ackWatchers = new Map<string, NodeJS.Timeout>();
 let currentWaState: string | null = null;
 let botWid: string | null = null;
+let pairingOrchestrator: import('./pairingOrchestrator').PairingOrchestrator | null = null;
+let remotePhone: string | undefined = undefined;
 
 function snapshotSession(): SessionSnapshot {
   return { state: currentWaState, wid: botWid };
@@ -531,7 +545,7 @@ async function deliverVerdictMessage(
       chat = await targetMessage.getChat().catch((err) => {
         throw enrichEvaluationError(err, {
           operation: 'deliverVerdictMessage:getChat',
-          chatId: (targetMessage.id as any)?.remote ?? job.chatId,
+          chatId: (targetMessage.id as unknown as { remote?: string })?.remote ?? job.chatId,
           messageId: targetMessage.id?._serialized,
           snapshot,
         });
@@ -798,14 +812,100 @@ async function isUrlAllowedForScanning(normalized: string): Promise<boolean> {
     return false;
   }
 }
+async function initializeWhatsAppWithRetry(client: Client, maxAttempts = 5): Promise<void> {
+  let attempt = 0;
+  const baseDelay = 2000; // 2 seconds
+  const maxDelay = 30000; // 30 seconds
+
+  while (attempt < maxAttempts) {
+    attempt++;
+    try {
+      logger.info({ attempt, maxAttempts }, 'Initializing WhatsApp client...');
+      await client.initialize();
+      logger.info({ attempt }, 'WhatsApp client initialized successfully');
+      return;
+    } catch (err) {
+      const isRetryable = err instanceof Error && (
+        err.message.includes('timeout') ||
+        err.message.includes('connection') ||
+        err.message.includes('network') ||
+        err.message.includes('ECONNREFUSED') ||
+        err.message.includes('ETIMEDOUT')
+      );
+
+      if (!isRetryable) {
+        logger.error({ err, attempt }, 'Non-retryable error during WhatsApp initialization');
+        throw err;
+      }
+
+      if (attempt >= maxAttempts) {
+        logger.error({ err, attempt }, 'Max retry attempts reached for WhatsApp initialization');
+        throw err;
+      }
+
+      const delay = Math.min(baseDelay * Math.pow(2, attempt - 1), maxDelay);
+      const jitter = Math.random() * 1000; // Add up to 1 second jitter
+      const totalDelay = delay + jitter;
+
+      logger.warn({
+        err,
+        attempt,
+        maxAttempts,
+        nextRetryIn: Math.round(totalDelay / 1000),
+        retryReason: 'network_or_timeout'
+      }, 'WhatsApp initialization failed, retrying with exponential backoff');
+
+      metrics.waSessionReconnects.labels('init_retry').inc();
+      
+      await new Promise(resolve => setTimeout(resolve, totalDelay));
+    }
+  }
+}
+
 async function main() {
   assertEssentialConfig('wa-client');
   assertControlPlaneToken();
+  
+  // Validate Redis connectivity before starting
+  try {
+    await redis.ping();
+    logger.info('Redis connectivity validated');
+  } catch (err) {
+    logger.error({ err }, 'Redis connectivity check failed during startup');
+    throw new Error('Redis is required but unreachable');
+  }
+
   const app = Fastify();
-  app.get('/healthz', async () => ({ ok: true }));
+  app.get('/healthz', async () => {
+    try {
+      // Check Redis connectivity
+      await redis.ping();
+      return { ok: true, redis: 'connected' };
+    } catch (err) {
+      logger.warn({ err }, 'Health check failed - Redis connectivity issue');
+      return { ok: false, redis: 'disconnected', error: 'Redis unreachable' };
+    }
+  });
   app.get('/metrics', async (_req, reply) => {
     reply.header('Content-Type', register.contentType);
     return register.metrics();
+  });
+
+  app.post('/pair', async (_req, reply) => {
+    if (!pairingOrchestrator) {
+      return reply.code(400).send({ error: 'Pairing orchestrator not available' });
+    }
+    const status = pairingOrchestrator.getStatus();
+    if (status.rateLimited && status.nextAttemptIn > 0) {
+      return reply.code(429).send({ error: 'Rate limited', nextAttemptIn: status.nextAttemptIn });
+    }
+    // Reset auto-refresh counter so loop can resume if needed
+    consecutiveAutoRefreshes = 0;
+    const requested = pairingOrchestrator.requestManually();
+    if (requested) {
+      return { ok: true, message: 'Pairing code requested' };
+    }
+    return reply.code(409).send({ error: 'Cannot request code', status });
   });
 
   await refreshConsentGauge();
@@ -815,11 +915,22 @@ async function main() {
     puppeteer: {
       headless: config.wa.headless,
       args: config.wa.puppeteerArgs,
+      // Additional launch options for resource optimization
+      handleSIGINT: false,          // Let Node.js handle signals
+      handleSIGTERM: false,
+      handleSIGHUP: false,
+      ignoreHTTPSErrors: true,      // Reduce SSL validation overhead
+      defaultViewport: {            // Set minimal viewport to reduce memory
+        width: 1280,
+        height: 720,
+      },
+      // Pipe instead of websocket for faster IPC (if available)
+      pipe: process.platform !== 'win32',
     },
     authStrategy: authResolution.strategy,
   };
 
-  const remotePhone = config.wa.remoteAuth.phoneNumber;
+  remotePhone = config.wa.remoteAuth.phoneNumber;
   if (!config.wa.remoteAuth.autoPair) {
     logger.info('RemoteAuth auto pairing disabled; a QR code will be displayed for first-time linking.');
   }
@@ -845,9 +956,11 @@ async function main() {
   let pairingCodeExpiryTimer: NodeJS.Timeout | null = null;
   let pairingFallbackTimer: NodeJS.Timeout | null = null;
   let lastPairingAttemptMs = 0;
+  let consecutiveAutoRefreshes = 0;
+  const MAX_CONSECUTIVE_AUTO_REFRESHES = 3;
 
   const performPairingCodeRequest = async (): Promise<string | null> => {
-    const pageHandle = (client as unknown as { pupPage?: { evaluate?: (...args: any[]) => Promise<unknown> } }).pupPage;
+    const pageHandle = (client as unknown as { pupPage?: { evaluate?: (...args: unknown[]) => Promise<unknown> } }).pupPage;
     if (!pageHandle || typeof pageHandle.evaluate !== 'function') {
       throw new Error('Puppeteer page handle unavailable for pairing');
     }
@@ -855,30 +968,52 @@ async function main() {
       lastPairingAttemptMs = Date.now();
       void recordPairingAttempt(remotePhone, lastPairingAttemptMs);
     }
+
+    // Add jitter to mimic human behavior (1-5 seconds)
+    const jitter = Math.floor(Math.random() * 4000) + 1000;
+    await new Promise(resolve => setTimeout(resolve, jitter));
+
     const interval = Math.max(60000, config.wa.remoteAuth.pairingDelayMs ?? 0);
+
     const outcome = await pageHandle.evaluate(async (phoneNumber: string, showNotification: boolean, intervalMs: number) => {
       const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
       const globalWindow = window as unknown as {
-        AuthStore?: { PairingCodeLinkUtils?: any; AppState?: { state?: string } };
+        AuthStore?: { PairingCodeLinkUtils?: unknown; AppState?: { state?: string } };
         codeInterval?: ReturnType<typeof setInterval> | number;
         onCodeReceivedEvent?: (code: string) => void;
       };
 
-      const waitForUtils = async () => {
-        while (!globalWindow.AuthStore?.PairingCodeLinkUtils) {
-          await wait(250);
+      const waitForUtils = async (retries = 20): Promise<unknown> => {
+        for (let i = 0; i < retries; i++) {
+          if (globalWindow.AuthStore?.PairingCodeLinkUtils) {
+            return globalWindow.AuthStore.PairingCodeLinkUtils;
+          }
+          await wait(500);
         }
-        return globalWindow.AuthStore.PairingCodeLinkUtils;
+        throw new Error('AuthStore.PairingCodeLinkUtils not found after timeout');
       };
 
       const requestCode = async () => {
-        const utils = await waitForUtils();
+        const utils = await waitForUtils() as {
+          setPairingType?: (type: string) => void;
+          initializeAltDeviceLinking?: () => Promise<void>;
+          startAltLinkingFlow?: (phone: string, notify: boolean) => Promise<string>;
+        };
+
+        // Random small delay before interaction
+        await wait(Math.random() * 500 + 200);
+
         if (typeof utils.setPairingType === 'function') {
           utils.setPairingType('ALT_DEVICE_LINKING');
         }
         if (typeof utils.initializeAltDeviceLinking === 'function') {
           await utils.initializeAltDeviceLinking();
         }
+
+        if (typeof utils.startAltLinkingFlow !== 'function') {
+          throw new Error('startAltLinkingFlow function missing on PairingCodeLinkUtils');
+        }
+
         return utils.startAltLinkingFlow(phoneNumber, showNotification);
       };
 
@@ -890,43 +1025,54 @@ async function main() {
         clearInterval(globalWindow.codeInterval as number);
       }
 
+      // Setup interval for refreshing code if needed
       globalWindow.codeInterval = setInterval(async () => {
         const state = globalWindow.AuthStore?.AppState?.state;
         if (state !== 'UNPAIRED' && state !== 'UNPAIRED_IDLE') {
           clearInterval(globalWindow.codeInterval as number);
           return;
         }
-        const refreshedCode = await requestCode().catch(() => null);
-        if (refreshedCode) {
-          globalWindow.onCodeReceivedEvent?.(refreshedCode);
-        }
+        // Only refresh if we can silently get a new code, otherwise we might trigger rate limits
+        // For now, we rely on the orchestrator to manage re-requests
       }, intervalMs);
 
       try {
         const firstCode = await requestCode();
-        globalWindow.onCodeReceivedEvent?.(firstCode);
-        if (typeof firstCode === 'string' && firstCode.length > 0) {
+        if (firstCode && typeof firstCode === 'string' && firstCode.length > 0) {
+          // Verify it looks like a code (XXX-XXX or similar)
           return { ok: true, code: firstCode };
         }
         return { ok: false, reason: 'empty_code', state: globalWindow.AuthStore?.AppState?.state };
-      } catch (err: any) {
+      } catch (err: unknown) {
+        const typedErr = err as { message?: string; stack?: string; name?: string };
         const raw = typeof err === 'object' && err !== null
-          ? Object.assign({}, err, { message: err?.message, stack: err?.stack })
+          ? Object.assign({}, err, { message: typedErr?.message, stack: typedErr?.stack })
           : err;
+
+        // Detect rate limit errors from WA internal exceptions if possible
+        const msg = typedErr?.message || '';
+        const isRateLimit = msg.includes('429') || msg.includes('rate-overlimit');
+
         return {
           ok: false,
-          reason: err?.message ?? String(err ?? 'unknown'),
-          stack: err?.stack,
+          reason: msg || String(err ?? 'unknown'),
+          stack: typedErr?.stack,
           state: globalWindow.AuthStore?.AppState?.state,
           hasUtils: Boolean(globalWindow.AuthStore?.PairingCodeLinkUtils),
+          isRateLimit,
           rawError: raw,
         };
       }
     }, remotePhone, true, interval);
+
     if (outcome && typeof outcome === 'object' && 'ok' in outcome) {
-      const payload = outcome as { ok?: unknown; code?: unknown; reason?: unknown }; // loose shape from browser context
+      const payload = outcome as { ok?: unknown; code?: unknown; reason?: unknown; isRateLimit?: boolean };
       if (payload.ok === true && typeof payload.code === 'string' && payload.code.length > 0) {
         return payload.code;
+      }
+      // Propagate rate limit detection to the orchestrator
+      if (payload.isRateLimit) {
+        throw new Error(`pairing_code_request_failed:rate-overlimit:${JSON.stringify(payload)}`);
       }
       const errPayload = JSON.stringify(payload);
       throw new Error(`pairing_code_request_failed:${errPayload}`);
@@ -949,6 +1095,21 @@ async function main() {
       if (remoteSessionActive) {
         return;
       }
+
+      // Pause logic: Stop auto-refreshing after N attempts to avoid massive rate limits
+      if (consecutiveAutoRefreshes >= MAX_CONSECUTIVE_AUTO_REFRESHES) {
+        logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing paused after multiple expired codes. Run "make pair" to generate a new one.');
+        if (config.wa.qrTerminal) {
+          process.stdout.write('\nPairing paused. Run "make pair" to generate a new code.\n');
+        }
+        return;
+      }
+
+      consecutiveAutoRefreshes++;
+      logger.info({ phoneNumber: maskPhone(remotePhone), attempt: consecutiveAutoRefreshes }, 'Previous pairing code expired. Requesting a new one...');
+      if (config.wa.qrTerminal) {
+        process.stdout.write(`\nPrevious pairing code expired. Requesting a new one (Attempt ${consecutiveAutoRefreshes}/${MAX_CONSECUTIVE_AUTO_REFRESHES})...\n`);
+      }
       pairingCodeDelivered = false;
       pairingOrchestrator?.setCodeDelivered(false);
       requestPairingCodeWithRetry(0);
@@ -957,13 +1118,29 @@ async function main() {
   }
 
   const rateLimitDelayMs = Math.max(60000, PAIRING_RETRY_DELAY_MS);
-  const pairingOrchestrator = shouldRequestPhonePairing && remotePhone
+  const isFirstTimeSetup = !remoteSessionActive;
+
+  // Hybrid approach: manual-only for re-pairing, allow automatic for first-time setup
+  const useManualOnlyMode = !isFirstTimeSetup;
+
+  pairingOrchestrator = shouldRequestPhonePairing && remotePhone
     ? new PairingOrchestrator({
       enabled: true,
       forcePhonePairing: FORCE_PHONE_PAIRING,
       maxAttempts: MAX_PAIRING_CODE_RETRIES,
       baseRetryDelayMs: PAIRING_RETRY_DELAY_MS,
       rateLimitDelayMs,
+      manualOnly: useManualOnlyMode,
+      storage: {
+        get: async () => {
+          if (!remotePhone) return null;
+          return redis.get(`wa:pairing:next_attempt:${remotePhone}`);
+        },
+        set: async (val: string) => {
+          if (!remotePhone) return;
+          await redis.set(`wa:pairing:next_attempt:${remotePhone}`, val);
+        }
+      },
       requestCode: async () => {
         const code = await performPairingCodeRequest();
         if (!code || typeof code !== 'string') {
@@ -976,17 +1153,33 @@ async function main() {
           void cachePairingCode(remotePhone, code);
           schedulePairingCodeRefresh(PHONE_PAIRING_CODE_TTL_MS);
         }
-        logger.info({ phoneNumber: maskPhone(remotePhone), attempt, code }, 'Requested phone-number pairing code from WhatsApp.');
+        const msg = `\n╔${'═'.repeat(50)}╗\n║  WhatsApp Pairing Code: ${code.padEnd(24)} ║\n║  Phone: ${maskPhone(remotePhone).padEnd(37)} ║\n║  Valid for: ~2:40 minutes${' '.repeat(22)} ║\n╚${'═'.repeat(50)}╝\n`;
+        process.stdout.write(msg);
+        logger.info({ phoneNumber: maskPhone(remotePhone), attempt, code }, 'Phone-number pairing code ready.');
       },
-      onError: (err, attempt, nextDelayMs, meta) => {
+      onError: (err, attempt, nextDelayMs, meta, errorInfo) => {
+        if (meta?.rateLimited && errorInfo) {
+          const minutes = Math.ceil(nextDelayMs / 60000);
+          const nextTime = meta.holdUntil ? new Date(meta.holdUntil).toLocaleTimeString() : 'unknown';
+          process.stdout.write(`\n⚠️  WhatsApp rate limit detected. Next retry allowed in ${minutes} minute(s) at ${nextTime}.\n`);
+        }
+
+        // Format error for cleaner logging
+        const formattedError = err instanceof Error
+          ? { name: err.name, message: err.message }
+          : errorInfo?.type === 'rate_limit'
+            ? { type: 'rate_limit', message: 'WhatsApp API rate limit (429)' }
+            : err;
+
         logger.warn({
-          err,
+          error: formattedError,
           phoneNumber: maskPhone(remotePhone),
           attempt,
           nextRetryMs: nextDelayMs,
           nextRetryAt: meta?.holdUntil ? new Date(meta.holdUntil).toISOString() : undefined,
           rateLimited: meta?.rateLimited ?? false,
-        }, 'Failed to request pairing code automatically.');
+          errorType: errorInfo?.type,
+        }, 'Failed to request pairing code.');
       },
       onFallback: () => {
         pairingOrchestrator?.setEnabled(false);
@@ -995,7 +1188,11 @@ async function main() {
         logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code retries exhausted; falling back to QR pairing.');
         replayCachedQr();
       },
-      onForcedRetry: (err, attempt, nextDelayMs, meta) => {
+      onForcedRetry: (err, attempt, nextDelayMs, meta, errorInfo) => {
+        const minutes = Math.ceil(nextDelayMs / 60000);
+        if (meta?.rateLimited) {
+          process.stdout.write(`\n⚠️  Rate limit continues. Waiting ${minutes} minute(s) before retry. Use !scanner pair-status to check.\n`);
+        }
         logger.warn({
           err,
           phoneNumber: maskPhone(remotePhone),
@@ -1003,7 +1200,8 @@ async function main() {
           nextRetryMs: nextDelayMs,
           nextRetryAt: meta?.holdUntil ? new Date(meta.holdUntil).toISOString() : undefined,
           rateLimited: meta?.rateLimited ?? false,
-        }, 'Pairing code retries exhausted; QR fallback disabled. Ensure WhatsApp is on Linked Devices > Link with phone number, continuing retries with extended backoff.');
+          errorType: errorInfo?.type,
+        }, 'Pairing retries exhausted; QR fallback disabled.');
       },
     })
     : null;
@@ -1011,6 +1209,11 @@ async function main() {
   if (pairingOrchestrator) {
     pairingOrchestrator.setSessionActive(remoteSessionActive);
     pairingOrchestrator.setCodeDelivered(false);
+    if (isFirstTimeSetup) {
+      logger.info({ phoneNumber: maskPhone(remotePhone) }, 'First-time setup detected: automatic pairing enabled for initial connection.');
+    } else {
+      logger.info({ phoneNumber: maskPhone(remotePhone) }, 'Re-pairing mode: use !scanner pair command to request pairing codes manually.');
+    }
   }
 
   const clearPairingRetry = () => {
@@ -1044,7 +1247,9 @@ async function main() {
       const remainingMs = PHONE_PAIRING_CODE_TTL_MS - ageMs;
       if (remainingMs > 1000) {
         pairingCodeDelivered = true;
-        pairingOrchestrator?.setCodeDelivered(true);
+        if (pairingOrchestrator) {
+          pairingOrchestrator.setCodeDelivered(true);
+        }
         schedulePairingCodeRefresh(remainingMs);
         logger.info({ pairingCode: cachedPairingCode.code, phoneNumber: maskPhone(remotePhone), remainingMs }, 'Reusing cached phone-number pairing code still within validity window.');
         if (config.wa.qrTerminal) {
@@ -1076,6 +1281,7 @@ async function main() {
           allowQrOutput = true;
           logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code not received within timeout; enabling QR fallback.');
           clearPairingRetry();
+          if (!pairingOrchestrator) return;
           pairingOrchestrator.setEnabled(false);
           replayCachedQr();
         }
@@ -1100,8 +1306,18 @@ async function main() {
     emitQr(cachedQr, 'cached');
   };
 
-  client.on('qr', (qr: string) => {
+  client.on('qr', async (qr: string) => {
     cachedQr = qr;
+
+    // Self-healing: If we receive a QR code but we expect a RemoteAuth session to be active,
+    // it means the session is invalid. We should clear it and restart.
+    if (FORCE_PHONE_PAIRING && remoteSessionActive) {
+      logger.warn('Received QR code while expecting active RemoteAuth session. Session is invalid/expired.');
+      await sessionManager.clearSession('QR received while RemoteAuth session expected');
+      logger.info('Exiting process to trigger restart and re-pairing...');
+      process.exit(1);
+    }
+
     if (!allowQrOutput) {
       if (!qrSuppressedLogged) {
         qrSuppressedLogged = true;
@@ -1115,6 +1331,7 @@ async function main() {
   if (authResolution.remote) {
     client.on('remote_session_saved', () => {
       remoteSessionActive = true;
+      consecutiveAutoRefreshes = 0;
       cancelPairingFallback();
       clearPairingRetry();
       pairingOrchestrator?.setSessionActive(true);
@@ -1163,23 +1380,25 @@ async function main() {
       logger.warn({ err }, 'Failed to rehydrate ack watchers on ready');
     }
   });
-  client.on('auth_failure', (m) => {
+  client.on('auth_failure', async (m) => {
     logger.error({ m }, 'Auth failure');
     waSessionStatusGauge.labels('ready').set(0);
     metrics.waSessionReconnects.labels('auth_failure').inc();
     botWid = null;
+
+    // Self-healing: If auto-pair is enabled, clear the invalid session and restart
+    if (config.wa.remoteAuth.autoPair) {
+      logger.warn('Auth failure detected with auto-pair enabled. Clearing session and restarting...');
+      await sessionManager.clearSession('Auth failure event received');
+      process.exit(1);
+    }
   });
   client.on('change_state', (state) => {
     const label = typeof state === 'string' ? state.toLowerCase() : 'unknown';
     metrics.waSessionReconnects.labels(`state_${label}`).inc();
     updateSessionStateGauge(String(state));
     logger.info({ state }, 'WhatsApp client state change');
-    if ((pairingOrchestrator?.canSchedule() ?? false) && remotePhone) {
-      const normalizedState = String(state).toUpperCase();
-      if (normalizedState === 'PAIRING' || normalizedState === 'UNPAIRED_IDLE' || normalizedState === 'UNPAIRED') {
-        requestPairingCodeWithRetry(0);
-      }
-    }
+    // NOTE: Automatic pairing disabled. Use !scanner pair command to request pairing codes manually.
   });
   client.on('disconnected', (r) => {
     logger.warn({ r }, 'Disconnected');
@@ -1220,7 +1439,7 @@ async function main() {
       metrics.waMessagesReceived.labels(chatType).inc();
       // Admin commands
       if ((msg.body || '').startsWith('!scanner')) {
-        await handleAdminCommand(client, msg, chat as GroupChat);
+        await handleAdminCommand(client, msg, chat as GroupChat, redis);
         return;
       }
       const chatId = chat.id._serialized;
@@ -1312,7 +1531,7 @@ async function main() {
         urlHashes,
       });
     } catch (e) {
-      logger.error({ err: e, chatId: sanitizeLogValue((msg as any)?.from) }, 'Failed to process incoming WhatsApp message');
+      logger.error({ err: e, chatId: sanitizeLogValue((msg as unknown as { from?: string })?.from) }, 'Failed to process incoming WhatsApp message');
     }
   });
 
@@ -1403,7 +1622,7 @@ async function main() {
     try {
       const original = revoked ?? msg;
       const chat = await original.getChat().catch((err) => {
-        const fallbackChat = (original.id as any)?.remote ?? undefined;
+        const fallbackChat = (original.id as unknown as { remote?: string })?.remote ?? undefined;
         throw enrichEvaluationError(err, {
           operation: 'message_revoke_everyone:getChat',
           chatId: fallbackChat,
@@ -1459,7 +1678,7 @@ async function main() {
 
   client.on('message_reaction', async (reaction: Reaction) => {
     try {
-      const messageId = (reaction.msgId as any)?._serialized || reaction.msgId?.id;
+      const messageId = (reaction.msgId as unknown as { _serialized?: string })?._serialized || reaction.msgId?.id;
       if (!messageId) return;
       const message = await client.getMessageById(messageId);
       if (!message) return;
@@ -1714,7 +1933,7 @@ async function main() {
           lines.push('This group is still awaiting consent. Please review and run !scanner consent when ready.');
           await chat.setMessagesAdminsOnly(true).catch(() => undefined);
         }
-        await chat.sendMessage(lines.join(' '), { mentions: recipients as unknown as any });
+        await chat.sendMessage(lines.join(' '), { mentions: recipients as unknown as string[] });
         metrics.waGovernanceActions.labels('admin_prompt').inc();
       }
     } catch (err) {
@@ -1818,7 +2037,7 @@ async function main() {
     }
   }, { connection: redis });
 
-  await client.initialize();
+  await initializeWhatsAppWithRetry(client);
 
   if (pairingOrchestrator && !pairingCodeDelivered) {
     const configuredDelay = config.wa.remoteAuth.pairingDelayMs && config.wa.remoteAuth.pairingDelayMs > 0
@@ -1844,23 +2063,33 @@ export function formatGroupVerdict(verdict: string, reasons: string[], url: stri
   let advice = 'Use caution.';
   if (verdict === 'malicious') advice = 'Do NOT open.';
   if (verdict === 'benign') advice = 'Looks okay, stay vigilant.';
-  const reasonsStr = reasons.slice(0,3).join('; ');
+  const reasonsStr = reasons.slice(0, 3).join('; ');
   return `Link scan: ${level}\nDomain: ${domain}\n${advice}${reasonsStr ? `\nWhy: ${reasonsStr}` : ''}`;
 }
 
-export async function handleAdminCommand(client: Client, msg: Message, existingChat?: GroupChat) {
+export async function handleAdminCommand(client: Client, msg: Message, existingChat: GroupChat | undefined, redis: Redis) {
   const chat = existingChat ?? (await msg.getChat());
   if (!(chat as GroupChat).isGroup) return;
   const gc = chat as GroupChat;
   const participants = await hydrateParticipantList(gc);
   const senderId = msg.author || (msg.fromMe && botWid ? botWid : undefined);
   const senderVariants = expandWidVariants(senderId);
-  const sender = participants.find((p) => senderVariants.includes(p.id._serialized));
   const isSelfCommand = msg.fromMe || (botWid !== null && senderVariants.includes(botWid));
   const parts = (msg.body || '').trim().split(/\s+/);
   logger.info({ chatId: gc.id._serialized, senderId, senderVariants, isSelfCommand, participantCount: participants.length, command: parts[1] ?? null }, 'Received admin command');
+
+  // Resolve contact to handle LID vs PN mismatch
+  const contact = await msg.getContact();
+  const contactId = contact.id._serialized;
+
+  // Try to find sender by contact ID first, then by variants
+  let sender = participants.find(p => p.id._serialized === contactId);
+  if (!sender) {
+    sender = participants.find(p => senderVariants.includes(p.id._serialized));
+  }
+
   if (!isSelfCommand && !sender?.isAdmin && !sender?.isSuperAdmin) {
-    logger.info({ chatId: gc.id._serialized, senderId }, 'Ignoring command from non-admin sender');
+    logger.info({ chatId: gc.id._serialized, senderId, contactId }, 'Ignoring command from non-admin sender');
     return;
   }
 
@@ -1977,8 +2206,63 @@ export async function handleAdminCommand(client: Client, msg: Message, existingC
       return `- ${timestamp} [${event.type}] ${event.actorId ?? 'unknown'}${recipients}${detail}`;
     });
     await chat.sendMessage(`Recent governance events:\n${lines.join('\n')}`);
+  } else if (cmd === 'pair') {
+    // Manual pairing code request
+    if (!pairingOrchestrator) {
+      await chat.sendMessage('Pairing orchestrator not available (phone pairing may be disabled).');
+      return;
+    }
+    const status = pairingOrchestrator.getStatus();
+    if (status.rateLimited && status.nextAttemptIn > 0) {
+      const minutes = Math.ceil(status.nextAttemptIn / 60000);
+      const seconds = Math.ceil((status.nextAttemptIn % 60000) / 1000);
+      await chat.sendMessage(`⚠️ Rate limited. Please wait ${minutes}m ${seconds}s before requesting another code.`);
+      return;
+    }
+    if (!status.canRequest) {
+      await chat.sendMessage('Cannot request pairing code at this time (session may already be active).');
+      return;
+    }
+    const requested = pairingOrchestrator.requestManually();
+    if (requested) {
+      await chat.sendMessage('Pairing code request sent. Check logs/terminal for the code.');
+      logger.info({ chatId: gc.id._serialized, senderId }, 'Manual pairing code requested via admin command');
+    } else {
+      await chat.sendMessage('Unable to request pairing code. Check status with !scanner pair-status.');
+    }
+  } else if (cmd === 'pair-status') {
+    // Check pairing status and rate limit
+    if (!pairingOrchestrator) {
+      await chat.sendMessage('Pairing orchestrator not available.');
+      return;
+    }
+    const status = pairingOrchestrator.getStatus();
+    if (status.canRequest) {
+      await chat.sendMessage('✅ Ready to request pairing code. Use !scanner pair');
+    } else if (status.rateLimited && status.nextAttemptIn > 0) {
+      const minutes = Math.ceil(status.nextAttemptIn / 60000);
+      const seconds = Math.ceil((status.nextAttemptIn % 60000) / 1000);
+      const lastAttempt = status.lastAttemptAt ? new Date(status.lastAttemptAt).toLocaleTimeString() : 'unknown';
+      await chat.sendMessage(`⚠️ Rate limited\nLast attempt: ${lastAttempt}\nRetry in: ${minutes}m ${seconds}s\nConsecutive rate limits: ${status.consecutiveRateLimits}`);
+    } else {
+      await chat.sendMessage(`Status: Session may already be active or code delivered.`);
+    }
+  } else if (cmd === 'pair-reset') {
+    // Clear cached pairing code (admin only, requires confirmation)
+    if (!sender?.isAdmin && !sender?.isSuperAdmin && !isSelfCommand) {
+      await chat.sendMessage('Only admins can reset pairing cache.');
+      return;
+    }
+    if (remotePhone) {
+      const cacheKey = pairingCodeCacheKey(remotePhone);
+      await redis.del(cacheKey);
+      await chat.sendMessage('Pairing code cache cleared.');
+      logger.info({ chatId: gc.id._serialized, senderId }, 'Pairing cache cleared via admin command');
+    } else {
+      await chat.sendMessage('No phone number configured for remote auth.');
+    }
   } else {
-    await chat.sendMessage('Commands: !scanner mute|unmute|status|rescan <url>|consent|consentstatus|approve [memberId]|governance [limit]');
+    await chat.sendMessage('Commands: !scanner mute|unmute|status|rescan <url>|consent|consentstatus|approve [memberId]|governance [limit]|pair|pair-status|pair-reset');
   }
 }
 

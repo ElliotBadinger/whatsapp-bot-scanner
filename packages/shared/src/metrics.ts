@@ -12,7 +12,7 @@ export const metrics = {
   urlsPerMessage: new client.Histogram({
     name: 'wbscanner_urls_per_message',
     help: 'URLs extracted per message',
-    buckets: [0,1,2,3,5,8,13],
+    buckets: [0, 1, 2, 3, 5, 8, 13],
     registers: [register],
   }),
   scanLatency: new client.Histogram({
@@ -514,7 +514,8 @@ export const rateLimiterQueueDepth = new client.Gauge({
 });
 
 export function metricsRoute() {
-  return async (_req: any, res: any) => {
+  // Using minimal types to avoid Express dependency in shared package
+  return async (_req: { header?: unknown }, res: { header: (name: string, value: string) => void; send: (data: string) => void }) => {
     res.header('Content-Type', register.contentType);
     res.send(await register.metrics());
   };

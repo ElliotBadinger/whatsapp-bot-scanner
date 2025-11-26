@@ -3,8 +3,9 @@ jest.mock('node:dns/promises', () => ({
 }));
 
 import { isPrivateHostname, isPrivateIp } from '../ssrf';
+import type { lookup as lookupType } from 'node:dns/promises';
 
-const { lookup } = require('node:dns/promises') as { lookup: jest.Mock };
+const { lookup } = jest.requireMock('node:dns/promises') as { lookup: jest.MockedFunction<typeof lookupType> };
 
 describe('SSRF guards', () => {
   beforeEach(() => {

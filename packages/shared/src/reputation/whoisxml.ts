@@ -3,6 +3,7 @@ import { config } from '../config';
 import { apiQuotaRemainingGauge, apiQuotaStatusGauge, metrics } from '../metrics';
 import { QuotaExceededError, FeatureDisabledError } from '../errors';
 import { logger } from '../log';
+import { HttpError } from '../http-errors';
 
 export interface WhoisXmlRecord {
   domainName?: string;
@@ -103,8 +104,8 @@ export async function whoisXmlLookup(domain: string): Promise<WhoisXmlResponse> 
   }
   if (res.statusCode === 401 || res.statusCode === 403) {
     metrics.whoisResults.labels('unauthorized').inc();
-    const err = new Error('WhoisXML unauthorized');
-    (err as any).code = res.statusCode;
+    const err = new Error('WhoisXML unauthorized') as HttpError;
+    err.code = res.statusCode;
     throw err;
   }
   if (res.statusCode === 429) {
@@ -117,17 +118,32 @@ export async function whoisXmlLookup(domain: string): Promise<WhoisXmlResponse> 
   }
   if (res.statusCode >= 400 && res.statusCode < 500) {
     metrics.whoisResults.labels('error').inc();
-    const err = new Error(`WhoisXML error: ${res.statusCode}`);
-    (err as any).statusCode = res.statusCode;
+    const err = new Error(`WhoisXML error: ${res.statusCode}`) as HttpError;
+    err.statusCode = res.statusCode;
     throw err;
   }
   if (res.statusCode >= 500) {
     metrics.whoisResults.labels('error').inc();
-    const err = new Error(`WhoisXML error: ${res.statusCode}`);
-    (err as any).statusCode = res.statusCode;
+    const err = new Error(`WhoisXML error: ${res.statusCode}`) as HttpError;
+    err.statusCode = res.statusCode;
     throw err;
   }
-  const json: any = await res.body.json();
+  const json = await res.body.json() as {
+    WhoisRecord?: {
+      domainName?: string;
+      createdDateNormalized?: string;
+      createdDate?: string;
+      updatedDateNormalized?: string;
+      updatedDate?: string;
+      expiresDateNormalized?: string;
+      expiresDate?: string;
+      registrarName?: string;
+      registrarNameSponsored?: string;
+      registryData?: {
+        createdDateNormalized?: string;
+      };
+    };
+  };
   const record = json?.WhoisRecord;
   metrics.whoisResults.labels('success').inc();
   if (!record) return { record: undefined };

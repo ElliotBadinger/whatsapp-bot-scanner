@@ -1,0 +1,18 @@
+
+module my-waydroid 1.0;
+
+require {
+	type systemd_systemctl_exec_t;
+	type gconf_home_t;
+	type waydroid_t;
+	class file { execute execute_no_trans getattr open read };
+}
+
+#============= waydroid_t ==============
+
+#!!!! This avc is allowed in the current policy
+allow waydroid_t gconf_home_t:file getattr;
+allow waydroid_t gconf_home_t:file read;
+
+#!!!! This avc is allowed in the current policy
+allow waydroid_t systemd_systemctl_exec_t:file { execute execute_no_trans open read };

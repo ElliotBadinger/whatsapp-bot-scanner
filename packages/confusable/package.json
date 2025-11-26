@@ -5,6 +5,7 @@
   "main": "index.js",
   "types": "index.d.ts",
   "scripts": {
+    "build": "echo 'No build needed for confusable package'",
     "test": "node -e \"process.exit(0)\""
   },
   "dependencies": {

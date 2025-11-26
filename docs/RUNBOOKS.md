@@ -1,5 +1,195 @@
 # Runbooks
 
+## WhatsApp Authentication End-to-End Validation
+
+### Overview
+This section documents the complete WhatsApp authentication flow and provides step-by-step validation procedures to ensure the authentication system is working correctly.
+
+### Prerequisites
+- Docker stack running: `make up`
+- Required environment variables configured (see `.env.example`)
+- Redis connectivity validated
+- Control Plane API token configured
+
+### Authentication Methods
+
+#### QR Code Authentication (Default)
+1. **Start the stack**: `make up`
+2. **Monitor wa-client logs**: `make logs wa-client`
+3. **Look for QR code output**:
+   ```
+   QR Code: [████████████████████████████████]
+   ```
+4. **Scan with WhatsApp**: Open WhatsApp → Linked Devices → Link a device
+5. **Scan the QR code** using your phone camera
+6. **Verify connection**: Logs should show "WhatsApp client initialized successfully"
+
+#### Phone Number Authentication (RemoteAuth)
+1. **Configure phone pairing** in `.env`:
+   ```env
+   WA_REMOTE_AUTH_PHONE_NUMBER=12025550123
+   WA_REMOTE_AUTH_AUTO_PAIR=true
+   WA_REMOTE_AUTH_DISABLE_QR_FALLBACK=true
+   ```
+2. **Start the stack**: `make up`
+3. **Monitor logs** for pairing code request
+4. **Open WhatsApp** → Linked Devices → Link with phone number
+5. **Enter the pairing code** when prompted
+6. **Verify session establishment** in logs
+
+### End-to-End Test Procedure
+
+#### Step 1: Infrastructure Validation
+```bash
+# Run the comprehensive test script
+./scripts/test-wa-auth.sh
+```
+This script validates:
+- Service health endpoints
+- Redis connectivity
+- Docker container status
+- Network connectivity between services
+- Required environment variables
+
+#### Step 2: Manual Authentication Test
+1. **Clean environment**: `make down && make up`
+2. **Choose authentication method** (QR or phone)
+3. **Complete authentication** following method-specific steps
+4. **Verify session status**:
+   ```bash
+   curl http://localhost:3000/healthz
+   # Should return: {"ok":true,"redis":"connected"}
+   ```
+
+#### Step 3: URL Scanning Test
+1. **Add bot to a WhatsApp group** (if not already)
+2. **Send a test URL**: `https://example.com`
+3. **Monitor scan processing**:
+   ```bash
+   # Check scan queue
+   docker exec wbscanner-redis-1 redis-cli LRANGE bull:scan-request:wait 0 -1
+   
+   # Monitor verdict delivery
+   docker logs -f wbscanner-wa-client-1 | grep "verdict"
+   ```
+4. **Verify verdict response** in the group chat
+
+### Common Failure Patterns & Solutions
+
+#### Redis Connection Issues
+**Symptoms**:
+- `Redis connectivity check failed during startup`
+- Health checks return `{"ok":false,"redis":"disconnected"}`
+
+**Solutions**:
+1. Verify Redis container: `docker ps | grep redis`
+2. Check Redis logs: `make logs redis`
+3. Validate network: `docker network ls`
+4. Test connectivity: `docker exec wbscanner-wa-client-1 ping redis`
+
+#### WhatsApp Authentication Failures
+**Symptoms**:
+- QR code keeps regenerating
+- "Max retry attempts reached for WhatsApp initialization"
+- Session disconnects repeatedly
+
+**Solutions**:
+1. **Clear existing session**:
+   ```bash
+   docker exec wbscanner-wa-client-1 rm -rf /app/services/wa-client/data/session/*
+   ```
+2. **Check network connectivity**:
+   ```bash
+   docker exec wbscanner-wa-client-1 ping -c 3 web.whatsapp.com
+   ```
+3. **Verify Puppeteer resources**: Increase memory if needed
+4. **Retry with exponential backoff**: The system automatically retries with increasing delays
+
+#### Health Check Failures
+**Symptoms**:
+- Health endpoints returning 503/500
+- Docker health status showing "unhealthy"
+
+**Solutions**:
+1. **Check service logs**: `make logs <service-name>`
+2. **Validate Redis connectivity**: `docker exec <container> redis-cli ping`
+3. **Verify port bindings**: `docker ps` to ensure ports are exposed correctly
+4. **Check resource limits**: `docker stats` to monitor memory/CPU usage
+
+### Monitoring & Metrics
+
+#### Key Health Indicators
+- `wbscanner_wa_session_state` gauge (should be 1 for 'CONNECTED')
+- `wbscanner_wa_session_reconnects_total` counter (should be low/stable)
+- Redis connection success rate (should be 100%)
+
+#### Alert Thresholds
+- WhatsApp session disconnected > 5 minutes
+- Redis connection failures > 3 in 1 minute
+- Health check failures > 2 consecutive checks
+
+### Troubleshooting Commands
+
+#### Quick Diagnostics
+```bash
+# Check all services health
+curl -s http://localhost:3000/healthz && echo "wa-client OK"
+curl -s http://localhost:3001/healthz && echo "scan-orchestrator OK"
+curl -s http://localhost:8080/healthz && echo "control-plane OK"
+
+# Verify Redis connectivity
+docker exec wbscanner-redis-1 redis-cli ping
+
+# Check queue status
+docker exec wbscanner-redis-1 redis-cli llen bull:scan-request:wait
+docker exec wbscanner-redis-1 redis-cli llen bull:scan-verdict:wait
+
+# Monitor real-time logs
+make logs wa-client | grep -E "(QR|session|connected|error)"
+```
+
+#### Session Management
+```bash
+# Clear WhatsApp session (force re-auth)
+docker exec wbscanner-wa-client-1 rm -rf /app/services/wa-client/data/session/*
+
+# Check RemoteAuth session
+docker exec wbscanner-redis-1 redis-cli keys "remoteauth:v1:*"
+
+# Force new RemoteAuth session
+export WA_REMOTE_AUTH_FORCE_NEW_SESSION=true
+make up wa-client
+```
+
+### Validation Checklist
+
+Before declaring the authentication system "healthy", verify:
+
+- [ ] All Docker containers running without restarts
+- [ ] All health endpoints returning `{"ok":true}`
+- [ ] Redis connectivity confirmed from all services
+- [ ] WhatsApp session established and stable
+- [ ] Test URL processed end-to-end with verdict delivered
+- [ ] No error patterns in service logs
+- [ ] Metrics collection working (Prometheus/Grafana if enabled)
+
+### Automated Testing Integration
+
+The `scripts/test-wa-auth.sh` script can be integrated into CI/CD pipelines:
+
+```yaml
+# Example GitHub Actions step
+- name: Validate WhatsApp Authentication
+  run: |
+    ./scripts/test-wa-auth.sh
+    if [ $? -eq 0 ]; then
+      echo "✅ WhatsApp authentication validation passed"
+    else
+      echo "❌ WhatsApp authentication validation failed"
+      exit 1
+    fi
+```
+
 ## Setup Transcript Review
 - Ask the operator to upload the latest `logs/setup-YYYYMMDD-HHmm.md` **and** companion `.json` from the run they escalated; both live on the workstation where `./setup.sh` was executed.
 - In the Markdown header confirm `Final status`, `Resume hint`, and `Mode changes`. If status is `failed`, advise them to re-run `./setup.sh --resume=<checkpoint>` using the hint (preflight|environment|containers).

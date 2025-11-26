@@ -21,10 +21,10 @@ export interface ScanResult {
     status: 'allow' | 'deny';
     reason?: string | null;
   };
-  vt?: any;
-  gsb?: { matches: any[] } | boolean;
-  phishtank?: any;
-  urlhaus?: any;
+  vt?: unknown;
+  gsb?: { matches: unknown[] } | boolean;
+  phishtank?: unknown;
+  urlhaus?: unknown;
   urlscan?: {
     status?: string;
     uuid?: string;

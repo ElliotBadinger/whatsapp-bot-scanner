@@ -1,5 +1,6 @@
 import { request } from 'undici';
 import { config } from '../config';
+import { HttpError } from '../http-errors';
 
 export interface UrlscanSubmissionOptions {
   visibility?: string;
@@ -74,23 +75,30 @@ export async function submitUrlscan(
   });
 
   if (res.statusCode === 429) {
-    const err = new Error('urlscan quota exceeded');
-    (err as any).code = 429;
+    const err = new Error('urlscan quota exceeded') as HttpError;
+    err.code = 429;
     throw err;
   }
   if (res.statusCode >= 500) {
-    const err = new Error(`urlscan error: ${res.statusCode}`);
-    (err as any).statusCode = res.statusCode;
+    const err = new Error(`urlscan error: ${res.statusCode}`) as HttpError;
+    err.statusCode = res.statusCode;
     throw err;
   }
   if (res.statusCode >= 400) {
     const errBody = await res.body.text();
-    const err = new Error(`urlscan submission failed: ${res.statusCode} - ${errBody}`);
-    (err as any).statusCode = res.statusCode;
+    const err = new Error(`urlscan submission failed: ${res.statusCode} - ${errBody}`) as HttpError;
+    err.statusCode = res.statusCode;
     throw err;
   }
 
-  const json: any = await res.body.json();
+  const json = await res.body.json() as {
+    uuid?: string;
+    result?: string;
+    api?: string;
+    message?: string;
+    submissionUrl?: string;
+    visibility?: string;
+  };
   return {
     uuid: json?.uuid,
     result: json?.result,
@@ -113,20 +121,20 @@ export async function fetchUrlscanResult(uuid: string): Promise<UrlscanResult> {
     bodyTimeout: config.urlscan.resultPollTimeoutMs,
   });
   if (res.statusCode === 404) {
-    const err = new Error('urlscan result not ready');
-    (err as any).code = 404;
+    const err = new Error('urlscan result not ready') as HttpError;
+    err.code = 404;
     throw err;
   }
   if (res.statusCode >= 500) {
-    const err = new Error(`urlscan result error: ${res.statusCode}`);
-    (err as any).statusCode = res.statusCode;
+    const err = new Error(`urlscan result error: ${res.statusCode}`) as HttpError;
+    err.statusCode = res.statusCode;
     throw err;
   }
   if (res.statusCode >= 400) {
-    const err = new Error(`urlscan result failed: ${res.statusCode}`);
-    (err as any).statusCode = res.statusCode;
+    const err = new Error(`urlscan result failed: ${res.statusCode}`) as HttpError;
+    err.statusCode = res.statusCode;
     throw err;
   }
-  const json: any = await res.body.json();
+  const json = await res.body.json() as UrlscanResult;
   return json;
 }

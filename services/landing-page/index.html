@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Bot Scanner | Getting Started</title>
+    <link rel="stylesheet" href="style.css?v=2">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="background-glow"></div>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="currentColor"
+                    class="icon">
+                    <path
+                        d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20ZM11 7H13V13H11V7ZM11 15H13V17H11V15Z" />
+                </svg>
+                <h1>Bot Scanner</h1>
+            </div>
+            <p class="subtitle">Secure your WhatsApp groups with automated link scanning.</p>
+        </header>
+
+        <main>
+            <section class="card">
+                <h2>🚀 First Run Instructions</h2>
+                <p>To start using the bot, you need to pair it with your WhatsApp account and add it to a group.</p>
+
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h3>Pair Device</h3>
+                        <p>Check the terminal logs for the pairing code or QR code. Go to <strong>WhatsApp > Linked
+                                Devices > Link a Device</strong>.</p>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3>Add to Group</h3>
+                        <p>Add the bot's phone number to any WhatsApp group you want to protect.</p>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3>Grant Consent</h3>
+                        <p>The bot will not scan messages until an admin grants consent. Run this command in the group:
+                        </p>
+                        <div class="code-block">
+                            <code>!scanner consent</code>
+                            <button class="copy-btn" onclick="copyToClipboard('!scanner consent')">Copy</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card">
+                <h2>🛠️ Admin Commands</h2>
+                <div class="command-list">
+                    <div class="command-item">
+                        <code>!scanner status</code>
+                        <span>Check system health and scan stats.</span>
+                    </div>
+                    <div class="command-item">
+                        <code>!scanner mute</code>
+                        <span>Pause scanning for 60 minutes.</span>
+                    </div>
+                    <div class="command-item">
+                        <code>!scanner unmute</code>
+                        <span>Resume scanning immediately.</span>
+                    </div>
+                    <div class="command-item">
+                        <code>!scanner rescan &lt;url&gt;</code>
+                        <span>Manually trigger a scan for a specific URL.</span>
+                    </div>
+                    <div class="command-item">
+                        <code>!scanner pair</code>
+                        <span>Request a new pairing code (if disconnected).</span>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>
+                <a href="/dashboard" class="link">Uptime Kuma</a> •
+                <a href="http://localhost:3002" class="link">Grafana</a> •
+                <a href="/healthz" class="link">API Health</a>
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text);
+            const btn = document.querySelector('.copy-btn');
+            const originalText = btn.innerText;
+            btn.innerText = 'Copied!';
+            setTimeout(() => btn.innerText = originalText, 2000);
+        }
+    </script>
+</body>
+
+</html>

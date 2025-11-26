@@ -35,7 +35,7 @@ export class RedisRemoteAuthStore {
     this.clientId = options.clientId;
   }
 
-  private key(session: string): string {
+  public key(session: string): string {
     return `${this.prefix}:${session}`;
   }
 

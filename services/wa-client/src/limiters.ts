@@ -29,7 +29,7 @@ class InMemoryRateLimiter {
     private readonly points: number,
     private readonly durationSeconds: number,
     private readonly keyPrefix: string,
-  ) {}
+  ) { }
 
   async consume(key: string) {
     const bucketKey = `${this.keyPrefix}:${key}`;
@@ -41,7 +41,7 @@ class InMemoryRateLimiter {
     }
 
     if (bucket.remaining <= 0) {
-      const err: any = new Error('Rate limit exceeded');
+      const err = new Error('Rate limit exceeded') as Error & { remainingPoints?: number; msBeforeNext?: number };
       err.remainingPoints = bucket.remaining;
       err.msBeforeNext = Math.max(0, bucket.resetAt - now);
       throw err;

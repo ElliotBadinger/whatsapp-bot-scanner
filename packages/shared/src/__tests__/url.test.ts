@@ -7,8 +7,9 @@ jest.mock('../ssrf', () => ({
 }));
 
 import { extractUrls, expandUrl, isSuspiciousTld, normalizeUrl, urlHash } from '../url';
+import type { request as requestType } from 'undici';
 
-const { request } = require('undici') as { request: jest.Mock };
+const { request } = jest.requireMock('undici') as { request: jest.MockedFunction<typeof requestType> };
 const { isPrivateHostname } = jest.requireMock('../ssrf') as { isPrivateHostname: jest.Mock };
 
 beforeEach(() => {

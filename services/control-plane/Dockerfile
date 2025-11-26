@@ -21,6 +21,9 @@ COPY services/control-plane/src /app/services/control-plane/src
 RUN cd /app/services/control-plane && \
     npm run build
 
+
+RUN mkdir -p /app/storage && chown -R node:node /app/storage
+
 ENV NODE_ENV=production
 USER node
 WORKDIR /app/services/control-plane

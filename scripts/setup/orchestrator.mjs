@@ -255,6 +255,9 @@ async function showWelcome(context, output) {
     return;
   }
   const prompt = await createPromptHelpers(context);
+  if (context.flags.dryRun) {
+    output.note('DRY RUN MODE: No changes will be made to your system.');
+  }
   const banner = boxen(
     [
       chalk.bold('WhatsApp Bot Scanner • Adaptive Setup'),
@@ -268,12 +271,12 @@ async function showWelcome(context, output) {
       `Hotkeys: ${describeHotkeys()}`,
       ''
     ].join(os.EOL),
-    { padding: { top: 1, bottom: 1, left: 2, right: 2 }, borderStyle: 'round', borderColor: 'cyan' }
+    { padding: { top: 1, bottom: 1, left: 2, right: 2 }, borderStyle: 'round', borderColor: context.flags.dryRun ? 'yellow' : 'cyan' }
   );
   console.log(banner);
   const confirm = await prompt.confirm({
     name: 'ready',
-    message: 'Ready to begin the guided setup?',
+    message: `Ready to begin the guided setup?${context.flags.dryRun ? ' (Dry Run)' : ''}`,
     initial: true
   });
   if (!confirm) {
@@ -325,6 +328,7 @@ async function runPlanningFlow(context, output) {
   output.info(`Stop existing containers: ${context.flags.clean ? 'Yes' : 'No'}`);
   output.info(`Full reset (volumes): ${context.flags.reset ? 'Yes – destructive' : 'No'}`);
   output.info(`Target branch: ${context.flags.branch || 'Stay on current'}`);
+  output.info(`Dry Run: ${context.flags.dryRun ? 'Yes' : 'No'}`);
   const proceed = await prompt.confirm({ name: 'proceed', message: 'Proceed with this plan?', initial: true });
   if (!proceed) {
     output.warn('Setup cancelled before making changes.');
@@ -486,8 +490,28 @@ function generateBase64Secret(bytes = 32) {
   return crypto.randomBytes(bytes).toString('base64');
 }
 
-function cleanDigits(value) {
-  return value ? value.replace(/\D+/g, '') : '';
+function cleanDigits(input) {
+  if (!input || typeof input !== 'string') return '';
+  return input.replace(/\D/g, '');
+}
+
+async function checkRemoteSessionExists(context, runtime) {
+  try {
+    const redisUrl = runtime.envFile.get('REDIS_URL') || 'redis://redis:6379/0';
+    const clientId = runtime.envFile.get('WA_AUTH_CLIENT_ID') || 'default';
+    const key = `whatsapp-remote-session:${clientId}:creds`;
+
+    // Quick Redis check using docker exec
+    const result = await execa(
+      runtime.dockerComposeCommand[0],
+      [...runtime.dockerComposeCommand.slice(1), 'exec', '-T', 'redis', 'redis-cli', 'EXISTS', key],
+      { cwd: ROOT_DIR }
+    ).catch(() => ({ stdout: '0' }));
+
+    return result.stdout?.trim() === '1';
+  } catch {
+    return false; // Assume first-time if we can't check
+  }
 }
 
 function redact(value) {
@@ -823,6 +847,16 @@ async function promptForApiKeys(context, runtime, output) {
     env.set('GSB_API_KEY', gsb);
     context.recordDecision('gsb.apiKeyProvided', true);
   }
+
+  const ds = await prompt.input({
+    name: 'deepsource',
+    message: 'DeepSource API Token (optional, for programmatic analysis)',
+    initial: env.get('DEEPSOURCE_API_TOKEN')
+  });
+  if (ds) {
+    env.set('DEEPSOURCE_API_TOKEN', ds);
+    context.recordDecision('deepsource.tokenProvided', true);
+  }
 }
 
 async function configureRemoteAuth(context, runtime, output) {
@@ -867,33 +901,79 @@ async function validateQueueNames(context, runtime) {
   context.log('queueValidation', { status: 'ok' });
 }
 
-async function checkPorts(context, output) {
+async function findAvailablePort(startPort, maxAttempts = 10) {
+  for (let offset = 0; offset < maxAttempts; offset++) {
+    const port = startPort + offset;
+    if (!(await isPortInUse(port))) {
+      return port;
+    }
+  }
+  return null;
+}
+
+async function checkPorts(context, runtime, output) {
   if (SKIP_PORT_CHECKS) {
     output.warn('Skipping port collision scan (SETUP_SKIP_PORT_CHECKS=1).');
     return;
   }
+  const env = runtime.envFile;
   const collisions = [];
+  const resolutions = [];
+
   for (const { port, label, envHint } of PORT_CHECKS) {
-    if (await isPortInUse(port)) {
-      collisions.push({ port, label, envHint });
-    }
-  }
-  if (collisions.length > 0) {
-    output.warn('Port conflicts detected:');
-    for (const collision of collisions) {
-      output.warn(`Port ${collision.port} (${collision.label}) already in use.`);
-      if (collision.envHint) {
-        output.info(`Update ${collision.envHint} in .env and rerun setup.`);
+    const configuredPort = envHint ? parseInt(env.get(envHint) || port, 10) : port;
+
+    if (await isPortInUse(configuredPort)) {
+      if (envHint) {
+        // Attempt to find alternative port
+        const availablePort = await findAvailablePort(configuredPort + 1);
+        if (availablePort) {
+          if (!context.flags.dryRun) {
+            env.set(envHint, String(availablePort));
+          }
+          resolutions.push({ label, oldPort: configuredPort, newPort: availablePort, envHint });
+          context.recordDecision(`portResolution:${envHint}`, { from: configuredPort, to: availablePort });
+        } else {
+          collisions.push({ port: configuredPort, label, envHint });
+        }
+      } else {
+        collisions.push({ port: configuredPort, label, envHint: null });
       }
     }
+  }
+
+  if (resolutions.length > 0) {
+    output.heading('Port Conflicts Auto-Resolved');
+    for (const { label, oldPort, newPort, envHint } of resolutions) {
+      if (context.flags.dryRun) {
+        output.info(`[Dry Run] Would update ${label}: Port ${oldPort} → ${newPort} (${envHint})`);
+      } else {
+        output.success(`${label}: Port ${oldPort} → ${newPort} (${envHint} updated)`);
+      }
+    }
+    if (!context.flags.dryRun) {
+      await env.save();
+    }
+  }
+
+  if (collisions.length > 0) {
+    output.warn('Unresolvable port conflicts detected:');
+    for (const collision of collisions) {
+      output.warn(`Port ${collision.port} (${collision.label}) is in use and cannot be auto-resolved.`);
+    }
+
     if (!context.flags.noninteractive) {
-      await new Confirm({
+      const prompt = await createPromptHelpers(context);
+      const proceed = await prompt.confirm({
         name: 'continue',
         message: 'Continue despite port conflicts?',
         initial: false
-      }).run();
+      });
+      if (!proceed) {
+        throw new Error('Setup cancelled due to port conflicts.');
+      }
     }
-  } else {
+  } else if (resolutions.length === 0) {
     output.success('No blocking port collisions detected.');
   }
 }
@@ -927,11 +1007,12 @@ async function cleanUpStack(context, runtime, output) {
     output.heading('Reset Requested');
     output.warn('Reset will delete Postgres data and the WhatsApp session volume.');
     if (!context.flags.noninteractive) {
-      const confirm = await new Confirm({
+      const prompt = await createPromptHelpers(context);
+      const confirm = await prompt.confirm({
         name: 'confirmReset',
         message: 'Proceed with destructive reset (DB + WhatsApp session will be deleted)?',
         initial: false
-      }).run();
+      });
       if (!confirm) {
         context.flags.reset = false;
         output.warn('Reset aborted by user.');
@@ -1035,8 +1116,36 @@ async function tailWhatsappLogs(context, runtime, output) {
   const strategy = (runtime.envFile.get('WA_AUTH_STRATEGY') || 'remote').toLowerCase();
   const phone = cleanDigits(runtime.envFile.get('WA_REMOTE_AUTH_PHONE_NUMBER'));
   const autoPair = (runtime.envFile.get('WA_REMOTE_AUTH_AUTO_PAIR') || '').toLowerCase() === 'true';
-  if (strategy === 'remote' && phone && autoPair) {
-    output.info(`Watching for phone-number pairing code targeting ${redact(phone)}.`);
+
+  // Check if this is first-time setup or re-pairing
+  const hasRemoteSession = await checkRemoteSessionExists(context, runtime);
+
+  if (strategy === 'remote' && phone) {
+    output.info(`Phone number configured: ${redact(phone)}`);
+
+    if (!hasRemoteSession) {
+      // First-time setup: automatic pairing allowed
+      output.success('🆕 First-time setup detected');
+      output.info('Automatic pairing will start once wa-client initializes.');
+      output.info('Watch for the pairing code in the logs below.');
+      output.info('');
+      output.note('⏱️  The code expires in ~2:40 minutes. Enter it on your phone promptly.');
+    } else {
+      // Re-pairing: manual mode
+      if (autoPair) {
+        output.warn('⚠️  WA_REMOTE_AUTH_AUTO_PAIR=true detected, but re-pairing requires manual trigger.');
+      }
+      output.info('🔄 Re-pairing mode active (manual control to prevent rate limiting)');
+      output.info('');
+      output.success('📱 To request a pairing code:');
+      output.info('   1. Wait for wa-client to be ready (see logs below)');
+      output.info('   2. Send this admin command from WhatsApp:');
+      output.info('      !scanner pair');
+      output.info('   3. The pairing code will appear in the logs');
+      output.info('   4. Enter the code on your phone within ~2:40 minutes');
+      output.info('');
+      output.note('💡 Check pairing status: !scanner pair-status');
+    }
   } else {
     output.info('A QR code will appear below for manual pairing.');
   }
@@ -1218,8 +1327,12 @@ function registerPhases(context, runtime, output) {
       await configureRemoteAuth(ctx, runtime, output);
       await runEnvironmentPlugins(ctx, runtime, output);
       await validateQueueNames(ctx, runtime);
-      await checkPorts(ctx, output);
-      await runtime.envFile.save();
+      await checkPorts(ctx, runtime, output);
+      if (!ctx.flags.dryRun) {
+        await runtime.envFile.save();
+      } else {
+        output.info('[Dry Run] Skipping .env file save.');
+      }
     }
   });
   registerPhase({
@@ -1260,9 +1373,11 @@ function registerPhases(context, runtime, output) {
       await smokeTest(ctx, runtime, output);
       output.heading('Observability & Access');
       const reversePort = runtime.envFile.get('REVERSE_PROXY_PORT') || '8088';
-      output.info(`Reverse proxy: http://localhost:${reversePort}`);
-      output.info(`Control plane UI: http://localhost:${reversePort}/`);
+      output.info(`Landing Page & Docs: http://localhost:${reversePort}/`);
+      output.info(`Control Plane API: http://localhost:${reversePort}/healthz`);
       output.info('Grafana: http://localhost:3002 (admin / admin)');
+      const kumaPort = runtime.envFile.get('UPTIME_KUMA_PORT') || '3001';
+      output.info(`Uptime Kuma: http://localhost:${kumaPort}`);
       output.info('Prometheus: inside docker network at prometheus:9090');
       const token = runtime.envFile.get('CONTROL_PLANE_API_TOKEN');
       if (token) {

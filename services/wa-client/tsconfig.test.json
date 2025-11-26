@@ -1,14 +1,24 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "types": ["jest"],
+    "types": [
+      "jest"
+    ],
     "esModuleInterop": true,
     "rootDir": "../..",
     "baseUrl": "../..",
     "paths": {
-      "@wbscanner/shared": ["packages/shared/src/index.ts"],
-      "@wbscanner/shared/*": ["packages/shared/src/*"]
+      "@wbscanner/shared": [
+        "packages/shared/src/index.ts"
+      ],
+      "@wbscanner/shared/*": [
+        "packages/shared/src/*"
+      ]
     }
   },
-  "include": ["src/**/*", "../../packages/shared/src/index.ts"]
+  "include": [
+    "src/**/*",
+    "../../packages/shared/src/index.ts"
+  ],
+  "exclude": []
 }
