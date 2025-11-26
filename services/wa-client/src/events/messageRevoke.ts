@@ -23,7 +23,7 @@ export async function handleSelfMessageRevoke(deps: MessageRevokeDependencies, m
     if (!chatId) {
       return;
     }
-    const messageId = (msg.id as any)?._serialized || (msg.id as any)?.id;
+    const messageId = (msg.id as unknown as { _serialized?: string })?._serialized || (msg.id as unknown as { id?: string })?.id;
     if (!messageId) {
       return;
     }

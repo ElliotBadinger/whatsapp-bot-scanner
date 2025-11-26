@@ -88,7 +88,7 @@ function scheduleTimeout(redis: Redis, verdictMessageId: string, resendFn: (reco
 export async function restorePendingVerdicts(redis: Redis, resendFn: (record: PendingVerdictRecord) => Promise<PendingVerdictRecord | null>, logger: Logger): Promise<void> {
   let cursor = '0';
   do {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const [nextCursor, keys] = await redis.scan(cursor, 'MATCH', 'wa:verdict:pending:*', 'COUNT', 25) as unknown as [string, string[]];
     cursor = nextCursor;
     for (const key of keys) {

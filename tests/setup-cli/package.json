@@ -4,9 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "echo 'No build needed for setup-cli tests'",
     "test": "vitest run"
   },
   "devDependencies": {
-    "vitest": "^1.6.0"
+    "vitest": "^4.0.10"
   }
 }

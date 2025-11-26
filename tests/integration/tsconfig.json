@@ -2,10 +2,9 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "baseUrl": ".",
-    "types": ["vitest"],
     "paths": {
-      "@wbscanner/shared": ["../../packages/shared/src/index.ts"],
-      "@wbscanner/shared/*": ["../../packages/shared/src/*"]
+      "@wbscanner/shared": ["../../packages/shared/dist/index.d.ts"],
+      "@wbscanner/shared/*": ["../../packages/shared/dist/*.d.ts"]
     }
   },
   "include": ["./**/*.ts"]

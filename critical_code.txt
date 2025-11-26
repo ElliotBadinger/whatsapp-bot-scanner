@@ -1,0 +1,4256 @@
+==================================================
+File: services/wa-client/src/index.ts
+==================================================
+import Fastify from 'fastify';
+import { Client, LocalAuth, RemoteAuth, Message, GroupChat, GroupNotification, MessageMedia, Reaction, MessageAck, Call, Contact, GroupParticipant } from 'whatsapp-web.js';
+import type { ClientOptions } from 'whatsapp-web.js';
+import QRCode from 'qrcode-terminal';
+import { Queue, Worker, JobsOptions } from 'bullmq';
+import { createHash } from 'node:crypto';
+import Redis from 'ioredis';
+import path from 'node:path';
+import { readFileSync } from 'node:fs';
+import {
+  config,
+  logger,
+  extractUrls,
+  normalizeUrl,
+  urlHash,
+  metrics,
+  register,
+  assertControlPlaneToken,
+  assertEssentialConfig,
+  waSessionStatusGauge,
+  isForbiddenHostname,
+} from '@wbscanner/shared';
+import { RateLimiterRedis } from 'rate-limiter-flexible';
+import { createGlobalTokenBucket, GLOBAL_TOKEN_BUCKET_ID } from './limiters';
+import { MessageStore, VerdictContext } from './message-store';
+import { GroupStore } from './group-store';
+import { loadEncryptionMaterials } from './crypto/dataKeyProvider';
+import { createRemoteAuthStore } from './remoteAuthStore';
+import type { RedisRemoteAuthStore } from './remoteAuthStore';
+import { resetRemoteSessionArtifacts, ensureRemoteSessionDirectories } from './session/cleanup';
+import { describeSession, isSessionReady, type SessionSnapshot } from './session/guards';
+import { enrichEvaluationError } from './session/errors';
+import { safeGetGroupChatById } from './utils/chatLookup';
+import { handleSelfMessageRevoke } from './handlers/selfRevoke';
+import { PairingOrchestrator } from './pairingOrchestrator';
+
+function createRedisConnection(): Redis {
+  if (process.env.NODE_ENV === 'test') {
+    class InMemoryRedis {
+      private store = new Map<string, string>();
+      private ttlStore = new Map<string, number>();
+      private setStore = new Map<string, Set<string>>();
+      private hashStore = new Map<string, Map<string, string>>();
+      private listStore = new Map<string, string[]>();
+
+      async get(key: string): Promise<string | null> {
+        return this.store.get(key) ?? null;
+      }
+
+      async set(key: string, value: string, mode?: string, ttlArg?: number, nxArg?: string): Promise<'OK' | null> {
+        if (mode === 'EX') {
+          const ttlSeconds = typeof ttlArg === 'number' ? ttlArg : 0;
+          if (nxArg === 'NX' && this.store.has(key)) {
+            return null;
+          }
+          this.store.set(key, value);
+          if (ttlSeconds > 0) {
+            this.ttlStore.set(key, ttlSeconds);
+          } else {
+            this.ttlStore.delete(key);
+          }
+          return 'OK';
+        }
+        this.store.set(key, value);
+        this.ttlStore.delete(key);
+        return 'OK';
+      }
+
+      async del(key: string): Promise<number> {
+        const existed = this.store.delete(key);
+        this.ttlStore.delete(key);
+        this.setStore.delete(key);
+        this.hashStore.delete(key);
+        this.listStore.delete(key);
+        return existed ? 1 : 0;
+      }
+
+      async ttl(key: string): Promise<number> {
+        return this.ttlStore.get(key) ?? -1;
+      }
+
+      async expire(key: string, seconds: number): Promise<number> {
+        if (seconds > 0) {
+          this.ttlStore.set(key, seconds);
+          return 1;
+        }
+        this.ttlStore.delete(key);
+        return 0;
+      }
+
+      async sadd(key: string, member: string): Promise<number> {
+        const set = this.setStore.get(key) ?? new Set<string>();
+        set.add(member);
+        this.setStore.set(key, set);
+        return set.size;
+      }
+
+      async srem(key: string, member: string): Promise<number> {
+        const set = this.setStore.get(key);
+        if (!set) return 0;
+        const existed = set.delete(member);
+        if (set.size === 0) this.setStore.delete(key);
+        return existed ? 1 : 0;
+      }
+
+      async scard(key: string): Promise<number> {
+        return this.setStore.get(key)?.size ?? 0;
+      }
+
+      async hset(key: string, field: string, value: string): Promise<number> {
+        const hash = this.hashStore.get(key) ?? new Map<string, string>();
+        const existed = hash.has(field) ? 0 : 1;
+        hash.set(field, value);
+        this.hashStore.set(key, hash);
+        return existed;
+      }
+
+      async hdel(key: string, field: string): Promise<number> {
+        const hash = this.hashStore.get(key);
+        if (!hash) return 0;
+        const removed = hash.delete(field) ? 1 : 0;
+        if (hash.size === 0) this.hashStore.delete(key);
+        return removed;
+      }
+
+      async hkeys(key: string): Promise<string[]> {
+        return Array.from(this.hashStore.get(key)?.keys() ?? []);
+      }
+
+      async lpush(key: string, value: string): Promise<number> {
+        const list = this.listStore.get(key) ?? [];
+        list.unshift(value);
+        this.listStore.set(key, list);
+        return list.length;
+      }
+
+      async ltrim(key: string, start: number, stop: number): Promise<void> {
+        const list = this.listStore.get(key);
+        if (!list) return;
+        const normalizedStop = stop < 0 ? list.length + stop : stop;
+        const trimmed = list.slice(start, normalizedStop + 1);
+        this.listStore.set(key, trimmed);
+      }
+
+      async lrange(key: string, start: number, stop: number): Promise<string[]> {
+        const list = this.listStore.get(key) ?? [];
+        const normalizedStop = stop < 0 ? list.length + stop : stop;
+        return list.slice(start, normalizedStop + 1);
+      }
+
+      on(): void { }
+
+      quit(): Promise<void> {
+        return Promise.resolve();
+      }
+    }
+
+    return new InMemoryRedis() as unknown as Redis;
+  }
+  return new Redis(config.redisUrl, { maxRetriesPerRequest: null });
+}
+
+const redis = createRedisConnection();
+const scanRequestQueue = new Queue(config.queues.scanRequest, { connection: redis });
+
+const pairingCodeCacheKey = (phone: string) => `wa:pairing:code:${phone}`;
+const pairingAttemptKey = (phone: string) => `wa:pairing:last_attempt:${phone}`;
+
+async function cachePairingCode(phone: string, code: string): Promise<void> {
+  try {
+    const payload = JSON.stringify({ code, storedAt: Date.now() });
+    const ttlSeconds = Math.max(1, Math.ceil(PHONE_PAIRING_CODE_TTL_MS / 1000));
+    await redis.set(pairingCodeCacheKey(phone), payload, 'EX', ttlSeconds);
+  } catch (err) {
+    logger.warn({ err, phoneNumber: maskPhone(phone) }, 'Failed to cache pairing code.');
+  }
+}
+
+async function getCachedPairingCode(phone: string): Promise<{ code: string; storedAt: number } | null> {
+  try {
+    const raw = await redis.get(pairingCodeCacheKey(phone));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { code?: unknown; storedAt?: unknown };
+    if (typeof parsed.code === 'string' && typeof parsed.storedAt === 'number') {
+      return { code: parsed.code, storedAt: parsed.storedAt };
+    }
+    return null;
+  } catch (err) {
+    logger.warn({ err, phoneNumber: maskPhone(phone) }, 'Failed to read cached pairing code.');
+    return null;
+  }
+}
+
+async function recordPairingAttempt(phone: string, timestamp: number): Promise<void> {
+  try {
+    const ttlSeconds = 600;
+    await redis.set(pairingAttemptKey(phone), String(timestamp), 'EX', ttlSeconds);
+  } catch (err) {
+    logger.warn({ err, phoneNumber: maskPhone(phone) }, 'Failed to record pairing attempt.');
+  }
+}
+
+async function getLastPairingAttempt(phone: string): Promise<number | null> {
+  try {
+    const raw = await redis.get(pairingAttemptKey(phone));
+    if (!raw) return null;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  } catch (err) {
+    logger.warn({ err, phoneNumber: maskPhone(phone) }, 'Failed to read last pairing attempt.');
+    return null;
+  }
+}
+
+const globalLimiter = createGlobalTokenBucket(redis, config.wa.globalRatePerHour, config.wa.globalTokenBucketKey);
+const groupLimiter = new RateLimiterRedis({
+  storeClient: redis,
+  keyPrefix: 'group_cooldown',
+  points: 1,
+  duration: config.wa.perGroupCooldownSeconds
+});
+const groupHourlyLimiter = new RateLimiterRedis({
+  storeClient: redis,
+  keyPrefix: 'group_hour',
+  points: config.wa.perGroupHourlyLimit,
+  duration: 3600,
+});
+const governanceLimiter = new RateLimiterRedis({
+  storeClient: redis,
+  keyPrefix: 'group_governance',
+  points: Math.max(1, config.wa.governanceInterventionsPerHour),
+  duration: 3600,
+});
+const membershipGroupLimiter = new RateLimiterRedis({
+  storeClient: redis,
+  keyPrefix: 'group_membership_auto',
+  points: Math.max(1, config.wa.membershipAutoApprovePerHour),
+  duration: 3600,
+});
+
+interface RemoteAuthContext {
+  store: RedisRemoteAuthStore;
+  sessionName: string;
+  sessionExists: boolean;
+}
+
+interface AuthResolution {
+  strategy: LocalAuth | RemoteAuth;
+  remote?: RemoteAuthContext;
+}
+
+async function resolveAuthStrategy(redisInstance: Redis): Promise<AuthResolution> {
+  if (config.wa.authStrategy === 'remote') {
+    if (config.wa.remoteAuth.store !== 'redis') {
+      throw new Error(`Unsupported RemoteAuth store "${config.wa.remoteAuth.store}". Only Redis is supported.`);
+    }
+    const materials = await loadEncryptionMaterials(config.wa.remoteAuth, logger);
+    const store = createRemoteAuthStore({
+      redis: redisInstance,
+      logger,
+      prefix: `remoteauth:v1:${config.wa.remoteAuth.clientId}`,
+      materials,
+      clientId: config.wa.remoteAuth.clientId,
+    });
+    const sessionName = config.wa.remoteAuth.clientId ? `RemoteAuth-${config.wa.remoteAuth.clientId}` : 'RemoteAuth';
+    let sessionExists = await store.sessionExists({ session: sessionName });
+    if (sessionExists && config.wa.remoteAuth.forceNewSession) {
+      logger.info({ clientId: config.wa.remoteAuth.clientId }, 'Force-new-session enabled; removing stored RemoteAuth session');
+      await resetRemoteSessionArtifacts({
+        store,
+        sessionName,
+        dataPath: config.wa.remoteAuth.dataPath || './data/remote-session',
+        logger,
+      });
+      sessionExists = false;
+      process.env.WA_REMOTE_AUTH_FORCE_NEW_SESSION = 'false';
+      config.wa.remoteAuth.forceNewSession = false;
+      logger.info({ clientId: config.wa.remoteAuth.clientId }, 'Force-new-session flag cleared after cleanup to prevent repeated resets.');
+    }
+    await ensureRemoteSessionDirectories(config.wa.remoteAuth.dataPath || './data/remote-session', logger);
+    logger.info({ clientId: config.wa.remoteAuth.clientId, sessionExists }, 'Initialising RemoteAuth strategy');
+    const strategy = new RemoteAuth({
+      clientId: config.wa.remoteAuth.clientId,
+      dataPath: config.wa.remoteAuth.dataPath,
+      store,
+      backupSyncIntervalMs: config.wa.remoteAuth.backupIntervalMs,
+    });
+    return {
+      strategy,
+      remote: {
+        store,
+        sessionName,
+        sessionExists,
+      },
+    };
+  }
+  logger.info('Initialising LocalAuth strategy');
+  return { strategy: new LocalAuth({ dataPath: './data/session' }) };
+}
+const membershipGlobalLimiter = new RateLimiterRedis({
+  storeClient: redis,
+  keyPrefix: 'membership_global',
+  points: Math.max(1, config.wa.membershipGlobalHourlyLimit),
+  duration: 3600,
+});
+const messageStore = new MessageStore(redis, config.wa.messageLineageTtlSeconds);
+const groupStore = new GroupStore(redis, config.wa.messageLineageTtlSeconds);
+
+const processedKey = (chatId: string, messageId: string, urlH: string) => `processed:${chatId}:${messageId}:${urlH}`;
+
+const consentStatusKey = (chatId: string) => `wa:consent:status:${chatId}`;
+const consentPendingSetKey = 'wa:consent:pending';
+const membershipPendingKey = (chatId: string) => `wa:membership:pending:${chatId}`;
+const VERDICT_ACK_TARGET = 2;
+const maskPhone = (phone?: string): string => {
+  if (!phone) return '';
+  if (phone.length <= 4) return phone;
+  return `****${phone.slice(-4)}`;
+};
+const DEFAULT_PAIRING_CODE_TIMEOUT_MS = 120000;
+const FORCE_PHONE_PAIRING = config.wa.remoteAuth.disableQrFallback || config.wa.remoteAuth.autoPair;
+const CONFIGURED_MAX_PAIRING_RETRIES = Math.max(1, config.wa.remoteAuth.maxPairingRetries ?? 5);
+const MAX_PAIRING_CODE_RETRIES = FORCE_PHONE_PAIRING ? Number.MAX_SAFE_INTEGER : CONFIGURED_MAX_PAIRING_RETRIES;
+const PAIRING_RETRY_DELAY_MS = Math.max(1000, config.wa.remoteAuth.pairingRetryDelayMs ?? 15000);
+const PHONE_PAIRING_CODE_TTL_MS = 160000;
+
+const ackWatchers = new Map<string, NodeJS.Timeout>();
+let currentWaState: string | null = null;
+let botWid: string | null = null;
+let pairingOrchestrator: import('./pairingOrchestrator').PairingOrchestrator | null = null;
+let remotePhone: string | undefined = undefined;
+
+function snapshotSession(): SessionSnapshot {
+  return { state: currentWaState, wid: botWid };
+}
+
+function hydrateParticipantList(chat: GroupChat): Promise<GroupParticipant[]> {
+  const maybeParticipants = (chat as unknown as { participants?: GroupParticipant[] }).participants;
+  if (maybeParticipants && maybeParticipants.length > 0) {
+    return Promise.resolve(maybeParticipants);
+  }
+  const fetchParticipants = (chat as unknown as { fetchParticipants?: () => Promise<GroupParticipant[]> }).fetchParticipants;
+  if (typeof fetchParticipants === 'function') {
+    return fetchParticipants().catch(() => maybeParticipants ?? []);
+  }
+  return Promise.resolve(maybeParticipants ?? []);
+}
+
+function expandWidVariants(id: string | undefined): string[] {
+  if (!id) return [];
+  if (!id.includes('@')) return [id];
+  const [user, domain] = id.split('@');
+  if (domain === 'c.us') {
+    return [id, `${user}@lid`];
+  }
+  if (domain === 'lid') {
+    return [id, `${user}@c.us`];
+  }
+  return [id];
+}
+
+function contextKey(context: VerdictContext): string {
+  return `${context.chatId}:${context.messageId}:${context.urlHash}`;
+}
+
+function loadConsentTemplate(): string {
+  const candidates = [
+    path.resolve(process.cwd(), 'docs/CONSENT.md'),
+    path.resolve(__dirname, '../../docs/CONSENT.md'),
+    path.resolve(__dirname, '../../../docs/CONSENT.md'),
+  ];
+  for (const candidate of candidates) {
+    try {
+      const raw = readFileSync(candidate, 'utf8');
+      if (raw.trim().length > 0) {
+        return raw.trim();
+      }
+    } catch {
+      // ignore missing file candidates
+    }
+  }
+  return [
+    'Hello! This group uses automated link scanning for safety.',
+    'Links shared here are checked against security sources and verdicts are posted in reply.',
+    'We store only normalized links, chat ID, message ID, and a hashed sender identifier for 30 days.',
+    'Admins can opt out at any time with !scanner mute.',
+    'By continuing to use this group you consent to automated link scanning. Thank you!'
+  ].join('\n');
+}
+
+const consentTemplate = loadConsentTemplate();
+
+async function refreshConsentGauge(): Promise<void> {
+  try {
+    const pending = await redis.scard(consentPendingSetKey);
+    metrics.waConsentGauge.set(pending);
+  } catch (err) {
+    logger.warn({ err }, 'Failed to refresh consent gauge');
+  }
+}
+
+async function markConsentPending(chatId: string): Promise<void> {
+  await redis.set(consentStatusKey(chatId), 'pending', 'EX', config.wa.messageLineageTtlSeconds);
+  await redis.sadd(consentPendingSetKey, chatId);
+  metrics.waGovernanceActions.labels('consent_pending').inc();
+  await refreshConsentGauge();
+}
+
+async function markConsentGranted(chatId: string): Promise<void> {
+  await redis.set(consentStatusKey(chatId), 'granted', 'EX', config.wa.messageLineageTtlSeconds);
+  await redis.srem(consentPendingSetKey, chatId);
+  metrics.waGovernanceActions.labels('consent_granted').inc();
+  await refreshConsentGauge();
+}
+
+async function clearConsentState(chatId: string): Promise<void> {
+  await redis.del(consentStatusKey(chatId));
+  await redis.srem(consentPendingSetKey, chatId);
+  await refreshConsentGauge();
+}
+
+async function getConsentStatus(chatId: string): Promise<'pending' | 'granted' | null> {
+  const status = await redis.get(consentStatusKey(chatId));
+  if (status === 'pending' || status === 'granted') {
+    return status;
+  }
+  return null;
+}
+
+async function addPendingMembership(chatId: string, requesterId: string, timestamp: number): Promise<void> {
+  await redis.hset(membershipPendingKey(chatId), requesterId, String(timestamp));
+}
+
+async function removePendingMembership(chatId: string, requesterId: string): Promise<void> {
+  await redis.hdel(membershipPendingKey(chatId), requesterId);
+}
+
+async function listPendingMemberships(chatId: string): Promise<string[]> {
+  const entries = await redis.hkeys(membershipPendingKey(chatId));
+  return entries;
+}
+
+interface VerdictJobData {
+  chatId: string;
+  messageId: string;
+  verdict: string;
+  reasons: string[];
+  url: string;
+  urlHash: string;
+  decidedAt?: number;
+  redirectChain?: string[];
+  shortener?: { provider: string; chain: string[] } | null;
+  degradedMode?: { providers: Array<{ name: string; reason: string }> } | null;
+}
+
+async function collectVerdictMedia(job: VerdictJobData): Promise<Array<{ media: MessageMedia; type: 'screenshot' | 'ioc' }>> {
+  if (!config.features.attachMediaToVerdicts) {
+    return [];
+  }
+  const attachments: Array<{ media: MessageMedia; type: 'screenshot' | 'ioc' }> = [];
+  const base = resolveControlPlaneBase();
+  const token = assertControlPlaneToken();
+
+  try {
+    const resp = await fetch(`${base}/scans/${job.urlHash}/urlscan-artifacts/screenshot`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (resp.ok) {
+      const buffer = Buffer.from(await resp.arrayBuffer());
+      if (buffer.length > 0) {
+        const media = new MessageMedia('image/png', buffer.toString('base64'), `screenshot-${job.urlHash.slice(0, 8)}.png`);
+        attachments.push({ media, type: 'screenshot' });
+      }
+    }
+  } catch (err) {
+    logger.warn({ err, urlHash: job.urlHash }, 'Failed to fetch screenshot attachment');
+  }
+
+  const lines: string[] = [];
+  lines.push(`URL: ${job.url}`);
+  lines.push(`Verdict: ${job.verdict}`);
+  if (job.reasons.length > 0) {
+    lines.push('Reasons:');
+    for (const reason of job.reasons) {
+      lines.push(`- ${reason}`);
+    }
+  }
+  if (job.redirectChain && job.redirectChain.length > 0) {
+    lines.push('Redirect chain:');
+    for (const hop of job.redirectChain) {
+      lines.push(`- ${hop}`);
+    }
+  }
+  if (job.shortener?.chain && job.shortener.chain.length > 0) {
+    lines.push(`Shortener expansion (${job.shortener.provider ?? 'unknown'}):`);
+    for (const hop of job.shortener.chain) {
+      lines.push(`- ${hop}`);
+    }
+  }
+
+  const textPayload = lines.join('\n');
+  if (textPayload.trim().length > 0) {
+    const data = Buffer.from(textPayload, 'utf8').toString('base64');
+    const media = new MessageMedia('text/plain', data, `scan-${job.urlHash.slice(0, 8)}.txt`);
+    attachments.push({ media, type: 'ioc' });
+  }
+
+  return attachments;
+}
+
+async function deliverVerdictMessage(
+  client: Client,
+  job: VerdictJobData,
+  context: VerdictContext,
+  isRetry = false
+): Promise<boolean> {
+  let targetMessage: Message | null = null;
+  try {
+    targetMessage = await client.getMessageById(job.messageId);
+  } catch (err) {
+    logger.warn({ err, messageId: job.messageId }, 'Failed to hydrate original message by id');
+  }
+
+  const snapshot = snapshotSession();
+  if (!isSessionReady(snapshot)) {
+    logger.debug({ job, session: describeSession(snapshot) }, 'Skipping verdict delivery because session is not ready');
+    return false;
+  }
+
+  let chat: GroupChat | null = null;
+  try {
+    if (targetMessage) {
+      chat = await targetMessage.getChat().catch((err) => {
+        throw enrichEvaluationError(err, {
+          operation: 'deliverVerdictMessage:getChat',
+          chatId: (targetMessage.id as unknown as { remote?: string })?.remote ?? job.chatId,
+          messageId: targetMessage.id?._serialized,
+          snapshot,
+        });
+      }) as GroupChat;
+    } else {
+      chat = await safeGetGroupChatById({
+        client,
+        chatId: job.chatId,
+        snapshot,
+        logger,
+      });
+    }
+  } catch (err) {
+    logger.warn({ err, chatId: job.chatId }, 'Unable to load chat for verdict delivery');
+    return false;
+  }
+
+  if (!chat) {
+    return false;
+  }
+
+  if (!isRetry && job.degradedMode?.providers?.length) {
+    const lines = [
+      '⚠️ Scanner degraded: external intelligence providers are unavailable.',
+      ...job.degradedMode.providers.map((provider) => `- ${provider.name}: ${provider.reason}`),
+      'Verdicts rely on cached data and heuristics until providers recover.',
+    ];
+    const message = lines.join('\n');
+    try {
+      await chat.sendMessage(message);
+      metrics.waGroupEvents.labels('scanner_degraded').inc();
+    } catch (err) {
+      logger.warn({ err, chatId: job.chatId }, 'Failed to send degraded mode notification');
+    }
+    await groupStore.recordEvent({
+      chatId: job.chatId,
+      type: 'scanner_degraded',
+      timestamp: Date.now(),
+      details: JSON.stringify(job.degradedMode.providers),
+    }).catch((err) => {
+      logger.warn({ err, chatId: job.chatId }, 'Failed to record degraded mode event');
+    });
+  }
+
+  const verdictText = formatGroupVerdict(job.verdict, job.reasons, job.url);
+  let reply: Message | null = null;
+  try {
+    if (targetMessage) {
+      reply = await targetMessage.reply(verdictText);
+    } else {
+      try {
+        reply = await chat.sendMessage(verdictText, { quotedMessageId: job.messageId });
+      } catch (err) {
+        logger.warn({ err, chatId: job.chatId, messageId: job.messageId }, 'Failed to quote verdict message, retrying without quote');
+        reply = await chat.sendMessage(verdictText);
+      }
+    }
+  } catch (err) {
+    metrics.waVerdictFailures.inc();
+    logger.warn({ err, chatId: job.chatId, messageId: job.messageId }, 'Failed to send verdict message');
+    await messageStore.markVerdictStatus(context, 'failed');
+    return false;
+  }
+
+  const ack = typeof reply?.ack === 'number' ? reply?.ack : null;
+  const attachments = await collectVerdictMedia(job);
+  const attachmentMeta = attachments.length > 0 ? {
+    screenshot: attachments.some((item) => item.type === 'screenshot'),
+    ioc: attachments.some((item) => item.type === 'ioc'),
+  } : undefined;
+
+  await messageStore.registerVerdictAttempt({
+    chatId: job.chatId,
+    messageId: job.messageId,
+    url: job.url,
+    urlHash: job.urlHash,
+    verdict: job.verdict,
+    reasons: job.reasons,
+    decidedAt: job.decidedAt,
+    verdictMessageId: reply?.id?._serialized || reply?.id?.id,
+    ack,
+    attachments: attachmentMeta,
+    redirectChain: job.redirectChain,
+    shortener: job.shortener ?? null,
+    degradedProviders: job.degradedMode?.providers ?? null,
+  });
+
+  if (job.verdict === 'malicious' && targetMessage) {
+    targetMessage.react('⚠️').catch((err) => {
+      logger.warn({ err }, 'Failed to add reaction to malicious message');
+    });
+  }
+
+  for (const attachment of attachments) {
+    try {
+      if (targetMessage) {
+        await targetMessage.reply(attachment.media, undefined, {
+          sendMediaAsDocument: attachment.type === 'ioc',
+        });
+      } else {
+        await chat.sendMessage(attachment.media, {
+          sendMediaAsDocument: attachment.type === 'ioc',
+        });
+      }
+      metrics.waVerdictAttachmentsSent.labels(attachment.type).inc();
+    } catch (err) {
+      logger.warn({ err, type: attachment.type }, 'Failed to send verdict attachment');
+    }
+  }
+
+  metrics.waVerdictsSent.inc();
+
+  if (reply?.id?._serialized) {
+    const retryFn = async () => { await deliverVerdictMessage(client, job, context, true); };
+    await scheduleAckWatch(context, retryFn);
+  }
+
+  if (isRetry) {
+    logger.info({ job, verdictMessageId: reply?.id?._serialized }, 'Retried verdict delivery');
+  }
+  return true;
+}
+
+async function clearAckWatchForContext(context: VerdictContext): Promise<void> {
+  const key = contextKey(context);
+  const existing = ackWatchers.get(key);
+  if (existing) {
+    clearTimeout(existing);
+    ackWatchers.delete(key);
+  }
+  try {
+    await messageStore.removePendingAckContext(context);
+  } catch (err) {
+    logger.warn({ err, context }, 'Failed to clear ack context from store');
+  }
+}
+
+async function scheduleAckWatch(context: VerdictContext, retry: () => Promise<void>): Promise<void> {
+  const key = contextKey(context);
+  const timeoutSeconds = Math.max(5, config.wa.verdictAckTimeoutSeconds);
+  await clearAckWatchForContext(context);
+  const handle = setTimeout(async () => {
+    ackWatchers.delete(key);
+    try {
+      const verdict = await messageStore.getVerdictRecord(context);
+      if (!verdict) {
+        await messageStore.removePendingAckContext(context).catch(() => undefined);
+        return;
+      }
+      const currentAck = verdict.ack ?? 0;
+      if (currentAck >= VERDICT_ACK_TARGET) {
+        await messageStore.removePendingAckContext(context).catch(() => undefined);
+        return;
+      }
+      metrics.waVerdictAckTimeouts.labels('timeout').inc();
+      if (verdict.attemptCount >= config.wa.verdictMaxRetries) {
+        await messageStore.markVerdictStatus(context, 'failed');
+        metrics.waVerdictRetryAttempts.labels('failed').inc();
+        logger.warn({ context }, 'Max verdict retry attempts reached');
+        await messageStore.removePendingAckContext(context).catch(() => undefined);
+        return;
+      }
+      await messageStore.markVerdictStatus(context, 'retrying');
+      metrics.waVerdictRetryAttempts.labels('retry').inc();
+      await retry();
+    } catch (err) {
+      logger.error({ err, context }, 'Ack timeout handler failed');
+    }
+  }, timeoutSeconds * 1000);
+  ackWatchers.set(key, handle);
+  try {
+    await messageStore.addPendingAckContext(context);
+  } catch (err) {
+    logger.warn({ err, context }, 'Failed to persist pending ack context');
+  }
+}
+
+async function rehydrateAckWatchers(client: Client): Promise<void> {
+  try {
+    const contexts = await messageStore.listPendingAckContexts(100);
+    for (const context of contexts) {
+      try {
+        const record = await messageStore.getRecord(context.chatId, context.messageId);
+        if (!record) {
+          await messageStore.removePendingAckContext(context);
+          continue;
+        }
+        const verdict = record.verdicts?.[context.urlHash];
+        if (!verdict) {
+          await messageStore.removePendingAckContext(context);
+          continue;
+        }
+        const ackValue = verdict.ack ?? 0;
+        if (ackValue >= VERDICT_ACK_TARGET || verdict.status === 'retracted' || verdict.status === 'failed') {
+          await messageStore.removePendingAckContext(context);
+          continue;
+        }
+        const job: VerdictJobData = {
+          chatId: context.chatId,
+          messageId: context.messageId,
+          verdict: verdict.verdict,
+          reasons: verdict.reasons,
+          url: verdict.url,
+          urlHash: verdict.urlHash,
+          decidedAt: verdict.decidedAt,
+          redirectChain: verdict.redirectChain,
+          shortener: verdict.shortener ?? null,
+        };
+        await scheduleAckWatch(context, async () => {
+          await deliverVerdictMessage(client, job, context, true);
+        });
+      } catch (err) {
+        logger.warn({ err, context }, 'Failed to rehydrate ack watcher for context');
+      }
+    }
+  } catch (err) {
+    logger.warn({ err }, 'Failed to list pending ack contexts for rehydration');
+  }
+}
+
+const SAFE_CONTROL_PLANE_DEFAULT = 'http://control-plane:8080';
+
+function sanitizeLogValue(value: string | undefined): string | undefined {
+  if (!value) return value;
+  return value.replace(/[\r\n\t]+/g, ' ').slice(0, 256);
+}
+
+function updateSessionStateGauge(state: string): void {
+  if (currentWaState) {
+    metrics.waSessionState.labels(currentWaState).set(0);
+  }
+  currentWaState = state;
+  metrics.waSessionState.labels(state).set(1);
+}
+
+function resolveControlPlaneBase(): string {
+  const candidate = (process.env.CONTROL_PLANE_BASE || SAFE_CONTROL_PLANE_DEFAULT).trim();
+  try {
+    const parsed = new URL(candidate);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error('invalid protocol');
+    }
+    parsed.hash = '';
+    return parsed.toString().replace(/\/+$/, '');
+  } catch {
+    return SAFE_CONTROL_PLANE_DEFAULT;
+  }
+}
+
+async function isUrlAllowedForScanning(normalized: string): Promise<boolean> {
+  try {
+    const parsed = new URL(normalized);
+    if (await isForbiddenHostname(parsed.hostname)) {
+      return false;
+    }
+    if (parsed.port) {
+      const port = Number.parseInt(parsed.port, 10);
+      if (!Number.isFinite(port) || port <= 0 || port > 65535) {
+        return false;
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function main() {
+  assertEssentialConfig('wa-client');
+  assertControlPlaneToken();
+  const app = Fastify();
+  app.get('/healthz', async () => ({ ok: true }));
+  app.get('/metrics', async (_req, reply) => {
+    reply.header('Content-Type', register.contentType);
+    return register.metrics();
+  });
+
+  await refreshConsentGauge();
+
+  const authResolution = await resolveAuthStrategy(redis);
+  const clientOptions: ClientOptions = {
+    puppeteer: {
+      headless: config.wa.headless,
+      args: config.wa.puppeteerArgs,
+      // Additional launch options for resource optimization
+      handleSIGINT: false,          // Let Node.js handle signals
+      handleSIGTERM: false,
+      handleSIGHUP: false,
+      ignoreHTTPSErrors: true,      // Reduce SSL validation overhead
+      defaultViewport: {            // Set minimal viewport to reduce memory
+        width: 1280,
+        height: 720,
+      },
+      // Pipe instead of websocket for faster IPC (if available)
+      pipe: process.platform !== 'win32',
+    },
+    authStrategy: authResolution.strategy,
+  };
+
+  remotePhone = config.wa.remoteAuth.phoneNumber;
+  if (!config.wa.remoteAuth.autoPair) {
+    logger.info('RemoteAuth auto pairing disabled; a QR code will be displayed for first-time linking.');
+  }
+  let remoteSessionActive = authResolution.remote?.sessionExists ?? false;
+  const shouldRequestPhonePairing = Boolean(
+    authResolution.remote &&
+    remotePhone &&
+    !remoteSessionActive &&
+    config.wa.remoteAuth.autoPair
+  );
+  if (shouldRequestPhonePairing && remotePhone) {
+    logger.info({ phoneNumber: maskPhone(remotePhone) }, 'Auto pairing enabled; open WhatsApp > Linked Devices on the target device before continuing.');
+  }
+
+  const client = new Client(clientOptions);
+  const pairingTimeoutMs = config.wa.remoteAuth.pairingDelayMs > 0
+    ? config.wa.remoteAuth.pairingDelayMs
+    : DEFAULT_PAIRING_CODE_TIMEOUT_MS;
+  let allowQrOutput = !shouldRequestPhonePairing;
+  let qrSuppressedLogged = false;
+  let cachedQr: string | null = null;
+  let pairingCodeDelivered = false;
+  let pairingCodeExpiryTimer: NodeJS.Timeout | null = null;
+  let pairingFallbackTimer: NodeJS.Timeout | null = null;
+  let lastPairingAttemptMs = 0;
+
+  const performPairingCodeRequest = async (): Promise<string | null> => {
+    const pageHandle = (client as unknown as { pupPage?: { evaluate?: (...args: unknown[]) => Promise<unknown> } }).pupPage;
+    if (!pageHandle || typeof pageHandle.evaluate !== 'function') {
+      throw new Error('Puppeteer page handle unavailable for pairing');
+    }
+    if (remotePhone) {
+      lastPairingAttemptMs = Date.now();
+      void recordPairingAttempt(remotePhone, lastPairingAttemptMs);
+    }
+    const interval = Math.max(60000, config.wa.remoteAuth.pairingDelayMs ?? 0);
+    const outcome = await pageHandle.evaluate(async (phoneNumber: string, showNotification: boolean, intervalMs: number) => {
+      const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+      const globalWindow = window as unknown as {
+        AuthStore?: { PairingCodeLinkUtils?: unknown; AppState?: { state?: string } };
+        codeInterval?: ReturnType<typeof setInterval> | number;
+        onCodeReceivedEvent?: (code: string) => void;
+      };
+
+      const waitForUtils = async () => {
+        while (!globalWindow.AuthStore?.PairingCodeLinkUtils) {
+          await wait(250);
+        }
+        return globalWindow.AuthStore.PairingCodeLinkUtils;
+      };
+
+      const requestCode = async () => {
+        const utils = await waitForUtils() as {
+          setPairingType?: (type: string) => void;
+          initializeAltDeviceLinking?: () => Promise<void>;
+          startAltLinkingFlow?: (phone: string, notify: boolean) => Promise<string>;
+        };
+        if (typeof utils.setPairingType === 'function') {
+          utils.setPairingType('ALT_DEVICE_LINKING');
+        }
+        if (typeof utils.initializeAltDeviceLinking === 'function') {
+          await utils.initializeAltDeviceLinking();
+        }
+        return utils.startAltLinkingFlow?.(phoneNumber, showNotification);
+      };
+
+      if (typeof globalWindow.onCodeReceivedEvent !== 'function') {
+        globalWindow.onCodeReceivedEvent = (codeValue: string) => codeValue;
+      }
+
+      if (globalWindow.codeInterval) {
+        clearInterval(globalWindow.codeInterval as number);
+      }
+
+      globalWindow.codeInterval = setInterval(async () => {
+        const state = globalWindow.AuthStore?.AppState?.state;
+        if (state !== 'UNPAIRED' && state !== 'UNPAIRED_IDLE') {
+          clearInterval(globalWindow.codeInterval as number);
+          return;
+        }
+        const refreshedCode = await requestCode().catch(() => null);
+        if (refreshedCode) {
+          globalWindow.onCodeReceivedEvent?.(refreshedCode);
+        }
+      }, intervalMs);
+
+      try {
+        const firstCode = await requestCode();
+        if (firstCode) {
+          globalWindow.onCodeReceivedEvent?.(firstCode);
+        }
+        if (typeof firstCode === 'string' && firstCode.length > 0) {
+          return { ok: true, code: firstCode };
+        }
+        return { ok: false, reason: 'empty_code', state: globalWindow.AuthStore?.AppState?.state };
+      } catch (err: unknown) {
+        const typedErr = err as { message?: string; stack?: string };
+        const raw = typeof err === 'object' && err !== null
+          ? Object.assign({}, err, { message: typedErr?.message, stack: typedErr?.stack })
+          : err;
+        return {
+          ok: false,
+          reason: typedErr?.message ?? String(err ?? 'unknown'),
+          stack: typedErr?.stack,
+          state: globalWindow.AuthStore?.AppState?.state,
+          hasUtils: Boolean(globalWindow.AuthStore?.PairingCodeLinkUtils),
+          rawError: raw,
+        };
+      }
+    }, remotePhone, true, interval);
+    if (outcome && typeof outcome === 'object' && 'ok' in outcome) {
+      const payload = outcome as { ok?: unknown; code?: unknown; reason?: unknown }; // loose shape from browser context
+      if (payload.ok === true && typeof payload.code === 'string' && payload.code.length > 0) {
+        return payload.code;
+      }
+      const errPayload = JSON.stringify(payload);
+      throw new Error(`pairing_code_request_failed:${errPayload}`);
+    }
+    return typeof outcome === 'string' ? outcome : null;
+  };
+
+  function cancelPairingCodeRefresh() {
+    if (pairingCodeExpiryTimer) {
+      clearTimeout(pairingCodeExpiryTimer);
+      pairingCodeExpiryTimer = null;
+    }
+  }
+
+  function schedulePairingCodeRefresh(delayMs: number) {
+    cancelPairingCodeRefresh();
+    const normalized = Math.max(1000, delayMs);
+    pairingCodeExpiryTimer = setTimeout(() => {
+      pairingCodeExpiryTimer = null;
+      if (remoteSessionActive) {
+        return;
+      }
+      pairingCodeDelivered = false;
+      pairingOrchestrator?.setCodeDelivered(false);
+      requestPairingCodeWithRetry(0);
+      startPairingFallbackTimer();
+    }, normalized);
+  }
+
+  const rateLimitDelayMs = Math.max(60000, PAIRING_RETRY_DELAY_MS);
+  const isFirstTimeSetup = !remoteSessionActive;
+
+  // Hybrid approach: manual-only for re-pairing, allow automatic for first-time setup
+  const useManualOnlyMode = !isFirstTimeSetup;
+
+  pairingOrchestrator = shouldRequestPhonePairing && remotePhone
+    ? new PairingOrchestrator({
+      enabled: true,
+      forcePhonePairing: FORCE_PHONE_PAIRING,
+      maxAttempts: MAX_PAIRING_CODE_RETRIES,
+      baseRetryDelayMs: PAIRING_RETRY_DELAY_MS,
+      rateLimitDelayMs,
+      manualOnly: useManualOnlyMode,
+      requestCode: async () => {
+        const code = await performPairingCodeRequest();
+        if (!code || typeof code !== 'string') {
+          throw new Error('pairing_code_request_failed:empty');
+        }
+        return code;
+      },
+      onSuccess: (code, attempt) => {
+        if (remotePhone) {
+          void cachePairingCode(remotePhone, code);
+          schedulePairingCodeRefresh(PHONE_PAIRING_CODE_TTL_MS);
+        }
+        const msg = `\n╔${'═'.repeat(50)}╗\n║  WhatsApp Pairing Code: ${code.padEnd(24)} ║\n║  Phone: ${maskPhone(remotePhone).padEnd(37)} ║\n║  Valid for: ~2:40 minutes${' '.repeat(22)} ║\n╚${'═'.repeat(50)}╝\n`;
+        process.stdout.write(msg);
+        logger.info({ phoneNumber: maskPhone(remotePhone), attempt, code }, 'Phone-number pairing code ready.');
+      },
+      onError: (err, attempt, nextDelayMs, meta, errorInfo) => {
+        if (meta?.rateLimited && errorInfo) {
+          const minutes = Math.ceil(nextDelayMs / 60000);
+          const nextTime = meta.holdUntil ? new Date(meta.holdUntil).toLocaleTimeString() : 'unknown';
+          process.stdout.write(`\n⚠️  WhatsApp rate limit detected. Next retry allowed in ${minutes} minute(s) at ${nextTime}.\n`);
+        }
+
+        // Format error for cleaner logging
+        const formattedError = err instanceof Error
+          ? { name: err.name, message: err.message }
+          : errorInfo?.type === 'rate_limit'
+            ? { type: 'rate_limit', message: 'WhatsApp API rate limit (429)' }
+            : err;
+
+        logger.warn({
+          error: formattedError,
+          phoneNumber: maskPhone(remotePhone),
+          attempt,
+          nextRetryMs: nextDelayMs,
+          nextRetryAt: meta?.holdUntil ? new Date(meta.holdUntil).toISOString() : undefined,
+          rateLimited: meta?.rateLimited ?? false,
+          errorType: errorInfo?.type,
+        }, 'Failed to request pairing code.');
+      },
+      onFallback: () => {
+        pairingOrchestrator?.setEnabled(false);
+        cancelPairingCodeRefresh();
+        allowQrOutput = true;
+        logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code retries exhausted; falling back to QR pairing.');
+        replayCachedQr();
+      },
+      onForcedRetry: (err, attempt, nextDelayMs, meta, errorInfo) => {
+        const minutes = Math.ceil(nextDelayMs / 60000);
+        if (meta?.rateLimited) {
+          process.stdout.write(`\n⚠️  Rate limit continues. Waiting ${minutes} minute(s) before retry. Use !scanner pair-status to check.\n`);
+        }
+        logger.warn({
+          err,
+          phoneNumber: maskPhone(remotePhone),
+          attempt,
+          nextRetryMs: nextDelayMs,
+          nextRetryAt: meta?.holdUntil ? new Date(meta.holdUntil).toISOString() : undefined,
+          rateLimited: meta?.rateLimited ?? false,
+          errorType: errorInfo?.type,
+        }, 'Pairing retries exhausted; QR fallback disabled.');
+      },
+    })
+    : null;
+
+  if (pairingOrchestrator) {
+    pairingOrchestrator.setSessionActive(remoteSessionActive);
+    pairingOrchestrator.setCodeDelivered(false);
+    if (isFirstTimeSetup) {
+      logger.info({ phoneNumber: maskPhone(remotePhone) }, 'First-time setup detected: automatic pairing enabled for initial connection.');
+    } else {
+      logger.info({ phoneNumber: maskPhone(remotePhone) }, 'Re-pairing mode: use !scanner pair command to request pairing codes manually.');
+    }
+  }
+
+  const clearPairingRetry = () => {
+    pairingOrchestrator?.cancel();
+    cancelPairingCodeRefresh();
+  };
+
+  const requestPairingCodeWithRetry = (delayMs = 0) => {
+    if (!remotePhone || pairingCodeDelivered || remoteSessionActive) return;
+    const now = Date.now();
+    let effectiveDelay = Math.max(0, delayMs);
+    if (lastPairingAttemptMs > 0) {
+      const sinceLast = now - lastPairingAttemptMs;
+      if (sinceLast < rateLimitDelayMs) {
+        effectiveDelay = Math.max(effectiveDelay, rateLimitDelayMs - sinceLast);
+      }
+    }
+    pairingOrchestrator?.schedule(effectiveDelay);
+  };
+
+  if (remotePhone) {
+    const [cachedPairingCode, recordedAttempt] = await Promise.all([
+      getCachedPairingCode(remotePhone),
+      getLastPairingAttempt(remotePhone),
+    ]);
+    if (typeof recordedAttempt === 'number') {
+      lastPairingAttemptMs = recordedAttempt;
+    }
+    if (cachedPairingCode) {
+      const ageMs = Date.now() - cachedPairingCode.storedAt;
+      const remainingMs = PHONE_PAIRING_CODE_TTL_MS - ageMs;
+      if (remainingMs > 1000) {
+        pairingCodeDelivered = true;
+        if (pairingOrchestrator) {
+          pairingOrchestrator.setCodeDelivered(true);
+        }
+        schedulePairingCodeRefresh(remainingMs);
+        logger.info({ pairingCode: cachedPairingCode.code, phoneNumber: maskPhone(remotePhone), remainingMs }, 'Reusing cached phone-number pairing code still within validity window.');
+        if (config.wa.qrTerminal) {
+          process.stdout.write(`\nWhatsApp pairing code for ${maskPhone(remotePhone)}: ${cachedPairingCode.code}\nOpen WhatsApp > Linked devices > Link with phone number and enter this code.\n`);
+        }
+      }
+    }
+  }
+  const cancelPairingFallback = () => {
+    if (pairingFallbackTimer) {
+      clearTimeout(pairingFallbackTimer);
+      pairingFallbackTimer = null;
+    }
+  };
+
+  function startPairingFallbackTimer() {
+    if (pairingFallbackTimer || !pairingOrchestrator || !remotePhone || pairingCodeDelivered || remoteSessionActive) {
+      return;
+    }
+    pairingFallbackTimer = setTimeout(() => {
+      pairingFallbackTimer = null;
+      if (!pairingCodeDelivered && !remoteSessionActive) {
+        metrics.waSessionReconnects.labels('pairing_code_timeout').inc();
+        if (FORCE_PHONE_PAIRING) {
+          logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code not received within timeout; QR fallback disabled. Ensure WhatsApp is open to Linked Devices > Link with phone number.');
+          requestPairingCodeWithRetry(Math.max(PAIRING_RETRY_DELAY_MS, 60000));
+          startPairingFallbackTimer();
+        } else {
+          allowQrOutput = true;
+          logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code not received within timeout; enabling QR fallback.');
+          clearPairingRetry();
+          if (!pairingOrchestrator) return;
+          pairingOrchestrator.setEnabled(false);
+          replayCachedQr();
+        }
+      }
+    }, pairingTimeoutMs);
+  }
+
+  const emitQr = (qr: string, source: 'live' | 'cached') => {
+    if (config.wa.qrTerminal) {
+      QRCode.generate(qr, { small: false });
+      process.stdout.write('\nOpen WhatsApp > Linked Devices > Link a Device and scan the QR code above.\n');
+    }
+    metrics.waQrCodesGenerated.inc();
+    logger.info({ source }, 'WhatsApp QR code ready for scanning');
+  };
+
+  const replayCachedQr = () => {
+    if (!cachedQr) {
+      logger.warn('QR fallback requested but no cached QR available; restart wa-client to render a new code.');
+      return;
+    }
+    emitQr(cachedQr, 'cached');
+  };
+
+  client.on('qr', (qr: string) => {
+    cachedQr = qr;
+    if (!allowQrOutput) {
+      if (!qrSuppressedLogged) {
+        qrSuppressedLogged = true;
+        logger.info({ phoneNumber: maskPhone(remotePhone) }, 'QR code generated but suppressed while requesting phone-number pairing.');
+      }
+      return;
+    }
+    emitQr(qr, 'live');
+  });
+
+  if (authResolution.remote) {
+    client.on('remote_session_saved', () => {
+      remoteSessionActive = true;
+      cancelPairingFallback();
+      clearPairingRetry();
+      pairingOrchestrator?.setSessionActive(true);
+      logger.info({ clientId: config.wa.remoteAuth.clientId }, 'RemoteAuth session synchronized');
+    });
+    if (remotePhone) {
+      client.on('code', code => {
+        pairingCodeDelivered = true;
+        cancelPairingFallback();
+        clearPairingRetry();
+        pairingOrchestrator?.setCodeDelivered(true);
+        if (remotePhone) {
+          void cachePairingCode(remotePhone, code);
+        }
+        schedulePairingCodeRefresh(PHONE_PAIRING_CODE_TTL_MS);
+        logger.info({ pairingCode: code, phoneNumber: maskPhone(remotePhone) }, 'Enter this pairing code in WhatsApp > Linked devices > Link with phone number.');
+        if (config.wa.qrTerminal) {
+          process.stdout.write(`\nWhatsApp pairing code for ${maskPhone(remotePhone)}: ${code}\nOpen WhatsApp > Linked devices > Link with phone number and enter this code.\n`);
+        }
+      });
+    }
+    if (!remoteSessionActive) {
+      if (!remotePhone) {
+        allowQrOutput = true;
+        logger.warn('RemoteAuth session not found and WA_REMOTE_AUTH_PHONE_NUMBER is unset; falling back to QR pairing.');
+      } else {
+        logger.info({ clientId: config.wa.remoteAuth.clientId, phoneNumber: maskPhone(remotePhone) }, 'RemoteAuth session not found; awaiting phone-number pairing code from WhatsApp.');
+      }
+    } else {
+      logger.info({ clientId: config.wa.remoteAuth.clientId }, 'RemoteAuth session found; reusing existing credentials.');
+    }
+  }
+
+  client.on('ready', async () => {
+    logger.info('WhatsApp client ready');
+    cancelPairingFallback();
+    clearPairingRetry();
+    waSessionStatusGauge.labels('ready').set(1);
+    waSessionStatusGauge.labels('disconnected').set(0);
+    metrics.waSessionReconnects.labels('ready').inc();
+    updateSessionStateGauge('ready');
+    botWid = client.info?.wid?._serialized || null;
+    try {
+      await rehydrateAckWatchers(client);
+    } catch (err) {
+      logger.warn({ err }, 'Failed to rehydrate ack watchers on ready');
+    }
+  });
+  client.on('auth_failure', (m) => {
+    logger.error({ m }, 'Auth failure');
+    waSessionStatusGauge.labels('ready').set(0);
+    metrics.waSessionReconnects.labels('auth_failure').inc();
+    botWid = null;
+  });
+  client.on('change_state', (state) => {
+    const label = typeof state === 'string' ? state.toLowerCase() : 'unknown';
+    metrics.waSessionReconnects.labels(`state_${label}`).inc();
+    updateSessionStateGauge(String(state));
+    logger.info({ state }, 'WhatsApp client state change');
+    // NOTE: Automatic pairing disabled. Use !scanner pair command to request pairing codes manually.
+  });
+  client.on('disconnected', (r) => {
+    logger.warn({ r }, 'Disconnected');
+    cancelPairingFallback();
+    waSessionStatusGauge.labels('ready').set(0);
+    waSessionStatusGauge.labels('disconnected').set(1);
+    metrics.waSessionReconnects.labels('disconnected').inc();
+    updateSessionStateGauge('disconnected');
+    botWid = null;
+  });
+  client.on('incoming_call', async (call: Call) => {
+    metrics.waIncomingCalls.labels('received').inc();
+    try {
+      await call.reject();
+      metrics.waIncomingCalls.labels('rejected').inc();
+    } catch (err) {
+      metrics.waIncomingCalls.labels('reject_error').inc();
+      logger.warn({ err }, 'Failed to reject incoming call');
+    }
+    try {
+      await groupStore.recordEvent({
+        chatId: call.from || 'unknown',
+        type: 'incoming_call',
+        timestamp: Date.now(),
+        actorId: call.from,
+        metadata: { isGroup: call.isGroup, isVideo: call.isVideo },
+      });
+    } catch (err) {
+      logger.warn({ err }, 'Failed to record incoming call event');
+    }
+  });
+
+  client.on('message_create', async (msg: Message) => {
+    try {
+      if (!msg.from) return;
+      const chat = await msg.getChat();
+      const chatType = (chat as GroupChat).isGroup ? 'group' : 'direct';
+      metrics.waMessagesReceived.labels(chatType).inc();
+      // Admin commands
+      if ((msg.body || '').startsWith('!scanner')) {
+        await handleAdminCommand(client, msg, chat as GroupChat, redis);
+        return;
+      }
+      const chatId = chat.id._serialized;
+      const messageId = msg.id._serialized || msg.id.id;
+      const sender = msg.author || msg.from;
+      const senderHash = sha256(sender);
+      const timestampMs = typeof msg.timestamp === 'number' ? msg.timestamp * 1000 : Date.now();
+      const body = msg.body || '';
+
+      const baseRecord = {
+        chatId,
+        messageId,
+        senderId: sender,
+        senderIdHash: senderHash,
+        timestamp: timestampMs,
+        body,
+      } as const;
+
+      const urls = extractUrls(body);
+      metrics.ingestionRate.inc();
+      metrics.urlsPerMessage.observe(urls.length);
+
+      if (config.wa.consentOnJoin) {
+        const consentStatus = await getConsentStatus(chatId);
+        if (consentStatus !== 'granted') {
+          metrics.waMessagesDropped.labels('consent_pending').inc();
+          await messageStore.recordMessageCreate({ ...baseRecord, normalizedUrls: [], urlHashes: [] });
+          return;
+        }
+      }
+
+      if (urls.length === 0) {
+        metrics.waMessagesDropped.labels('no_url').inc();
+        await messageStore.recordMessageCreate({ ...baseRecord, normalizedUrls: [], urlHashes: [] });
+        return;
+      }
+      metrics.waMessagesWithUrls.labels(chatType).inc(urls.length);
+      if (!chat.isGroup) {
+        metrics.waMessagesDropped.labels('non_group').inc();
+        await messageStore.recordMessageCreate({ ...baseRecord, normalizedUrls: [], urlHashes: [] });
+        return; // Only groups per spec
+      }
+
+      const normalizedUrls: string[] = [];
+      const urlHashes: string[] = [];
+      for (const raw of urls) {
+        const norm = normalizeUrl(raw);
+        if (!norm) {
+          metrics.waMessagesDropped.labels('invalid_url').inc();
+          continue;
+        }
+
+        if (!(await isUrlAllowedForScanning(norm))) {
+          metrics.waMessagesDropped.labels('blocked_internal_host').inc();
+          logger.warn({ chatId: sanitizeLogValue(chat.id._serialized) }, 'Dropped URL due to disallowed host');
+          continue;
+        }
+
+        const h = urlHash(norm);
+        const idem = processedKey(chatId, messageId, h);
+        const already = await redis.set(idem, '1', 'EX', 60 * 60 * 24 * 7, 'NX');
+        if (already === null) {
+          metrics.waMessagesDropped.labels('duplicate').inc();
+          continue; // duplicate
+        }
+
+        normalizedUrls.push(norm);
+        urlHashes.push(h);
+
+        try {
+          await globalLimiter.consume(GLOBAL_TOKEN_BUCKET_ID);
+        } catch {
+          metrics.waMessagesDropped.labels('rate_limited_global').inc();
+          continue;
+        }
+
+        const jobOpts: JobsOptions = { removeOnComplete: true, removeOnFail: 1000, attempts: 2, backoff: { type: 'exponential', delay: 1000 } };
+        await scanRequestQueue.add('scan', {
+          chatId,
+          messageId,
+          senderIdHash: senderHash,
+          url: norm,
+          timestamp: Date.now()
+        }, jobOpts);
+      }
+      await messageStore.recordMessageCreate({
+        ...baseRecord,
+        normalizedUrls,
+        urlHashes,
+      });
+    } catch (e) {
+      logger.error({ err: e, chatId: sanitizeLogValue((msg as unknown as { from?: string })?.from) }, 'Failed to process incoming WhatsApp message');
+    }
+  });
+
+  client.on('message_edit', async (msg: Message) => {
+    try {
+      const chat = await msg.getChat();
+      if (!(chat as GroupChat).isGroup) {
+        return;
+      }
+      const chatId = chat.id._serialized;
+      const messageId = msg.id._serialized || msg.id.id;
+      const existing = await messageStore.getRecord(chatId, messageId);
+      const previousHashes = existing?.urlHashes ?? [];
+      const urls = extractUrls(msg.body || '');
+      const normalizedUrls: string[] = [];
+      const urlHashes: string[] = [];
+      for (const raw of urls) {
+        const norm = normalizeUrl(raw);
+        if (!norm) {
+          continue;
+        }
+        normalizedUrls.push(norm);
+        urlHashes.push(urlHash(norm));
+      }
+      await messageStore.appendEdit(chatId, messageId, {
+        body: msg.body || '',
+        normalizedUrls,
+        urlHashes,
+        timestamp: Date.now(),
+      });
+      metrics.waMessageEdits.labels('processed').inc();
+
+      const senderHash = sha256(msg.author || msg.from || chatId);
+      const newHashes = new Set(urlHashes);
+      for (let i = 0; i < normalizedUrls.length; i += 1) {
+        const norm = normalizedUrls[i];
+        const hash = urlHashes[i];
+        if (previousHashes.includes(hash)) {
+          continue;
+        }
+        const idem = processedKey(chatId, messageId, hash);
+        const already = await redis.set(idem, '1', 'EX', 60 * 60 * 24 * 7, 'NX');
+        if (already === null) {
+          continue;
+        }
+        try {
+          await globalLimiter.consume(GLOBAL_TOKEN_BUCKET_ID);
+        } catch {
+          metrics.waMessagesDropped.labels('rate_limited_global').inc();
+          continue;
+        }
+        const jobOpts: JobsOptions = { removeOnComplete: true, removeOnFail: 1000, attempts: 2, backoff: { type: 'exponential', delay: 1000 } };
+        await scanRequestQueue.add('scan', {
+          chatId,
+          messageId,
+          senderIdHash: senderHash,
+          url: norm,
+          timestamp: Date.now(),
+        }, jobOpts);
+        metrics.waMessageEdits.labels('new_url').inc();
+      }
+
+      for (const removed of previousHashes.filter((hash) => !newHashes.has(hash))) {
+        const context: VerdictContext = { chatId, messageId, urlHash: removed };
+        const verdict = await messageStore.getVerdictRecord(context);
+        if (verdict && verdict.status !== 'retracted') {
+          await messageStore.markVerdictStatus(context, 'retracted');
+          metrics.waMessageEdits.labels('retracted').inc();
+          await clearAckWatchForContext(context);
+          try {
+            await msg.reply('Automated scan verdict withdrawn due to message edit.');
+          } catch (err) {
+            logger.warn({ err }, 'Failed to send verdict retraction after edit');
+          }
+        }
+      }
+    } catch (err) {
+      logger.error({ err }, 'Failed to process message edit');
+    }
+  });
+
+  client.on('message_revoke_everyone', async (msg: Message, revoked?: Message) => {
+    const snapshot = snapshotSession();
+    if (!isSessionReady(snapshot)) {
+      logger.debug({ messageId: msg.id?._serialized, session: describeSession(snapshot) }, 'Skipping group revoke handler because session is not ready');
+      return;
+    }
+    try {
+      const original = revoked ?? msg;
+      const chat = await original.getChat().catch((err) => {
+        const fallbackChat = (original.id as unknown as { remote?: string })?.remote ?? undefined;
+        throw enrichEvaluationError(err, {
+          operation: 'message_revoke_everyone:getChat',
+          chatId: fallbackChat,
+          messageId: original.id?._serialized,
+          snapshot,
+        });
+      });
+      if (!(chat as GroupChat).isGroup) {
+        return;
+      }
+      const chatId = chat.id._serialized;
+      const messageId = original.id._serialized || original.id.id;
+      await messageStore.recordRevocation(chatId, messageId, 'everyone', Date.now());
+      metrics.waMessageRevocations.labels('everyone').inc();
+      const record = await messageStore.getRecord(chatId, messageId);
+      if (record) {
+        let retracted = false;
+        for (const hash of Object.keys(record.verdicts)) {
+          const context: VerdictContext = { chatId, messageId, urlHash: hash };
+          const verdict = await messageStore.getVerdictRecord(context);
+          if (verdict && verdict.status !== 'retracted') {
+            await messageStore.markVerdictStatus(context, 'retracted');
+            await clearAckWatchForContext(context);
+            retracted = true;
+          }
+        }
+        if (retracted) {
+          try {
+            await chat.sendMessage('Previously flagged content was removed. Automated verdict withdrawn.');
+          } catch (err) {
+            logger.warn({ err }, 'Failed to announce verdict retraction after revoke');
+          }
+        }
+      }
+    } catch (err) {
+      logger.error({ err }, 'Failed to handle message revoke for everyone');
+    }
+  });
+
+  client.on('message_revoke_me', async (msg: Message) => {
+    const snapshot = snapshotSession();
+    try {
+      await handleSelfMessageRevoke(msg, {
+        snapshot,
+        logger,
+        messageStore,
+        recordMetric: () => metrics.waMessageRevocations.labels('me').inc(),
+      });
+    } catch (err) {
+      logger.warn({ err }, 'Failed to record self message revoke');
+    }
+  });
+
+  client.on('message_reaction', async (reaction: Reaction) => {
+    try {
+      const messageId = (reaction.msgId as unknown as { _serialized?: string })?._serialized || reaction.msgId?.id;
+      if (!messageId) return;
+      const message = await client.getMessageById(messageId);
+      if (!message) return;
+      const chat = await message.getChat();
+      if (!(chat as GroupChat).isGroup) {
+        return;
+      }
+      const chatId = chat.id._serialized;
+      await messageStore.recordReaction(chatId, messageId, {
+        reaction: reaction.reaction || '',
+        senderId: reaction.senderId || 'unknown',
+        timestamp: (reaction.timestamp || Math.floor(Date.now() / 1000)) * 1000,
+      });
+      const emoji = (reaction.reaction || '').trim();
+      const label = emoji && emoji.length <= 2 ? emoji : 'other';
+      metrics.waMessageReactions.labels(label).inc();
+    } catch (err) {
+      logger.warn({ err }, 'Failed to process message reaction');
+    }
+  });
+
+  client.on('message_ack', async (message: Message, ack: MessageAck) => {
+    try {
+      const verdictMessageId = message.id._serialized || message.id.id;
+      if (!verdictMessageId) return;
+      const context = await messageStore.getVerdictMapping(verdictMessageId);
+      if (!context) return;
+      const ackNumber = typeof ack === 'number' ? ack : Number(ack);
+      const timestamp = Date.now();
+      const result = await messageStore.updateVerdictAck(context, Number.isFinite(ackNumber) ? ackNumber : null, timestamp);
+      if (!result) return;
+      const { verdict, previousAck } = result;
+      metrics.waVerdictAckTransitions.labels(String(previousAck ?? -1), String(ackNumber ?? -1)).inc();
+      if (ackNumber === -1) {
+        metrics.waVerdictAckTimeouts.labels('error').inc();
+        await messageStore.markVerdictStatus(context, 'failed');
+        await clearAckWatchForContext(context);
+        return;
+      }
+      if ((ackNumber ?? 0) >= VERDICT_ACK_TARGET) {
+        await clearAckWatchForContext(context);
+        await messageStore.markVerdictStatus(context, 'sent');
+      }
+      logger.debug({ context, ack: ackNumber, verdictAckHistory: verdict.ackHistory }, 'Updated verdict ack state');
+    } catch (err) {
+      logger.warn({ err }, 'Failed to process verdict ack event');
+    }
+  });
+
+  client.on('group_join', async (notification: GroupNotification) => {
+    try {
+      const chat = await notification.getChat() as GroupChat;
+      const chatId = chat.id._serialized;
+      try {
+        await governanceLimiter.consume(chatId);
+      } catch {
+        metrics.waGovernanceRateLimited.labels('group_join').inc();
+        return;
+      }
+      metrics.waGroupEvents.labels('join').inc();
+      metrics.waGovernanceActions.labels('group_join').inc();
+      const toggled = await chat.setMessagesAdminsOnly(true).catch((err) => {
+        logger.warn({ err, chatId }, 'Failed to restrict messages to admins only');
+        return false;
+      });
+      if (config.wa.consentOnJoin) {
+        await markConsentPending(chatId);
+        metrics.waGroupEvents.labels('consent_pending').inc();
+        await groupStore.recordEvent({
+          chatId,
+          type: 'consent_pending',
+          timestamp: Date.now(),
+          actorId: notification.author,
+          recipients: notification.recipientIds,
+          metadata: { reason: 'group_join' },
+        });
+      } else {
+        await markConsentGranted(chatId);
+        metrics.waGroupEvents.labels('consent_granted').inc();
+        await groupStore.recordEvent({
+          chatId,
+          type: 'consent_granted',
+          timestamp: Date.now(),
+          actorId: notification.author,
+          recipients: notification.recipientIds,
+          metadata: { reason: 'group_join' },
+        });
+      }
+      try {
+        await chat.sendMessage(consentTemplate);
+      } catch (err) {
+        logger.warn({ err, chatId }, 'Failed to send consent message on join');
+      }
+      if (!config.wa.consentOnJoin && toggled) {
+        await chat.setMessagesAdminsOnly(false).catch(() => undefined);
+      }
+      await groupStore.recordEvent({
+        chatId,
+        type: 'join',
+        timestamp: Date.now(),
+        actorId: notification.author,
+        recipients: notification.recipientIds,
+        metadata: { adminsOnly: toggled === true, consentRequired: config.wa.consentOnJoin },
+      });
+    } catch (err) {
+      logger.error({ err }, 'Failed to handle group join notification');
+    }
+  });
+
+  client.on('group_membership_request', async (notification: GroupNotification) => {
+    try {
+      const chat = await notification.getChat() as GroupChat;
+      const chatId = chat.id._serialized;
+      const requesterId = notification.author;
+      if (!requesterId) {
+        return;
+      }
+      metrics.waGroupEvents.labels('membership_request').inc();
+      await groupStore.recordEvent({
+        chatId,
+        type: 'membership_request',
+        timestamp: Date.now(),
+        actorId: requesterId,
+        recipients: notification.recipientIds,
+        metadata: { requestTimestamp: notification.timestamp },
+      });
+      try {
+        await membershipGroupLimiter.consume(chatId);
+        await membershipGlobalLimiter.consume('global');
+      } catch {
+        metrics.waGovernanceRateLimited.labels('membership_auto').inc();
+        await addPendingMembership(chatId, requesterId, Date.now());
+        metrics.waMembershipApprovals.labels('rate_limited').inc();
+        await groupStore.recordEvent({
+          chatId,
+          type: 'membership_pending',
+          timestamp: Date.now(),
+          actorId: requesterId,
+          metadata: { reason: 'rate_limited' },
+        });
+        try {
+          await chat.sendMessage(`Membership request from ${requesterId} queued for admin review. Use !scanner approve ${requesterId} to override.`);
+        } catch (err) {
+          logger.warn({ err, chatId }, 'Failed to notify group about pending membership request');
+        }
+        return;
+      }
+
+      try {
+        await client.approveGroupMembershipRequests(chatId, { requesterIds: [requesterId], sleep: null });
+        metrics.waMembershipApprovals.labels('auto').inc();
+        metrics.waGovernanceActions.labels('membership_auto').inc();
+        await removePendingMembership(chatId, requesterId);
+        await groupStore.recordEvent({
+          chatId,
+          type: 'membership_auto',
+          timestamp: Date.now(),
+          actorId: requesterId,
+        });
+        try {
+          await chat.sendMessage(`Automatically approved membership request from ${requesterId}.`);
+        } catch (err) {
+          logger.warn({ err, chatId }, 'Failed to announce auto-approved membership');
+        }
+      } catch (err) {
+        logger.warn({ err, chatId, requesterId }, 'Auto approval failed, storing for manual review');
+        metrics.waMembershipApprovals.labels('error').inc();
+        await addPendingMembership(chatId, requesterId, Date.now());
+        await groupStore.recordEvent({
+          chatId,
+          type: 'membership_error',
+          timestamp: Date.now(),
+          actorId: requesterId,
+          metadata: { reason: 'auto_approval_failed' },
+        });
+        try {
+          await chat.sendMessage(`Could not auto-approve ${requesterId}. An admin may run !scanner approve ${requesterId} to proceed.`);
+        } catch (sendErr) {
+          logger.warn({ err: sendErr, chatId }, 'Failed to notify admin about membership approval failure');
+        }
+      }
+    } catch (err) {
+      logger.error({ err }, 'Failed to process membership request');
+    }
+  });
+
+  client.on('group_leave', async (notification: GroupNotification) => {
+    try {
+      const chat = await notification.getChat() as GroupChat;
+      const chatId = chat.id._serialized;
+      const recipients = (notification.recipientIds && notification.recipientIds.length > 0)
+        ? notification.recipientIds
+        : (notification.author ? [notification.author] : []);
+      const normalizedType = notification.type === 'remove' ? 'leave_remove' : 'leave';
+      metrics.waGroupEvents.labels(normalizedType).inc();
+      for (const member of recipients) {
+        await removePendingMembership(chatId, member).catch(() => undefined);
+      }
+      const includesBot = !!botWid && recipients.includes(botWid);
+      if (includesBot) {
+        await clearConsentState(chatId);
+        metrics.waGroupEvents.labels('bot_removed').inc();
+        await groupStore.recordEvent({
+          chatId,
+          type: 'bot_removed',
+          timestamp: Date.now(),
+          actorId: notification.author,
+          recipients,
+          metadata: { originalType: notification.type },
+        });
+      }
+      await groupStore.recordEvent({
+        chatId,
+        type: normalizedType,
+        timestamp: Date.now(),
+        actorId: notification.author,
+        recipients,
+        metadata: { includesBot },
+      });
+    } catch (err) {
+      logger.error({ err }, 'Failed to process group leave notification');
+    }
+  });
+
+  client.on('group_admin_changed', async (notification: GroupNotification) => {
+    try {
+      const chat = await notification.getChat() as GroupChat;
+      const chatId = chat.id._serialized;
+      const notificationType = notification.type as unknown as string;
+      const eventType = notificationType === 'promote' ? 'admin_promote' : 'admin_demote';
+      metrics.waGroupEvents.labels(eventType).inc();
+      const recipients = await notification.getRecipients().catch(() => [] as Contact[]);
+      await groupStore.recordEvent({
+        chatId,
+        type: eventType,
+        timestamp: Date.now(),
+        actorId: notification.author,
+        recipients: notification.recipientIds,
+        metadata: { body: notification.body },
+      });
+      if (notificationType === 'promote' && recipients.length > 0) {
+        try {
+          await governanceLimiter.consume(chatId);
+        } catch {
+          metrics.waGovernanceRateLimited.labels('admin_change').inc();
+          return;
+        }
+        const consentStatus = config.wa.consentOnJoin ? await getConsentStatus(chatId) : 'granted';
+        const mentionText = recipients.map((contact) => `@${contact.id?.user || contact.id?._serialized || 'member'}`).join(' ');
+        const lines = [`${mentionText} promoted to admin.`];
+        if (consentStatus !== 'granted') {
+          lines.push('This group is still awaiting consent. Please review and run !scanner consent when ready.');
+          await chat.setMessagesAdminsOnly(true).catch(() => undefined);
+        }
+        await chat.sendMessage(lines.join(' '), { mentions: recipients as unknown as string[] });
+        metrics.waGovernanceActions.labels('admin_prompt').inc();
+      }
+    } catch (err) {
+      logger.error({ err }, 'Failed to process admin change notification');
+    }
+  });
+
+  client.on('group_update', async (notification: GroupNotification) => {
+    try {
+      const chat = await notification.getChat() as GroupChat;
+      const chatId = chat.id._serialized;
+      const subtype = notification.type || 'unknown';
+      const map: Record<string, string> = {
+        subject: 'update_subject',
+        description: 'update_description',
+        picture: 'update_picture',
+        announce: 'update_announce',
+        restrict: 'update_restrict',
+      };
+      const eventType = map[subtype] ?? `update_${subtype}`;
+      metrics.waGroupEvents.labels(eventType).inc();
+      await groupStore.recordEvent({
+        chatId,
+        type: eventType,
+        timestamp: Date.now(),
+        actorId: notification.author,
+        recipients: notification.recipientIds,
+        details: notification.body,
+        metadata: { subtype },
+      });
+      if (subtype === 'announce' && config.wa.consentOnJoin) {
+        const consentStatus = await getConsentStatus(chatId);
+        if (consentStatus === 'pending') {
+          await chat.setMessagesAdminsOnly(true).catch(() => undefined);
+        }
+      }
+    } catch (err) {
+      logger.error({ err }, 'Failed to process group update notification');
+    }
+  });
+
+  // Consume verdicts
+  new Worker(config.queues.scanVerdict, async (job) => {
+    const queueName = config.queues.scanVerdict;
+    const started = Date.now();
+    const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
+    metrics.queueJobWait.labels(queueName).observe(waitSeconds);
+    const data = job.data as VerdictJobData & { decidedAt?: number; redirectChain?: string[]; shortener?: { provider: string; chain: string[] } | null };
+    const payload: VerdictJobData = {
+      chatId: data.chatId,
+      messageId: data.messageId,
+      verdict: data.verdict,
+      reasons: data.reasons,
+      url: data.url,
+      urlHash: data.urlHash,
+      decidedAt: data.decidedAt,
+      redirectChain: data.redirectChain,
+      shortener: data.shortener ?? null,
+    };
+    try {
+      const delay = Math.floor(800 + Math.random() * 1200);
+      await new Promise<void>((resolve) => {
+        setTimeout(async () => {
+          try {
+            try {
+              await groupLimiter.consume(payload.chatId);
+              await groupHourlyLimiter.consume(payload.chatId);
+            } catch {
+              metrics.waMessagesDropped.labels('verdict_rate_limited').inc();
+              return;
+            }
+            const key = `verdict:${payload.chatId}:${payload.urlHash}`;
+            const nx = await redis.set(key, '1', 'EX', 3600, 'NX');
+            if (nx === null) {
+              metrics.waMessagesDropped.labels('verdict_duplicate').inc();
+              return;
+            }
+            const context: VerdictContext = {
+              chatId: payload.chatId,
+              messageId: payload.messageId,
+              urlHash: payload.urlHash,
+            };
+            await deliverVerdictMessage(client, payload, context);
+          } finally {
+            const verdictLatencySeconds = Math.max(0, (Date.now() - (payload.decidedAt ?? started)) / 1000);
+            metrics.waVerdictLatency.observe(verdictLatencySeconds);
+            const processingSeconds = (Date.now() - started) / 1000;
+            metrics.queueProcessingDuration.labels(queueName).observe(processingSeconds);
+            metrics.queueCompleted.labels(queueName).inc();
+            if (job.attemptsMade > 0) {
+              metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
+            }
+            resolve();
+          }
+        }, delay);
+      });
+    } catch (err) {
+      metrics.queueFailures.labels(queueName).inc();
+      metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
+      throw err;
+    }
+  }, { connection: redis });
+
+  await client.initialize();
+
+  if (pairingOrchestrator && !pairingCodeDelivered) {
+    const configuredDelay = config.wa.remoteAuth.pairingDelayMs && config.wa.remoteAuth.pairingDelayMs > 0
+      ? config.wa.remoteAuth.pairingDelayMs
+      : 5000;
+    const initialDelay = Math.max(rateLimitDelayMs, configuredDelay);
+    requestPairingCodeWithRetry(initialDelay);
+  }
+  startPairingFallbackTimer();
+
+  await app.listen({ host: '0.0.0.0', port: 3000 });
+}
+
+function sha256(s: string) { return createHash('sha256').update(s).digest('hex'); }
+
+function redactDomain(u: string) {
+  try { const url = new URL(u); return url.hostname.replace(/\./g, '[.]'); } catch { return u; }
+}
+
+export function formatGroupVerdict(verdict: string, reasons: string[], url: string) {
+  const level = verdict.toUpperCase();
+  const domain = redactDomain(url);
+  let advice = 'Use caution.';
+  if (verdict === 'malicious') advice = 'Do NOT open.';
+  if (verdict === 'benign') advice = 'Looks okay, stay vigilant.';
+  const reasonsStr = reasons.slice(0, 3).join('; ');
+  return `Link scan: ${level}\nDomain: ${domain}\n${advice}${reasonsStr ? `\nWhy: ${reasonsStr}` : ''}`;
+}
+
+export async function handleAdminCommand(client: Client, msg: Message, existingChat: GroupChat | undefined, redis: Redis) {
+  const chat = existingChat ?? (await msg.getChat());
+  if (!(chat as GroupChat).isGroup) return;
+  const gc = chat as GroupChat;
+  const participants = await hydrateParticipantList(gc);
+  const senderId = msg.author || (msg.fromMe && botWid ? botWid : undefined);
+  const senderVariants = expandWidVariants(senderId);
+  const sender = participants.find((p) => senderVariants.includes(p.id._serialized));
+  const isSelfCommand = msg.fromMe || (botWid !== null && senderVariants.includes(botWid));
+  const parts = (msg.body || '').trim().split(/\s+/);
+  logger.info({ chatId: gc.id._serialized, senderId, senderVariants, isSelfCommand, participantCount: participants.length, command: parts[1] ?? null }, 'Received admin command');
+  if (!isSelfCommand && !sender?.isAdmin && !sender?.isSuperAdmin) {
+    logger.info({ chatId: gc.id._serialized, senderId }, 'Ignoring command from non-admin sender');
+    return;
+  }
+
+  const cmd = parts[1];
+  if (!cmd) return;
+  const base = resolveControlPlaneBase();
+  const token = assertControlPlaneToken();
+  const csrfToken = config.controlPlane.csrfToken;
+  const authHeaders = {
+    authorization: `Bearer ${token}`,
+    'x-csrf-token': csrfToken,
+  } as const;
+
+  if (cmd === 'mute') {
+    const resp = await fetch(`${base}/groups/${encodeURIComponent(chat.id._serialized)}/mute`, { method: 'POST', headers: authHeaders }).catch(() => null);
+    await chat.sendMessage(resp && resp.ok ? 'Scanner muted for 60 minutes.' : 'Mute failed.');
+  } else if (cmd === 'unmute') {
+    const resp = await fetch(`${base}/groups/${encodeURIComponent(chat.id._serialized)}/unmute`, { method: 'POST', headers: authHeaders }).catch(() => null);
+    await chat.sendMessage(resp && resp.ok ? 'Scanner unmuted.' : 'Unmute failed.');
+  } else if (cmd === 'status') {
+    try {
+      const resp = await fetch(`${base}/status`, { headers: { authorization: `Bearer ${token}` } });
+      if (!resp.ok) {
+        logger.warn({ status: resp.status, chatId: gc.id._serialized }, 'Status command fetch failed');
+        await chat.sendMessage('Scanner status temporarily unavailable.');
+        return;
+      }
+      const json = await resp.json().catch(() => ({}));
+      await chat.sendMessage(`Scanner status: scans=${json.scans ?? 0}, malicious=${json.malicious ?? 0}`);
+    } catch (err) {
+      logger.warn({ err, chatId: gc.id._serialized }, 'Failed to handle status command');
+      await chat.sendMessage('Scanner status temporarily unavailable.');
+    }
+  } else if (cmd === 'rescan' && parts[2]) {
+    const rescanUrl = parts[2];
+    const resp = await fetch(`${base}/rescan`, {
+      method: 'POST',
+      headers: {
+        ...authHeaders,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ url: rescanUrl }),
+    }).catch(() => null);
+    if (resp && resp.ok) {
+      const data = await resp.json().catch(() => null);
+      if (data?.ok && data.urlHash && data.jobId) {
+        await chat.sendMessage(`Rescan queued. hash=${data.urlHash} job=${data.jobId}`);
+      } else {
+        await chat.sendMessage('Rescan queued, awaiting confirmation.');
+      }
+    } else {
+      await chat.sendMessage('Rescan failed.');
+    }
+  } else if (cmd === 'consent') {
+    if (!config.wa.consentOnJoin) {
+      await chat.sendMessage('Consent enforcement is currently disabled.');
+      return;
+    }
+    await markConsentGranted(chat.id._serialized);
+    await gc.setMessagesAdminsOnly(false).catch(() => undefined);
+    await chat.sendMessage('Consent recorded. Automated scanning enabled for this group.');
+    metrics.waGroupEvents.labels('consent_granted').inc();
+    await groupStore.recordEvent({
+      chatId: chat.id._serialized,
+      type: 'consent_granted',
+      timestamp: Date.now(),
+      actorId: msg.author || msg.from,
+      metadata: { source: 'command' },
+    });
+  } else if (cmd === 'consentstatus') {
+    const status = await getConsentStatus(chat.id._serialized) ?? 'none';
+    await chat.sendMessage(`Consent status: ${status}`);
+  } else if (cmd === 'approve') {
+    const target = parts[2];
+    if (!target) {
+      const pending = await listPendingMemberships(chat.id._serialized);
+      if (pending.length === 0) {
+        await chat.sendMessage('No pending membership requests recorded.');
+      } else {
+        await chat.sendMessage(`Pending membership requests: ${pending.join(', ')}`);
+      }
+      return;
+    }
+    try {
+      await client.approveGroupMembershipRequests(chat.id._serialized, { requesterIds: [target], sleep: null });
+      await removePendingMembership(chat.id._serialized, target);
+      metrics.waMembershipApprovals.labels('override').inc();
+      metrics.waGovernanceActions.labels('membership_override').inc();
+      metrics.waGroupEvents.labels('membership_override').inc();
+      await groupStore.recordEvent({
+        chatId: chat.id._serialized,
+        type: 'membership_override',
+        timestamp: Date.now(),
+        actorId: msg.author || msg.from,
+        recipients: [target],
+      });
+      await chat.sendMessage(`Approved membership request for ${target}.`);
+    } catch (err) {
+      metrics.waMembershipApprovals.labels('error').inc();
+      logger.warn({ err, target }, 'Failed to approve membership via override');
+      await chat.sendMessage(`Unable to approve ${target}. Check logs for details.`);
+    }
+  } else if (cmd === 'governance') {
+    const limit = Number.isFinite(Number(parts[2])) ? Math.max(1, Math.min(25, Number(parts[2]))) : 10;
+    const events = await groupStore.listRecentEvents(chat.id._serialized, limit);
+    if (events.length === 0) {
+      await chat.sendMessage('No recent governance events recorded.');
+      return;
+    }
+    const lines = events.map((event) => {
+      const timestamp = new Date(event.timestamp).toISOString();
+      const recipients = (event.recipients && event.recipients.length > 0) ? ` -> ${event.recipients.join(', ')}` : '';
+      const detail = event.details ? ` :: ${event.details}` : '';
+      return `- ${timestamp} [${event.type}] ${event.actorId ?? 'unknown'}${recipients}${detail}`;
+    });
+    await chat.sendMessage(`Recent governance events:\n${lines.join('\n')}`);
+  } else if (cmd === 'pair') {
+    // Manual pairing code request
+    if (!pairingOrchestrator) {
+      await chat.sendMessage('Pairing orchestrator not available (phone pairing may be disabled).');
+      return;
+    }
+    const status = pairingOrchestrator.getStatus();
+    if (status.rateLimited && status.nextAttemptIn > 0) {
+      const minutes = Math.ceil(status.nextAttemptIn / 60000);
+      const seconds = Math.ceil((status.nextAttemptIn % 60000) / 1000);
+      await chat.sendMessage(`⚠️ Rate limited. Please wait ${minutes}m ${seconds}s before requesting another code.`);
+      return;
+    }
+    if (!status.canRequest) {
+      await chat.sendMessage('Cannot request pairing code at this time (session may already be active).');
+      return;
+    }
+    const requested = pairingOrchestrator.requestManually();
+    if (requested) {
+      await chat.sendMessage('Pairing code request sent. Check logs/terminal for the code.');
+      logger.info({ chatId: gc.id._serialized, senderId }, 'Manual pairing code requested via admin command');
+    } else {
+      await chat.sendMessage('Unable to request pairing code. Check status with !scanner pair-status.');
+    }
+  } else if (cmd === 'pair-status') {
+    // Check pairing status and rate limit
+    if (!pairingOrchestrator) {
+      await chat.sendMessage('Pairing orchestrator not available.');
+      return;
+    }
+    const status = pairingOrchestrator.getStatus();
+    if (status.canRequest) {
+      await chat.sendMessage('✅ Ready to request pairing code. Use !scanner pair');
+    } else if (status.rateLimited && status.nextAttemptIn > 0) {
+      const minutes = Math.ceil(status.nextAttemptIn / 60000);
+      const seconds = Math.ceil((status.nextAttemptIn % 60000) / 1000);
+      const lastAttempt = status.lastAttemptAt ? new Date(status.lastAttemptAt).toLocaleTimeString() : 'unknown';
+      await chat.sendMessage(`⚠️ Rate limited\nLast attempt: ${lastAttempt}\nRetry in: ${minutes}m ${seconds}s\nConsecutive rate limits: ${status.consecutiveRateLimits}`);
+    } else {
+      await chat.sendMessage(`Status: Session may already be active or code delivered.`);
+    }
+  } else if (cmd === 'pair-reset') {
+    // Clear cached pairing code (admin only, requires confirmation)
+    if (!sender?.isAdmin && !sender?.isSuperAdmin && !isSelfCommand) {
+      await chat.sendMessage('Only admins can reset pairing cache.');
+      return;
+    }
+    if (remotePhone) {
+      const cacheKey = pairingCodeCacheKey(remotePhone);
+      await redis.del(cacheKey);
+      await chat.sendMessage('Pairing code cache cleared.');
+      logger.info({ chatId: gc.id._serialized, senderId }, 'Pairing cache cleared via admin command');
+    } else {
+      await chat.sendMessage('No phone number configured for remote auth.');
+    }
+  } else {
+    await chat.sendMessage('Commands: !scanner mute|unmute|status|rescan <url>|consent|consentstatus|approve [memberId]|governance [limit]|pair|pair-status|pair-reset');
+  }
+}
+
+if (process.env.NODE_ENV !== 'test') {
+  main().catch(err => {
+    logger.error({ err }, 'Fatal in wa-client');
+    process.exit(1);
+  });
+}
+
+==================================================
+File: services/scan-orchestrator/src/index.ts
+==================================================
+import Fastify from 'fastify';
+import Redis from 'ioredis';
+import { Queue, Worker } from 'bullmq';
+import {
+  config,
+  logger,
+  register,
+  metrics,
+  externalLatency,
+  externalErrors,
+  circuitStates,
+  circuitBreakerTransitionCounter,
+  circuitBreakerRejections,
+  circuitBreakerOpenDuration,
+  queueDepthGauge,
+  cacheHitRatioGauge,
+  normalizeUrl,
+  expandUrl,
+  urlHash,
+  gsbLookup,
+  vtAnalyzeUrl,
+  vtVerdictStats,
+  domainAgeDaysFromRdap,
+  extraHeuristics,
+  scoreFromSignals,
+  urlhausLookup,
+  phishtankLookup,
+  submitUrlscan,
+  resolveShortener,
+  whoisXmlLookup,
+  disableWhoisXmlForMonth,
+  whoDatLookup,
+  CircuitBreaker,
+  CircuitState,
+  withRetry,
+  QuotaExceededError,
+  detectHomoglyphs,
+  assertEssentialConfig,
+} from '@wbscanner/shared';
+import { EnhancedSecurityAnalyzer } from './enhanced-security';
+import {
+  checkBlocklistsWithRedundancy,
+  shouldQueryPhishtank,
+  type GsbFetchResult,
+  type PhishtankFetchResult,
+} from './blocklists';
+import type { GsbThreatMatch, UrlhausLookupResult, PhishtankLookupResult, VirusTotalAnalysis, UrlscanSubmissionResponse } from '@wbscanner/shared';
+import { downloadUrlscanArtifacts } from './urlscan-artifacts';
+import { getSharedConnection } from './database.js';
+
+const TEST_REDIS_KEY = '__WBSCANNER_TEST_REDIS__';
+const TEST_QUEUE_FACTORY_KEY = '__WBSCANNER_TEST_QUEUE_FACTORY__';
+
+class InMemoryRedis {
+  private store = new Map<string, string>();
+  private ttlStore = new Map<string, number>();
+  private setStore = new Map<string, Set<string>>();
+  private hashStore = new Map<string, Map<string, string>>();
+  private listStore = new Map<string, string[]>();
+
+  async get(key: string): Promise<string | null> {
+    return this.store.get(key) ?? null;
+  }
+
+  async set(key: string, value: string, mode?: string, ttlArg?: number, nxArg?: string): Promise<'OK' | null> {
+    if (mode === 'EX') {
+      const ttlSeconds = typeof ttlArg === 'number' ? ttlArg : 0;
+      if (nxArg === 'NX' && this.store.has(key)) {
+        return null;
+      }
+      this.store.set(key, value);
+      if (ttlSeconds > 0) {
+        this.ttlStore.set(key, ttlSeconds);
+      } else {
+        this.ttlStore.delete(key);
+      }
+      return 'OK';
+    }
+    this.store.set(key, value);
+    this.ttlStore.delete(key);
+    return 'OK';
+  }
+
+  async del(key: string): Promise<number> {
+    const existed = this.store.delete(key);
+    this.ttlStore.delete(key);
+    this.setStore.delete(key);
+    this.hashStore.delete(key);
+    this.listStore.delete(key);
+    return existed ? 1 : 0;
+  }
+
+  async ttl(key: string): Promise<number> {
+    return this.ttlStore.get(key) ?? -1;
+  }
+
+  async expire(key: string, seconds: number): Promise<number> {
+    if (seconds > 0) {
+      this.ttlStore.set(key, seconds);
+      return 1;
+    }
+    this.ttlStore.delete(key);
+    return 0;
+  }
+
+  async sadd(key: string, member: string): Promise<number> {
+    const set = this.setStore.get(key) ?? new Set<string>();
+    set.add(member);
+    this.setStore.set(key, set);
+    return set.size;
+  }
+
+  async srem(key: string, member: string): Promise<number> {
+    const set = this.setStore.get(key);
+    if (!set) return 0;
+    const existed = set.delete(member);
+    if (set.size === 0) this.setStore.delete(key);
+    return existed ? 1 : 0;
+  }
+
+  async scard(key: string): Promise<number> {
+    return this.setStore.get(key)?.size ?? 0;
+  }
+
+  async hset(key: string, field: string, value: string): Promise<number> {
+    const hash = this.hashStore.get(key) ?? new Map<string, string>();
+    const existed = hash.has(field) ? 0 : 1;
+    hash.set(field, value);
+    this.hashStore.set(key, hash);
+    return existed;
+  }
+
+  async hdel(key: string, field: string): Promise<number> {
+    const hash = this.hashStore.get(key);
+    if (!hash) return 0;
+    const removed = hash.delete(field) ? 1 : 0;
+    if (hash.size === 0) this.hashStore.delete(key);
+    return removed;
+  }
+
+  async hkeys(key: string): Promise<string[]> {
+    return Array.from(this.hashStore.get(key)?.keys() ?? []);
+  }
+
+  async lpush(key: string, value: string): Promise<number> {
+    const list = this.listStore.get(key) ?? [];
+    list.unshift(value);
+    this.listStore.set(key, list);
+    return list.length;
+  }
+
+  async ltrim(key: string, start: number, stop: number): Promise<void> {
+    const list = this.listStore.get(key);
+    if (!list) return;
+    const normalizedStop = stop < 0 ? list.length + stop : stop;
+    const trimmed = list.slice(start, normalizedStop + 1);
+    this.listStore.set(key, trimmed);
+  }
+
+  async lrange(key: string, start: number, stop: number): Promise<string[]> {
+    const list = this.listStore.get(key) ?? [];
+    const normalizedStop = stop < 0 ? list.length + stop : stop;
+    return list.slice(start, normalizedStop + 1);
+  }
+
+  on(): void {
+    // no-op for tests
+  }
+
+  quit(): Promise<void> {
+    return Promise.resolve();
+  }
+}
+
+class InMemoryQueue {
+  constructor(private readonly name: string) { }
+  async add(jobName: string, data: unknown) {
+    return { id: `${this.name}:${jobName}:${Date.now()}`, data };
+  }
+  async getJobCounts() {
+    return { waiting: 0, active: 0, delayed: 0, failed: 0 };
+  }
+  async getWaitingCount() {
+    return 0;
+  }
+  on(): void { }
+  async close(): Promise<void> {
+    return Promise.resolve();
+  }
+}
+
+function createRedisConnection(): Redis {
+  if (typeof globalThis !== 'undefined' && (globalThis as unknown as Record<string, unknown>)[TEST_REDIS_KEY]) {
+    return (globalThis as unknown as Record<string, unknown>)[TEST_REDIS_KEY] as Redis;
+  }
+  if (process.env.NODE_ENV === 'test') {
+    return new InMemoryRedis() as unknown as Redis;
+  }
+  return new Redis(config.redisUrl, { maxRetriesPerRequest: null });
+}
+
+const redis = createRedisConnection();
+const scanRequestQueue = createQueue(config.queues.scanRequest, { connection: redis });
+const scanVerdictQueue = createQueue(config.queues.scanVerdict, { connection: redis });
+const urlscanQueue = createQueue(config.queues.urlscan, { connection: redis });
+
+function createQueue(name: string, options: { connection: Redis }): Queue {
+  if (typeof globalThis !== 'undefined') {
+    const factory = (globalThis as unknown as Record<string, unknown>)[TEST_QUEUE_FACTORY_KEY];
+    if (typeof factory === 'function') {
+      return factory(name, options) as Queue;
+    }
+  }
+  if (process.env.NODE_ENV === 'test') {
+    return new InMemoryQueue(name) as unknown as Queue;
+  }
+  return new Queue(name, options);
+}
+
+const queueMetricsInterval = setInterval(() => {
+  refreshQueueMetrics(scanRequestQueue, config.queues.scanRequest).catch(() => undefined);
+  refreshQueueMetrics(scanVerdictQueue, config.queues.scanVerdict).catch(() => undefined);
+  refreshQueueMetrics(urlscanQueue, config.queues.urlscan).catch(() => undefined);
+}, 10_000);
+queueMetricsInterval.unref();
+
+const ANALYSIS_TTLS = {
+  gsb: 60 * 60,
+  phishtank: 60 * 60,
+  vt: 60 * 60,
+  urlhaus: 60 * 60,
+  urlscan: 60 * 60,
+  whois: 7 * 24 * 60 * 60,
+};
+
+const URLSCAN_UUID_PREFIX = 'urlscan:uuid:';
+const URLSCAN_QUEUED_PREFIX = 'urlscan:queued:';
+const URLSCAN_SUBMITTED_PREFIX = 'urlscan:submitted:';
+const URLSCAN_RESULT_PREFIX = 'urlscan:result:';
+const SHORTENER_CACHE_PREFIX = 'url:shortener:';
+
+const CACHE_LABELS = {
+  gsb: 'gsb_analysis',
+  phishtank: 'phishtank_analysis',
+  vt: 'virustotal_analysis',
+  urlhaus: 'urlhaus_analysis',
+  shortener: 'shortener_resolution',
+  whois: 'whois_analysis',
+  verdict: 'scan_result',
+} as const;
+
+const CIRCUIT_DEFAULTS = {
+  failureThreshold: 5,
+  successThreshold: 3,
+  timeoutMs: 30_000,
+  windowMs: 60_000,
+} as const;
+
+const CIRCUIT_LABELS = {
+  gsb: 'google_safe_browsing',
+  phishtank: 'phishtank',
+  urlhaus: 'urlhaus',
+  vt: 'virustotal',
+  urlscan: 'urlscan',
+  whoisxml: 'whoisxml',
+  whodat: 'whodat',
+} as const;
+
+const cacheRatios = new Map<string, { hits: number; misses: number }>();
+const circuitOpenSince = new Map<string, number>();
+
+const VERDICT_REASON_OTHER_LABEL = 'other';
+
+function normalizeVerdictReason(reason: string): string {
+  if (reason === 'Manually allowed') {
+    return 'manual_allow';
+  }
+  if (reason === 'Manually blocked') {
+    return 'manual_deny';
+  }
+  if (reason.startsWith('Google Safe Browsing')) {
+    if (reason.includes('MALWARE')) {
+      return 'gsb_malware';
+    }
+    if (reason.includes('SOCIAL_ENGINEERING')) {
+      return 'gsb_social_engineering';
+    }
+    return 'gsb_threat';
+  }
+  if (reason === 'Verified phishing (Phishtank)') {
+    return 'phishtank_verified';
+  }
+  if (reason === 'Known malware distribution (URLhaus)') {
+    return 'urlhaus_listed';
+  }
+  if (reason.includes('VT engine')) {
+    return 'vt_malicious';
+  }
+  if (reason.startsWith('Domain registered')) {
+    if (reason.includes('<7')) {
+      return 'domain_age_lt7';
+    }
+    if (reason.includes('<14')) {
+      return 'domain_age_lt14';
+    }
+    if (reason.includes('<30')) {
+      return 'domain_age_lt30';
+    }
+    return 'domain_age';
+  }
+  if (reason.startsWith('High-risk homoglyph attack detected')) {
+    return 'homoglyph_high';
+  }
+  if (
+    reason.startsWith('Suspicious characters detected') ||
+    reason === 'Suspicious homoglyph characters detected'
+  ) {
+    return 'homoglyph_medium';
+  }
+  if (reason === 'Punycode/IDN domain detected') {
+    return 'homoglyph_low';
+  }
+  if (reason === 'URL uses IP address') {
+    return 'ip_literal';
+  }
+  if (reason === 'Suspicious TLD') {
+    return 'suspicious_tld';
+  }
+  if (reason.startsWith('Multiple redirects')) {
+    return 'multiple_redirects';
+  }
+  if (reason === 'Uncommon port') {
+    return 'uncommon_port';
+  }
+  if (reason.startsWith('Long URL')) {
+    return 'long_url';
+  }
+  if (reason === 'Executable file extension') {
+    return 'executable_extension';
+  }
+  if (reason === 'Shortened URL expanded') {
+    return 'shortener_expanded';
+  }
+  if (reason === 'Redirect leads to mismatched domain/brand') {
+    return 'redirect_mismatch';
+  }
+  return VERDICT_REASON_OTHER_LABEL;
+}
+
+function recordCacheOutcome(cacheType: string, outcome: 'hit' | 'miss'): void {
+  const state = cacheRatios.get(cacheType) ?? { hits: 0, misses: 0 };
+  if (outcome === 'hit') {
+    state.hits += 1;
+  } else {
+    state.misses += 1;
+  }
+  cacheRatios.set(cacheType, state);
+  const total = state.hits + state.misses;
+  if (total > 0) {
+    cacheHitRatioGauge.labels(cacheType).set(state.hits / total);
+  }
+}
+
+async function refreshQueueMetrics(queue: Queue, name: string): Promise<void> {
+  const counts = await queue.getJobCounts('waiting', 'active', 'delayed', 'failed');
+  queueDepthGauge.labels(name).set(counts.waiting ?? 0);
+  metrics.queueActive.labels(name).set(counts.active ?? 0);
+  metrics.queueDelayed.labels(name).set(counts.delayed ?? 0);
+  metrics.queueFailedGauge.labels(name).set(counts.failed ?? 0);
+}
+
+function makeCircuit(name: string) {
+  const breaker = new CircuitBreaker({
+    ...CIRCUIT_DEFAULTS,
+    name,
+    onStateChange: (state, from) => {
+      circuitStates.labels(name).set(state);
+      circuitBreakerTransitionCounter.labels(name, String(from ?? ''), String(state)).inc();
+      const now = Date.now();
+      if (state === CircuitState.OPEN) {
+        circuitOpenSince.set(name, now);
+      } else if (from === CircuitState.OPEN) {
+        const openedAt = circuitOpenSince.get(name);
+        if (openedAt) {
+          circuitBreakerOpenDuration.labels(name).observe((now - openedAt) / 1000);
+          circuitOpenSince.delete(name);
+        }
+      }
+      logger.debug({ name, from, to: state }, 'Circuit state change');
+    }
+  });
+  circuitStates.labels(name).set(CircuitState.CLOSED);
+  return breaker;
+}
+
+const gsbCircuit = makeCircuit(CIRCUIT_LABELS.gsb);
+const phishtankCircuit = makeCircuit(CIRCUIT_LABELS.phishtank);
+const urlhausCircuit = makeCircuit(CIRCUIT_LABELS.urlhaus);
+const vtCircuit = makeCircuit(CIRCUIT_LABELS.vt);
+const urlscanCircuit = makeCircuit(CIRCUIT_LABELS.urlscan);
+const whoisCircuit = makeCircuit(CIRCUIT_LABELS.whoisxml);
+const whodatCircuit = makeCircuit(CIRCUIT_LABELS.whodat);
+
+function recordLatency(service: string, ms?: number) {
+  if (typeof ms === 'number' && ms >= 0) {
+    externalLatency.labels(service).observe(ms / 1000);
+  }
+}
+
+function classifyError(err: unknown): string {
+  const rawCode = (err as { code?: string | number; statusCode?: string | number })?.code ?? (err as { statusCode?: string | number })?.statusCode;
+  if (rawCode === 'UND_ERR_HEADERS_TIMEOUT' || rawCode === 'UND_ERR_CONNECT_TIMEOUT') return 'timeout';
+  const codeNum = typeof rawCode === 'string' ? Number(rawCode) : rawCode;
+  if (codeNum === 429) return 'rate_limited';
+  if (codeNum === 408) return 'timeout';
+  if (typeof codeNum === 'number' && codeNum >= 500) return 'server_error';
+  if (typeof codeNum === 'number' && codeNum >= 400) return 'client_error';
+  const message = (err as Error)?.message || '';
+  if (message.includes('Circuit') && message.includes('open')) return 'circuit_open';
+  return 'unknown';
+}
+
+function recordError(service: string, err: unknown) {
+  const reason = classifyError(err);
+  if (reason === 'circuit_open') {
+    circuitBreakerRejections.labels(service).inc();
+  }
+  externalErrors.labels(service, reason).inc();
+}
+
+function shouldRetry(err: unknown): boolean {
+  const rawCode = (err as { code?: string | number; statusCode?: string | number })?.code ?? (err as { statusCode?: string | number })?.statusCode;
+  if (rawCode === 'UND_ERR_HEADERS_TIMEOUT' || rawCode === 'UND_ERR_CONNECT_TIMEOUT') return true;
+  const codeNum = typeof rawCode === 'string' ? Number(rawCode) : rawCode;
+  if (codeNum === 429) return false;
+  if (codeNum === 408) return true;
+  if (typeof codeNum === 'number' && codeNum >= 500) return true;
+  return !codeNum;
+}
+
+async function getJsonCache<T>(cacheType: string, key: string, ttlSeconds: number): Promise<T | null> {
+  const stop = metrics.cacheLookupDuration.labels(cacheType).startTimer();
+  const raw = await redis.get(key);
+  stop();
+  if (!raw) {
+    recordCacheOutcome(cacheType, 'miss');
+    metrics.cacheEntryTtl.labels(cacheType).set(0);
+    return null;
+  }
+  recordCacheOutcome(cacheType, 'hit');
+  metrics.cacheEntryBytes.labels(cacheType).set(Buffer.byteLength(raw));
+  const ttlRemaining = await redis.ttl(key);
+  if (ttlRemaining >= 0) {
+    metrics.cacheEntryTtl.labels(cacheType).set(ttlRemaining);
+    if (ttlSeconds > 0 && ttlRemaining < Math.max(1, Math.floor(ttlSeconds * 0.2))) {
+      metrics.cacheStaleTotal.labels(cacheType).inc();
+    }
+  }
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    metrics.cacheStaleTotal.labels(cacheType).inc();
+    return null;
+  }
+}
+
+async function setJsonCache(cacheType: string, key: string, value: unknown, ttlSeconds: number): Promise<void> {
+  const payload = JSON.stringify(value);
+  const stop = metrics.cacheWriteDuration.labels(cacheType).startTimer();
+  await redis.set(key, payload, 'EX', ttlSeconds);
+  stop();
+  metrics.cacheRefreshTotal.labels(cacheType).inc();
+  metrics.cacheEntryBytes.labels(cacheType).set(Buffer.byteLength(payload));
+  metrics.cacheEntryTtl.labels(cacheType).set(ttlSeconds);
+}
+
+type GsbMatch = GsbThreatMatch;
+type VtStats = ReturnType<typeof vtVerdictStats>;
+type UrlhausResult = UrlhausLookupResult;
+type PhishtankResult = PhishtankLookupResult;
+
+type ArtifactCandidate = {
+  type: 'screenshot' | 'dom';
+  url: string;
+};
+
+function normalizeUrlscanArtifactCandidate(candidate: unknown, baseUrl: string): { url?: string; invalid: boolean } {
+  if (typeof candidate !== 'string') return { invalid: false };
+  const trimmed = candidate.trim();
+  if (!trimmed) return { invalid: false };
+
+  const sanitizedBase = baseUrl.replace(/\/+$/, '');
+  let trustedHostname: string;
+  try {
+    trustedHostname = new URL(sanitizedBase).hostname.toLowerCase();
+  } catch {
+    return { invalid: true };
+  }
+
+  const rawUrl = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : `${sanitizedBase}/${trimmed.replace(/^\/+/, '')}`;
+
+  const normalized = normalizeUrl(rawUrl);
+  if (!normalized) {
+    return { invalid: true };
+  }
+
+  const parsed = new URL(normalized);
+  const candidateHostname = parsed.hostname.toLowerCase();
+  const hostAllowed =
+    candidateHostname === trustedHostname || candidateHostname.endsWith(`.${trustedHostname}`);
+
+  if (!hostAllowed) {
+    return { invalid: true };
+  }
+
+  return { url: parsed.toString(), invalid: false };
+}
+
+function normaliseArtifactUrl(candidate: unknown, baseUrl: string): string | undefined {
+  const result = normalizeUrlscanArtifactCandidate(candidate, baseUrl);
+  return result.url;
+}
+
+function extractUrlscanArtifactCandidates(uuid: string, payload: unknown): ArtifactCandidate[] {
+  const baseUrl = (config.urlscan.baseUrl || 'https://urlscan.io').replace(/\/+$/, '');
+  const candidates: ArtifactCandidate[] = [];
+  const seen = new Set<string>();
+
+  const p = payload as {
+    screenshotURL?: string;
+    domURL?: string;
+    task?: { screenshotURL?: string; domURL?: string };
+    visual?: { data?: { screenshotURL?: string } };
+  };
+
+  const screenshotSources = [
+    p?.screenshotURL,
+    p?.task?.screenshotURL,
+    p?.visual?.data?.screenshotURL,
+    `${baseUrl}/screenshots/${uuid}.png`,
+  ];
+
+  for (const source of screenshotSources) {
+    const resolved = normaliseArtifactUrl(source, baseUrl);
+    if (resolved && !seen.has(`screenshot:${resolved}`)) {
+      seen.add(`screenshot:${resolved}`);
+      candidates.push({ type: 'screenshot', url: resolved });
+    }
+  }
+
+  const domSources = [
+    p?.domURL,
+    p?.task?.domURL,
+    `${baseUrl}/dom/${uuid}.json`,
+  ];
+
+  for (const source of domSources) {
+    const resolved = normaliseArtifactUrl(source, baseUrl);
+    if (resolved && !seen.has(`dom:${resolved}`)) {
+      seen.add(`dom:${resolved}`);
+      candidates.push({ type: 'dom', url: resolved });
+    }
+  }
+
+  return candidates;
+}
+
+async function fetchGsbAnalysis(finalUrl: string, hash: string): Promise<GsbFetchResult> {
+  const cacheKey = `url:analysis:${hash}:gsb`;
+  const cached = await getJsonCache<GsbMatch[]>(CACHE_LABELS.gsb, cacheKey, ANALYSIS_TTLS.gsb);
+  if (cached) {
+    return { matches: cached, fromCache: true, durationMs: 0, error: null };
+  }
+  try {
+    const result = await gsbCircuit.execute(() =>
+      withRetry(() => gsbLookup([finalUrl]), {
+        retries: 3,
+        baseDelayMs: 1000,
+        factor: 2,
+        retryable: shouldRetry,
+      })
+    );
+    recordLatency(CIRCUIT_LABELS.gsb, result.latencyMs);
+    await setJsonCache(CACHE_LABELS.gsb, cacheKey, result.matches, ANALYSIS_TTLS.gsb);
+    return {
+      matches: result.matches,
+      fromCache: false,
+      durationMs: result.latencyMs ?? 0,
+      error: null,
+    };
+  } catch (err) {
+    recordError(CIRCUIT_LABELS.gsb, err);
+    logger.warn({ err, url: finalUrl }, 'Google Safe Browsing lookup failed');
+    return { matches: [], fromCache: false, durationMs: 0, error: err as Error };
+  }
+}
+
+async function fetchPhishtank(finalUrl: string, hash: string): Promise<PhishtankFetchResult> {
+  if (!config.phishtank.enabled) {
+    return { result: null, fromCache: true, error: null };
+  }
+  const cacheKey = `url:analysis:${hash}:phishtank`;
+  const cached = await getJsonCache<PhishtankResult>(CACHE_LABELS.phishtank, cacheKey, ANALYSIS_TTLS.phishtank);
+  if (cached) {
+    return { result: cached, fromCache: true, error: null };
+  }
+  try {
+    const result = await phishtankCircuit.execute(() =>
+      withRetry(() => phishtankLookup(finalUrl), {
+        retries: 2,
+        baseDelayMs: 1000,
+        factor: 2,
+        retryable: shouldRetry,
+      })
+    );
+    recordLatency(CIRCUIT_LABELS.phishtank, result.latencyMs);
+    await setJsonCache(CACHE_LABELS.phishtank, cacheKey, result, ANALYSIS_TTLS.phishtank);
+    return { result, fromCache: false, error: null };
+  } catch (err) {
+    recordError(CIRCUIT_LABELS.phishtank, err);
+    logger.warn({ err, url: finalUrl }, 'Phishtank lookup failed');
+    return { result: null, fromCache: false, error: err as Error };
+  }
+}
+
+interface VirusTotalFetchResult {
+  stats?: VtStats;
+  fromCache: boolean;
+  quotaExceeded: boolean;
+  error: Error | null;
+}
+
+async function fetchVirusTotal(finalUrl: string, hash: string): Promise<VirusTotalFetchResult> {
+  if (!config.vt.apiKey) {
+    return { stats: undefined, fromCache: true, quotaExceeded: false, error: null };
+  }
+  const cacheKey = `url:analysis:${hash}:vt`;
+  const cached = await getJsonCache<VtStats>(CACHE_LABELS.vt, cacheKey, ANALYSIS_TTLS.vt);
+  if (cached) {
+    return { stats: cached, fromCache: true, quotaExceeded: false, error: null };
+  }
+  try {
+    const analysis = await vtCircuit.execute(() =>
+      withRetry(() => vtAnalyzeUrl(finalUrl), {
+        retries: 3,
+        baseDelayMs: 1000,
+        factor: 2,
+        retryable: shouldRetry,
+      })
+    );
+    recordLatency(CIRCUIT_LABELS.vt, analysis.latencyMs);
+    const stats = vtVerdictStats(analysis as VirusTotalAnalysis);
+    if (stats) {
+      await setJsonCache(CACHE_LABELS.vt, cacheKey, stats, ANALYSIS_TTLS.vt);
+    }
+    return { stats, fromCache: false, quotaExceeded: false, error: null };
+  } catch (err) {
+    recordError(CIRCUIT_LABELS.vt, err);
+    const quotaExceeded = err instanceof QuotaExceededError || ((err as { code?: string | number; statusCode?: string | number })?.code ?? (err as { statusCode?: string | number })?.statusCode) === 429;
+    if (!quotaExceeded) {
+      logger.warn({ err, url: finalUrl }, 'VirusTotal lookup failed');
+    }
+    return { stats: undefined, fromCache: false, quotaExceeded, error: err as Error };
+  }
+}
+
+interface UrlhausFetchResult {
+  result: UrlhausResult | null;
+  fromCache: boolean;
+  error: Error | null;
+}
+
+async function fetchUrlhaus(finalUrl: string, hash: string): Promise<UrlhausFetchResult> {
+  if (!config.urlhaus.enabled) {
+    return { result: null, fromCache: true, error: null };
+  }
+  const cacheKey = `url:analysis:${hash}:urlhaus`;
+  const cached = await getJsonCache<UrlhausResult>(CACHE_LABELS.urlhaus, cacheKey, ANALYSIS_TTLS.urlhaus);
+  if (cached) {
+    return { result: cached, fromCache: true, error: null };
+  }
+  try {
+    const result = await urlhausCircuit.execute(() =>
+      withRetry(() => urlhausLookup(finalUrl), {
+        retries: 2,
+        baseDelayMs: 1000,
+        factor: 2,
+        retryable: shouldRetry,
+      })
+    );
+    recordLatency(CIRCUIT_LABELS.urlhaus, result.latencyMs);
+    await setJsonCache(CACHE_LABELS.urlhaus, cacheKey, result, ANALYSIS_TTLS.urlhaus);
+    return { result, fromCache: false, error: null };
+  } catch (err) {
+    recordError(CIRCUIT_LABELS.urlhaus, err);
+    logger.warn({ err, url: finalUrl }, 'URLhaus lookup failed');
+    return { result: null, fromCache: false, error: err as Error };
+  }
+}
+
+interface ShortenerCacheEntry {
+  finalUrl: string;
+  provider: string;
+  chain: string[];
+  wasShortened: boolean;
+}
+
+async function resolveShortenerWithCache(url: string, hash: string): Promise<ShortenerCacheEntry | null> {
+  const cacheKey = `${SHORTENER_CACHE_PREFIX}${hash}`;
+  const cached = await getJsonCache<ShortenerCacheEntry>(CACHE_LABELS.shortener, cacheKey, config.shortener.cacheTtlSeconds);
+  if (cached) return cached;
+  try {
+    const start = Date.now();
+    const resolved = await resolveShortener(url);
+    recordLatency('shortener', Date.now() - start);
+    if (resolved.wasShortened) {
+      const payload: ShortenerCacheEntry = {
+        finalUrl: resolved.finalUrl,
+        provider: resolved.provider,
+        chain: resolved.chain,
+        wasShortened: true,
+      };
+      await setJsonCache(CACHE_LABELS.shortener, cacheKey, payload, config.shortener.cacheTtlSeconds);
+      return payload;
+    }
+    return null;
+  } catch (err) {
+    recordError('shortener', err);
+    logger.warn({ err, url }, 'Shortener resolution failed');
+    return null;
+  }
+}
+
+interface DomainIntelResult {
+  ageDays?: number;
+  source: 'rdap' | 'whoisxml' | 'whodat' | 'none';
+  registrar?: string;
+}
+
+async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainIntelResult> {
+  const rdapAge = await domainAgeDaysFromRdap(hostname, config.rdap.timeoutMs).catch(() => undefined);
+  if (rdapAge !== undefined) {
+    return { ageDays: rdapAge, source: 'rdap' };
+  }
+
+  // Try who-dat first if enabled (self-hosted, no quota limits)
+  if (config.whodat?.enabled) {
+    const cacheKey = `url:analysis:${hash}:whodat`;
+    const cached = await getJsonCache<{ ageDays?: number; registrar?: string }>(
+      CACHE_LABELS.whois,
+      cacheKey,
+      ANALYSIS_TTLS.whois
+    );
+    if (cached) {
+      return { ageDays: cached.ageDays, registrar: cached.registrar, source: 'whodat' };
+    }
+    try {
+      const start = Date.now();
+      const response = await whodatCircuit.execute(() =>
+        withRetry(() => whoDatLookup(hostname), {
+          retries: 2,
+          baseDelayMs: 1000,
+          factor: 2,
+          retryable: shouldRetry,
+        })
+      );
+      recordLatency(CIRCUIT_LABELS.whodat, Date.now() - start);
+      const record = (response as { record?: { estimatedDomainAgeDays?: number; registrarName?: string } })?.record;
+      const ageDays = record?.estimatedDomainAgeDays;
+      const registrar = record?.registrarName;
+      await setJsonCache(CACHE_LABELS.whois, cacheKey, { ageDays, registrar }, ANALYSIS_TTLS.whois);
+      return { ageDays, registrar, source: 'whodat' };
+    } catch (err) {
+      recordError(CIRCUIT_LABELS.whodat, err);
+      logger.warn({ err, hostname }, 'Who-dat lookup failed, falling back to WhoisXML if available');
+    }
+  }
+
+  // Fallback to WhoisXML if who-dat failed or is disabled
+  if (!config.whoisxml?.enabled || !config.whoisxml.apiKey) {
+    return { ageDays: undefined, source: 'none' };
+  }
+  const cacheKey = `url:analysis:${hash}:whois`;
+  const cached = await getJsonCache<{ ageDays?: number; registrar?: string }>(
+    CACHE_LABELS.whois,
+    cacheKey,
+    ANALYSIS_TTLS.whois
+  );
+  if (cached) {
+    return { ageDays: cached.ageDays, registrar: cached.registrar, source: 'whoisxml' };
+  }
+  try {
+    const start = Date.now();
+    const response = await whoisCircuit.execute(() =>
+      withRetry(() => whoisXmlLookup(hostname), {
+        retries: 2,
+        baseDelayMs: 1000,
+        factor: 2,
+        retryable: shouldRetry,
+      })
+    );
+    recordLatency(CIRCUIT_LABELS.whoisxml, Date.now() - start);
+    const record = (response as { record?: { estimatedDomainAgeDays?: number; registrarName?: string } })?.record;
+    const ageDays = record?.estimatedDomainAgeDays;
+    const registrar = record?.registrarName;
+    await setJsonCache(CACHE_LABELS.whois, cacheKey, { ageDays, registrar }, ANALYSIS_TTLS.whois);
+    return { ageDays, registrar, source: 'whoisxml' };
+  } catch (err) {
+    recordError(CIRCUIT_LABELS.whoisxml, err);
+    if (err instanceof QuotaExceededError) {
+      logger.warn({ hostname }, 'WhoisXML quota exhausted, disabling for remainder of month');
+      disableWhoisXmlForMonth();
+    } else {
+      logger.warn({ err, hostname }, 'WhoisXML lookup failed');
+    }
+    return { ageDays: undefined, source: 'none' };
+  }
+}
+
+async function loadManualOverride(dbClient: { query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }> }, urlHash: string, hostname: string): Promise<'allow' | 'deny' | null> {
+  try {
+    const { rows } = await dbClient.query(
+      `SELECT status FROM overrides
+         WHERE (url_hash = ? OR pattern = ?)
+           AND (expires_at IS NULL OR expires_at > datetime('now'))
+         ORDER BY created_at DESC
+         LIMIT 1`,
+      [urlHash, hostname]
+    );
+    const record = rows[0] as { status?: string } | undefined;
+    const status = record?.status;
+    return status === 'allow' || status === 'deny' ? status : null;
+  } catch (err) {
+    logger.warn({ err, urlHash, hostname }, 'Failed to load manual override');
+    return null;
+  }
+}
+
+interface UrlscanCallbackBody {
+  uuid?: string;
+  task?: { uuid?: string; url?: string; screenshotURL?: string; domURL?: string };
+  visual?: { data?: { screenshotURL?: string } };
+  screenshotURL?: string;
+  domURL?: string;
+  [key: string]: unknown;
+}
+
+async function main() {
+  assertEssentialConfig('scan-orchestrator');
+  const dbClient = getSharedConnection();
+
+  const enhancedSecurity = new EnhancedSecurityAnalyzer(redis);
+  await enhancedSecurity.start();
+
+  const app = Fastify();
+  app.get('/healthz', async () => ({ ok: true }));
+  app.get('/metrics', async (_req, reply) => {
+    reply.header('Content-Type', register.contentType);
+    return register.metrics();
+  });
+
+  app.post('/urlscan/callback', async (req, reply) => {
+    if (!config.urlscan.enabled) {
+      reply.code(503).send({ ok: false, error: 'urlscan disabled' });
+      return;
+    }
+    const secret = config.urlscan.callbackSecret;
+    const headers = req.headers as Record<string, string | string[] | undefined>;
+    const rawHeaderToken = headers['x-urlscan-secret'] ?? headers['x-urlscan-token'];
+    const headerToken = Array.isArray(rawHeaderToken) ? rawHeaderToken[0] : rawHeaderToken;
+    const queryTokenRaw = (req.query as Record<string, string | string[] | undefined> | undefined)?.token;
+    const queryToken = Array.isArray(queryTokenRaw) ? queryTokenRaw[0] : queryTokenRaw;
+
+    if (!secret || (headerToken !== secret && queryToken !== secret)) {
+      reply.code(401).send({ ok: false, error: 'unauthorized' });
+      return;
+    }
+    const body = req.body as UrlscanCallbackBody;
+    const uuid = body?.uuid || body?.task?.uuid;
+    if (!uuid) {
+      reply.code(400).send({ ok: false, error: 'missing uuid' });
+      return;
+    }
+    const urlscanBaseUrl = (config.urlscan.baseUrl || 'https://urlscan.io').replace(/\/+$/, '');
+    const artifactSources = [
+      body?.screenshotURL,
+      body?.task?.screenshotURL,
+      body?.visual?.data?.screenshotURL,
+      body?.domURL,
+      body?.task?.domURL,
+    ];
+
+    for (const source of artifactSources) {
+      const validation = normalizeUrlscanArtifactCandidate(source, urlscanBaseUrl);
+      if (validation.invalid) {
+        logger.warn({ uuid, source }, 'urlscan callback rejected due to artifact host validation');
+        reply.code(400).send({ ok: false, error: 'invalid artifact url' });
+        return;
+      }
+    }
+    let urlHashValue = await redis.get(`${URLSCAN_UUID_PREFIX}${uuid}`);
+    if (!urlHashValue) {
+      const taskUrl: string | undefined = body?.task?.url;
+      if (taskUrl) {
+        const normalized = normalizeUrl(taskUrl);
+        if (normalized) {
+          urlHashValue = urlHash(normalized);
+        }
+      }
+    }
+    if (!urlHashValue) {
+      logger.warn({ uuid }, 'urlscan callback without known url hash');
+      reply.code(202).send({ ok: true });
+      return;
+    }
+
+    await redis.set(
+      `${URLSCAN_RESULT_PREFIX}${urlHashValue}`,
+      JSON.stringify(body),
+      'EX',
+      config.urlscan.resultTtlSeconds
+    );
+
+    let artifacts: { screenshotPath: string | null; domPath: string | null } | null = null;
+    try {
+      artifacts = await downloadUrlscanArtifacts(uuid, urlHashValue);
+    } catch (err) {
+      logger.warn({ err, uuid }, 'failed to download urlscan artifacts');
+    }
+
+    await dbClient.query(
+      `UPDATE scans
+         SET urlscan_status=?,
+             urlscan_completed_at=datetime('now'),
+             urlscan_result=?,
+             urlscan_screenshot_path=COALESCE(?, urlscan_screenshot_path),
+             urlscan_dom_path=COALESCE(?, urlscan_dom_path),
+             urlscan_artifact_stored_at=CASE
+               WHEN ? IS NOT NULL OR ? IS NOT NULL THEN datetime('now')
+               ELSE urlscan_artifact_stored_at
+             END
+       WHERE url_hash=?`,
+      ['completed', JSON.stringify(body), artifacts?.screenshotPath ?? null, artifacts?.domPath ?? null, artifacts?.screenshotPath ?? null, artifacts?.domPath ?? null, urlHashValue]
+    ).catch((err: Error) => {
+      logger.error({ err }, 'failed to persist urlscan callback');
+    });
+
+    reply.send({ ok: true });
+  });
+
+  new Worker(config.queues.scanRequest, async (job) => {
+    const queueName = config.queues.scanRequest;
+    const started = Date.now();
+    const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
+    metrics.queueJobWait.labels(queueName).observe(waitSeconds);
+    const { chatId, messageId, url, timestamp, rescan } = job.data as {
+      chatId?: string;
+      messageId?: string;
+      url: string;
+      timestamp?: number;
+      rescan?: boolean;
+    };
+    const ingestionTimestamp = typeof timestamp === 'number' ? timestamp : job.timestamp ?? started;
+    const hasChatContext = typeof chatId === 'string' && typeof messageId === 'string';
+    try {
+      const norm = normalizeUrl(url);
+      if (!norm) {
+        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
+        metrics.queueCompleted.labels(queueName).inc();
+        if (job.attemptsMade > 0) {
+          metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
+        }
+        return;
+      }
+      const h = urlHash(norm);
+      const cacheKey = `scan:${h}`;
+
+      interface CachedVerdict {
+        verdict: string;
+        score: number;
+        reasons: string[];
+        cacheTtl?: number;
+        decidedAt?: number;
+        [key: string]: unknown;
+      }
+
+      let cachedVerdict: CachedVerdict | null = null;
+      let cachedTtl = -1;
+      const cacheStop = metrics.cacheLookupDuration.labels(CACHE_LABELS.verdict).startTimer();
+      const cachedRaw = await redis.get(cacheKey);
+      cacheStop();
+      if (cachedRaw) {
+        recordCacheOutcome(CACHE_LABELS.verdict, 'hit');
+        metrics.cacheHit.inc();
+        metrics.cacheEntryBytes.labels(CACHE_LABELS.verdict).set(Buffer.byteLength(cachedRaw));
+        cachedTtl = await redis.ttl(cacheKey);
+        if (cachedTtl >= 0) {
+          metrics.cacheEntryTtl.labels(CACHE_LABELS.verdict).set(cachedTtl);
+        }
+        try {
+          cachedVerdict = JSON.parse(cachedRaw) as CachedVerdict;
+        } catch {
+          metrics.cacheStaleTotal.labels(CACHE_LABELS.verdict).inc();
+        }
+        if (
+          cachedVerdict &&
+          typeof cachedVerdict.cacheTtl === 'number' &&
+          cachedTtl >= 0 &&
+          cachedTtl < Math.max(1, Math.floor(cachedVerdict.cacheTtl * 0.2))
+        ) {
+          metrics.cacheStaleTotal.labels(CACHE_LABELS.verdict).inc();
+        }
+      } else {
+        recordCacheOutcome(CACHE_LABELS.verdict, 'miss');
+        metrics.cacheMiss.inc();
+        metrics.cacheEntryTtl.labels(CACHE_LABELS.verdict).set(0);
+      }
+
+      if (cachedVerdict) {
+        const verdictLatencySeconds = Math.max(0, (Date.now() - ingestionTimestamp) / 1000);
+        metrics.verdictLatency.observe(verdictLatencySeconds);
+        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
+        metrics.queueCompleted.labels(queueName).inc();
+        if (job.attemptsMade > 0) {
+          metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
+        }
+
+        if (hasChatContext) {
+          const resolvedMessageId = messageId ?? '';
+          await scanVerdictQueue.add(
+            'verdict',
+            {
+              chatId,
+              messageId: resolvedMessageId,
+              ...cachedVerdict,
+              decidedAt: cachedVerdict.decidedAt ?? Date.now(),
+            },
+            { removeOnComplete: true }
+          );
+        } else {
+          logger.info({ url: norm, jobId: job.id, rescan: Boolean(rescan) }, 'Skipping verdict dispatch without chat context');
+        }
+        return;
+      }
+
+      const shortenerInfo = await resolveShortenerWithCache(norm, h);
+      const preExpansionUrl = shortenerInfo?.finalUrl ?? norm;
+      const exp = await expandUrl(preExpansionUrl, config.orchestrator.expansion);
+      const finalUrl = exp.finalUrl;
+      const finalUrlObj = new URL(finalUrl);
+      const redirectChain = [...(shortenerInfo?.chain ?? []), ...exp.chain.filter((item: string) => !(shortenerInfo?.chain ?? []).includes(item))];
+      const heurSignals = extraHeuristics(finalUrlObj);
+      const wasShortened = Boolean(shortenerInfo?.wasShortened);
+      const finalUrlMismatch = wasShortened && new URL(norm).hostname !== finalUrlObj.hostname;
+
+      const homoglyphResult = detectHomoglyphs(finalUrlObj.hostname);
+      if (homoglyphResult.detected) {
+        metrics.homoglyphDetections.labels(homoglyphResult.riskLevel).inc();
+        logger.info({ hostname: finalUrlObj.hostname, risk: homoglyphResult.riskLevel, confusables: homoglyphResult.confusableChars }, 'Homoglyph detection');
+      }
+
+      const enhancedSecurityResult = await enhancedSecurity.analyze(finalUrl, h);
+
+      if (enhancedSecurityResult.verdict === 'malicious' && enhancedSecurityResult.confidence === 'high' && enhancedSecurityResult.skipExternalAPIs) {
+        logger.info({ url: finalUrl, score: enhancedSecurityResult.score, reasons: enhancedSecurityResult.reasons }, 'Tier 1 high-confidence threat detected, skipping external APIs');
+
+        const signals = {
+          gsbThreatTypes: [],
+          phishtankVerified: false,
+          urlhausListed: false,
+          vtMalicious: undefined,
+          vtSuspicious: undefined,
+          vtHarmless: undefined,
+          domainAgeDays: undefined,
+          redirectCount: redirectChain.length,
+          wasShortened,
+          finalUrlMismatch,
+          manualOverride: null,
+          homoglyph: homoglyphResult,
+          ...heurSignals,
+          enhancedSecurityScore: enhancedSecurityResult.score,
+          enhancedSecurityReasons: enhancedSecurityResult.reasons,
+        };
+
+        const verdictResult = scoreFromSignals(signals);
+        const verdict = 'malicious';
+        const { score, reasons } = verdictResult;
+        const enhancedReasons = [...reasons, ...enhancedSecurityResult.reasons];
+
+        const cacheTtl = config.orchestrator.cacheTtl.malicious;
+        const verdictPayload = {
+          url: norm,
+          finalUrl,
+          verdict,
+          score,
+          reasons: enhancedReasons,
+          cacheTtl,
+          redirectChain,
+          wasShortened,
+          finalUrlMismatch,
+          homoglyph: homoglyphResult,
+          enhancedSecurity: {
+            tier1Score: enhancedSecurityResult.score,
+            confidence: enhancedSecurityResult.confidence,
+          },
+          decidedAt: Date.now(),
+        };
+
+        await setJsonCache(CACHE_LABELS.verdict, cacheKey, verdictPayload, cacheTtl);
+
+        const transaction = dbClient.getDatabase().transaction(() => {
+          // Insert or update scan record
+          const stmt = dbClient.getDatabase().prepare(
+            `INSERT OR REPLACE INTO scans (url_hash, url, final_url, verdict, score, reasons, cache_ttl, redirect_chain, was_shortened, final_url_mismatch, homoglyph_detected, homoglyph_risk_level, first_seen_at, last_seen_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+          );
+          stmt.run(h, norm, finalUrl, verdict, score, JSON.stringify(enhancedReasons), cacheTtl, JSON.stringify(redirectChain), wasShortened, finalUrlMismatch, homoglyphResult.detected, homoglyphResult.riskLevel);
+        });
+
+        try {
+          transaction();
+        } catch (err) {
+          logger.error({ err, url: norm }, 'failed to persist enhanced security verdict');
+        }
+
+        metrics.verdictScore.observe(score);
+        for (const reason of enhancedReasons) {
+          metrics.verdictReasons.labels(normalizeVerdictReason(reason)).inc();
+        }
+
+        const verdictLatencySeconds = Math.max(0, (Date.now() - ingestionTimestamp) / 1000);
+        metrics.verdictLatency.observe(verdictLatencySeconds);
+        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
+        metrics.queueCompleted.labels(queueName).inc();
+
+        if (hasChatContext) {
+          await scanVerdictQueue.add('verdict', {
+            chatId,
+            messageId,
+            ...verdictPayload,
+          }, { removeOnComplete: true });
+        }
+
+        await enhancedSecurity.recordVerdict(finalUrl, 'malicious', enhancedSecurityResult.score / 3.0);
+        return;
+      }
+
+      const [blocklistResult, domainIntel, manualOverride] = await Promise.all([
+        checkBlocklistsWithRedundancy({
+          finalUrl,
+          hash: h,
+          fallbackLatencyMs: config.gsb.fallbackLatencyMs,
+          gsbApiKeyPresent: Boolean(config.gsb.apiKey),
+          phishtankEnabled: config.phishtank.enabled,
+          fetchGsbAnalysis,
+          fetchPhishtank,
+        }),
+        fetchDomainIntel(finalUrlObj.hostname, h),
+        loadManualOverride(dbClient, h, finalUrlObj.hostname),
+      ]);
+
+      if (manualOverride) {
+        metrics.manualOverrideApplied.labels(manualOverride).inc();
+      }
+
+      const domainAgeDays = domainIntel.ageDays;
+      const gsbMatches = blocklistResult.gsbMatches;
+      const gsbHit = gsbMatches.length > 0;
+      if (gsbHit) metrics.gsbHits.inc();
+
+      const phishtankResult = blocklistResult.phishtankResult;
+      const phishtankHit = Boolean(phishtankResult?.verified);
+
+      let vtStats: VtStats | undefined;
+      let vtQuotaExceeded = false;
+      let vtError: Error | null = null;
+      if (!gsbHit && !phishtankHit) {
+        const vtResponse = await fetchVirusTotal(finalUrl, h);
+        vtStats = vtResponse.stats;
+        vtQuotaExceeded = vtResponse.quotaExceeded;
+        vtError = vtResponse.error;
+        if (!vtResponse.fromCache && !vtResponse.error) {
+          metrics.vtSubmissions.inc();
+        }
+      }
+
+      let urlhausResult: UrlhausResult | null = null;
+      let urlhausError: Error | null = null;
+      let urlhausConsulted = false;
+      const shouldQueryUrlhaus =
+        !gsbHit && (
+          !config.vt.apiKey ||
+          vtQuotaExceeded ||
+          vtError !== null ||
+          !vtStats
+        );
+      if (shouldQueryUrlhaus) {
+        urlhausConsulted = true;
+        const urlhausResponse = await fetchUrlhaus(finalUrl, h);
+        urlhausResult = urlhausResponse.result;
+        urlhausError = urlhausResponse.error;
+      }
+
+      const summarizeReason = (input?: string | null) => {
+        if (!input) return 'unavailable';
+        const trimmed = input.trim();
+        if (trimmed.length === 0) return 'unavailable';
+        return trimmed.length > 80 ? `${trimmed.slice(0, 77)}...` : trimmed;
+      };
+
+      type ProviderState = {
+        key: string;
+        name: string;
+        consulted: boolean;
+        available: boolean;
+        reason?: string;
+      };
+
+      const providerStates: ProviderState[] = [
+        {
+          key: 'gsb',
+          name: 'Google Safe Browsing',
+          consulted: true,
+          available: !blocklistResult.gsbResult.error,
+          reason: blocklistResult.gsbResult.error ? summarizeReason(blocklistResult.gsbResult.error.message) : undefined,
+        },
+      ];
+
+      if (blocklistResult.phishtankNeeded) {
+        providerStates.push({
+          key: 'phishtank',
+          name: 'Phishtank',
+          consulted: true,
+          available: !blocklistResult.phishtankError,
+          reason: blocklistResult.phishtankError ? summarizeReason(blocklistResult.phishtankError.message) : undefined,
+        });
+      }
+
+      const vtConsulted = !gsbHit && !phishtankHit && Boolean(config.vt.apiKey);
+      if (vtConsulted) {
+        let vtReason: string | undefined;
+        if (!vtStats) {
+          vtReason = vtQuotaExceeded ? 'quota_exhausted' : summarizeReason(vtError?.message ?? null);
+        }
+        providerStates.push({
+          key: 'virustotal',
+          name: 'VirusTotal',
+          consulted: true,
+          available: Boolean(vtStats) || (!vtError && !vtQuotaExceeded),
+          reason: vtStats ? undefined : vtReason,
+        });
+      }
+
+      if (urlhausConsulted) {
+        providerStates.push({
+          key: 'urlhaus',
+          name: 'URLhaus',
+          consulted: true,
+          available: !urlhausError,
+          reason: urlhausError ? summarizeReason(urlhausError.message) : undefined,
+        });
+      }
+
+      const consultedProviders = providerStates.filter((state) => state.consulted);
+      const availableProviders = consultedProviders.filter((state) => state.available);
+      const degradedProviders = consultedProviders.filter((state) => !state.available);
+      const degradedMode = consultedProviders.length > 0 && availableProviders.length === 0
+        ? {
+          providers: degradedProviders.map((state) => ({
+            name: state.name,
+            reason: state.reason ?? 'unavailable',
+          })),
+        }
+        : undefined;
+
+      if (degradedMode) {
+        metrics.degradedModeEvents.inc();
+        logger.warn({ url: finalUrl, urlHash: h, providers: degradedMode.providers }, 'Operating in degraded mode with no external providers available');
+      }
+
+      const signals = {
+        gsbThreatTypes: gsbMatches.map((m: GsbThreatMatch) => m.threatType),
+        phishtankVerified: Boolean(phishtankResult?.verified),
+        urlhausListed: Boolean(urlhausResult?.listed),
+        vtMalicious: vtStats?.malicious,
+        vtSuspicious: vtStats?.suspicious,
+        vtHarmless: vtStats?.harmless,
+        domainAgeDays,
+        redirectCount: redirectChain.length,
+        wasShortened,
+        finalUrlMismatch,
+        manualOverride,
+        homoglyph: homoglyphResult,
+        ...heurSignals,
+        enhancedSecurityScore: enhancedSecurityResult.score,
+        enhancedSecurityReasons: enhancedSecurityResult.reasons,
+      };
+      const verdictResult = scoreFromSignals(signals);
+      const verdict = verdictResult.level;
+      let { score, reasons } = verdictResult;
+
+      if (enhancedSecurityResult.reasons.length > 0) {
+        reasons = [...reasons, ...enhancedSecurityResult.reasons];
+      }
+      const baselineVerdict = scoreFromSignals({ ...signals, manualOverride: null }).level;
+
+      metrics.verdictScore.observe(score);
+      for (const reason of reasons) {
+        metrics.verdictReasons.labels(normalizeVerdictReason(reason)).inc();
+      }
+      if (baselineVerdict !== verdict) {
+        metrics.verdictEscalations.labels(baselineVerdict, verdict).inc();
+      }
+      if (gsbMatches.length > 0) {
+        metrics.verdictSignals.labels('gsb_match').inc(gsbMatches.length);
+      }
+      if (phishtankHit) {
+        metrics.verdictSignals.labels('phishtank_verified').inc();
+      }
+      if (urlhausResult?.listed) {
+        metrics.verdictSignals.labels('urlhaus_listed').inc();
+      }
+      if ((vtStats?.malicious ?? 0) > 0) {
+        metrics.verdictSignals.labels('vt_malicious').inc(vtStats?.malicious ?? 0);
+      }
+      if ((vtStats?.suspicious ?? 0) > 0) {
+        metrics.verdictSignals.labels('vt_suspicious').inc(vtStats?.suspicious ?? 0);
+      }
+      if (wasShortened) {
+        metrics.verdictSignals.labels('shortener').inc();
+      }
+      if (finalUrlMismatch) {
+        metrics.verdictSignals.labels('redirect_mismatch').inc();
+      }
+      if (redirectChain.length > 0) {
+        metrics.verdictSignals.labels('redirect_chain').inc(redirectChain.length);
+      }
+      if (homoglyphResult.detected) {
+        metrics.verdictSignals.labels(`homoglyph_${homoglyphResult.riskLevel}`).inc();
+      }
+      if (typeof domainAgeDays === 'number') {
+        metrics.verdictSignals.labels('domain_age').inc();
+      }
+      if (signals.manualOverride) {
+        metrics.verdictSignals.labels(`override_${signals.manualOverride}`).inc();
+      }
+
+      const blocklistHit = gsbHit || phishtankHit || Boolean(urlhausResult?.listed);
+
+      let enqueuedUrlscan = false;
+      if (config.urlscan.enabled && config.urlscan.apiKey && verdict === 'suspicious') {
+        const queued = await redis.set(
+          `${URLSCAN_QUEUED_PREFIX}${h}`,
+          '1',
+          'EX',
+          config.urlscan.uuidTtlSeconds,
+          'NX'
+        );
+        if (queued) {
+          enqueuedUrlscan = true;
+          await urlscanQueue.add(
+            'submit',
+            {
+              url: finalUrl,
+              urlHash: h,
+            },
+            {
+              removeOnComplete: true,
+              removeOnFail: 500,
+              attempts: 1,
+            }
+          );
+        }
+      }
+
+      const ttlByLevel = config.orchestrator.cacheTtl as Record<string, number>;
+      const ttl = ttlByLevel[verdict] ?? verdictResult.cacheTtl ?? 3600;
+
+      metrics.verdictCacheTtl.observe(ttl);
+
+      const decidedAt = Date.now();
+      const res = {
+        messageId,
+        chatId,
+        url: finalUrl,
+        normalizedUrl: finalUrl,
+        urlHash: h,
+        verdict,
+        score,
+        reasons,
+        gsb: { matches: gsbMatches },
+        phishtank: phishtankResult,
+        urlhaus: urlhausResult,
+        vt: vtStats,
+        urlscan: enqueuedUrlscan ? { status: 'queued' } : undefined,
+        whois: domainIntel,
+        domainAgeDays,
+        redirectChain,
+        ttlLevel: verdict,
+        cacheTtl: ttl,
+        shortener: shortenerInfo ? { provider: shortenerInfo.provider, chain: shortenerInfo.chain } : undefined,
+        finalUrlMismatch,
+        decidedAt,
+        degradedMode,
+      };
+      await setJsonCache(CACHE_LABELS.verdict, cacheKey, res, ttl);
+
+      const transaction = dbClient.getDatabase().transaction(() => {
+        // Insert or update scan record
+        const scanStmt = dbClient.getDatabase().prepare(
+          `INSERT OR REPLACE INTO scans (
+            url_hash, normalized_url, verdict, score, reasons, vt_stats, 
+            gsafebrowsing_hit, domain_age_days, redirect_chain_summary, cache_ttl, 
+            source_kind, urlscan_status, whois_source, whois_registrar, shortener_provider,
+            first_seen_at, last_seen_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+        );
+        scanStmt.run(
+          h, finalUrl, verdict, score, JSON.stringify(reasons), JSON.stringify(vtStats || {}),
+          blocklistHit, domainAgeDays ?? null, JSON.stringify(redirectChain), ttl,
+          'wa', enqueuedUrlscan ? 'queued' : null,
+          domainIntel.source === 'none' ? null : domainIntel.source,
+          domainIntel.registrar ?? null, shortenerInfo?.provider ?? null
+        );
+
+        if (enqueuedUrlscan) {
+          const urlscanStmt = dbClient.getDatabase().prepare('UPDATE scans SET urlscan_status=? WHERE url_hash=?');
+          urlscanStmt.run('queued', h);
+        }
+
+        if (chatId && messageId) {
+          const messageStmt = dbClient.getDatabase().prepare(
+            `INSERT OR IGNORE INTO messages (chat_id, message_id, url_hash, verdict, posted_at)
+             VALUES (?, ?, ?, ?, datetime('now'))`
+          );
+          messageStmt.run(chatId, messageId, h, verdict);
+        }
+      });
+
+      try {
+        transaction();
+      } catch (err) {
+        logger.warn({ err, chatId, messageId }, 'failed to persist message metadata for scan');
+      }
+
+      if (chatId && messageId) {
+        await scanVerdictQueue.add('verdict', { ...res, chatId, messageId }, { removeOnComplete: true });
+      } else {
+        logger.info({ url: finalUrl, jobId: job.id, rescan: Boolean(rescan) }, 'Completed scan without chat context; skipping messaging flow');
+      }
+
+      await enhancedSecurity.recordVerdict(
+        finalUrl,
+        verdict === 'malicious' ? 'malicious' : verdict === 'suspicious' ? 'suspicious' : 'benign',
+        score / 15.0
+      ).catch((err) => {
+        logger.warn({ err, url: finalUrl }, 'failed to record verdict for collaborative learning');
+      });
+
+      metrics.verdictCounter.labels(verdict).inc();
+      const totalProcessingSeconds = (Date.now() - started) / 1000;
+      metrics.verdictLatency.observe(Math.max(0, (Date.now() - ingestionTimestamp) / 1000));
+      metrics.scanLatency.observe(totalProcessingSeconds);
+      metrics.queueProcessingDuration.labels(queueName).observe(totalProcessingSeconds);
+      metrics.queueCompleted.labels(queueName).inc();
+      if (job.attemptsMade > 0) {
+        metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
+      }
+    } catch (e) {
+      metrics.queueFailures.labels(queueName).inc();
+      metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
+      logger.error(e, 'scan worker error');
+    } finally {
+      await refreshQueueMetrics(scanRequestQueue, queueName).catch(() => undefined);
+    }
+  }, { connection: redis, concurrency: config.orchestrator.concurrency });
+
+  if (config.urlscan.enabled && config.urlscan.apiKey) {
+    new Worker(config.queues.urlscan, async (job) => {
+      const queueName = config.queues.urlscan;
+      const started = Date.now();
+      const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
+      metrics.queueJobWait.labels(queueName).observe(waitSeconds);
+      const { url, urlHash: urlHashValue } = job.data as { url: string; urlHash: string };
+      try {
+        const submission: UrlscanSubmissionResponse = await urlscanCircuit.execute(() =>
+          withRetry(
+            () =>
+              submitUrlscan(url, {
+                callbackUrl: config.urlscan.callbackUrl || undefined,
+                visibility: config.urlscan.visibility,
+                tags: config.urlscan.tags,
+              }),
+            {
+              retries: 2,
+              baseDelayMs: 1000,
+              factor: 2,
+              retryable: shouldRetry,
+            }
+          )
+        );
+        recordLatency(CIRCUIT_LABELS.urlscan, submission.latencyMs);
+        if (submission.uuid) {
+          await redis.set(
+            `${URLSCAN_UUID_PREFIX}${submission.uuid}`,
+            urlHashValue,
+            'EX',
+            config.urlscan.uuidTtlSeconds
+          );
+          await redis.set(
+            `${URLSCAN_SUBMITTED_PREFIX}${urlHashValue}`,
+            submission.uuid,
+            'EX',
+            config.urlscan.uuidTtlSeconds
+          );
+          await dbClient.query(
+            `UPDATE scans SET urlscan_uuid=?, urlscan_status=?, urlscan_submitted_at=datetime('now'), urlscan_result_url=? WHERE url_hash=?`,
+            [submission.uuid, 'submitted', submission.result ?? null, urlHashValue]
+          );
+        }
+        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
+        metrics.queueCompleted.labels(queueName).inc();
+        if (job.attemptsMade > 0) {
+          metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
+        }
+      } catch (err) {
+        recordError(CIRCUIT_LABELS.urlscan, err);
+        logger.error({ err, url }, 'urlscan submission failed');
+        await dbClient.query(
+          `UPDATE scans SET urlscan_status=?, urlscan_completed_at=datetime('now') WHERE url_hash=?`,
+          ['failed', urlHashValue]
+        ).catch(() => undefined);
+        metrics.queueFailures.labels(queueName).inc();
+        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
+        throw err;
+      } finally {
+        await refreshQueueMetrics(urlscanQueue, queueName).catch(() => undefined);
+      }
+    }, { connection: redis, concurrency: config.urlscan.concurrency });
+  }
+
+  await app.listen({ host: '0.0.0.0', port: 3001 });
+
+  const shutdown = async () => {
+    logger.info('Shutting down scan orchestrator...');
+    await enhancedSecurity.stop();
+    await app.close();
+    await redis.quit();
+    process.exit(0);
+  };
+
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+}
+
+if (process.env.NODE_ENV !== 'test') {
+  main().catch(err => { logger.error(err, 'Fatal in orchestrator'); process.exit(1); });
+}
+
+export const __testables = {
+  fetchGsbAnalysis,
+  fetchPhishtank,
+  fetchVirusTotal,
+  fetchUrlhaus,
+  shouldRetry,
+  classifyError,
+  checkBlocklistsWithRedundancy,
+  shouldQueryPhishtank,
+  extractUrlscanArtifactCandidates,
+  normalizeUrlscanArtifactCandidate,
+};
+
+==================================================
+File: services/control-plane/src/index.ts
+==================================================
+import Fastify, { FastifyRequest, FastifyReply } from 'fastify';
+import fs from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import path from 'node:path';
+import Redis from 'ioredis';
+import { Queue } from 'bullmq';
+import { register, metrics, config, logger, assertControlPlaneToken, normalizeUrl, urlHash, assertEssentialConfig } from '@wbscanner/shared';
+import { getSharedConnection } from './database.js';
+
+const artifactRoot = path.resolve(process.env.URLSCAN_ARTIFACT_DIR || 'storage/urlscan-artifacts');
+
+let sharedRedis: Redis | null = null;
+let sharedQueue: Queue | null = null;
+
+function createRedisConnection(): Redis {
+  if (process.env.NODE_ENV === 'test') {
+    class InMemoryRedis {
+      private store = new Map<string, string>();
+      private ttlStore = new Map<string, number>();
+      private setStore = new Map<string, Set<string>>();
+      private hashStore = new Map<string, Map<string, string>>();
+      private listStore = new Map<string, string[]>();
+
+      async get(key: string): Promise<string | null> {
+        return this.store.get(key) ?? null;
+      }
+
+      async set(key: string, value: string, mode?: string, ttlArg?: number, nxArg?: string): Promise<'OK' | null> {
+        if (mode === 'EX') {
+          const ttlSeconds = typeof ttlArg === 'number' ? ttlArg : 0;
+          if (nxArg === 'NX' && this.store.has(key)) {
+            return null;
+          }
+          this.store.set(key, value);
+          if (ttlSeconds > 0) {
+            this.ttlStore.set(key, ttlSeconds);
+          } else {
+            this.ttlStore.delete(key);
+          }
+          return 'OK';
+        }
+        this.store.set(key, value);
+        this.ttlStore.delete(key);
+        return 'OK';
+      }
+
+      async del(key: string): Promise<number> {
+        const existed = this.store.delete(key);
+        this.ttlStore.delete(key);
+        this.setStore.delete(key);
+        this.hashStore.delete(key);
+        this.listStore.delete(key);
+        return existed ? 1 : 0;
+      }
+
+      async ttl(key: string): Promise<number> {
+        return this.ttlStore.get(key) ?? -1;
+      }
+
+      async expire(key: string, seconds: number): Promise<number> {
+        if (seconds > 0) {
+          this.ttlStore.set(key, seconds);
+          return 1;
+        }
+        this.ttlStore.delete(key);
+        return 0;
+      }
+
+      async sadd(key: string, member: string): Promise<number> {
+        const set = this.setStore.get(key) ?? new Set<string>();
+        set.add(member);
+        this.setStore.set(key, set);
+        return set.size;
+      }
+
+      async srem(key: string, member: string): Promise<number> {
+        const set = this.setStore.get(key);
+        if (!set) return 0;
+        const existed = set.delete(member);
+        if (set.size === 0) this.setStore.delete(key);
+        return existed ? 1 : 0;
+      }
+
+      async scard(key: string): Promise<number> {
+        return this.setStore.get(key)?.size ?? 0;
+      }
+
+      async hset(key: string, field: string, value: string): Promise<number> {
+        const hash = this.hashStore.get(key) ?? new Map<string, string>();
+        const existed = hash.has(field) ? 0 : 1;
+        hash.set(field, value);
+        this.hashStore.set(key, hash);
+        return existed;
+      }
+
+      async hdel(key: string, field: string): Promise<number> {
+        const hash = this.hashStore.get(key);
+        if (!hash) return 0;
+        const removed = hash.delete(field) ? 1 : 0;
+        if (hash.size === 0) this.hashStore.delete(key);
+        return removed;
+      }
+
+      async hkeys(key: string): Promise<string[]> {
+        return Array.from(this.hashStore.get(key)?.keys() ?? []);
+      }
+
+      async lpush(key: string, value: string): Promise<number> {
+        const list = this.listStore.get(key) ?? [];
+        list.unshift(value);
+        this.listStore.set(key, list);
+        return list.length;
+      }
+
+      async ltrim(key: string, start: number, stop: number): Promise<void> {
+        const list = this.listStore.get(key);
+        if (!list) return;
+        const normalizedStop = stop < 0 ? list.length + stop : stop;
+        const trimmed = list.slice(start, normalizedStop + 1);
+        this.listStore.set(key, trimmed);
+      }
+
+      async lrange(key: string, start: number, stop: number): Promise<string[]> {
+        const list = this.listStore.get(key) ?? [];
+        const normalizedStop = stop < 0 ? list.length + stop : stop;
+        return list.slice(start, normalizedStop + 1);
+      }
+
+      on(): void { }
+
+      quit(): Promise<void> {
+        return Promise.resolve();
+      }
+    }
+
+    return new InMemoryRedis() as unknown as Redis;
+  }
+  return new Redis(config.redisUrl, { maxRetriesPerRequest: null });
+}
+
+function getSharedRedis(): Redis {
+  if (!sharedRedis) {
+    sharedRedis = createRedisConnection();
+  }
+  return sharedRedis;
+}
+
+function getSharedQueue(): Queue {
+  if (!sharedQueue) {
+    sharedQueue = new Queue(config.queues.scanRequest, { connection: getSharedRedis() });
+  }
+  return sharedQueue;
+}
+
+function createAuthHook(expectedToken: string) {
+  return function authHook(req: FastifyRequest, reply: FastifyReply, done: (err?: Error) => void) {
+    const hdr = req.headers['authorization'] || '';
+    const token = hdr.startsWith('Bearer ') ? hdr.slice(7) : hdr;
+    if (token !== expectedToken) {
+      reply.code(401).send({ error: 'unauthorized' });
+      return;
+    }
+    done();
+  };
+}
+
+export interface BuildOptions {
+  dbClient?: { query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }> };
+  redisClient?: Redis;
+  queue?: Queue;
+}
+
+export async function buildServer(options: BuildOptions = {}) {
+  assertEssentialConfig('control-plane');
+  const requiredToken = assertControlPlaneToken();
+  const dbClient = options.dbClient ?? getSharedConnection();
+  const ownsClient = !options.dbClient;
+  const redisClient = options.redisClient ?? getSharedRedis();
+  const queue = options.queue ?? getSharedQueue();
+
+  const app = Fastify();
+
+  app.get('/healthz', async () => ({ ok: true }));
+  app.get('/metrics', async (_req, reply) => { reply.header('Content-Type', register.contentType); return register.metrics(); });
+
+  app.addHook('preHandler', createAuthHook(requiredToken));
+
+  app.get('/status', async () => {
+    const { rows } = await dbClient.query('SELECT COUNT(*) AS scans, SUM(CASE WHEN verdict = ? THEN 1 ELSE 0 END) AS malicious FROM scans', ['malicious']);
+    const stats = rows[0] as { scans: number | string; malicious: number | string };
+    return { scans: Number(stats.scans), malicious: Number(stats.malicious || 0) };
+  });
+
+  interface OverrideBody {
+    url_hash?: string;
+    pattern?: string;
+    status: string;
+    scope?: string;
+    scope_id?: string;
+    reason?: string;
+    expires_at?: string;
+  }
+
+  app.post('/overrides', async (req, reply) => {
+    const body = req.body as OverrideBody;
+    await dbClient.query(`INSERT INTO overrides (url_hash, pattern, status, scope, scope_id, created_by, reason, expires_at)
+      VALUES (?,?,?,?,?,?,?,?)`, [body.url_hash || null, body.pattern || null, body.status, body.scope || 'global', body.scope_id || null, 'admin', body.reason || null, body.expires_at || null]);
+    reply.code(201).send({ ok: true });
+  });
+
+  app.get('/overrides', async () => {
+    const { rows } = await dbClient.query('SELECT * FROM overrides ORDER BY created_at DESC LIMIT 100');
+    return rows;
+  });
+
+  app.post('/groups/:chatId/mute', async (req, reply) => {
+    const { chatId } = req.params as { chatId: string };
+    const until = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    await dbClient.query('UPDATE groups SET muted_until=? WHERE chat_id=?', [until, chatId]);
+    reply.send({ ok: true, muted_until: until });
+  });
+
+  app.post('/groups/:chatId/unmute', async (req, reply) => {
+    const { chatId } = req.params as { chatId: string };
+    await dbClient.query('UPDATE groups SET muted_until=NULL WHERE chat_id=?', [chatId]);
+    reply.send({ ok: true });
+  });
+
+  app.post('/rescan', async (req, reply) => {
+    const { url } = req.body as { url?: string };
+    if (!url) {
+      reply.code(400).send({ error: 'url_required' });
+      return;
+    }
+    const normalized = normalizeUrl(url);
+    if (!normalized) {
+      reply.code(400).send({ error: 'invalid_url' });
+      return;
+    }
+    const hash = urlHash(normalized);
+    const keys = [
+      `scan:${hash}`,
+      `url:verdict:${hash}`,
+      `url:analysis:${hash}:vt`,
+      `url:analysis:${hash}:gsb`,
+      `url:analysis:${hash}:whois`,
+      `url:analysis:${hash}:phishtank`,
+      `url:analysis:${hash}:urlhaus`,
+      `url:shortener:${hash}`,
+    ];
+    await Promise.all(keys.map((key) => redisClient.del(key)));
+
+    const { rows: messageRows } = await dbClient.query(
+      'SELECT chat_id, message_id FROM messages WHERE url_hash=? ORDER BY posted_at DESC LIMIT 1',
+      [hash]
+    );
+    const latestMessage = messageRows[0] as { chat_id?: string; message_id?: string } | undefined;
+
+    const rescanJob = {
+      url: normalized,
+      urlHash: hash,
+      rescan: true,
+      priority: 1,
+      ...(latestMessage?.chat_id && latestMessage?.message_id
+        ? { chatId: latestMessage.chat_id, messageId: latestMessage.message_id }
+        : {}),
+    };
+
+    const job = await queue.add('rescan', rescanJob, {
+      removeOnComplete: true,
+      removeOnFail: 100,
+      priority: 1,
+    });
+    metrics.rescanRequests.labels('control-plane').inc();
+    reply.send({ ok: true, urlHash: hash, jobId: job.id });
+  });
+
+  function isWithinArtifactRoot(resolvedPath: string): boolean {
+    const relative = path.relative(artifactRoot, resolvedPath);
+    if (!relative) return true;
+    return !relative.startsWith('..') && !path.isAbsolute(relative);
+  }
+
+  app.get('/scans/:urlHash/urlscan-artifacts/:type', async (req, reply) => {
+    const { urlHash: hash, type } = req.params as { urlHash: string; type: string };
+    if (type !== 'screenshot' && type !== 'dom') {
+      reply.code(400).send({ error: 'invalid_artifact_type' });
+      return;
+    }
+
+    const column = type === 'screenshot' ? 'urlscan_screenshot_path' : 'urlscan_dom_path';
+    const { rows } = await dbClient.query(
+      `SELECT ${column} FROM scans WHERE url_hash=? LIMIT 1`,
+      [hash]
+    );
+    const record = rows[0] as Record<string, string> | undefined;
+    const filePath = record?.[column];
+    if (!filePath) {
+      reply.code(404).send({ error: `${type}_not_found` });
+      return;
+    }
+
+    const resolvedPath = path.resolve(filePath);
+    if (!isWithinArtifactRoot(resolvedPath)) {
+      reply.code(403).send({ error: 'access_denied' });
+      return;
+    }
+
+    if (type === 'screenshot') {
+      try {
+        await fs.access(resolvedPath);
+      } catch (error: unknown) {
+        const err = error as { code?: string };
+        if (err?.code === 'ENOENT') {
+          reply.code(404).send({ error: 'screenshot_not_found' });
+        } else {
+          reply.code(500).send({ error: 'artifact_unavailable' });
+        }
+        return;
+      }
+      const stream = createReadStream(resolvedPath);
+      reply.header('Content-Type', 'image/png');
+      reply.send(stream);
+      return;
+    }
+
+    try {
+      const html = await fs.readFile(resolvedPath, 'utf8');
+      reply.header('Content-Type', 'text/html; charset=utf-8');
+      reply.send(html);
+    } catch (error: unknown) {
+      const err = error as { code?: string };
+      if (err?.code === 'ENOENT') {
+        reply.code(404).send({ error: 'dom_not_found' });
+      } else {
+        reply.code(500).send({ error: 'artifact_unavailable' });
+      }
+    }
+  });
+
+  if (process.env.NODE_ENV !== 'test') {
+    setInterval(async () => {
+      try {
+        await dbClient.query("DELETE FROM scans WHERE last_seen_at < datetime('now', '-30 days')");
+        await dbClient.query("DELETE FROM messages WHERE posted_at < datetime('now', '-30 days')");
+      } catch (e) { logger.error(e, 'purge job failed'); }
+    }, 24 * 60 * 60 * 1000);
+  }
+
+  return { app, dbClient, ownsClient };
+}
+
+async function main() {
+  assertControlPlaneToken();
+  const { app } = await buildServer();
+  await app.listen({ host: '0.0.0.0', port: config.controlPlane.port });
+}
+
+if (process.env.NODE_ENV !== 'test') {
+  main().catch(err => { logger.error(err, 'Fatal in control-plane'); process.exit(1); });
+}
+
+==================================================
+File: packages/shared/src/index.ts
+==================================================
+export * from './log';
+export * from './metrics';
+export * from './config';
+export * from './url';
+export * from './ssrf';
+export * from './scoring';
+export * from './reputation/virustotal';
+export * from './reputation/gsb';
+export * from './reputation/rdap';
+export * from './reputation/urlhaus';
+export * from './reputation/phishtank';
+export * from './reputation/urlscan';
+export * from './reputation/whoisxml';
+export * from './reputation/whodat';
+export * from './reputation/dns-intelligence';
+export * from './reputation/certificate-intelligence';
+export * from './reputation/advanced-heuristics';
+export * from './reputation/local-threat-db';
+export * from './reputation/http-fingerprint';
+export * from './circuit-breaker';
+export * from './url-shortener';
+export * from './types';
+export * from './errors';
+export * from './homoglyph';
+export * from './database';
+export * from './verdict-cache';
+
+==================================================
+File: packages/shared/src/scoring.ts
+==================================================
+import { isSuspiciousTld } from './url';
+import { detectHomoglyphs } from './homoglyph';
+import type { HomoglyphResult } from './homoglyph';
+
+export interface Signals {
+  gsbThreatTypes?: string[];
+  vtMalicious?: number;
+  vtSuspicious?: number;
+  vtHarmless?: number;
+  urlhausListed?: boolean;
+  phishtankVerified?: boolean;
+  domainAgeDays?: number;
+  isIpLiteral?: boolean;
+  hasSuspiciousTld?: boolean;
+  redirectCount?: number;
+  hasUncommonPort?: boolean;
+  urlLength?: number;
+  hasExecutableExtension?: boolean;
+  wasShortened?: boolean;
+  manualOverride?: 'allow' | 'deny' | null;
+  finalUrlMismatch?: boolean;
+  homoglyph?: HomoglyphResult;
+}
+
+export interface RiskVerdict {
+  score: number;
+  level: 'benign' | 'suspicious' | 'malicious';
+  reasons: string[];
+  cacheTtl: number;
+}
+
+function pushReason(reasons: string[], reason: string) {
+  if (reason && !reasons.includes(reason)) {
+    reasons.push(reason);
+  }
+}
+
+export function scoreFromSignals(signals: Signals): RiskVerdict {
+  if (signals.manualOverride === 'allow') {
+    return { score: 0, level: 'benign', reasons: ['Manually allowed'], cacheTtl: 86400 };
+  }
+  if (signals.manualOverride === 'deny') {
+    return { score: 15, level: 'malicious', reasons: ['Manually blocked'], cacheTtl: 86400 };
+  }
+
+  let score = 0;
+  const reasons: string[] = [];
+
+  // Blocklist signals
+  const threatTypes = signals.gsbThreatTypes ?? [];
+  if (threatTypes.includes('MALWARE') || threatTypes.includes('SOCIAL_ENGINEERING')) {
+    score += 10;
+    pushReason(reasons, `Google Safe Browsing: ${threatTypes.join(', ')}`);
+  }
+  if (signals.phishtankVerified) {
+    score += 10;
+    pushReason(reasons, 'Verified phishing (Phishtank)');
+  }
+  if (signals.urlhausListed) {
+    score += 10;
+    pushReason(reasons, 'Known malware distribution (URLhaus)');
+  }
+
+  const vtMalicious = signals.vtMalicious ?? 0;
+  if (vtMalicious >= 3) {
+    score += 8;
+    pushReason(reasons, `${vtMalicious} VT engines flagged malicious`);
+  } else if (vtMalicious >= 1) {
+    score += 5;
+    pushReason(reasons, `${vtMalicious} VT engine flagged malicious`);
+  }
+
+  // Domain age
+  if (signals.domainAgeDays !== undefined && signals.domainAgeDays !== null) {
+    if (signals.domainAgeDays < 7) {
+      score += 6;
+      pushReason(reasons, `Domain registered ${signals.domainAgeDays} days ago (<7)`);
+    } else if (signals.domainAgeDays < 14) {
+      score += 4;
+      pushReason(reasons, `Domain registered ${signals.domainAgeDays} days ago (<14)`);
+    } else if (signals.domainAgeDays < 30) {
+      score += 2;
+      pushReason(reasons, `Domain registered ${signals.domainAgeDays} days ago (<30)`);
+    }
+  }
+
+  // Heuristics
+  const homoglyph = signals.homoglyph;
+  if (homoglyph?.detected) {
+    const characterPairs = homoglyph.confusableChars.map(c => `${c.original}→${c.confusedWith}`).join(', ');
+    if (homoglyph.riskLevel === 'high') {
+      score += 5;
+      pushReason(
+        reasons,
+        characterPairs
+          ? `High-risk homoglyph attack detected (${characterPairs})`
+          : 'High-risk homoglyph attack detected',
+      );
+    } else if (homoglyph.riskLevel === 'medium') {
+      score += 3;
+      pushReason(
+        reasons,
+        characterPairs
+          ? `Suspicious homoglyph characters detected (${characterPairs})`
+          : 'Suspicious homoglyph characters detected',
+      );
+    } else {
+      score += 1;
+      const baseReason = homoglyph.isPunycode ? 'Punycode/IDN hostname detected' : 'Internationalized hostname detected';
+      pushReason(reasons, characterPairs ? `${baseReason} (${characterPairs})` : baseReason);
+    }
+    homoglyph.riskReasons
+      .filter(reason => !reason.startsWith('Confusable character'))
+      .forEach(reason => pushReason(reasons, reason));
+  }
+  if (signals.isIpLiteral) {
+    score += 3;
+    pushReason(reasons, 'URL uses IP address');
+  }
+  if (signals.hasSuspiciousTld) {
+    score += 2;
+    pushReason(reasons, 'Suspicious TLD');
+  }
+  if ((signals.redirectCount ?? 0) >= 3) {
+    score += 2;
+    pushReason(reasons, `Multiple redirects (${signals.redirectCount})`);
+  }
+  if (signals.hasUncommonPort) {
+    score += 2;
+    pushReason(reasons, 'Uncommon port');
+  }
+  if ((signals.urlLength ?? 0) > 200) {
+    score += 2;
+    pushReason(reasons, `Long URL (${signals.urlLength} chars)`);
+  }
+  if (signals.hasExecutableExtension) {
+    score += 1;
+    pushReason(reasons, 'Executable file extension');
+  }
+  if (signals.wasShortened) {
+    score += 1;
+    pushReason(reasons, 'Shortened URL expanded');
+  }
+  if (signals.finalUrlMismatch) {
+    score += 2;
+    pushReason(reasons, 'Redirect leads to mismatched domain/brand');
+  }
+
+  const finalScore = Math.max(0, Math.min(score, 15));
+
+  let level: RiskVerdict['level'];
+  let cacheTtl: number;
+  if (finalScore <= 3) {
+    level = 'benign';
+    cacheTtl = 86400;
+  } else if (finalScore <= 7) {
+    level = 'suspicious';
+    cacheTtl = 3600;
+  } else {
+    level = 'malicious';
+    cacheTtl = 900;
+  }
+
+  return { score: finalScore, level, reasons, cacheTtl };
+}
+
+export function extraHeuristics(u: URL): Partial<Signals> {
+  const port = u.port ? parseInt(u.port, 10) : (u.protocol === 'http:' ? 80 : 443);
+  const hasUncommonPort = ![80, 443, 8080, 8443].includes(port);
+  const isIpLiteral = /^(\d+\.\d+\.\d+\.\d+|\[[0-9a-fA-F:]+\])$/.test(u.hostname);
+  const hasExecutableExtension = /\.(exe|msi|apk|bat|cmd|ps1|scr|jar|pkg|dmg|iso)$/i.test(u.pathname);
+  const hasSuspiciousTld = isSuspiciousTld(u.hostname);
+  const homoglyph = detectHomoglyphs(u.hostname);
+  return {
+    hasUncommonPort,
+    isIpLiteral,
+    hasExecutableExtension,
+    hasSuspiciousTld,
+    urlLength: u.toString().length,
+    homoglyph,
+  };
+}

@@ -1,5 +1,6 @@
 import { request } from 'undici';
 import { config } from '../config';
+import { HttpError } from '../http-errors';
 
 export interface GsbThreatMatch {
   threatType: string;
@@ -18,7 +19,7 @@ export async function gsbLookup(urls: string[], timeoutMs = config.gsb.timeoutMs
   const body = {
     client: { clientId: 'wbscanner', clientVersion: '0.1' },
     threatInfo: {
-      threatTypes: ['MALWARE','SOCIAL_ENGINEERING','UNWANTED_SOFTWARE','MALICIOUS_BINARY'],
+      threatTypes: ['MALWARE', 'SOCIAL_ENGINEERING', 'UNWANTED_SOFTWARE', 'MALICIOUS_BINARY'],
       platformTypes: ['ANY_PLATFORM'],
       threatEntryTypes: ['URL'],
       threatEntries: urls.map(u => ({ url: u }))
@@ -33,18 +34,18 @@ export async function gsbLookup(urls: string[], timeoutMs = config.gsb.timeoutMs
     bodyTimeout: timeoutMs
   });
   if (res.statusCode >= 500) {
-    const err = new Error(`Google Safe Browsing error: ${res.statusCode}`);
-    (err as any).statusCode = res.statusCode;
+    const err = new Error(`Google Safe Browsing error: ${res.statusCode}`) as HttpError;
+    err.statusCode = res.statusCode;
     throw err;
   }
-  const json: any = await res.body.json();
+  const json = await res.body.json() as { matches?: Array<{ threatType: string; platformType: string; threatEntryType: string; threat: { url?: string } | string }> };
   const matches: GsbThreatMatch[] = Array.isArray(json?.matches)
-    ? json.matches.map((match: any) => ({
-        threatType: match.threatType,
-        platformType: match.platformType,
-        threatEntryType: match.threatEntryType,
-        threat: match.threat?.url ?? match.threat ?? ''
-      }))
+    ? json.matches.map((match) => ({
+      threatType: match.threatType,
+      platformType: match.platformType,
+      threatEntryType: match.threatEntryType,
+      threat: typeof match.threat === 'string' ? match.threat : (match.threat?.url ?? '')
+    }))
     : [];
   return { matches, latencyMs: Date.now() - start };
 }

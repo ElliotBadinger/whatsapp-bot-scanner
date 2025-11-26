@@ -1,7 +1,0 @@
-ALTER TABLE scans
-  ADD COLUMN IF NOT EXISTS urlscan_uuid TEXT,
-  ADD COLUMN IF NOT EXISTS urlscan_status TEXT,
-  ADD COLUMN IF NOT EXISTS urlscan_submitted_at TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS urlscan_completed_at TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS urlscan_result JSONB,
-  ADD COLUMN IF NOT EXISTS urlscan_result_url TEXT;

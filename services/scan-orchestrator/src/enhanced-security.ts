@@ -13,26 +13,26 @@ import {
   type HTTPFingerprint,
 } from '@wbscanner/shared';
 import { Counter, Histogram } from 'prom-client';
-import { metrics } from '@wbscanner/shared';
+import { register } from '@wbscanner/shared';
 import type Redis from 'ioredis';
 
 const enhancedSecurityScoreHistogram = new Histogram({
   name: 'enhanced_security_score',
   help: 'Enhanced security score distribution',
   buckets: [0.5, 1.0, 1.5, 2.0, 2.5, 3.0],
-  registers: [metrics],
+  registers: [register],
 });
 
 const tier1BlocksTotal = new Counter({
   name: 'tier1_blocks_total',
   help: 'Total number of scans blocked by Tier 1 checks',
-  registers: [metrics],
+  registers: [register],
 });
 
 const apiCallsAvoidedTotal = new Counter({
   name: 'api_calls_avoided_total',
   help: 'Total number of external API calls avoided due to enhanced security',
-  registers: [metrics],
+  registers: [register],
 });
 
 const enhancedSecurityLatencySeconds = new Histogram({
@@ -40,7 +40,7 @@ const enhancedSecurityLatencySeconds = new Histogram({
   help: 'Enhanced security check latency in seconds',
   labelNames: ['tier'],
   buckets: [0.1, 0.25, 0.5, 1, 2, 5],
-  registers: [metrics],
+  registers: [register],
 });
 
 export interface EnhancedSecurityResult {
@@ -101,11 +101,11 @@ export class EnhancedSecurityAnalyzer {
         advancedHeuristics(finalUrl),
         config.enhancedSecurity.dnsbl.enabled
           ? dnsIntelligence(parsed.hostname, {
-              dnsblEnabled: true,
-              dnsblTimeoutMs: config.enhancedSecurity.dnsbl.timeoutMs,
-              dnssecEnabled: true,
-              fastFluxEnabled: true,
-            })
+            dnsblEnabled: true,
+            dnsblTimeoutMs: config.enhancedSecurity.dnsbl.timeoutMs,
+            dnssecEnabled: true,
+            fastFluxEnabled: true,
+          })
           : Promise.resolve({ score: 0, reasons: [], dnsblResults: [] }),
         config.enhancedSecurity.localThreatDb.enabled
           ? this.localThreatDb.check(finalUrl, hash)
@@ -157,38 +157,38 @@ export class EnhancedSecurityAnalyzer {
       const [certIntel, httpFingerprint] = await Promise.allSettled([
         config.enhancedSecurity.certIntel.enabled && parsed.protocol === 'https:'
           ? certificateIntelligence(parsed.hostname, {
-              timeoutMs: config.enhancedSecurity.certIntel.timeoutMs,
-              ctCheckEnabled: config.enhancedSecurity.certIntel.ctCheckEnabled,
-            })
+            timeoutMs: config.enhancedSecurity.certIntel.timeoutMs,
+            ctCheckEnabled: config.enhancedSecurity.certIntel.ctCheckEnabled,
+          })
           : Promise.resolve({
-              isValid: true,
-              isSelfSigned: false,
-              issuer: 'unknown',
-              age: 0,
-              expiryDays: 0,
-              sanCount: 0,
-              chainValid: true,
-              ctLogPresent: true,
-              suspicionScore: 0,
-              reasons: [],
-            }),
+            isValid: true,
+            isSelfSigned: false,
+            issuer: 'unknown',
+            age: 0,
+            expiryDays: 0,
+            sanCount: 0,
+            chainValid: true,
+            ctLogPresent: true,
+            suspicionScore: 0,
+            reasons: [],
+          }),
         config.enhancedSecurity.httpFingerprint.enabled
           ? httpFingerprinting(finalUrl, {
-              timeoutMs: config.enhancedSecurity.httpFingerprint.timeoutMs,
-              enableSSRFGuard: true,
-            })
+            timeoutMs: config.enhancedSecurity.httpFingerprint.timeoutMs,
+            enableSSRFGuard: true,
+          })
           : Promise.resolve({
-              statusCode: 0,
-              securityHeaders: {
-                hsts: false,
-                csp: false,
-                xFrameOptions: false,
-                xContentTypeOptions: false,
-              },
-              suspiciousRedirects: false,
-              suspicionScore: 0,
-              reasons: [],
-            }),
+            statusCode: 0,
+            securityHeaders: {
+              hsts: false,
+              csp: false,
+              xFrameOptions: false,
+              xContentTypeOptions: false,
+            },
+            suspiciousRedirects: false,
+            suspicionScore: 0,
+            reasons: [],
+          }),
       ]);
 
       const tier2Duration = (Date.now() - tier2Start) / 1000;
@@ -274,8 +274,9 @@ export class EnhancedSecurityAnalyzer {
           httpFingerprint: httpFingerprintData,
         },
       };
-    } catch (err: any) {
-      logger.error({ error: err.message, url: finalUrl }, 'Enhanced security analysis failed');
+    } catch (err: unknown) {
+      const error = err as Error;
+      logger.error({ error: error.message, url: finalUrl }, 'Enhanced security analysis failed');
 
       return {
         skipExternalAPIs: false,

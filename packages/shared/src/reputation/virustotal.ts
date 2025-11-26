@@ -11,9 +11,10 @@ import {
   rateLimiterQueueDepth,
 } from '../metrics';
 import { QuotaExceededError } from '../errors';
+import { HttpError } from '../http-errors';
 
 export interface VirusTotalAnalysis {
-  data?: any;
+  data?: unknown;
   latencyMs?: number;
   disabled?: boolean;
 }
@@ -50,10 +51,11 @@ const refreshInterval = setInterval(async () => {
 refreshInterval.unref();
 
 function getQueuedJobs(): number {
-  const queueFn = (vtLimiter as any)?.queued;
-  if (typeof queueFn === 'function') {
+  // Bottleneck doesn't export the queued method type, so we need to access it dynamically
+  const limiter = vtLimiter as unknown as { queued?: () => number };
+  if (typeof limiter.queued === 'function') {
     try {
-      const value = queueFn.call(vtLimiter);
+      const value = limiter.queued();
       return typeof value === 'number' ? value : 0;
     } catch {
       return 0;
@@ -138,15 +140,15 @@ export async function vtAnalyzeUrl(url: string): Promise<VirusTotalAnalysis> {
   }
 
   if (submitResponse.status >= 400) {
-    const err = new Error(`VirusTotal submission failed: ${submitResponse.status}`);
-    (err as any).statusCode = submitResponse.status;
+    const err = new Error(`VirusTotal submission failed: ${submitResponse.status}`) as HttpError;
+    err.statusCode = submitResponse.status;
     throw err;
   }
 
-  const body: any = await submitResponse.json();
+  const body = await submitResponse.json() as { data?: { id?: string } };
   const analysisId = body.data?.id;
   const started = Date.now();
-  let analysis: any;
+  let analysis: unknown;
   while (Date.now() - started < 50000) {
     const res = await scheduleVtCall(() =>
       fetch(`https://www.virustotal.com/api/v3/analyses/${analysisId}`, {
@@ -158,25 +160,32 @@ export async function vtAnalyzeUrl(url: string): Promise<VirusTotalAnalysis> {
       handleVirusTotalQuotaExceeded('polling');
     }
     if (res.status >= 500) {
-      const err = new Error(`VirusTotal analysis failed: ${res.status}`);
-      (err as any).statusCode = res.status;
+      const err = new Error(`VirusTotal analysis failed: ${res.status}`) as HttpError;
+      err.statusCode = res.status;
       throw err;
     }
     analysis = await res.json();
-    const status = analysis.data?.attributes?.status;
+    const analysisData = analysis as { data?: { attributes?: { status?: string } } };
+    const status = analysisData.data?.attributes?.status;
     if (status !== 'queued') break;
     await new Promise(r => setTimeout(r, 2000));
   }
   return { data: analysis, latencyMs: Date.now() - started };
 }
 
-export function vtVerdictStats(analysis: VirusTotalAnalysis | any): { malicious: number; suspicious: number; harmless: number } | undefined {
+export function vtVerdictStats(analysis: VirusTotalAnalysis): { malicious: number; suspicious: number; harmless: number } | undefined {
   if (analysis?.disabled) return undefined;
-  const st = analysis?.data?.data?.attributes?.stats ?? analysis?.data?.attributes?.stats;
-  if (!st) return undefined;
+
+  // Type guard for analysis data structure
+  const data = analysis?.data as { data?: { attributes?: { stats?: unknown } }; attributes?: { stats?: unknown } } | undefined;
+  const st = data?.data?.attributes?.stats ?? data?.attributes?.stats;
+
+  if (!st || typeof st !== 'object') return undefined;
+
+  const stats = st as { malicious?: number; suspicious?: number; harmless?: number };
   return {
-    malicious: st.malicious || 0,
-    suspicious: st.suspicious || 0,
-    harmless: st.harmless || 0
+    malicious: stats.malicious || 0,
+    suspicious: stats.suspicious || 0,
+    harmless: stats.harmless || 0
   };
 }

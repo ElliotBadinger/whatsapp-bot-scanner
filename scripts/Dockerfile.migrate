@@ -1,0 +1,26 @@
+FROM node:20-alpine
+
+# Install build dependencies for better-sqlite3 and bash for install scripts
+RUN apk add --no-cache python3 make g++ bash
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+COPY packages/shared/package.json ./packages/shared/
+
+# Install dependencies (ignore scripts to skip MCP install)
+RUN npm install --omit=dev --no-audit --progress=false --ignore-scripts
+
+# Rebuild better-sqlite3 to ensure native bindings are built
+RUN npm rebuild better-sqlite3
+
+# Copy migration script, shared package, and migrations
+COPY scripts/run-migrations.js ./scripts/
+COPY packages/shared ./packages/shared
+COPY db/migrations ./db/migrations
+
+# Create storage directory
+RUN mkdir -p /app/storage && chmod 777 /app/storage
+
+CMD ["node", "scripts/run-migrations.js"]

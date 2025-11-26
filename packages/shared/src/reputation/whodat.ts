@@ -3,6 +3,7 @@ import { config } from '../config';
 import { metrics } from '../metrics';
 import { FeatureDisabledError } from '../errors';
 import { logger } from '../log';
+import { HttpError } from '../http-errors';
 
 export interface WhoDatRecord {
   domainName?: string;
@@ -19,8 +20,6 @@ export interface WhoDatResponse {
   record?: WhoDatRecord;
 }
 
-const SERVICE_LABEL = 'whodat';
-
 /**
  * Query the self-hosted who-dat WHOIS service
  * @param domain - Domain name to query
@@ -32,7 +31,7 @@ export async function whoDatLookup(domain: string): Promise<WhoDatResponse> {
   }
 
   const url = new URL(`${config.whodat.baseUrl}/whois/${encodeURIComponent(domain)}`);
-  
+
   metrics.whoisRequests.inc();
   const start = Date.now();
 
@@ -53,25 +52,37 @@ export async function whoDatLookup(domain: string): Promise<WhoDatResponse> {
 
     if (res.statusCode >= 500) {
       metrics.whoisResults.labels('error').inc();
-      const err = new Error(`Who-dat service error: ${res.statusCode}`);
-      (err as any).statusCode = res.statusCode;
+      const err = new Error(`Who-dat service error: ${res.statusCode}`) as HttpError;
+      err.statusCode = res.statusCode;
       throw err;
     }
 
     if (res.statusCode >= 400) {
       metrics.whoisResults.labels('error').inc();
-      const err = new Error(`Who-dat request failed: ${res.statusCode}`);
-      (err as any).statusCode = res.statusCode;
+      const err = new Error(`Who-dat request failed: ${res.statusCode}`) as HttpError;
+      err.statusCode = res.statusCode;
       throw err;
     }
 
-    const json: any = await res.body.json();
+    const json = await res.body.json() as {
+      domain_name?: string;
+      created_date?: string;
+      creation_date?: string;
+      updated_date?: string;
+      expiration_date?: string;
+      expires_date?: string;
+      registrar?: string;
+      registrar_name?: string;
+      name_servers?: string[];
+      nameservers?: string[];
+      status?: string[];
+    };
     metrics.whoisResults.labels('success').inc();
 
     // Parse creation date and calculate domain age
     const createdDate = json.created_date || json.creation_date;
     let ageDays: number | undefined;
-    
+
     if (createdDate) {
       const created = new Date(createdDate);
       if (!Number.isNaN(created.getTime())) {

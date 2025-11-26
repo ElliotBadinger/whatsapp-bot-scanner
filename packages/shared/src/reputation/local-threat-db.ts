@@ -1,220 +1,133 @@
-import Redis from 'ioredis';
-import crypto from 'crypto';
+import { request } from 'undici';
 import { logger } from '../log';
-import { metrics } from '../metrics';
-import { Counter, Gauge } from 'prom-client';
+import type Redis from 'ioredis';
 
-const threatFeedUpdateTotal = new Counter({
-  name: 'threat_feed_update_total',
-  help: 'Total number of threat feed updates',
-  labelNames: ['source', 'result'],
-  registers: [metrics],
-});
-
-const threatFeedEntriesGauge = new Gauge({
-  name: 'threat_feed_entries',
-  help: 'Number of entries in threat feed',
-  labelNames: ['source'],
-  registers: [metrics],
-});
-
-const localThreatHitsTotal = new Counter({
-  name: 'local_threat_hits_total',
-  help: 'Total number of local threat database hits',
-  labelNames: ['match_type'],
-  registers: [metrics],
-});
-
-const collaborativeLearningTotal = new Counter({
-  name: 'collaborative_learning_total',
-  help: 'Total number of collaborative learning events',
-  labelNames: ['action'],
-  registers: [metrics],
-});
-
-interface ThreatEntry {
-  url: string;
-  urlHash: string;
-  firstSeen: number;
-  lastSeen: number;
-  confidence: number;
-  tags: string[];
-}
-
-interface CollaborativeThreat {
-  urlHash: string;
-  verdictHistory: Array<{
-    verdict: 'benign' | 'suspicious' | 'malicious';
-    timestamp: number;
-    confidence: number;
-  }>;
-  reportCount: number;
-}
-
-interface LocalThreatResult {
+export interface LocalThreatResult {
   score: number;
   reasons: string[];
-  matchType?: 'exact' | 'domain' | 'collaborative';
-  confidence?: number;
+  openphishMatch?: boolean;
+  collaborativeMatch?: boolean;
+}
+
+interface LocalThreatDatabaseOptions {
+  feedUrl: string;
+  updateIntervalMs: number;
 }
 
 export class LocalThreatDatabase {
   private redis: Redis;
-  private updateInterval?: NodeJS.Timeout;
-  private feedUrl: string;
-  private updateIntervalMs: number;
+  private options: LocalThreatDatabaseOptions;
+  private updateTimer?: NodeJS.Timeout;
+  private readonly OPENPHISH_KEY = 'threat_db:openphish';
+  private readonly COLLABORATIVE_KEY = 'threat_db:collaborative';
+  private readonly LAST_UPDATE_KEY = 'threat_db:last_update';
 
-  constructor(redis: Redis, config: { feedUrl?: string; updateIntervalMs?: number } = {}) {
+  constructor(redis: Redis, options: LocalThreatDatabaseOptions) {
     this.redis = redis;
-    this.feedUrl = config.feedUrl || 'https://openphish.com/feed.txt';
-    this.updateIntervalMs = config.updateIntervalMs || 2 * 60 * 60 * 1000;
-  }
-
-  private hashUrl(url: string): string {
-    return crypto.createHash('sha256').update(url).digest('hex');
-  }
-
-  private extractDomain(url: string): string {
-    try {
-      const parsed = new URL(url);
-      return parsed.hostname;
-    } catch {
-      return '';
-    }
+    this.options = options;
   }
 
   async start(): Promise<void> {
-    logger.info('Starting local threat database');
-
+    // Initial feed update
     await this.updateOpenPhishFeed();
 
-    this.updateInterval = setInterval(() => {
-      this.updateOpenPhishFeed().catch((err) => {
-        logger.error({ error: err.message }, 'Failed to update OpenPhish feed');
+    // Schedule periodic updates
+    this.updateTimer = setInterval(() => {
+      this.updateOpenPhishFeed().catch(err => {
+        logger.error({ err }, 'Failed to update OpenPhish feed');
       });
-    }, this.updateIntervalMs);
+    }, this.options.updateIntervalMs);
 
-    logger.info({ updateIntervalMs: this.updateIntervalMs }, 'Local threat database started');
+    logger.info('Local threat database started');
   }
 
   async stop(): Promise<void> {
-    if (this.updateInterval) {
-      clearInterval(this.updateInterval);
-      this.updateInterval = undefined;
+    if (this.updateTimer) {
+      clearInterval(this.updateTimer);
+      this.updateTimer = undefined;
     }
     logger.info('Local threat database stopped');
   }
 
-  async updateOpenPhishFeed(): Promise<void> {
-    const startTime = Date.now();
-    logger.info({ feedUrl: this.feedUrl }, 'Updating OpenPhish feed');
-
-    try {
-      const response = await fetch(this.feedUrl, {
-        headers: {
-          'User-Agent': 'wbscanner-bot/1.0',
-        },
-        signal: AbortSignal.timeout(30000),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const text = await response.text();
-      const urls = text
-        .split('\n')
-        .map((line) => line.trim())
-        .filter((line) => line.length > 0 && line.startsWith('http'));
-
-      const pipeline = this.redis.pipeline();
-      const now = Date.now();
-
-      for (const url of urls) {
-        const urlHash = this.hashUrl(url);
-        const domain = this.extractDomain(url);
-
-        const entry: ThreatEntry = {
-          url,
-          urlHash,
-          firstSeen: now,
-          lastSeen: now,
-          confidence: 0.9,
-          tags: ['openphish'],
-        };
-
-        const key = `threat:feed:${urlHash}`;
-        pipeline.set(key, JSON.stringify(entry), 'EX', 24 * 60 * 60);
-
-        if (domain) {
-          const domainKey = `threat:domain:${domain}`;
-          pipeline.sadd(domainKey, urlHash);
-          pipeline.expire(domainKey, 24 * 60 * 60);
-        }
-      }
-
-      await pipeline.exec();
-
-      const duration = Date.now() - startTime;
-      threatFeedUpdateTotal.labels('openphish', 'success').inc();
-      threatFeedEntriesGauge.labels('openphish').set(urls.length);
-
-      logger.info(
-        { count: urls.length, durationMs: duration },
-        'OpenPhish feed updated successfully'
-      );
-    } catch (err: any) {
-      threatFeedUpdateTotal.labels('openphish', 'error').inc();
-      logger.error({ error: err.message, feedUrl: this.feedUrl }, 'Failed to update OpenPhish feed');
-      throw err;
-    }
-  }
-
-  async check(url: string, urlHash?: string): Promise<LocalThreatResult> {
-    const hash = urlHash || this.hashUrl(url);
-    const domain = this.extractDomain(url);
-
-    const exactKey = `threat:feed:${hash}`;
-    const exactMatch = await this.redis.get(exactKey);
-
-    if (exactMatch) {
-      localThreatHitsTotal.labels('exact').inc();
-      logger.info({ url, hash }, 'Exact URL match in threat feed');
-
-      return {
-        score: 0.9,
-        reasons: ['Exact match in OpenPhish threat feed'],
-        matchType: 'exact',
-        confidence: 0.9,
-      };
-    }
-
-    if (domain) {
-      const domainKey = `threat:domain:${domain}`;
-      const domainHashes = await this.redis.smembers(domainKey);
-
-      if (domainHashes.length > 0) {
-        localThreatHitsTotal.labels('domain').inc();
-        logger.info({ url, domain, matchCount: domainHashes.length }, 'Domain match in threat feed');
-
-        return {
-          score: 0.4,
-          reasons: [`Domain ${domain} found in threat feed (${domainHashes.length} entries)`],
-          matchType: 'domain',
-          confidence: 0.7,
-        };
-      }
-    }
-
-    const collaborativeResult = await this.checkCollaborativeLearning(hash);
-    if (collaborativeResult.score > 0) {
-      return collaborativeResult;
-    }
-
-    return {
+  async check(url: string, _hash: string): Promise<LocalThreatResult> {
+    const result: LocalThreatResult = {
       score: 0,
       reasons: [],
     };
+
+    try {
+      const normalizedUrl = this.normalizeUrl(url);
+
+      // Check OpenPhish feed
+      const openphishMatch = await this.redis.sismember(this.OPENPHISH_KEY, normalizedUrl);
+      if (openphishMatch) {
+        result.openphishMatch = true;
+        result.score += 2.0;
+        result.reasons.push('URL found in OpenPhish feed');
+      }
+
+      // Check collaborative learning database
+      const collaborativeScore = await this.redis.zscore(this.COLLABORATIVE_KEY, normalizedUrl);
+      if (collaborativeScore !== null && Number(collaborativeScore) > 0.7) {
+        result.collaborativeMatch = true;
+        result.score += Math.min(1.5, Number(collaborativeScore));
+        result.reasons.push('URL flagged by collaborative learning');
+      }
+
+      return result;
+    } catch (_err) {
+      logger.warn({ url, err: _err }, 'Local threat database check failed');
+      return result;
+    }
+  }
+
+  async updateOpenPhishFeed(): Promise<void> {
+    try {
+      logger.info('Updating OpenPhish feed...');
+
+      const response = await request(this.options.feedUrl, {
+        method: 'GET',
+        headersTimeout: 10000,
+        bodyTimeout: 30000,
+        maxRedirections: 5, // Follow redirects
+      });
+
+      if (response.statusCode !== 200) {
+        throw new Error(`OpenPhish feed returned ${response.statusCode}`);
+      }
+
+      const feedData = await response.body.text();
+      const urls = feedData
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line && line.startsWith('http'))
+        .map(url => this.normalizeUrl(url));
+
+      if (urls.length === 0) {
+        throw new Error('No URLs found in OpenPhish feed');
+      }
+
+      // Update Redis with new feed data
+      const pipeline = this.redis.pipeline();
+      pipeline.del(this.OPENPHISH_KEY);
+
+      // Add URLs in batches to avoid memory issues
+      const batchSize = 1000;
+      for (let i = 0; i < urls.length; i += batchSize) {
+        const batch = urls.slice(i, i + batchSize);
+        pipeline.sadd(this.OPENPHISH_KEY, ...batch);
+      }
+
+      pipeline.set(this.LAST_UPDATE_KEY, Date.now());
+      pipeline.expire(this.OPENPHISH_KEY, 24 * 60 * 60); // 24 hours TTL
+
+      await pipeline.exec();
+
+      logger.info({ count: urls.length }, 'OpenPhish feed updated successfully');
+    } catch (err) {
+      logger.error({ err }, 'Failed to update OpenPhish feed');
+      throw err;
+    }
   }
 
   async recordVerdict(
@@ -222,90 +135,52 @@ export class LocalThreatDatabase {
     verdict: 'benign' | 'suspicious' | 'malicious',
     confidence: number
   ): Promise<void> {
-    const hash = this.hashUrl(url);
-    const key = `threat:collaborative:${hash}`;
+    try {
+      const normalizedUrl = this.normalizeUrl(url);
 
-    const existing = await this.redis.get(key);
-    let collaborative: CollaborativeThreat;
+      let score = 0;
+      if (verdict === 'malicious') {
+        score = confidence;
+      } else if (verdict === 'suspicious') {
+        score = confidence * 0.5;
+      }
 
-    if (existing) {
-      collaborative = JSON.parse(existing);
-    } else {
-      collaborative = {
-        urlHash: hash,
-        verdictHistory: [],
-        reportCount: 0,
-      };
+      if (score > 0) {
+        await this.redis.zadd(this.COLLABORATIVE_KEY, score, normalizedUrl);
+        // Set TTL for collaborative entries (30 days)
+        await this.redis.expire(this.COLLABORATIVE_KEY, 30 * 24 * 60 * 60);
+      }
+    } catch (err) {
+      logger.warn({ url, verdict, err }, 'Failed to record verdict in collaborative database');
     }
-
-    collaborative.verdictHistory.push({
-      verdict,
-      timestamp: Date.now(),
-      confidence,
-    });
-    collaborative.reportCount++;
-
-    collaborative.verdictHistory = collaborative.verdictHistory
-      .filter((v) => v.timestamp > Date.now() - 90 * 24 * 60 * 60 * 1000)
-      .slice(-20);
-
-    await this.redis.set(key, JSON.stringify(collaborative), 'EX', 90 * 24 * 60 * 60);
-
-    collaborativeLearningTotal.labels('verdict_recorded').inc();
-
-    logger.debug(
-      { url, verdict, confidence, reportCount: collaborative.reportCount },
-      'Verdict recorded in collaborative learning'
-    );
   }
 
-  private async checkCollaborativeLearning(urlHash: string): Promise<LocalThreatResult> {
-    const key = `threat:collaborative:${urlHash}`;
-    const data = await this.redis.get(key);
-
-    if (!data) {
-      return { score: 0, reasons: [] };
-    }
-
-    const collaborative: CollaborativeThreat = JSON.parse(data);
-    const recentVerdicts = collaborative.verdictHistory.filter(
-      (v) => v.timestamp > Date.now() - 7 * 24 * 60 * 60 * 1000
-    );
-
-    const maliciousCount = recentVerdicts.filter((v) => v.verdict === 'malicious').length;
-
-    if (maliciousCount >= 3) {
-      localThreatHitsTotal.labels('collaborative').inc();
-      collaborativeLearningTotal.labels('auto_flagged').inc();
-
-      logger.info(
-        { urlHash, maliciousCount, totalReports: collaborative.reportCount },
-        'URL auto-flagged by collaborative learning'
-      );
+  async getStats(): Promise<{ openphishCount: number; collaborativeCount: number }> {
+    try {
+      const [openphishCount, collaborativeCount] = await Promise.all([
+        this.redis.scard(this.OPENPHISH_KEY),
+        this.redis.zcard(this.COLLABORATIVE_KEY),
+      ]);
 
       return {
-        score: 0.7,
-        reasons: [`Auto-flagged by collaborative learning (${maliciousCount} malicious reports in 7 days)`],
-        matchType: 'collaborative',
-        confidence: 0.8,
+        openphishCount: openphishCount || 0,
+        collaborativeCount: collaborativeCount || 0,
       };
+    } catch (err) {
+      logger.warn({ err }, 'Failed to get threat database stats');
+      return { openphishCount: 0, collaborativeCount: 0 };
     }
-
-    return { score: 0, reasons: [] };
   }
 
-  async getStats(): Promise<{
-    openphishCount: number;
-    collaborativeCount: number;
-  }> {
-    const openphishKeys = await this.redis.keys('threat:feed:*');
-    const collaborativeKeys = await this.redis.keys('threat:collaborative:*');
-
-    return {
-      openphishCount: openphishKeys.length,
-      collaborativeCount: collaborativeKeys.length,
-    };
+  private normalizeUrl(url: string): string {
+    try {
+      const parsed = new URL(url);
+      // Remove common tracking parameters and fragments
+      parsed.search = '';
+      parsed.hash = '';
+      return parsed.toString().toLowerCase();
+    } catch (_err) {
+      return url.toLowerCase();
+    }
   }
 }
-
-export type { ThreatEntry, CollaborativeThreat, LocalThreatResult };

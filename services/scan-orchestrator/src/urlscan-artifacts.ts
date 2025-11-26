@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
-import { fetch } from 'undici';
+import { fetch, Response } from 'undici';
 import { config, logger, metrics } from '@wbscanner/shared';
 
 export interface ArtifactPaths {
@@ -26,7 +26,7 @@ async function downloadToFile(artifactType: ArtifactType, url: string, targetPat
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10_000);
-    let response: any = null;
+    let response: Response | null = null;
     try {
       response = await fetch(url, { signal: controller.signal });
     } finally {
@@ -62,7 +62,7 @@ export async function downloadUrlscanArtifacts(scanId: string, urlHash: string):
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10_000);
-    let response: any = null;
+    let response: Response | null = null;
     try {
       response = await fetch(domUrl, { signal: controller.signal });
     } finally {

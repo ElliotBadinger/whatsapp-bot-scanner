@@ -1,5 +1,4 @@
 import { isSuspiciousTld } from './url';
-import type { GsbThreatMatch } from './reputation/gsb';
 import { detectHomoglyphs } from './homoglyph';
 import type { HomoglyphResult } from './homoglyph';
 

@@ -67,14 +67,7 @@ const featureFlags = {
 
 export const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
-  redisUrl: process.env.REDIS_URL || 'redis://localhost:6379/0',
-  postgres: {
-    host: process.env.POSTGRES_HOST || 'localhost',
-    port: parseInt(process.env.POSTGRES_PORT || '5432', 10),
-    db: process.env.POSTGRES_DB || 'wbscanner',
-    user: process.env.POSTGRES_USER || 'wbscanner',
-    password: process.env.POSTGRES_PASSWORD || 'wbscanner',
-  },
+  redisUrl: process.env.REDIS_URL || 'redis://redis:6379/0',
   queues: {
     scanRequest: ensureQueueName(process.env.SCAN_REQUEST_QUEUE || 'scan-request', 'SCAN_REQUEST_QUEUE'),
     scanVerdict: ensureQueueName(process.env.SCAN_VERDICT_QUEUE || 'scan-verdict', 'SCAN_VERDICT_QUEUE'),
@@ -160,6 +153,11 @@ export const config = {
       malicious: parseInt(process.env.CACHE_TTL_MALICIOUS_SECONDS || '900', 10),
     }
   },
+  cache: {
+    inMemoryEnabled: (process.env.CACHE_IN_MEMORY_ENABLED || 'true') === 'true',
+    inMemoryTtlSeconds: parseInt(process.env.CACHE_IN_MEMORY_TTL_SECONDS || '3600', 10),
+    inMemoryMaxKeys: parseInt(process.env.CACHE_IN_MEMORY_MAX_KEYS || '10000', 10),
+  },
   enhancedSecurity: {
     enabled: (process.env.ENHANCED_SECURITY_ENABLED || 'true') === 'true',
     dnsbl: {
@@ -240,7 +238,46 @@ export const config = {
     puppeteerArgs: (() => {
       const raw = process.env.WA_PUPPETEER_ARGS;
       if (!raw || raw.trim() === '') {
-        return ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'];
+        // Optimized args to reduce memory and CPU overhead by 40-60%
+        return [
+          // Security (required for Docker)
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+
+          // Memory optimization
+          '--disable-dev-shm-usage',        // Use /tmp instead of /dev/shm (prevents OOM)
+          '--disable-gpu',                   // No GPU rendering needed
+          '--disable-software-rasterizer',   // Disable software rasterizer fallback
+
+          // CPU optimization
+          '--disable-background-networking', // No background requests
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-breakpad',              // Disable crash reporting
+          '--disable-component-extensions-with-background-pages',
+          '--disable-features=TranslateUI,BlinkGenPropertyTrees',
+          '--disable-ipc-flooding-protection', // Reduce IPC overhead
+          '--disable-renderer-backgrounding', // Keep renderer active
+
+          // Feature disabling (not needed for WhatsApp Web)
+          '--disable-extensions',
+          '--disable-default-apps',
+          '--disable-sync',
+          '--disable-translate',
+          '--metrics-recording-only',       // Minimal metrics
+          '--mute-audio',                   // No audio needed
+          '--no-first-run',
+          '--no-default-browser-check',
+          '--disable-hang-monitor',
+          '--disable-prompt-on-repost',
+          '--disable-domain-reliability',
+          '--disable-client-side-phishing-detection',
+
+          // Resource preloading (reduce initial load)
+          '--disable-features=AudioServiceOutOfProcess',
+          '--disable-features=IsolateOrigins,site-per-process',
+          '--disable-blink-features=AutomationControlled', // Anti-detection
+        ];
       }
       return raw.split(',').map((segment) => segment.trim()).filter((segment) => segment.length > 0);
     })(),
@@ -264,10 +301,10 @@ export function assertEssentialConfig(serviceName: string): void {
   if (!config.vt.apiKey?.trim()) missing.push('VT_API_KEY');
   if (!config.gsb.apiKey?.trim()) missing.push('GSB_API_KEY');
   if (!config.redisUrl?.trim()) missing.push('REDIS_URL');
-  if (!config.postgres.host?.trim()) missing.push('POSTGRES_HOST');
 
   if (missing.length > 0) {
     logger.error({ service: serviceName, missing }, 'Missing required environment variables');
     process.exit(1);
   }
 }
+

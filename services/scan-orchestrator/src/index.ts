@@ -1,7 +1,6 @@
 import Fastify from 'fastify';
 import Redis from 'ioredis';
 import { Queue, Worker } from 'bullmq';
-import { Client as PgClient } from 'pg';
 import {
   config,
   logger,
@@ -10,7 +9,6 @@ import {
   externalLatency,
   externalErrors,
   circuitStates,
-  rateLimiterDelay,
   circuitBreakerTransitionCounter,
   circuitBreakerRejections,
   circuitBreakerOpenDuration,
@@ -46,8 +44,9 @@ import {
   type GsbFetchResult,
   type PhishtankFetchResult,
 } from './blocklists';
-import type { GsbThreatMatch, UrlhausLookupResult, PhishtankLookupResult, VirusTotalAnalysis, UrlscanSubmissionResponse, WhoisXmlResponse } from '@wbscanner/shared';
+import type { GsbThreatMatch, UrlhausLookupResult, PhishtankLookupResult, VirusTotalAnalysis, UrlscanSubmissionResponse } from '@wbscanner/shared';
 import { downloadUrlscanArtifacts } from './urlscan-artifacts';
+import { getSharedConnection } from './database.js';
 
 const TEST_REDIS_KEY = '__WBSCANNER_TEST_REDIS__';
 const TEST_QUEUE_FACTORY_KEY = '__WBSCANNER_TEST_QUEUE_FACTORY__';
@@ -174,7 +173,7 @@ class InMemoryRedis {
 }
 
 class InMemoryQueue {
-  constructor(private readonly name: string) {}
+  constructor(private readonly name: string) { }
   async add(jobName: string, data: unknown) {
     return { id: `${this.name}:${jobName}:${Date.now()}`, data };
   }
@@ -184,15 +183,15 @@ class InMemoryQueue {
   async getWaitingCount() {
     return 0;
   }
-  on(): void {}
+  on(): void { }
   async close(): Promise<void> {
     return Promise.resolve();
   }
 }
 
 function createRedisConnection(): Redis {
-  if (typeof globalThis !== 'undefined' && (globalThis as any)[TEST_REDIS_KEY]) {
-    return (globalThis as any)[TEST_REDIS_KEY] as Redis;
+  if (typeof globalThis !== 'undefined' && (globalThis as unknown as Record<string, unknown>)[TEST_REDIS_KEY]) {
+    return (globalThis as unknown as Record<string, unknown>)[TEST_REDIS_KEY] as Redis;
   }
   if (process.env.NODE_ENV === 'test') {
     return new InMemoryRedis() as unknown as Redis;
@@ -207,7 +206,7 @@ const urlscanQueue = createQueue(config.queues.urlscan, { connection: redis });
 
 function createQueue(name: string, options: { connection: Redis }): Queue {
   if (typeof globalThis !== 'undefined') {
-    const factory = (globalThis as any)[TEST_QUEUE_FACTORY_KEY];
+    const factory = (globalThis as unknown as Record<string, unknown>)[TEST_QUEUE_FACTORY_KEY];
     if (typeof factory === 'function') {
       return factory(name, options) as Queue;
     }
@@ -409,7 +408,7 @@ function recordLatency(service: string, ms?: number) {
 }
 
 function classifyError(err: unknown): string {
-  const rawCode = (err as any)?.code ?? (err as any)?.statusCode;
+  const rawCode = (err as { code?: string | number; statusCode?: string | number })?.code ?? (err as { statusCode?: string | number })?.statusCode;
   if (rawCode === 'UND_ERR_HEADERS_TIMEOUT' || rawCode === 'UND_ERR_CONNECT_TIMEOUT') return 'timeout';
   const codeNum = typeof rawCode === 'string' ? Number(rawCode) : rawCode;
   if (codeNum === 429) return 'rate_limited';
@@ -430,7 +429,7 @@ function recordError(service: string, err: unknown) {
 }
 
 function shouldRetry(err: unknown): boolean {
-  const rawCode = (err as any)?.code ?? (err as any)?.statusCode;
+  const rawCode = (err as { code?: string | number; statusCode?: string | number })?.code ?? (err as { statusCode?: string | number })?.statusCode;
   if (rawCode === 'UND_ERR_HEADERS_TIMEOUT' || rawCode === 'UND_ERR_CONNECT_TIMEOUT') return true;
   const codeNum = typeof rawCode === 'string' ? Number(rawCode) : rawCode;
   if (codeNum === 429) return false;
@@ -524,15 +523,22 @@ function normaliseArtifactUrl(candidate: unknown, baseUrl: string): string | und
   return result.url;
 }
 
-function extractUrlscanArtifactCandidates(uuid: string, payload: any): ArtifactCandidate[] {
+function extractUrlscanArtifactCandidates(uuid: string, payload: unknown): ArtifactCandidate[] {
   const baseUrl = (config.urlscan.baseUrl || 'https://urlscan.io').replace(/\/+$/, '');
   const candidates: ArtifactCandidate[] = [];
   const seen = new Set<string>();
 
+  const p = payload as {
+    screenshotURL?: string;
+    domURL?: string;
+    task?: { screenshotURL?: string; domURL?: string };
+    visual?: { data?: { screenshotURL?: string } };
+  };
+
   const screenshotSources = [
-    payload?.screenshotURL,
-    payload?.task?.screenshotURL,
-    payload?.visual?.data?.screenshotURL,
+    p?.screenshotURL,
+    p?.task?.screenshotURL,
+    p?.visual?.data?.screenshotURL,
     `${baseUrl}/screenshots/${uuid}.png`,
   ];
 
@@ -545,8 +551,8 @@ function extractUrlscanArtifactCandidates(uuid: string, payload: any): ArtifactC
   }
 
   const domSources = [
-    payload?.domURL,
-    payload?.task?.domURL,
+    p?.domURL,
+    p?.task?.domURL,
     `${baseUrl}/dom/${uuid}.json`,
   ];
 
@@ -652,7 +658,7 @@ async function fetchVirusTotal(finalUrl: string, hash: string): Promise<VirusTot
     return { stats, fromCache: false, quotaExceeded: false, error: null };
   } catch (err) {
     recordError(CIRCUIT_LABELS.vt, err);
-    const quotaExceeded = err instanceof QuotaExceededError || ((err as any)?.code ?? (err as any)?.statusCode) === 429;
+    const quotaExceeded = err instanceof QuotaExceededError || ((err as { code?: string | number; statusCode?: string | number })?.code ?? (err as { statusCode?: string | number })?.statusCode) === 429;
     if (!quotaExceeded) {
       logger.warn({ err, url: finalUrl }, 'VirusTotal lookup failed');
     }
@@ -738,9 +744,9 @@ async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainI
   if (rdapAge !== undefined) {
     return { ageDays: rdapAge, source: 'rdap' };
   }
-  
+
   // Try who-dat first if enabled (self-hosted, no quota limits)
-  if (config.whodat.enabled) {
+  if (config.whodat?.enabled) {
     const cacheKey = `url:analysis:${hash}:whodat`;
     const cached = await getJsonCache<{ ageDays?: number; registrar?: string }>(
       CACHE_LABELS.whois,
@@ -761,8 +767,9 @@ async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainI
         })
       );
       recordLatency(CIRCUIT_LABELS.whodat, Date.now() - start);
-      const ageDays = response?.record?.estimatedDomainAgeDays;
-      const registrar = response?.record?.registrarName;
+      const record = (response as { record?: { estimatedDomainAgeDays?: number; registrarName?: string } })?.record;
+      const ageDays = record?.estimatedDomainAgeDays;
+      const registrar = record?.registrarName;
       await setJsonCache(CACHE_LABELS.whois, cacheKey, { ageDays, registrar }, ANALYSIS_TTLS.whois);
       return { ageDays, registrar, source: 'whodat' };
     } catch (err) {
@@ -770,9 +777,9 @@ async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainI
       logger.warn({ err, hostname }, 'Who-dat lookup failed, falling back to WhoisXML if available');
     }
   }
-  
+
   // Fallback to WhoisXML if who-dat failed or is disabled
-  if (!config.whoisxml.enabled || !config.whoisxml.apiKey) {
+  if (!config.whoisxml?.enabled || !config.whoisxml.apiKey) {
     return { ageDays: undefined, source: 'none' };
   }
   const cacheKey = `url:analysis:${hash}:whois`;
@@ -795,8 +802,9 @@ async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainI
       })
     );
     recordLatency(CIRCUIT_LABELS.whoisxml, Date.now() - start);
-    const ageDays = response?.record?.estimatedDomainAgeDays;
-    const registrar = response?.record?.registrarName;
+    const record = (response as { record?: { estimatedDomainAgeDays?: number; registrarName?: string } })?.record;
+    const ageDays = record?.estimatedDomainAgeDays;
+    const registrar = record?.registrarName;
     await setJsonCache(CACHE_LABELS.whois, cacheKey, { ageDays, registrar }, ANALYSIS_TTLS.whois);
     return { ageDays, registrar, source: 'whoisxml' };
   } catch (err) {
@@ -811,25 +819,18 @@ async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainI
   }
 }
 
-const pg = new PgClient({
-  host: config.postgres.host,
-  port: config.postgres.port,
-  database: config.postgres.db,
-  user: config.postgres.user,
-  password: config.postgres.password
-});
-
-async function loadManualOverride(urlHash: string, hostname: string): Promise<'allow' | 'deny' | null> {
+async function loadManualOverride(dbClient: { query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }> }, urlHash: string, hostname: string): Promise<'allow' | 'deny' | null> {
   try {
-    const overrideResult = await pg.query(
+    const { rows } = await dbClient.query(
       `SELECT status FROM overrides
-         WHERE (url_hash = $1 OR pattern = $2)
-           AND (expires_at IS NULL OR expires_at > NOW())
+         WHERE (url_hash = ? OR pattern = ?)
+           AND (expires_at IS NULL OR expires_at > datetime('now'))
          ORDER BY created_at DESC
          LIMIT 1`,
       [urlHash, hostname]
     );
-    const status = overrideResult.rows[0]?.status;
+    const record = rows[0] as { status?: string } | undefined;
+    const status = record?.status;
     return status === 'allow' || status === 'deny' ? status : null;
   } catch (err) {
     logger.warn({ err, urlHash, hostname }, 'Failed to load manual override');
@@ -837,15 +838,43 @@ async function loadManualOverride(urlHash: string, hostname: string): Promise<'a
   }
 }
 
+interface UrlscanCallbackBody {
+  uuid?: string;
+  task?: { uuid?: string; url?: string; screenshotURL?: string; domURL?: string };
+  visual?: { data?: { screenshotURL?: string } };
+  screenshotURL?: string;
+  domURL?: string;
+  [key: string]: unknown;
+}
+
 async function main() {
   assertEssentialConfig('scan-orchestrator');
-  await pg.connect();
   
+  // Validate Redis connectivity before starting
+  try {
+    await redis.ping();
+    logger.info('Redis connectivity validated');
+  } catch (err) {
+    logger.error({ err }, 'Redis connectivity check failed during startup');
+    throw new Error('Redis is required but unreachable');
+  }
+
+  const dbClient = getSharedConnection();
+
   const enhancedSecurity = new EnhancedSecurityAnalyzer(redis);
   await enhancedSecurity.start();
-  
+
   const app = Fastify();
-  app.get('/healthz', async () => ({ ok: true }));
+  app.get('/healthz', async () => {
+    try {
+      // Check Redis connectivity
+      await redis.ping();
+      return { ok: true, redis: 'connected' };
+    } catch (err) {
+      logger.warn({ err }, 'Health check failed - Redis connectivity issue');
+      return { ok: false, redis: 'disconnected', error: 'Redis unreachable' };
+    }
+  });
   app.get('/metrics', async (_req, reply) => {
     reply.header('Content-Type', register.contentType);
     return register.metrics();
@@ -867,7 +896,7 @@ async function main() {
       reply.code(401).send({ ok: false, error: 'unauthorized' });
       return;
     }
-    const body = req.body as any;
+    const body = req.body as UrlscanCallbackBody;
     const uuid = body?.uuid || body?.task?.uuid;
     if (!uuid) {
       reply.code(400).send({ ok: false, error: 'missing uuid' });
@@ -920,19 +949,19 @@ async function main() {
       logger.warn({ err, uuid }, 'failed to download urlscan artifacts');
     }
 
-    await pg.query(
+    await dbClient.query(
       `UPDATE scans
-         SET urlscan_status=$1,
-             urlscan_completed_at=now(),
-             urlscan_result=$2,
-             urlscan_screenshot_path=COALESCE($4, urlscan_screenshot_path),
-             urlscan_dom_path=COALESCE($5, urlscan_dom_path),
+         SET urlscan_status=?,
+             urlscan_completed_at=datetime('now'),
+             urlscan_result=?,
+             urlscan_screenshot_path=COALESCE(?, urlscan_screenshot_path),
+             urlscan_dom_path=COALESCE(?, urlscan_dom_path),
              urlscan_artifact_stored_at=CASE
-               WHEN $4 IS NOT NULL OR $5 IS NOT NULL THEN now()
+               WHEN ? IS NOT NULL OR ? IS NOT NULL THEN datetime('now')
                ELSE urlscan_artifact_stored_at
              END
-       WHERE url_hash=$3`,
-      ['completed', JSON.stringify(body), urlHashValue, artifacts?.screenshotPath ?? null, artifacts?.domPath ?? null]
+       WHERE url_hash=?`,
+      ['completed', JSON.stringify(body), artifacts?.screenshotPath ?? null, artifacts?.domPath ?? null, artifacts?.screenshotPath ?? null, artifacts?.domPath ?? null, urlHashValue]
     ).catch((err: Error) => {
       logger.error({ err }, 'failed to persist urlscan callback');
     });
@@ -966,7 +995,17 @@ async function main() {
       }
       const h = urlHash(norm);
       const cacheKey = `scan:${h}`;
-      let cachedVerdict: any | null = null;
+
+      interface CachedVerdict {
+        verdict: string;
+        score: number;
+        reasons: string[];
+        cacheTtl?: number;
+        decidedAt?: number;
+        [key: string]: unknown;
+      }
+
+      let cachedVerdict: CachedVerdict | null = null;
       let cachedTtl = -1;
       const cacheStop = metrics.cacheLookupDuration.labels(CACHE_LABELS.verdict).startTimer();
       const cachedRaw = await redis.get(cacheKey);
@@ -980,7 +1019,7 @@ async function main() {
           metrics.cacheEntryTtl.labels(CACHE_LABELS.verdict).set(cachedTtl);
         }
         try {
-          cachedVerdict = JSON.parse(cachedRaw);
+          cachedVerdict = JSON.parse(cachedRaw) as CachedVerdict;
         } catch {
           metrics.cacheStaleTotal.labels(CACHE_LABELS.verdict).inc();
         }
@@ -1006,13 +1045,13 @@ async function main() {
         if (job.attemptsMade > 0) {
           metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
         }
-        const resolvedChatId = hasChatContext ? chatId : cachedVerdict.chatId;
-        const resolvedMessageId = hasChatContext ? messageId : cachedVerdict.messageId;
-        if (resolvedChatId && resolvedMessageId) {
+
+        if (hasChatContext) {
+          const resolvedMessageId = messageId ?? '';
           await scanVerdictQueue.add(
             'verdict',
             {
-              chatId: resolvedChatId,
+              chatId,
               messageId: resolvedMessageId,
               ...cachedVerdict,
               decidedAt: cachedVerdict.decidedAt ?? Date.now(),
@@ -1030,7 +1069,7 @@ async function main() {
       const exp = await expandUrl(preExpansionUrl, config.orchestrator.expansion);
       const finalUrl = exp.finalUrl;
       const finalUrlObj = new URL(finalUrl);
-      const redirectChain = [...(shortenerInfo?.chain ?? []), ...exp.chain.filter(item => !(shortenerInfo?.chain ?? []).includes(item))];
+      const redirectChain = [...(shortenerInfo?.chain ?? []), ...exp.chain.filter((item: string) => !(shortenerInfo?.chain ?? []).includes(item))];
       const heurSignals = extraHeuristics(finalUrlObj);
       const wasShortened = Boolean(shortenerInfo?.wasShortened);
       const finalUrlMismatch = wasShortened && new URL(norm).hostname !== finalUrlObj.hostname;
@@ -1042,10 +1081,10 @@ async function main() {
       }
 
       const enhancedSecurityResult = await enhancedSecurity.analyze(finalUrl, h);
-      
+
       if (enhancedSecurityResult.verdict === 'malicious' && enhancedSecurityResult.confidence === 'high' && enhancedSecurityResult.skipExternalAPIs) {
         logger.info({ url: finalUrl, score: enhancedSecurityResult.score, reasons: enhancedSecurityResult.reasons }, 'Tier 1 high-confidence threat detected, skipping external APIs');
-        
+
         const signals = {
           gsbThreatTypes: [],
           phishtankVerified: false,
@@ -1063,12 +1102,12 @@ async function main() {
           enhancedSecurityScore: enhancedSecurityResult.score,
           enhancedSecurityReasons: enhancedSecurityResult.reasons,
         };
-        
+
         const verdictResult = scoreFromSignals(signals);
         const verdict = 'malicious';
         const { score, reasons } = verdictResult;
         const enhancedReasons = [...reasons, ...enhancedSecurityResult.reasons];
-        
+
         const cacheTtl = config.orchestrator.cacheTtl.malicious;
         const verdictPayload = {
           url: norm,
@@ -1087,38 +1126,34 @@ async function main() {
           },
           decidedAt: Date.now(),
         };
-        
+
         await setJsonCache(CACHE_LABELS.verdict, cacheKey, verdictPayload, cacheTtl);
-        await pg.query(
-          `INSERT INTO scans (url_hash, url, final_url, verdict, score, reasons, cache_ttl, redirect_chain, was_shortened, final_url_mismatch, homoglyph_detected, homoglyph_risk_level, decided_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
-           ON CONFLICT (url_hash) DO UPDATE SET
-             final_url=EXCLUDED.final_url,
-             verdict=EXCLUDED.verdict,
-             score=EXCLUDED.score,
-             reasons=EXCLUDED.reasons,
-             cache_ttl=EXCLUDED.cache_ttl,
-             redirect_chain=EXCLUDED.redirect_chain,
-             was_shortened=EXCLUDED.was_shortened,
-             final_url_mismatch=EXCLUDED.final_url_mismatch,
-             homoglyph_detected=EXCLUDED.homoglyph_detected,
-             homoglyph_risk_level=EXCLUDED.homoglyph_risk_level,
-             decided_at=now()`,
-          [h, norm, finalUrl, verdict, score, JSON.stringify(enhancedReasons), cacheTtl, JSON.stringify(redirectChain), wasShortened, finalUrlMismatch, homoglyphResult.detected, homoglyphResult.riskLevel]
-        ).catch((err: Error) => {
-          logger.error({ err, url: norm }, 'failed to persist enhanced security verdict');
+
+        const transaction = dbClient.getDatabase().transaction(() => {
+          // Insert or update scan record
+          const stmt = dbClient.getDatabase().prepare(
+            `INSERT OR REPLACE INTO scans (url_hash, url, final_url, verdict, score, reasons, cache_ttl, redirect_chain, was_shortened, final_url_mismatch, homoglyph_detected, homoglyph_risk_level, first_seen_at, last_seen_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+          );
+          stmt.run(h, norm, finalUrl, verdict, score, JSON.stringify(enhancedReasons), cacheTtl, JSON.stringify(redirectChain), wasShortened, finalUrlMismatch, homoglyphResult.detected, homoglyphResult.riskLevel);
         });
-        
+
+        try {
+          transaction();
+        } catch (err) {
+          logger.error({ err, url: norm }, 'failed to persist enhanced security verdict');
+        }
+
         metrics.verdictScore.observe(score);
         for (const reason of enhancedReasons) {
           metrics.verdictReasons.labels(normalizeVerdictReason(reason)).inc();
         }
-        
+
         const verdictLatencySeconds = Math.max(0, (Date.now() - ingestionTimestamp) / 1000);
         metrics.verdictLatency.observe(verdictLatencySeconds);
         metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
         metrics.queueCompleted.labels(queueName).inc();
-        
+
         if (hasChatContext) {
           await scanVerdictQueue.add('verdict', {
             chatId,
@@ -1126,7 +1161,7 @@ async function main() {
             ...verdictPayload,
           }, { removeOnComplete: true });
         }
-        
+
         await enhancedSecurity.recordVerdict(finalUrl, 'malicious', enhancedSecurityResult.score / 3.0);
         return;
       }
@@ -1142,7 +1177,7 @@ async function main() {
           fetchPhishtank,
         }),
         fetchDomainIntel(finalUrlObj.hostname, h),
-        loadManualOverride(h, finalUrlObj.hostname),
+        loadManualOverride(dbClient, h, finalUrlObj.hostname),
       ]);
 
       if (manualOverride) {
@@ -1252,11 +1287,11 @@ async function main() {
       const degradedProviders = consultedProviders.filter((state) => !state.available);
       const degradedMode = consultedProviders.length > 0 && availableProviders.length === 0
         ? {
-            providers: degradedProviders.map((state) => ({
-              name: state.name,
-              reason: state.reason ?? 'unavailable',
-            })),
-          }
+          providers: degradedProviders.map((state) => ({
+            name: state.name,
+            reason: state.reason ?? 'unavailable',
+          })),
+        }
         : undefined;
 
       if (degradedMode) {
@@ -1265,7 +1300,7 @@ async function main() {
       }
 
       const signals = {
-        gsbThreatTypes: gsbMatches.map(m => m.threatType),
+        gsbThreatTypes: gsbMatches.map((m: GsbThreatMatch) => m.threatType),
         phishtankVerified: Boolean(phishtankResult?.verified),
         urlhausListed: Boolean(urlhausResult?.listed),
         vtMalicious: vtStats?.malicious,
@@ -1284,7 +1319,7 @@ async function main() {
       const verdictResult = scoreFromSignals(signals);
       const verdict = verdictResult.level;
       let { score, reasons } = verdictResult;
-      
+
       if (enhancedSecurityResult.reasons.length > 0) {
         reasons = [...reasons, ...enhancedSecurityResult.reasons];
       }
@@ -1391,25 +1426,50 @@ async function main() {
       };
       await setJsonCache(CACHE_LABELS.verdict, cacheKey, res, ttl);
 
-      await pg.query(`INSERT INTO scans (url_hash, normalized_url, verdict, score, reasons, vt_stats, gsafebrowsing_hit, domain_age_days, redirect_chain_summary, cache_ttl, source_kind, urlscan_status, whois_source, whois_registrar, shortener_provider)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-        ON CONFLICT (url_hash) DO UPDATE SET last_seen_at=now(), verdict=EXCLUDED.verdict, score=EXCLUDED.score, reasons=EXCLUDED.reasons, vt_stats=EXCLUDED.vt_stats, gsafebrowsing_hit=EXCLUDED.gsafebrowsing_hit, domain_age_days=EXCLUDED.domain_age_days, redirect_chain_summary=EXCLUDED.redirect_chain_summary, cache_ttl=EXCLUDED.cache_ttl, urlscan_status=COALESCE(EXCLUDED.urlscan_status, scans.urlscan_status), whois_source=COALESCE(EXCLUDED.whois_source, scans.whois_source), whois_registrar=COALESCE(EXCLUDED.whois_registrar, scans.whois_registrar), shortener_provider=COALESCE(EXCLUDED.shortener_provider, scans.shortener_provider)`,
-        [h, finalUrl, verdict, score, JSON.stringify(reasons), JSON.stringify(vtStats || {}), blocklistHit, domainAgeDays ?? null, JSON.stringify(redirectChain), ttl, 'wa', enqueuedUrlscan ? 'queued' : null, domainIntel.source === 'none' ? null : domainIntel.source, domainIntel.registrar ?? null, shortenerInfo?.provider ?? null]
-      );
-      if (enqueuedUrlscan) {
-        await pg.query('UPDATE scans SET urlscan_status=$1 WHERE url_hash=$2', ['queued', h]).catch(() => undefined);
-      }
-      if (chatId && messageId) {
-        await pg.query(`INSERT INTO messages (chat_id, message_id, url_hash, verdict, posted_at)
-        VALUES ($1,$2,$3,$4,now()) ON CONFLICT DO NOTHING`, [chatId, messageId, h, verdict]).catch((err) => {
-          logger.warn({ err, chatId, messageId }, 'failed to persist message metadata for scan');
-        });
+      const transaction = dbClient.getDatabase().transaction(() => {
+        // Insert or update scan record
+        const scanStmt = dbClient.getDatabase().prepare(
+          `INSERT OR REPLACE INTO scans (
+            url_hash, normalized_url, verdict, score, reasons, vt_stats, 
+            gsafebrowsing_hit, domain_age_days, redirect_chain_summary, cache_ttl, 
+            source_kind, urlscan_status, whois_source, whois_registrar, shortener_provider,
+            first_seen_at, last_seen_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+        );
+        scanStmt.run(
+          h, finalUrl, verdict, score, JSON.stringify(reasons), JSON.stringify(vtStats || {}),
+          blocklistHit, domainAgeDays ?? null, JSON.stringify(redirectChain), ttl,
+          'wa', enqueuedUrlscan ? 'queued' : null,
+          domainIntel.source === 'none' ? null : domainIntel.source,
+          domainIntel.registrar ?? null, shortenerInfo?.provider ?? null
+        );
 
+        if (enqueuedUrlscan) {
+          const urlscanStmt = dbClient.getDatabase().prepare('UPDATE scans SET urlscan_status=? WHERE url_hash=?');
+          urlscanStmt.run('queued', h);
+        }
+
+        if (chatId && messageId) {
+          const messageStmt = dbClient.getDatabase().prepare(
+            `INSERT OR IGNORE INTO messages (chat_id, message_id, url_hash, verdict, posted_at)
+             VALUES (?, ?, ?, ?, datetime('now'))`
+          );
+          messageStmt.run(chatId, messageId, h, verdict);
+        }
+      });
+
+      try {
+        transaction();
+      } catch (err) {
+        logger.warn({ err, chatId, messageId }, 'failed to persist message metadata for scan');
+      }
+
+      if (chatId && messageId) {
         await scanVerdictQueue.add('verdict', { ...res, chatId, messageId }, { removeOnComplete: true });
       } else {
         logger.info({ url: finalUrl, jobId: job.id, rescan: Boolean(rescan) }, 'Completed scan without chat context; skipping messaging flow');
       }
-      
+
       await enhancedSecurity.recordVerdict(
         finalUrl,
         verdict === 'malicious' ? 'malicious' : verdict === 'suspicious' ? 'suspicious' : 'benign',
@@ -1417,7 +1477,7 @@ async function main() {
       ).catch((err) => {
         logger.warn({ err, url: finalUrl }, 'failed to record verdict for collaborative learning');
       });
-      
+
       metrics.verdictCounter.labels(verdict).inc();
       const totalProcessingSeconds = (Date.now() - started) / 1000;
       metrics.verdictLatency.observe(Math.max(0, (Date.now() - ingestionTimestamp) / 1000));
@@ -1474,8 +1534,8 @@ async function main() {
             'EX',
             config.urlscan.uuidTtlSeconds
           );
-          await pg.query(
-            `UPDATE scans SET urlscan_uuid=$1, urlscan_status=$2, urlscan_submitted_at=now(), urlscan_result_url=$3 WHERE url_hash=$4`,
+          await dbClient.query(
+            `UPDATE scans SET urlscan_uuid=?, urlscan_status=?, urlscan_submitted_at=datetime('now'), urlscan_result_url=? WHERE url_hash=?`,
             [submission.uuid, 'submitted', submission.result ?? null, urlHashValue]
           );
         }
@@ -1487,8 +1547,8 @@ async function main() {
       } catch (err) {
         recordError(CIRCUIT_LABELS.urlscan, err);
         logger.error({ err, url }, 'urlscan submission failed');
-        await pg.query(
-          `UPDATE scans SET urlscan_status=$1, urlscan_completed_at=now() WHERE url_hash=$2`,
+        await dbClient.query(
+          `UPDATE scans SET urlscan_status=?, urlscan_completed_at=datetime('now') WHERE url_hash=?`,
           ['failed', urlHashValue]
         ).catch(() => undefined);
         metrics.queueFailures.labels(queueName).inc();
@@ -1501,16 +1561,15 @@ async function main() {
   }
 
   await app.listen({ host: '0.0.0.0', port: 3001 });
-  
+
   const shutdown = async () => {
     logger.info('Shutting down scan orchestrator...');
     await enhancedSecurity.stop();
     await app.close();
-    await pg.end();
     await redis.quit();
     process.exit(0);
   };
-  
+
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
 }

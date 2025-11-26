@@ -266,9 +266,10 @@ async function resolveWithUrlExpand(url: string): Promise<{ finalUrl: string; ch
   const { maxRedirects, timeoutMs, maxContentLength } = config.orchestrator.expansion;
   const normalizedInput = normalizeUrl(url) || url;
   const chain: string[] = [normalizedInput];
-  const moduleAny = urlExpandModuleRaw as any;
+  const moduleUnknown = urlExpandModuleRaw as unknown;
+  const moduleAny = moduleUnknown as { expand?: unknown };
   const modernExpand: ((shortUrl: string, options: { fetch: SafeFetch; maxRedirects: number; timeoutMs: number }) => Promise<{ url: string; redirects?: string[] }>) | undefined =
-    typeof moduleAny?.expand === 'function' ? moduleAny.expand.bind(moduleAny) : undefined;
+    typeof moduleAny?.expand === 'function' ? (moduleAny.expand as typeof modernExpand) : undefined;
 
   if (modernExpand) {
     const fetchWithGuards = createGuardedFetch(chain, maxRedirects, timeoutMs, maxContentLength);
