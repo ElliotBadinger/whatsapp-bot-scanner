@@ -1,14 +1,14 @@
-import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
 function parseLine(line) {
   const match = line.match(/^([^#=\s][^=]*)=(.*)$/);
   if (!match) {
-    if (line.trim() === '') return { type: 'blank', raw: line };
-    return { type: 'comment', raw: line };
+    if (line.trim() === "") return { type: "blank", raw: line };
+    return { type: "comment", raw: line };
   }
-  return { type: 'pair', key: match[1], value: match[2] };
+  return { type: "pair", key: match[1], value: match[2] };
 }
 
 export class EnvFile {
@@ -23,8 +23,8 @@ export class EnvFile {
     try {
       await fs.access(this.filePath);
     } catch (err) {
-      if (err.code === 'ENOENT') {
-        if (!this.templatePath) throw new Error('.env template missing');
+      if (err.code === "ENOENT") {
+        if (!this.templatePath) throw new Error(".env template missing");
         await fs.copyFile(this.templatePath, this.filePath);
       } else {
         throw err;
@@ -34,46 +34,48 @@ export class EnvFile {
   }
 
   async reload() {
-    const contents = await fs.readFile(this.filePath, 'utf8');
+    const contents = await fs.readFile(this.filePath, "utf8");
     this.entries = contents.split(/\r?\n/).map(parseLine);
     this.loaded = true;
   }
 
   get(key) {
     this.assertLoaded();
-    const entry = this.entries.find(e => e.type === 'pair' && e.key === key);
-    return entry?.value ?? '';
+    const entry = this.entries.find((e) => e.type === "pair" && e.key === key);
+    return entry?.value ?? "";
   }
 
   set(key, value) {
     this.assertLoaded();
-    const existing = this.entries.find(e => e.type === 'pair' && e.key === key);
+    const existing = this.entries.find(
+      (e) => e.type === "pair" && e.key === key,
+    );
     if (existing) {
       existing.value = value;
     } else {
-      if (this.entries.length && this.entries.at(-1).type !== 'blank') {
-        this.entries.push({ type: 'blank', raw: '' });
+      if (this.entries.length && this.entries.at(-1).type !== "blank") {
+        this.entries.push({ type: "blank", raw: "" });
       }
-      this.entries.push({ type: 'pair', key, value });
+      this.entries.push({ type: "pair", key, value });
     }
   }
 
   ensureBlankLine() {
-    if (this.entries.length && this.entries.at(-1).type !== 'blank') {
-      this.entries.push({ type: 'blank', raw: '' });
+    if (this.entries.length && this.entries.at(-1).type !== "blank") {
+      this.entries.push({ type: "blank", raw: "" });
     }
   }
 
   assertLoaded() {
-    if (!this.loaded) throw new Error('Environment file not loaded');
+    if (!this.loaded) throw new Error("Environment file not loaded");
   }
 
   async save() {
     this.assertLoaded();
-    const lines = this.entries.map(entry => {
-      if (entry.type === 'pair') return `${entry.key}=${entry.value}`;
-      return entry.raw ?? '';
+    const lines = this.entries.map((entry) => {
+      if (entry.type === "pair") return `${entry.key}=${entry.value}`;
+      return entry.raw ?? "";
     });
-    await fs.writeFile(this.filePath, lines.join(os.EOL), 'utf8');
+    await fs.writeFile(this.filePath, lines.join(os.EOL), "utf8");
   }
 }

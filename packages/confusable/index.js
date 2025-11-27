@@ -1,17 +1,17 @@
-const confusables = require('confusables.js');
+const confusables = require("confusables.js");
 
 function toStringValue(entry) {
-  if (typeof entry === 'string') {
+  if (typeof entry === "string") {
     return entry;
   }
   if (Array.isArray(entry)) {
-    return entry.join('');
+    return entry.join("");
   }
-  return '';
+  return "";
 }
 
 function getConfusableCharacters(char) {
-  if (typeof char !== 'string' || char.length === 0) {
+  if (typeof char !== "string" || char.length === 0) {
     return [];
   }
   try {
@@ -26,7 +26,7 @@ function getConfusableCharacters(char) {
 }
 
 function hasConfusable(char) {
-  if (typeof char !== 'string' || char.length === 0) {
+  if (typeof char !== "string" || char.length === 0) {
     return false;
   }
   try {

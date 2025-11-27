@@ -8,53 +8,56 @@
  *   ts-node scripts/replay-test-messages.ts
  */
 
-import { request } from 'undici';
+import { request } from "undici";
 
-const CONTROL_PLANE_URL = process.env.CONTROL_PLANE_URL || 'http://localhost:8080';
-const API_TOKEN = process.env.CONTROL_PLANE_API_TOKEN || 'dev-token';
+const CONTROL_PLANE_URL =
+  process.env.CONTROL_PLANE_URL || "http://localhost:8080";
+const API_TOKEN = process.env.CONTROL_PLANE_API_TOKEN || "dev-token";
 
 interface TestMessage {
   url: string;
-  expectedVerdict?: 'benign' | 'suspicious' | 'malicious';
+  expectedVerdict?: "benign" | "suspicious" | "malicious";
   description: string;
 }
 
 const DATASET: TestMessage[] = [
   {
-    url: 'https://google.com',
-    expectedVerdict: 'benign',
-    description: 'Safe popular domain',
+    url: "https://google.com",
+    expectedVerdict: "benign",
+    description: "Safe popular domain",
   },
   {
-    url: 'http://testsafebrowsing.appspot.com/s/malware.html',
-    expectedVerdict: 'malicious',
-    description: 'GSB Malware Test',
+    url: "http://testsafebrowsing.appspot.com/s/malware.html",
+    expectedVerdict: "malicious",
+    description: "GSB Malware Test",
   },
   {
-    url: 'http://testsafebrowsing.appspot.com/s/phishing.html',
-    expectedVerdict: 'malicious',
-    description: 'GSB Phishing Test',
+    url: "http://testsafebrowsing.appspot.com/s/phishing.html",
+    expectedVerdict: "malicious",
+    description: "GSB Phishing Test",
   },
   {
-    url: 'https://www.wikipedia.org',
-    expectedVerdict: 'benign',
-    description: 'Safe encyclopedia',
+    url: "https://www.wikipedia.org",
+    expectedVerdict: "benign",
+    description: "Safe encyclopedia",
   },
   {
-    url: 'http://example.com',
-    expectedVerdict: 'benign',
-    description: 'Example domain',
+    url: "http://example.com",
+    expectedVerdict: "benign",
+    description: "Example domain",
   },
   // Add more synthetic cases here
 ];
 
-async function submitScan(url: string): Promise<{ ok: boolean; urlHash?: string; jobId?: string; error?: string }> {
+async function submitScan(
+  url: string,
+): Promise<{ ok: boolean; urlHash?: string; jobId?: string; error?: string }> {
   try {
     const res = await request(`${CONTROL_PLANE_URL}/rescan`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${API_TOKEN}`,
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${API_TOKEN}`,
       },
       body: JSON.stringify({ url }),
     });
@@ -63,7 +66,12 @@ async function submitScan(url: string): Promise<{ ok: boolean; urlHash?: string;
       return { ok: false, error: `HTTP ${res.statusCode}` };
     }
 
-    const data = await res.body.json() as { ok: boolean; urlHash?: string; jobId?: string; error?: string };
+    const data = (await res.body.json()) as {
+      ok: boolean;
+      urlHash?: string;
+      jobId?: string;
+      error?: string;
+    };
     return data;
   } catch (err) {
     return { ok: false, error: String(err) };
@@ -93,7 +101,7 @@ async function main() {
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
-  console.log('\n=== Replay Summary ===');
+  console.log("\n=== Replay Summary ===");
   console.log(`Total: ${DATASET.length}`);
   console.log(`Success: ${success}`);
   console.log(`Failed: ${failed}`);
@@ -104,6 +112,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('Replay script failed:', err);
+  console.error("Replay script failed:", err);
   process.exit(1);
 });
