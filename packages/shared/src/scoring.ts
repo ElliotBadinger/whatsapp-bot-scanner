@@ -20,6 +20,7 @@ export interface Signals {
   manualOverride?: 'allow' | 'deny' | null;
   finalUrlMismatch?: boolean;
   homoglyph?: HomoglyphResult;
+  heuristicsOnly?: boolean;
 }
 
 export interface RiskVerdict {
@@ -144,6 +145,10 @@ export function scoreFromSignals(signals: Signals): RiskVerdict {
   if (signals.finalUrlMismatch) {
     score += 2;
     pushReason(reasons, 'Redirect leads to mismatched domain/brand');
+  }
+
+  if (signals.heuristicsOnly) {
+    pushReason(reasons, 'Heuristics-only scan (external providers unavailable)');
   }
 
   const finalScore = Math.max(0, Math.min(score, 15));

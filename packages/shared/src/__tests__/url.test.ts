@@ -41,11 +41,19 @@ test('expandUrl follows redirects and returns content type', async () => {
     .mockResolvedValueOnce({
       statusCode: 302,
       headers: { location: 'https://final.test/path', 'content-type': 'text/html' },
-    })
+      body: null,
+      trailers: {},
+      opaque: null,
+      context: null
+    } as any)
     .mockResolvedValueOnce({
       statusCode: 200,
       headers: { 'content-type': 'text/html' },
-    });
+      body: null,
+      trailers: {},
+      opaque: null,
+      context: null
+    } as any);
 
   const result = await expandUrl('https://short.test/start', {
     maxRedirects: 5,
@@ -71,4 +79,56 @@ test('expandUrl aborts when hostname becomes private', async () => {
 test('detects suspicious tlds', () => {
   expect(isSuspiciousTld('evil.zip')).toBe(true);
   expect(isSuspiciousTld('safe.example')).toBe(false);
+  expect(isSuspiciousTld('test.xyz')).toBe(true);
+  expect(isSuspiciousTld('sub.domain.tk')).toBe(true);
+});
+
+test('normalizeUrl handles invalid inputs', () => {
+  expect(normalizeUrl('not-a-url')).toBeNull();
+  expect(normalizeUrl('ftp://example.com')).toBeNull();
+  expect(normalizeUrl('')).toBeNull();
+});
+
+test('normalizeUrl handles IDN domains', () => {
+  // "münchen.de" -> "xn--mnchen-3ya.de"
+  const u = normalizeUrl('http://münchen.de');
+  expect(u).toBe('http://xn--mnchen-3ya.de/');
+});
+
+test('normalizeUrl handles complex paths and queries', () => {
+  const u = normalizeUrl('https://example.com/a//b///c?x=1&y=2');
+  expect(u).toBe('https://example.com/a/b/c?x=1&y=2');
+});
+
+test('expandUrl handles network errors gracefully', async () => {
+  request.mockRejectedValueOnce(new Error('Network error'));
+  
+  const result = await expandUrl('https://down.test', {
+    maxRedirects: 2,
+    timeoutMs: 100,
+    maxContentLength: 1000
+  });
+  
+  expect(result.finalUrl).toBe('https://down.test/');
+  expect(result.chain).toEqual(['https://down.test/']);
+});
+
+test('expandUrl stops at max redirects', async () => {
+  request.mockResolvedValue({
+    statusCode: 301,
+    headers: { location: 'https://next.test' },
+    body: null,
+    trailers: {},
+    opaque: null,
+    context: null
+  } as any);
+
+  const result = await expandUrl('https://start.test', {
+    maxRedirects: 2,
+    timeoutMs: 100,
+    maxContentLength: 1000
+  });
+
+  expect(result.chain).toHaveLength(2);
+  // Should stop expanding after limit
 });

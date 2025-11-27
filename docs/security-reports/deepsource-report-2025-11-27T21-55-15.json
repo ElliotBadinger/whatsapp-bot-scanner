@@ -1,0 +1,156 @@
+{
+  "metadata": {
+    "timestamp": "2025-11-27T21:55:15.809Z",
+    "source": "DeepSource",
+    "repository": "ElliotBadinger/whatsapp-bot-scanner"
+  },
+  "repository": {
+    "name": "whatsapp-bot-scanner",
+    "isActivated": true,
+    "defaultBranch": "main",
+    "dsn": "https://55a223eb2c774dfba62b6b3292788314@app.deepsource.com",
+    "enabledAnalyzers": {
+      "edges": [
+        {
+          "node": {
+            "name": "Python",
+            "shortcode": "python"
+          }
+        },
+        {
+          "node": {
+            "name": "Test coverage",
+            "shortcode": "test-coverage"
+          }
+        },
+        {
+          "node": {
+            "name": "Secrets",
+            "shortcode": "secrets"
+          }
+        },
+        {
+          "node": {
+            "name": "JavaScript",
+            "shortcode": "javascript"
+          }
+        },
+        {
+          "node": {
+            "name": "Shell",
+            "shortcode": "shell"
+          }
+        },
+        {
+          "node": {
+            "name": "Docker",
+            "shortcode": "docker"
+          }
+        },
+        {
+          "node": {
+            "name": "SQL",
+            "shortcode": "sql"
+          }
+        }
+      ]
+    },
+    "targets": {
+      "edges": []
+    },
+    "configJson": {
+      "version": 1,
+      "analyzers": [
+        {
+          "meta": {
+            "dockerfile_paths": [
+              "**/Dockerfile",
+              "**/Dockerfile.*"
+            ]
+          },
+          "name": "docker",
+          "type": "core",
+          "enabled": true
+        },
+        {
+          "meta": {
+            "dialect": "typescript",
+            "plugins": [
+              "react"
+            ],
+            "environment": [
+              "nodejs",
+              "browser"
+            ],
+            "style_guide": "airbnb",
+            "dependency_file_paths": [
+              "package.json",
+              "services/*/package.json"
+            ]
+          },
+          "name": "javascript",
+          "type": "core",
+          "enabled": true,
+          "dependency_file_paths": [
+            "package.json",
+            "services/wa-client/package.json",
+            "services/scan-orchestrator/package.json",
+            "services/control-plane/package.json",
+            "packages/shared/package.json",
+            "packages/confusable/package.json"
+          ]
+        },
+        {
+          "meta": {
+            "runtime_version": "3.x.x",
+            "skip_doc_coverage": [
+              "module",
+              "magic",
+              "init"
+            ]
+          },
+          "name": "python",
+          "type": "core",
+          "enabled": true,
+          "dependency_file_paths": [
+            "requirements.txt",
+            "requirements/*.txt",
+            "Pipfile",
+            "pyproject.toml"
+          ]
+        },
+        {
+          "name": "secrets",
+          "type": "core",
+          "enabled": true
+        },
+        {
+          "name": "shell",
+          "type": "core",
+          "enabled": true
+        },
+        {
+          "name": "sql",
+          "type": "core",
+          "enabled": true
+        },
+        {
+          "name": "test-coverage",
+          "type": "core",
+          "enabled": true
+        }
+      ],
+      "transformers": [
+        {
+          "name": "prettier",
+          "enabled": true
+        }
+      ]
+    }
+  },
+  "issues": [],
+  "securityIssues": [],
+  "analysisRuns": [],
+  "metrics": null,
+  "error": "DeepSource GraphQL Error: [\n  {\n    \"message\": \"Cannot query field 'title' on type 'RepositoryIssue'.\",\n    \"locations\": [\n      {\n        \"line\": 7,\n        \"column\": 33\n      }\n    ]\n  },\n  {\n    \"message\": \"Cannot query field 'category' on type 'RepositoryIssue'.\",\n    \"locations\": [\n      {\n        \"line\": 8,\n        \"column\": 33\n      }\n    ]\n  },\n  {\n    \"message\": \"Cannot query field 'severity' on type 'RepositoryIssue'.\",\n    \"locations\": [\n      {\n        \"line\": 9,\n        \"column\": 33\n      }\n    ]\n  },\n  {\n    \"message\": \"Cannot query field 'analyzer' on type 'RepositoryIssue'.\",\n    \"locations\": [\n      {\n        \"line\": 10,\n        \"column\": 33\n      }\n    ]\n  }\n]"
+}

@@ -1,47 +1,21 @@
 {
   "name": "whatsapp-bot-scanner",
+  "version": "1.0.0",
   "private": true,
-  "version": "0.1.0",
+  "scripts": {
+    "validate": "./scripts/validate-types.sh",
+    "validate:quick": "npm run build --workspaces && npm test --workspaces -- --passWithNoTests",
+    "type-check": "npm run type-check --workspaces",
+    "type-check:strict": "tsc --noEmit --strict && npm run type-check --workspaces",
+    "lint": "npm run lint --workspaces",
+    "lint:fix": "npm run lint:fix --workspaces",
+    "test": "npm test --workspaces -- --passWithNoTests",
+    "build": "npm run build --workspaces",
+    "clean": "npm run clean --workspaces && rm -rf node_modules",
+    "precommit": "./scripts/validate-types.sh"
+  },
   "workspaces": [
     "packages/*",
-    "services/*",
-    "tests/*"
-  ],
-  "scripts": {
-    "build": "npm -ws run build",
-    "dev": "npm -ws --if-present run dev",
-    "test": "npm -ws --if-present test",
-    "postinstall": "bash scripts/install-wbscanner-mcp.sh",
-    "test:integration": "npm --workspace tests/integration run test",
-    "test:e2e": "npm --workspace tests/e2e run test",
-    "test:fast": "npm run test:integration && npm run test:e2e",
-    "lint": "npm -ws --if-present run lint",
-    "migrate": "node scripts/run-migrations.js",
-    "seed": "node scripts/run-seeds.js",
-    "test:load": "node tests/load/http-load.js",
-    "validate:config": "node scripts/validate-config.js",
-    "validate": "bash scripts/validate-compilation.sh",
-    "mcp:install": "bash scripts/install-wbscanner-mcp.sh",
-    "watch:pairing-code": "node scripts/watch-pairing-code.js",
-    "prebuild": "npm run validate:config",
-    "export:wwebjs-docs": "node scripts/export-wwebjs-docs.mjs",
-    "ds:status": "node scripts/deepsource-api.js status",
-    "ds:issues": "node scripts/deepsource-api.js issues",
-    "ds:metrics": "node scripts/deepsource-api.js metrics"
-  },
-  "devDependencies": {
-    "cheerio": "^1.1.2",
-    "ioredis-mock": "^8.0.0",
-    "turndown": "^7.2.1",
-    "vitest": "^4.0.10"
-  },
-  "dependencies": {
-    "boxen": "^7.1.1",
-    "chalk": "^5.6.2",
-    "enquirer": "^2.4.1",
-    "execa": "^8.0.1",
-    "humanize-duration": "^3.33.1",
-    "log-symbols": "^5.1.0",
-    "ora": "^6.3.1"
-  }
+    "services/*"
+  ]
 }

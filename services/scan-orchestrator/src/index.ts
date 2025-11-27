@@ -568,6 +568,10 @@ function extractUrlscanArtifactCandidates(uuid: string, payload: unknown): Artif
 }
 
 async function fetchGsbAnalysis(finalUrl: string, hash: string): Promise<GsbFetchResult> {
+  if (!config.gsb.enabled) {
+    logger.warn({ url: finalUrl }, 'Google Safe Browsing disabled by config');
+    return { matches: [], fromCache: true, durationMs: 0, error: null };
+  }
   const cacheKey = `url:analysis:${hash}:gsb`;
   const cached = await getJsonCache<GsbMatch[]>(CACHE_LABELS.gsb, cacheKey, ANALYSIS_TTLS.gsb);
   if (cached) {
@@ -633,7 +637,8 @@ interface VirusTotalFetchResult {
 }
 
 async function fetchVirusTotal(finalUrl: string, hash: string): Promise<VirusTotalFetchResult> {
-  if (!config.vt.apiKey) {
+  if (!config.vt.enabled || !config.vt.apiKey) {
+    if (!config.vt.enabled) logger.warn({ url: finalUrl }, 'VirusTotal disabled by config');
     return { stats: undefined, fromCache: true, quotaExceeded: false, error: null };
   }
   const cacheKey = `url:analysis:${hash}:vt`;
@@ -740,9 +745,13 @@ interface DomainIntelResult {
 }
 
 async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainIntelResult> {
-  const rdapAge = await domainAgeDaysFromRdap(hostname, config.rdap.timeoutMs).catch(() => undefined);
-  if (rdapAge !== undefined) {
-    return { ageDays: rdapAge, source: 'rdap' };
+  if (config.rdap.enabled) {
+    const rdapAge = await domainAgeDaysFromRdap(hostname, config.rdap.timeoutMs).catch(() => undefined);
+    if (rdapAge !== undefined) {
+      return { ageDays: rdapAge, source: 'rdap' };
+    }
+  } else {
+    logger.warn({ hostname }, 'RDAP disabled by config');
   }
 
   // Try who-dat first if enabled (self-hosted, no quota limits)
@@ -849,14 +858,15 @@ interface UrlscanCallbackBody {
 
 async function main() {
   assertEssentialConfig('scan-orchestrator');
-  
+
   // Validate Redis connectivity before starting
   try {
     await redis.ping();
     logger.info('Redis connectivity validated');
   } catch (err) {
     logger.error({ err }, 'Redis connectivity check failed during startup');
-    throw new Error('Redis is required but unreachable');
+    // Don't throw, let healthcheck handle it so container doesn't crash loop immediately
+    // throw new Error('Redis is required but unreachable');
   }
 
   const dbClient = getSharedConnection();
@@ -865,13 +875,14 @@ async function main() {
   await enhancedSecurity.start();
 
   const app = Fastify();
-  app.get('/healthz', async () => {
+  app.get('/healthz', async (_req, reply) => {
     try {
       // Check Redis connectivity
       await redis.ping();
       return { ok: true, redis: 'connected' };
     } catch (err) {
       logger.warn({ err }, 'Health check failed - Redis connectivity issue');
+      reply.code(503);
       return { ok: false, redis: 'disconnected', error: 'Redis unreachable' };
     }
   });
@@ -1129,17 +1140,39 @@ async function main() {
 
         await setJsonCache(CACHE_LABELS.verdict, cacheKey, verdictPayload, cacheTtl);
 
-        const transaction = dbClient.getDatabase().transaction(() => {
-          // Insert or update scan record
-          const stmt = dbClient.getDatabase().prepare(
-            `INSERT OR REPLACE INTO scans (url_hash, url, final_url, verdict, score, reasons, cache_ttl, redirect_chain, was_shortened, final_url_mismatch, homoglyph_detected, homoglyph_risk_level, first_seen_at, last_seen_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
-          );
-          stmt.run(h, norm, finalUrl, verdict, score, JSON.stringify(enhancedReasons), cacheTtl, JSON.stringify(redirectChain), wasShortened, finalUrlMismatch, homoglyphResult.detected, homoglyphResult.riskLevel);
-        });
-
         try {
-          transaction();
+          await dbClient.transaction(async () => {
+            // Insert or update scan record
+            // Note: Using INSERT OR REPLACE is SQLite specific. For Postgres compatibility we should use ON CONFLICT or separate logic.
+            // However, since we are abstracting, we'll stick to standard SQL or handle it in the query method if needed.
+            // But here we are using raw SQL.
+            // For now, let's assume the query method handles parameter conversion.
+            // Using CURRENT_TIMESTAMP for SQL standard compatibility (SQLite and Postgres)
+            // Original approach used datetime('now') which is SQLite-specific
+            // CURRENT_TIMESTAMP works for both SQLite and Postgres
+
+            const standardSql = `
+              INSERT INTO scans (url_hash, url, final_url, verdict, score, reasons, cache_ttl, redirect_chain, was_shortened, final_url_mismatch, homoglyph_detected, homoglyph_risk_level, first_seen_at, last_seen_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+              ON CONFLICT(url_hash) DO UPDATE SET
+                url=excluded.url,
+                final_url=excluded.final_url,
+                verdict=excluded.verdict,
+                score=excluded.score,
+                reasons=excluded.reasons,
+                cache_ttl=excluded.cache_ttl,
+                redirect_chain=excluded.redirect_chain,
+                was_shortened=excluded.was_shortened,
+                final_url_mismatch=excluded.final_url_mismatch,
+                homoglyph_detected=excluded.homoglyph_detected,
+                homoglyph_risk_level=excluded.homoglyph_risk_level,
+                last_seen_at=CURRENT_TIMESTAMP
+            `;
+
+            await dbClient.query(standardSql, [
+              h, norm, finalUrl, verdict, score, JSON.stringify(enhancedReasons), cacheTtl, JSON.stringify(redirectChain), wasShortened, finalUrlMismatch, homoglyphResult.detected, homoglyphResult.riskLevel
+            ]);
+          });
         } catch (err) {
           logger.error({ err, url: norm }, 'failed to persist enhanced security verdict');
         }
@@ -1296,9 +1329,13 @@ async function main() {
 
       if (degradedMode) {
         metrics.degradedModeEvents.inc();
+        metrics.externalScannersDegraded.set(1);
         logger.warn({ url: finalUrl, urlHash: h, providers: degradedMode.providers }, 'Operating in degraded mode with no external providers available');
+      } else {
+        metrics.externalScannersDegraded.set(0);
       }
 
+      const heuristicsOnly = degradedMode !== undefined;
       const signals = {
         gsbThreatTypes: gsbMatches.map((m: GsbThreatMatch) => m.threatType),
         phishtankVerified: Boolean(phishtankResult?.verified),
@@ -1315,6 +1352,7 @@ async function main() {
         ...heurSignals,
         enhancedSecurityScore: enhancedSecurityResult.score,
         enhancedSecurityReasons: enhancedSecurityResult.reasons,
+        heuristicsOnly,
       };
       const verdictResult = scoreFromSignals(signals);
       const verdict = verdictResult.level;
@@ -1426,40 +1464,55 @@ async function main() {
       };
       await setJsonCache(CACHE_LABELS.verdict, cacheKey, res, ttl);
 
-      const transaction = dbClient.getDatabase().transaction(() => {
-        // Insert or update scan record
-        const scanStmt = dbClient.getDatabase().prepare(
-          `INSERT OR REPLACE INTO scans (
-            url_hash, normalized_url, verdict, score, reasons, vt_stats, 
-            gsafebrowsing_hit, domain_age_days, redirect_chain_summary, cache_ttl, 
-            source_kind, urlscan_status, whois_source, whois_registrar, shortener_provider,
-            first_seen_at, last_seen_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
-        );
-        scanStmt.run(
-          h, finalUrl, verdict, score, JSON.stringify(reasons), JSON.stringify(vtStats || {}),
-          blocklistHit, domainAgeDays ?? null, JSON.stringify(redirectChain), ttl,
-          'wa', enqueuedUrlscan ? 'queued' : null,
-          domainIntel.source === 'none' ? null : domainIntel.source,
-          domainIntel.registrar ?? null, shortenerInfo?.provider ?? null
-        );
-
-        if (enqueuedUrlscan) {
-          const urlscanStmt = dbClient.getDatabase().prepare('UPDATE scans SET urlscan_status=? WHERE url_hash=?');
-          urlscanStmt.run('queued', h);
-        }
-
-        if (chatId && messageId) {
-          const messageStmt = dbClient.getDatabase().prepare(
-            `INSERT OR IGNORE INTO messages (chat_id, message_id, url_hash, verdict, posted_at)
-             VALUES (?, ?, ?, ?, datetime('now'))`
-          );
-          messageStmt.run(chatId, messageId, h, verdict);
-        }
-      });
-
       try {
-        transaction();
+        await dbClient.transaction(async () => {
+          // Insert or update scan record
+          const scanSql = `
+            INSERT INTO scans (
+              url_hash, normalized_url, verdict, score, reasons, vt_stats,
+              gsafebrowsing_hit, domain_age_days, redirect_chain_summary, cache_ttl,
+              source_kind, urlscan_status, whois_source, whois_registrar, shortener_provider,
+              first_seen_at, last_seen_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT(url_hash) DO UPDATE SET
+              normalized_url=excluded.normalized_url,
+              verdict=excluded.verdict,
+              score=excluded.score,
+              reasons=excluded.reasons,
+              vt_stats=excluded.vt_stats,
+              gsafebrowsing_hit=excluded.gsafebrowsing_hit,
+              domain_age_days=excluded.domain_age_days,
+              redirect_chain_summary=excluded.redirect_chain_summary,
+              cache_ttl=excluded.cache_ttl,
+              source_kind=excluded.source_kind,
+              urlscan_status=excluded.urlscan_status,
+              whois_source=excluded.whois_source,
+              whois_registrar=excluded.whois_registrar,
+              shortener_provider=excluded.shortener_provider,
+              last_seen_at=CURRENT_TIMESTAMP
+          `;
+
+          await dbClient.query(scanSql, [
+            h, finalUrl, verdict, score, JSON.stringify(reasons), JSON.stringify(vtStats || {}),
+            blocklistHit, domainAgeDays ?? null, JSON.stringify(redirectChain), ttl,
+            'wa', enqueuedUrlscan ? 'queued' : null,
+            domainIntel.source === 'none' ? null : domainIntel.source,
+            domainIntel.registrar ?? null, shortenerInfo?.provider ?? null
+          ]);
+
+          if (enqueuedUrlscan) {
+            await dbClient.query('UPDATE scans SET urlscan_status=? WHERE url_hash=?', ['queued', h]);
+          }
+
+          if (chatId && messageId) {
+            const messageSql = `
+              INSERT INTO messages (chat_id, message_id, url_hash, verdict, posted_at)
+              VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(chat_id, message_id) DO NOTHING
+            `;
+            await dbClient.query(messageSql, [chatId, messageId, h, verdict]);
+          }
+        });
       } catch (err) {
         logger.warn({ err, chatId, messageId }, 'failed to persist message metadata for scan');
       }

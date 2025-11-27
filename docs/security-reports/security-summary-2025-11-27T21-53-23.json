@@ -1,0 +1,20 @@
+{
+  "metadata": {
+    "timestamp": "2025-11-27T21:53:24.705Z",
+    "generatedBy": "fetch-security-reports.js"
+  },
+  "deepsource": {
+    "totalIssues": 0,
+    "securityIssues": 0,
+    "securityCount": 0,
+    "bugRiskCount": 0,
+    "criticalIssues": 0
+  },
+  "sonarqube": null,
+  "files": {
+    "deepsourceReport": "deepsource-report-2025-11-27T21-53-23.json",
+    "deepsourceSecurityReport": "deepsource-security-2025-11-27T21-53-23.json",
+    "sonarqubeReport": null,
+    "sonarqubeSecurityReport": null
+  }
+}
