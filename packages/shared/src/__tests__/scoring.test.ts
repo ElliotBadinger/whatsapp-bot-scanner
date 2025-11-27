@@ -91,3 +91,80 @@ test('suspicious tier returns 1 hour ttl', () => {
   expect(result.level).toBe('suspicious');
   expect(result.cacheTtl).toBe(3600);
 });
+
+test('homoglyph detection adds to score', () => {
+  const highRisk = scoreFromSignals({
+    homoglyph: {
+      detected: true,
+      riskLevel: 'high',
+      confusableChars: [{ original: 'a', confusedWith: 'а', position: 0, script: 'Cyrillic', alternatives: ['a'] }],
+      normalizedDomain: 'test.com',
+      isPunycode: false,
+      mixedScript: true,
+      unicodeHostname: 'test.com',
+      riskReasons: ['High-risk homoglyph attack detected']
+    }
+  });
+  expect(highRisk.score).toBeGreaterThanOrEqual(5);
+  expect(highRisk.reasons.some(r => r.includes('High-risk homoglyph'))).toBe(true);
+
+  const mediumRisk = scoreFromSignals({
+    homoglyph: {
+      detected: true,
+      riskLevel: 'medium',
+      confusableChars: [],
+      normalizedDomain: 'test.com',
+      isPunycode: false,
+      mixedScript: true,
+      unicodeHostname: 'test.com',
+      riskReasons: ['Suspicious homoglyph']
+    }
+  });
+  expect(mediumRisk.score).toBeGreaterThanOrEqual(3);
+
+  const lowRisk = scoreFromSignals({
+    homoglyph: {
+      detected: true,
+      riskLevel: 'low',
+      confusableChars: [],
+      normalizedDomain: 'test.com',
+      isPunycode: true,
+      mixedScript: false,
+      unicodeHostname: 'test.com',
+      riskReasons: []
+    }
+  });
+  expect(lowRisk.score).toBeGreaterThanOrEqual(1);
+  expect(lowRisk.reasons.some(r => r.includes('Punycode/IDN'))).toBe(true);
+});
+
+test('benign score returns correct level and ttl', () => {
+  const result = scoreFromSignals({
+    domainAgeDays: 365,
+    urlLength: 20
+  });
+  expect(result.level).toBe('benign');
+  expect(result.score).toBe(0);
+  expect(result.cacheTtl).toBe(86400);
+});
+
+test('vt malicious count logic', () => {
+  const low = scoreFromSignals({ vtMalicious: 1 });
+  expect(low.score).toBe(5);
+  
+  const high = scoreFromSignals({ vtMalicious: 3 });
+  expect(high.score).toBe(8);
+});
+
+test('score clamps at 15 even with excessive signals', () => {
+  const result = scoreFromSignals({
+    gsbThreatTypes: ['MALWARE'], // +10
+    phishtankVerified: true, // +10
+    urlhausListed: true, // +10
+    vtMalicious: 5, // +8
+    domainAgeDays: 1, // +6
+  });
+  // Total raw score would be 44
+  expect(result.score).toBe(15);
+  expect(result.level).toBe('malicious');
+});

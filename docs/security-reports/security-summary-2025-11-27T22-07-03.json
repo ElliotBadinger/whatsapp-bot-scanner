@@ -1,0 +1,25 @@
+{
+  "metadata": {
+    "timestamp": "2025-11-27T22:07:21.399Z",
+    "generatedBy": "fetch-security-reports.js"
+  },
+  "deepsource": {
+    "totalIssues": 65,
+    "securityIssues": 6,
+    "securityCount": 0,
+    "bugRiskCount": 0,
+    "criticalIssues": 4
+  },
+  "sonarqube": {
+    "vulnerabilities": 2,
+    "securityHotspots": 62,
+    "bugs": 7,
+    "criticalCodeSmells": 42
+  },
+  "files": {
+    "deepsourceReport": "deepsource-report-2025-11-27T22-07-03.json",
+    "deepsourceSecurityReport": "deepsource-security-2025-11-27T22-07-03.json",
+    "sonarqubeReport": "sonarqube-report-2025-11-27T22-07-03.json",
+    "sonarqubeSecurityReport": "sonarqube-security-2025-11-27T22-07-03.json"
+  }
+}

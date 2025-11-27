@@ -3,9 +3,11 @@ jest.mock('node:dns/promises', () => ({
 }));
 
 import { isPrivateHostname, isPrivateIp } from '../ssrf';
-import type { lookup as lookupType } from 'node:dns/promises';
+import type { LookupAddress } from 'node:dns';
 
-const { lookup } = jest.requireMock('node:dns/promises') as { lookup: jest.MockedFunction<typeof lookupType> };
+const { lookup } = jest.requireMock('node:dns/promises') as {
+  lookup: jest.MockedFunction<(hostname: string, options: any) => Promise<LookupAddress[]>>
+};
 
 describe('SSRF guards', () => {
   beforeEach(() => {
@@ -26,10 +28,10 @@ describe('SSRF guards', () => {
   });
 
   it('flags private hostnames based on dns lookup', async () => {
-    lookup.mockResolvedValueOnce([{ address: '192.168.1.5' }]);
+    lookup.mockResolvedValueOnce([{ address: '192.168.1.5', family: 4 }]);
     await expect(isPrivateHostname('internal.test')).resolves.toBe(true);
 
-    lookup.mockResolvedValueOnce([{ address: '8.8.8.8' }]);
+    lookup.mockResolvedValueOnce([{ address: '8.8.8.8', family: 4 }]);
     await expect(isPrivateHostname('public.test')).resolves.toBe(false);
   });
 

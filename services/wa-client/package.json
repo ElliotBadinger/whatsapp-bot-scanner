@@ -7,7 +7,9 @@
     "build": "tsc -p tsconfig.json",
     "dev": "ts-node src/index.ts",
     "test": "jest",
-    "lint": "eslint src --ext .ts"
+    "lint": "eslint src --ext .ts",
+    "type-check": "tsc --noEmit",
+    "lint:fix": "eslint src --ext .ts --fix"
   },
   "dependencies": {
     "@aws-sdk/client-kms": "^3.914.0",

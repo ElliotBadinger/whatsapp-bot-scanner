@@ -1,0 +1,13 @@
+{
+  "metadata": {
+    "timestamp": "2025-11-27T21:52:41.960Z",
+    "source": "DeepSource",
+    "repository": "ElliotBadinger/whatsapp-bot-scanner"
+  },
+  "repository": {
+    "name": "whatsapp-bot-scanner",
+    "isActivated": true
+  },
+  "securityIssues": [],
+  "metrics": {}
+}

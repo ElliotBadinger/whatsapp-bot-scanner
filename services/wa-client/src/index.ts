@@ -830,7 +830,9 @@ async function initializeWhatsAppWithRetry(client: Client, maxAttempts = 5): Pro
         err.message.includes('connection') ||
         err.message.includes('network') ||
         err.message.includes('ECONNREFUSED') ||
-        err.message.includes('ETIMEDOUT')
+        err.message.includes('ETIMEDOUT') ||
+        err.message.includes('ENOTFOUND') ||
+        err.message.includes('EAI_AGAIN')
       );
 
       if (!isRetryable) {
@@ -872,17 +874,19 @@ async function main() {
     logger.info('Redis connectivity validated');
   } catch (err) {
     logger.error({ err }, 'Redis connectivity check failed during startup');
-    throw new Error('Redis is required but unreachable');
+    // Don't throw, let healthcheck handle it so container doesn't crash loop immediately
+    // throw new Error('Redis is required but unreachable');
   }
 
   const app = Fastify();
-  app.get('/healthz', async () => {
+  app.get('/healthz', async (_req, reply) => {
     try {
       // Check Redis connectivity
       await redis.ping();
       return { ok: true, redis: 'connected' };
     } catch (err) {
       logger.warn({ err }, 'Health check failed - Redis connectivity issue');
+      reply.code(503);
       return { ok: false, redis: 'disconnected', error: 'Redis unreachable' };
     }
   });

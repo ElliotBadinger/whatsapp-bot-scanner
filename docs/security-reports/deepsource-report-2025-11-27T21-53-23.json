@@ -1,0 +1,13 @@
+{
+  "metadata": {
+    "timestamp": "2025-11-27T21:53:23.732Z",
+    "source": "DeepSource",
+    "repository": "ElliotBadinger/whatsapp-bot-scanner"
+  },
+  "repository": null,
+  "issues": [],
+  "securityIssues": [],
+  "analysisRuns": [],
+  "metrics": null,
+  "error": "DeepSource GraphQL Error: [\n  {\n    \"message\": \"Syntax Error: Expected Name, found '{'.\",\n    \"locations\": [\n      {\n        \"line\": 3,\n        \"column\": 55\n      }\n    ]\n  }\n]"
+}

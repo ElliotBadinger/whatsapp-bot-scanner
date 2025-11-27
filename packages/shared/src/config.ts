@@ -74,12 +74,14 @@ export const config = {
     urlscan: ensureQueueName(process.env.SCAN_URLSCAN_QUEUE || 'scan-urlscan', 'SCAN_URLSCAN_QUEUE'),
   },
   vt: {
+    enabled: (process.env.VT_ENABLED || 'true') === 'true' && !!process.env.VT_API_KEY,
     apiKey: process.env.VT_API_KEY || '',
     timeoutMs: parseInt(process.env.VT_REQUEST_TIMEOUT_MS || '8000', 10),
     requestsPerMinute: parsePositiveInt(process.env.VT_REQUESTS_PER_MINUTE, 4),
     requestJitterMs: parseNonNegativeInt(process.env.VT_REQUEST_JITTER_MS, 0),
   },
   gsb: {
+    enabled: (process.env.GSB_ENABLED || 'true') === 'true' && !!process.env.GSB_API_KEY,
     apiKey: process.env.GSB_API_KEY || '',
     timeoutMs: parseInt(process.env.GSB_REQUEST_TIMEOUT_MS || '5000', 10),
     fallbackLatencyMs: parseInt(process.env.GSB_FALLBACK_LATENCY_MS || '500', 10),
@@ -89,12 +91,13 @@ export const config = {
     timeoutMs: parseInt(process.env.URLHAUS_TIMEOUT_MS || '5000', 10),
   },
   phishtank: {
-    enabled: (process.env.PHISHTANK_ENABLED || 'true') === 'true',
+    enabled: (process.env.PHISHTANK_ENABLED || 'true') === 'true' && !!process.env.PHISHTANK_APP_KEY,
     appKey: process.env.PHISHTANK_APP_KEY || '',
     userAgent: process.env.PHISHTANK_USER_AGENT || 'wbscanner-bot/1.0',
     timeoutMs: parseInt(process.env.PHISHTANK_TIMEOUT_MS || '5000', 10),
   },
   rdap: {
+    enabled: (process.env.RDAP_ENABLED || 'true') === 'true',
     timeoutMs: parseInt(process.env.RDAP_TIMEOUT_MS || '5000', 10),
   },
   urlscan: {
@@ -299,7 +302,6 @@ export function assertEssentialConfig(serviceName: string): void {
   const missing: string[] = [];
 
   if (!config.vt.apiKey?.trim()) missing.push('VT_API_KEY');
-  if (!config.gsb.apiKey?.trim()) missing.push('GSB_API_KEY');
   if (!config.redisUrl?.trim()) missing.push('REDIS_URL');
 
   if (missing.length > 0) {
