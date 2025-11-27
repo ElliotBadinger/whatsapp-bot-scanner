@@ -3,7 +3,7 @@ export class QuotaExceededError extends Error {
 
   constructor(service: string, message?: string) {
     super(message ?? `${service} quota exceeded`);
-    this.name = 'QuotaExceededError';
+    this.name = "QuotaExceededError";
     this.service = service;
     Object.setPrototypeOf(this, new.target.prototype);
   }
@@ -14,7 +14,7 @@ export class FeatureDisabledError extends Error {
 
   constructor(feature: string, message?: string) {
     super(message ?? `${feature} feature disabled`);
-    this.name = 'FeatureDisabledError';
+    this.name = "FeatureDisabledError";
     this.feature = feature;
     Object.setPrototypeOf(this, new.target.prototype);
   }

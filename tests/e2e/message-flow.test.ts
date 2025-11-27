@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from "vitest";
 
 import {
   detectHomoglyphs,
@@ -6,24 +6,24 @@ import {
   normalizeUrl,
   scoreFromSignals,
   extraHeuristics,
-} from '@wbscanner/shared';
-import { formatGroupVerdict } from '../../services/wa-client/src/index';
+} from "@wbscanner/shared";
+import { formatGroupVerdict } from "../../services/wa-client/src/index";
 
-describe('End-to-end message to verdict flow', () => {
-  it('extracts URLs, scores signals, and formats a verdict message', () => {
-    const message = 'Heads up: http://login.paypa1.test/account?id=42';
+describe("End-to-end message to verdict flow", () => {
+  it("extracts URLs, scores signals, and formats a verdict message", () => {
+    const message = "Heads up: http://login.paypa1.test/account?id=42";
     const urls = extractUrls(message);
-    expect(urls).toEqual(['http://login.paypa1.test/account?id=42']);
+    expect(urls).toEqual(["http://login.paypa1.test/account?id=42"]);
 
     const normalized = normalizeUrl(urls[0]);
-    expect(normalized).toBe('http://login.paypa1.test/account?id=42');
+    expect(normalized).toBe("http://login.paypa1.test/account?id=42");
 
     const finalUrl = new URL(normalized!);
     const heuristics = extraHeuristics(finalUrl);
 
     const signals = {
       ...heuristics,
-      gsbThreatTypes: ['SOCIAL_ENGINEERING'],
+      gsbThreatTypes: ["SOCIAL_ENGINEERING"],
       vtMalicious: 3,
       domainAgeDays: 2,
       wasShortened: false,
@@ -32,12 +32,18 @@ describe('End-to-end message to verdict flow', () => {
     };
 
     const verdict = scoreFromSignals(signals);
-    expect(verdict.level).toBe('malicious');
-    expect(verdict.reasons).toContain('Google Safe Browsing: SOCIAL_ENGINEERING');
+    expect(verdict.level).toBe("malicious");
+    expect(verdict.reasons).toContain(
+      "Google Safe Browsing: SOCIAL_ENGINEERING",
+    );
 
-    const formatted = formatGroupVerdict(verdict.level, verdict.reasons, normalized!);
-    expect(formatted).toContain('Link scan: MALICIOUS');
-    expect(formatted).toContain('SOCIAL_ENGINEERING');
-    expect(formatted).toContain('paypa1');
+    const formatted = formatGroupVerdict(
+      verdict.level,
+      verdict.reasons,
+      normalized!,
+    );
+    expect(formatted).toContain("Link scan: MALICIOUS");
+    expect(formatted).toContain("SOCIAL_ENGINEERING");
+    expect(formatted).toContain("paypa1");
   });
 });

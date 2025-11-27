@@ -1,5 +1,5 @@
-import { request } from 'undici';
-import { logger } from '../log';
+import { request } from "undici";
+import { logger } from "../log";
 
 export interface SecurityHeaders {
   hsts: boolean;
@@ -23,7 +23,7 @@ interface HTTPFingerprintOptions {
 
 export async function httpFingerprinting(
   url: string,
-  options: HTTPFingerprintOptions = {}
+  options: HTTPFingerprintOptions = {},
 ): Promise<HTTPFingerprint> {
   const { timeoutMs = 2000, enableSSRFGuard = true } = options;
 
@@ -46,13 +46,13 @@ export async function httpFingerprinting(
       const parsed = new URL(url);
       if (isPrivateIP(parsed.hostname)) {
         result.suspicionScore += 1.0;
-        result.reasons.push('URL points to private IP address');
+        result.reasons.push("URL points to private IP address");
         return result;
       }
     }
 
     const response = await request(url, {
-      method: 'HEAD', // Use HEAD to minimize data transfer
+      method: "HEAD", // Use HEAD to minimize data transfer
       headersTimeout: timeoutMs,
       bodyTimeout: timeoutMs,
       maxRedirections: 5,
@@ -64,16 +64,19 @@ export async function httpFingerprinting(
     const headers = response.headers;
 
     // Check security headers
-    result.securityHeaders.hsts = !!(headers['strict-transport-security']);
-    result.securityHeaders.csp = !!(headers['content-security-policy']);
-    result.securityHeaders.xFrameOptions = !!(headers['x-frame-options']);
-    result.securityHeaders.xContentTypeOptions = !!(headers['x-content-type-options']);
+    result.securityHeaders.hsts = !!headers["strict-transport-security"];
+    result.securityHeaders.csp = !!headers["content-security-policy"];
+    result.securityHeaders.xFrameOptions = !!headers["x-frame-options"];
+    result.securityHeaders.xContentTypeOptions =
+      !!headers["x-content-type-options"];
 
     // Score based on missing security headers
-    const missingHeaders = Object.values(result.securityHeaders).filter(present => !present).length;
+    const missingHeaders = Object.values(result.securityHeaders).filter(
+      (present) => !present,
+    ).length;
     if (missingHeaders >= 3) {
       result.suspicionScore += 0.4;
-      result.reasons.push('Multiple security headers missing');
+      result.reasons.push("Multiple security headers missing");
     }
 
     // Check for suspicious status codes
@@ -88,10 +91,10 @@ export async function httpFingerprinting(
     // Check for suspicious server headers
     const server = headers.server as string;
     if (server) {
-      const suspiciousServers = ['apache/1.', 'nginx/0.', 'test', 'localhost'];
-      if (suspiciousServers.some(sus => server.toLowerCase().includes(sus))) {
+      const suspiciousServers = ["apache/1.", "nginx/0.", "test", "localhost"];
+      if (suspiciousServers.some((sus) => server.toLowerCase().includes(sus))) {
         result.suspicionScore += 0.3;
-        result.reasons.push('Suspicious server header');
+        result.reasons.push("Suspicious server header");
       }
     }
 
@@ -104,42 +107,42 @@ export async function httpFingerprinting(
 
         if (originalHost !== redirectHost) {
           // Cross-domain redirect - check if suspicious
-          if (isPrivateIP(redirectHost) || redirectHost.includes('localhost')) {
+          if (isPrivateIP(redirectHost) || redirectHost.includes("localhost")) {
             result.suspiciousRedirects = true;
             result.suspicionScore += 0.6;
-            result.reasons.push('Suspicious redirect to private/local address');
+            result.reasons.push("Suspicious redirect to private/local address");
           }
         }
       } catch (_err) {
         // Invalid redirect URL
         result.suspiciousRedirects = true;
         result.suspicionScore += 0.4;
-        result.reasons.push('Invalid redirect URL');
+        result.reasons.push("Invalid redirect URL");
       }
     }
 
     // Check for unusual content types
-    const contentType = headers['content-type'] as string;
-    if (contentType && contentType.includes('application/octet-stream')) {
+    const contentType = headers["content-type"] as string;
+    if (contentType && contentType.includes("application/octet-stream")) {
       result.suspicionScore += 0.3;
-      result.reasons.push('Binary content type detected');
+      result.reasons.push("Binary content type detected");
     }
 
     return result;
   } catch (err: unknown) {
     const error = err as { message?: string; code?: string };
-    logger.warn({ url, err: error.message }, 'HTTP fingerprinting failed');
+    logger.warn({ url, err: error.message }, "HTTP fingerprinting failed");
 
     // Analyze the error for additional insights
-    if (error.code === 'ENOTFOUND') {
+    if (error.code === "ENOTFOUND") {
       result.suspicionScore += 0.5;
-      result.reasons.push('Domain not found');
-    } else if (error.code === 'ECONNREFUSED') {
+      result.reasons.push("Domain not found");
+    } else if (error.code === "ECONNREFUSED") {
       result.suspicionScore += 0.4;
-      result.reasons.push('Connection refused');
-    } else if (error.code === 'CERT_AUTHORITY_INVALID') {
+      result.reasons.push("Connection refused");
+    } else if (error.code === "CERT_AUTHORITY_INVALID") {
       result.suspicionScore += 0.6;
-      result.reasons.push('Invalid certificate authority');
+      result.reasons.push("Invalid certificate authority");
     }
 
     return result;
@@ -160,9 +163,9 @@ function isPrivateIP(hostname: string): boolean {
   ];
 
   // Check for localhost variations
-  if (hostname === 'localhost' || hostname === '0.0.0.0') {
+  if (hostname === "localhost" || hostname === "0.0.0.0") {
     return true;
   }
 
-  return privateRanges.some(range => range.test(hostname));
+  return privateRanges.some((range) => range.test(hostname));
 }

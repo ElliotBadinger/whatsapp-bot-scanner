@@ -1,6 +1,6 @@
-import { request } from 'undici';
-import { config } from '../config';
-import { HttpError } from '../http-errors';
+import { request } from "undici";
+import { config } from "../config";
+import { HttpError } from "../http-errors";
 
 export interface UrlscanSubmissionOptions {
   visibility?: string;
@@ -37,37 +37,37 @@ export interface UrlscanResult {
 
 function buildHeaders() {
   const headers: Record<string, string> = {
-    'content-type': 'application/json',
+    "content-type": "application/json",
   };
   if (config.urlscan.apiKey) {
-    headers['API-Key'] = config.urlscan.apiKey;
+    headers["API-Key"] = config.urlscan.apiKey;
   }
   return headers;
 }
 
 export async function submitUrlscan(
   url: string,
-  options: UrlscanSubmissionOptions = {}
+  options: UrlscanSubmissionOptions = {},
 ): Promise<UrlscanSubmissionResponse> {
   if (!config.urlscan.enabled) {
-    throw new Error('urlscan integration disabled');
+    throw new Error("urlscan integration disabled");
   }
   if (!config.urlscan.apiKey) {
-    throw new Error('urlscan API key missing');
+    throw new Error("urlscan API key missing");
   }
 
   const payload = {
     url,
-    visibility: options.visibility || config.urlscan.visibility || 'private',
+    visibility: options.visibility || config.urlscan.visibility || "private",
     tags: options.tags || config.urlscan.tags || [],
     referer: options.referer,
     callbackurl: options.callbackUrl || config.urlscan.callbackUrl || undefined,
-    customagent: options.customAgent || 'wbscanner/urlscan',
+    customagent: options.customAgent || "wbscanner/urlscan",
   };
 
   const start = Date.now();
   const res = await request(`${config.urlscan.baseUrl}/api/v1/scan/`, {
-    method: 'POST',
+    method: "POST",
     headers: buildHeaders(),
     body: JSON.stringify(payload),
     headersTimeout: config.urlscan.submitTimeoutMs,
@@ -75,7 +75,7 @@ export async function submitUrlscan(
   });
 
   if (res.statusCode === 429) {
-    const err = new Error('urlscan quota exceeded') as HttpError;
+    const err = new Error("urlscan quota exceeded") as HttpError;
     err.code = 429;
     throw err;
   }
@@ -86,12 +86,14 @@ export async function submitUrlscan(
   }
   if (res.statusCode >= 400) {
     const errBody = await res.body.text();
-    const err = new Error(`urlscan submission failed: ${res.statusCode} - ${errBody}`) as HttpError;
+    const err = new Error(
+      `urlscan submission failed: ${res.statusCode} - ${errBody}`,
+    ) as HttpError;
     err.statusCode = res.statusCode;
     throw err;
   }
 
-  const json = await res.body.json() as {
+  const json = (await res.body.json()) as {
     uuid?: string;
     result?: string;
     api?: string;
@@ -112,29 +114,36 @@ export async function submitUrlscan(
 
 export async function fetchUrlscanResult(uuid: string): Promise<UrlscanResult> {
   if (!config.urlscan.enabled) {
-    throw new Error('urlscan integration disabled');
+    throw new Error("urlscan integration disabled");
   }
-  const res = await request(`${config.urlscan.baseUrl}/api/v1/result/${uuid}/`, {
-    method: 'GET',
-    headers: buildHeaders(),
-    headersTimeout: config.urlscan.resultPollTimeoutMs,
-    bodyTimeout: config.urlscan.resultPollTimeoutMs,
-  });
+  const res = await request(
+    `${config.urlscan.baseUrl}/api/v1/result/${uuid}/`,
+    {
+      method: "GET",
+      headers: buildHeaders(),
+      headersTimeout: config.urlscan.resultPollTimeoutMs,
+      bodyTimeout: config.urlscan.resultPollTimeoutMs,
+    },
+  );
   if (res.statusCode === 404) {
-    const err = new Error('urlscan result not ready') as HttpError;
+    const err = new Error("urlscan result not ready") as HttpError;
     err.code = 404;
     throw err;
   }
   if (res.statusCode >= 500) {
-    const err = new Error(`urlscan result error: ${res.statusCode}`) as HttpError;
+    const err = new Error(
+      `urlscan result error: ${res.statusCode}`,
+    ) as HttpError;
     err.statusCode = res.statusCode;
     throw err;
   }
   if (res.statusCode >= 400) {
-    const err = new Error(`urlscan result failed: ${res.statusCode}`) as HttpError;
+    const err = new Error(
+      `urlscan result failed: ${res.statusCode}`,
+    ) as HttpError;
     err.statusCode = res.statusCode;
     throw err;
   }
-  const json = await res.body.json() as UrlscanResult;
+  const json = (await res.body.json()) as UrlscanResult;
   return json;
 }

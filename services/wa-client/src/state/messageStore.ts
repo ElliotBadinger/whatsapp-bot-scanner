@@ -1,4 +1,4 @@
-import type Redis from 'ioredis';
+import type Redis from "ioredis";
 
 export interface StoredMessageState {
   chatId: string;
@@ -11,7 +11,12 @@ export interface StoredMessageState {
   revoked?: boolean;
   revokedAt?: number | null;
   verdictMessageId?: string;
-  verdictHistory?: Array<{ messageId: string; sentAt: number; attempt?: number; status?: string }>;
+  verdictHistory?: Array<{
+    messageId: string;
+    sentAt: number;
+    attempt?: number;
+    status?: string;
+  }>;
   reactions?: Record<string, string>;
   mentionedIds?: string[];
   groupMentions?: string[];
@@ -30,7 +35,11 @@ function stateKey(chatId: string, messageId: string) {
   return `wa:msg:${chatId}:${messageId}`;
 }
 
-async function loadState(redis: Redis, chatId: string, messageId: string): Promise<StoredMessageState | null> {
+async function loadState(
+  redis: Redis,
+  chatId: string,
+  messageId: string,
+): Promise<StoredMessageState | null> {
   const raw = await redis.get(stateKey(chatId, messageId));
   if (!raw) return null;
   try {
@@ -40,8 +49,16 @@ async function loadState(redis: Redis, chatId: string, messageId: string): Promi
   }
 }
 
-async function persistState(redis: Redis, state: StoredMessageState): Promise<void> {
-  await redis.set(stateKey(state.chatId, state.messageId), JSON.stringify(state), 'EX', TTL_SECONDS);
+async function persistState(
+  redis: Redis,
+  state: StoredMessageState,
+): Promise<void> {
+  await redis.set(
+    stateKey(state.chatId, state.messageId),
+    JSON.stringify(state),
+    "EX",
+    TTL_SECONDS,
+  );
 }
 
 type EnsureParams = {
@@ -58,7 +75,10 @@ type EnsureParams = {
   ephemeral?: boolean;
 };
 
-export async function ensureMessageState(redis: Redis, params: EnsureParams): Promise<StoredMessageState> {
+export async function ensureMessageState(
+  redis: Redis,
+  params: EnsureParams,
+): Promise<StoredMessageState> {
   const existing = await loadState(redis, params.chatId, params.messageId);
   if (existing) {
     let mutated = false;
@@ -67,11 +87,19 @@ export async function ensureMessageState(redis: Redis, params: EnsureParams): Pr
       existing.latestBody = params.body;
       mutated = true;
     }
-    if (params.mentionedIds && params.mentionedIds.length > 0 && !existing.mentionedIds) {
+    if (
+      params.mentionedIds &&
+      params.mentionedIds.length > 0 &&
+      !existing.mentionedIds
+    ) {
       existing.mentionedIds = Array.from(new Set(params.mentionedIds));
       mutated = true;
     }
-    if (params.groupMentions && params.groupMentions.length > 0 && !existing.groupMentions) {
+    if (
+      params.groupMentions &&
+      params.groupMentions.length > 0 &&
+      !existing.groupMentions
+    ) {
       existing.groupMentions = Array.from(new Set(params.groupMentions));
       mutated = true;
     }
@@ -79,7 +107,10 @@ export async function ensureMessageState(redis: Redis, params: EnsureParams): Pr
       existing.quotedMessageId = params.quotedMessageId;
       mutated = true;
     }
-    if (typeof params.forwardingScore === 'number' && existing.forwardingScore === undefined) {
+    if (
+      typeof params.forwardingScore === "number" &&
+      existing.forwardingScore === undefined
+    ) {
       existing.forwardingScore = params.forwardingScore;
       mutated = true;
     }
@@ -107,8 +138,12 @@ export async function ensureMessageState(redis: Redis, params: EnsureParams): Pr
     revoked: false,
     verdictHistory: [],
     reactions: {},
-    mentionedIds: params.mentionedIds ? Array.from(new Set(params.mentionedIds)) : undefined,
-    groupMentions: params.groupMentions ? Array.from(new Set(params.groupMentions)) : undefined,
+    mentionedIds: params.mentionedIds
+      ? Array.from(new Set(params.mentionedIds))
+      : undefined,
+    groupMentions: params.groupMentions
+      ? Array.from(new Set(params.groupMentions))
+      : undefined,
     quotedMessageId: params.quotedMessageId,
     forwardingScore: params.forwardingScore,
     ackHistory: [],
@@ -122,8 +157,16 @@ export async function ensureMessageState(redis: Redis, params: EnsureParams): Pr
   return initial;
 }
 
-export async function updateMessageBody(redis: Redis, params: { chatId: string; messageId: string; newBody: string }): Promise<StoredMessageState | null> {
-  const state = (await loadState(redis, params.chatId, params.messageId)) ?? (await ensureMessageState(redis, { chatId: params.chatId, messageId: params.messageId }));
+export async function updateMessageBody(
+  redis: Redis,
+  params: { chatId: string; messageId: string; newBody: string },
+): Promise<StoredMessageState | null> {
+  const state =
+    (await loadState(redis, params.chatId, params.messageId)) ??
+    (await ensureMessageState(redis, {
+      chatId: params.chatId,
+      messageId: params.messageId,
+    }));
   const edits = state.edits ?? [];
   edits.push({ body: params.newBody, editedAt: Date.now() });
   state.edits = edits.slice(-20);
@@ -135,7 +178,10 @@ export async function updateMessageBody(redis: Redis, params: { chatId: string; 
   return state;
 }
 
-export async function appendMessageEdit(redis: Redis, params: { chatId: string; messageId: string; newBody: string }): Promise<StoredMessageState | null> {
+export async function appendMessageEdit(
+  redis: Redis,
+  params: { chatId: string; messageId: string; newBody: string },
+): Promise<StoredMessageState | null> {
   const state = await loadState(redis, params.chatId, params.messageId);
   if (!state) return null;
 
@@ -148,7 +194,10 @@ export async function appendMessageEdit(redis: Redis, params: { chatId: string; 
   return state;
 }
 
-export async function markMessageRevoked(redis: Redis, params: { chatId: string; messageId: string }): Promise<StoredMessageState | null> {
+export async function markMessageRevoked(
+  redis: Redis,
+  params: { chatId: string; messageId: string },
+): Promise<StoredMessageState | null> {
   const state = await loadState(redis, params.chatId, params.messageId);
   if (!state) return null;
   state.revoked = true;
@@ -157,24 +206,59 @@ export async function markMessageRevoked(redis: Redis, params: { chatId: string;
   return state;
 }
 
-export async function recordVerdictAssociation(redis: Redis, params: { chatId: string; messageId: string; verdictMessageId: string; attempt?: number; status?: string }): Promise<void> {
-  const state = (await loadState(redis, params.chatId, params.messageId)) ?? (await ensureMessageState(redis, { chatId: params.chatId, messageId: params.messageId }));
+export async function recordVerdictAssociation(
+  redis: Redis,
+  params: {
+    chatId: string;
+    messageId: string;
+    verdictMessageId: string;
+    attempt?: number;
+    status?: string;
+  },
+): Promise<void> {
+  const state =
+    (await loadState(redis, params.chatId, params.messageId)) ??
+    (await ensureMessageState(redis, {
+      chatId: params.chatId,
+      messageId: params.messageId,
+    }));
   state.verdictMessageId = params.verdictMessageId;
   const history = state.verdictHistory ?? [];
-  history.push({ messageId: params.verdictMessageId, sentAt: Date.now(), attempt: params.attempt, status: params.status ?? 'sent' });
+  history.push({
+    messageId: params.verdictMessageId,
+    sentAt: Date.now(),
+    attempt: params.attempt,
+    status: params.status ?? "sent",
+  });
   state.verdictHistory = history.slice(-10);
   await persistState(redis, state);
 }
 
-export async function clearVerdictAssociation(redis: Redis, params: { chatId: string; messageId: string }): Promise<void> {
+export async function clearVerdictAssociation(
+  redis: Redis,
+  params: { chatId: string; messageId: string },
+): Promise<void> {
   const state = await loadState(redis, params.chatId, params.messageId);
   if (!state) return;
   state.verdictMessageId = undefined;
   await persistState(redis, state);
 }
 
-export async function recordReaction(redis: Redis, params: { chatId: string; messageId: string; senderId: string; reaction: string | null }): Promise<void> {
-  const state = (await loadState(redis, params.chatId, params.messageId)) ?? (await ensureMessageState(redis, { chatId: params.chatId, messageId: params.messageId }));
+export async function recordReaction(
+  redis: Redis,
+  params: {
+    chatId: string;
+    messageId: string;
+    senderId: string;
+    reaction: string | null;
+  },
+): Promise<void> {
+  const state =
+    (await loadState(redis, params.chatId, params.messageId)) ??
+    (await ensureMessageState(redis, {
+      chatId: params.chatId,
+      messageId: params.messageId,
+    }));
   const reactions = state.reactions ?? {};
   if (params.reaction) {
     reactions[params.senderId] = params.reaction;
@@ -185,31 +269,42 @@ export async function recordReaction(redis: Redis, params: { chatId: string; mes
   await persistState(redis, state);
 }
 
-export async function getMessageState(redis: Redis, chatId: string, messageId: string): Promise<StoredMessageState | null> {
+export async function getMessageState(
+  redis: Redis,
+  chatId: string,
+  messageId: string,
+): Promise<StoredMessageState | null> {
   return loadState(redis, chatId, messageId);
 }
 
-export async function upsertMessageMetadata(redis: Redis, params: {
-  chatId: string;
-  messageId: string;
-  mentionedIds?: string[];
-  groupMentions?: string[];
-  quotedMessageId?: string;
-  forwardingScore?: number;
-  viewOnce?: boolean;
-  ephemeral?: boolean;
-}): Promise<void> {
+export async function upsertMessageMetadata(
+  redis: Redis,
+  params: {
+    chatId: string;
+    messageId: string;
+    mentionedIds?: string[];
+    groupMentions?: string[];
+    quotedMessageId?: string;
+    forwardingScore?: number;
+    viewOnce?: boolean;
+    ephemeral?: boolean;
+  },
+): Promise<void> {
   const state = await ensureMessageState(redis, params);
   let mutated = false;
   if (params.mentionedIds && params.mentionedIds.length > 0) {
-    const next = Array.from(new Set([...(state.mentionedIds ?? []), ...params.mentionedIds]));
+    const next = Array.from(
+      new Set([...(state.mentionedIds ?? []), ...params.mentionedIds]),
+    );
     if ((state.mentionedIds ?? []).length !== next.length) {
       state.mentionedIds = next;
       mutated = true;
     }
   }
   if (params.groupMentions && params.groupMentions.length > 0) {
-    const next = Array.from(new Set([...(state.groupMentions ?? []), ...params.groupMentions]));
+    const next = Array.from(
+      new Set([...(state.groupMentions ?? []), ...params.groupMentions]),
+    );
     if ((state.groupMentions ?? []).length !== next.length) {
       state.groupMentions = next;
       mutated = true;
@@ -219,7 +314,10 @@ export async function upsertMessageMetadata(redis: Redis, params: {
     state.quotedMessageId = params.quotedMessageId;
     mutated = true;
   }
-  if (typeof params.forwardingScore === 'number' && state.forwardingScore === undefined) {
+  if (
+    typeof params.forwardingScore === "number" &&
+    state.forwardingScore === undefined
+  ) {
     state.forwardingScore = params.forwardingScore;
     mutated = true;
   }
@@ -236,8 +334,16 @@ export async function upsertMessageMetadata(redis: Redis, params: {
   }
 }
 
-export async function recordMessageAck(redis: Redis, params: { chatId: string; messageId: string; ack: number }): Promise<void> {
-  const state = (await loadState(redis, params.chatId, params.messageId)) ?? (await ensureMessageState(redis, { chatId: params.chatId, messageId: params.messageId }));
+export async function recordMessageAck(
+  redis: Redis,
+  params: { chatId: string; messageId: string; ack: number },
+): Promise<void> {
+  const state =
+    (await loadState(redis, params.chatId, params.messageId)) ??
+    (await ensureMessageState(redis, {
+      chatId: params.chatId,
+      messageId: params.messageId,
+    }));
   const history = state.ackHistory ?? [];
   history.push({ ack: params.ack, at: Date.now() });
   state.ackHistory = history.slice(-20);
@@ -247,8 +353,16 @@ export async function recordMessageAck(redis: Redis, params: { chatId: string; m
   await persistState(redis, state);
 }
 
-export async function recordMediaUpload(redis: Redis, params: { chatId: string; messageId: string }): Promise<void> {
-  const state = (await loadState(redis, params.chatId, params.messageId)) ?? (await ensureMessageState(redis, { chatId: params.chatId, messageId: params.messageId }));
+export async function recordMediaUpload(
+  redis: Redis,
+  params: { chatId: string; messageId: string },
+): Promise<void> {
+  const state =
+    (await loadState(redis, params.chatId, params.messageId)) ??
+    (await ensureMessageState(redis, {
+      chatId: params.chatId,
+      messageId: params.messageId,
+    }));
   state.mediaUploadedAt = Date.now();
   await persistState(redis, state);
 }
