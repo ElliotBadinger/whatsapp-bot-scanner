@@ -6,8 +6,10 @@ export class SessionNotReadyError extends Error {
   public readonly state: string | null;
 
   constructor(action: string, state: string | null) {
-    super(`WhatsApp session not ready while attempting to ${action}. Current state: ${state ?? 'unknown'}.`);
-    this.name = 'SessionNotReadyError';
+    super(
+      `WhatsApp session not ready while attempting to ${action}. Current state: ${state ?? "unknown"}.`,
+    );
+    this.name = "SessionNotReadyError";
     this.state = state;
   }
 }

@@ -22,6 +22,7 @@ The `any` type is essentially an escape hatch from the type system. As developer
 The developers should not assign `any` typed value to variables and properties, which can be hard to pick up on, especially from the external library; instead, developers can use the `never` or `unknown` type variable.
 
 ### Bad Practice
+
 ```js
 const age: any = 'seventeen';
 
@@ -43,6 +44,7 @@ function greet(param: Array<any>): Array<any> {}
 ```
 
 ### Recommended
+
 ```ts
 const age: number = 17;
 
@@ -64,6 +66,7 @@ function greet(param: Array<string>): Array<string> {}
 ```
 
 **Locations (10):**
+
 - [ ] `tests/stubs/bottleneck.ts:9` - Unexpected any. Specify a different type
 - [ ] `tests/integration/whois-quota.test.ts:26` - Unexpected any. Specify a different type
 - [ ] `tests/integration/vt-throttling.test.ts:67` - Unexpected any. Specify a different type
@@ -90,39 +93,41 @@ The attacker may insert a line break in the request object, and make the second 
 ### Bad Practice
 
 ```js
-import http from "http"
-import url from "url"
+import http from "http";
+import url from "url";
 
 http.createServer((req, res) => {
-  const parsedUrl = url.parse(req.url, true)
+  const parsedUrl = url.parse(req.url, true);
   // Vulnerable! user can inject special characters in the terminal
   console.log(parsedUrl.query.username);
-})
+});
 ```
 
 ### Recommended
 
 ```js
-import http from "http"
-import url from "url"
+import http from "http";
+import url from "url";
 
 http.createServer((req, res) => {
-  const parsedUrl = url.parse(req.url, true)
+  const parsedUrl = url.parse(req.url, true);
 
   // NOTE: Ideally, stronger sanitization functions should be used.
   // String#replace is only used as an example.
-  const username = parsedUrl.query.username.replace(/\n|\r/g, "")
+  const username = parsedUrl.query.username.replace(/\n|\r/g, "");
   console.log(parsedUrl.username);
-})
+});
 ```
 
 ## References
+
 - [OWASP: Log injection](https://owasp.org/www-community/attacks/Log_Injection)
 - [OWASP A09:2021 - Security Logging and Monitoring Failures](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/)
 - [OWASP A10:2017 - Insufficient Logging & Monitoring](https://owasp.org/www-project-top-ten/2017/A10_2017-Insufficient_Logging%2526Monitoring)
 - [CWE-117: Improper Output Neutralization for Logs](https://cwe.mitre.org/data/definitions/117.html)
 
 **Locations (1):**
+
 - [ ] `scripts/export-wwebjs-docs.mjs:70` - Sanitize input before logging to console
 
 ---
@@ -141,19 +146,19 @@ In such cases, their value would be `undefined` because only declarations and no
 
 ```js
 function doIf() {
-    if (cond()) {
-        var build = true;
-    }
-    console.log(build);
+  if (cond()) {
+    var build = true;
+  }
+  console.log(build);
 }
 
 function doIfElse() {
-    if (cond()) {
-        var build = true;
-    } else {
-        var build = false;
-    }
-    console.log(build)
+  if (cond()) {
+    var build = true;
+  } else {
+    var build = false;
+  }
+  console.log(build);
 }
 ```
 
@@ -161,15 +166,16 @@ function doIfElse() {
 
 ```js
 function doIf() {
-    let build;
-    if (cond()) {
-        build = true;
-    }
-    console.log(build);
+  let build;
+  if (cond()) {
+    build = true;
+  }
+  console.log(build);
 }
 ```
 
 **Locations (10):**
+
 - [ ] `whatsapp-web.js/src/authStrategies/RemoteAuth.js:212` - 'fs' used outside of binding context
 - [ ] `whatsapp-web.js/src/authStrategies/RemoteAuth.js:197` - 'fs' used outside of binding context
 - [ ] `whatsapp-web.js/src/authStrategies/RemoteAuth.js:191` - 'fs' used outside of binding context
@@ -208,7 +214,7 @@ const bar = baz + 1; // 'baz' is undeclared
 ### Recommended
 
 ```js
-import { someFunction } from 'some-file';
+import { someFunction } from "some-file";
 
 const baz = Math.random();
 const foo = someFunction();
@@ -216,15 +222,16 @@ const bar = baz + 1;
 ```
 
 **Locations (9):**
-- [ ] `whatsapp-web.js/docs/scripts/jsdoc-toc.js:17` - 'jQuery' is not defined To fix this, add jquery in `environment` array of  `.deepsource.toml`. Read more in our documentation https://deepsource.io/docs/analyzer/javascript
+
+- [ ] `whatsapp-web.js/docs/scripts/jsdoc-toc.js:17` - 'jQuery' is not defined To fix this, add jquery in `environment` array of `.deepsource.toml`. Read more in our documentation https://deepsource.io/docs/analyzer/javascript
 - [ ] `scripts/setup/orchestrator.mjs:930` - 'Confirm' is not defined
 - [ ] `scripts/setup/orchestrator.mjs:890` - 'Confirm' is not defined
-- [ ] `scripts/jest-env-setup.js:31` - 'jest' is not defined To fix this, add jest in `environment` array of  `.deepsource.toml`. Read more in our documentation https://deepsource.io/docs/analyzer/javascript
-- [ ] `scripts/jest-env-setup.js:29` - 'jest' is not defined To fix this, add jest in `environment` array of  `.deepsource.toml`. Read more in our documentation https://deepsource.io/docs/analyzer/javascript
-- [ ] `scripts/jest-env-setup.js:27` - 'jest' is not defined To fix this, add jest in `environment` array of  `.deepsource.toml`. Read more in our documentation https://deepsource.io/docs/analyzer/javascript
-- [ ] `scripts/jest-env-setup.js:26` - 'jest' is not defined To fix this, add jest in `environment` array of  `.deepsource.toml`. Read more in our documentation https://deepsource.io/docs/analyzer/javascript
-- [ ] `scripts/jest-env-setup.js:25` - 'jest' is not defined To fix this, add jest in `environment` array of  `.deepsource.toml`. Read more in our documentation https://deepsource.io/docs/analyzer/javascript
-- [ ] `scripts/jest-env-setup.js:16` - 'jest' is not defined To fix this, add jest in `environment` array of  `.deepsource.toml`. Read more in our documentation https://deepsource.io/docs/analyzer/javascript
+- [ ] `scripts/jest-env-setup.js:31` - 'jest' is not defined To fix this, add jest in `environment` array of `.deepsource.toml`. Read more in our documentation https://deepsource.io/docs/analyzer/javascript
+- [ ] `scripts/jest-env-setup.js:29` - 'jest' is not defined To fix this, add jest in `environment` array of `.deepsource.toml`. Read more in our documentation https://deepsource.io/docs/analyzer/javascript
+- [ ] `scripts/jest-env-setup.js:27` - 'jest' is not defined To fix this, add jest in `environment` array of `.deepsource.toml`. Read more in our documentation https://deepsource.io/docs/analyzer/javascript
+- [ ] `scripts/jest-env-setup.js:26` - 'jest' is not defined To fix this, add jest in `environment` array of `.deepsource.toml`. Read more in our documentation https://deepsource.io/docs/analyzer/javascript
+- [ ] `scripts/jest-env-setup.js:25` - 'jest' is not defined To fix this, add jest in `environment` array of `.deepsource.toml`. Read more in our documentation https://deepsource.io/docs/analyzer/javascript
+- [ ] `scripts/jest-env-setup.js:16` - 'jest' is not defined To fix this, add jest in `environment` array of `.deepsource.toml`. Read more in our documentation https://deepsource.io/docs/analyzer/javascript
 
 ---
 
@@ -235,6 +242,7 @@ const bar = baz + 1;
 Enable server hostname verification on this SSL/TLS connection.
 
 **Locations (1):**
+
 - [ ] `packages/shared/src/reputation/certificate-intelligence.ts:72` - Enable server hostname verification on this SSL/TLS connection.
 
 ---
@@ -246,6 +254,7 @@ Enable server hostname verification on this SSL/TLS connection.
 Enable server certificate validation on this SSL/TLS connection.
 
 **Locations (1):**
+
 - [ ] `packages/shared/src/reputation/certificate-intelligence.ts:72` - Enable server certificate validation on this SSL/TLS connection.
 
 ---
@@ -259,6 +268,7 @@ Enable server certificate validation on this SSL/TLS connection.
 Make sure that executing SQL queries is safe here.
 
 **Locations (1):**
+
 - [ ] `services/control-plane/src/index.ts:287` - Make sure that executing SQL queries is safe here.
 
 ---
@@ -272,6 +282,7 @@ Make sure that executing SQL queries is safe here.
 Explicit types where they can be easily inferred may add unnecessary verbosity for variables or parameters initialized to a number, string, or boolean
 
 ### Bad Practice
+
 ```ts
 const a: bigint = 10n;
 const a: bigint = -10n;
@@ -282,16 +293,16 @@ const a: boolean = true;
 const a: boolean = Boolean(null);
 const a: boolean = !0;
 const a: number = -10;
-const a: number = Number('1');
-const a: number = +Number('1');
-const a: number = -Number('1');
+const a: number = Number("1");
+const a: number = +Number("1");
+const a: number = -Number("1");
 const a: null = null;
 const a: RegExp = /a/;
-const a: RegExp = RegExp('a');
-const a: RegExp = new RegExp('a');
-const a: string = 'str';
+const a: RegExp = RegExp("a");
+const a: RegExp = new RegExp("a");
+const a: string = "str";
 const a: string = String(1);
-const a: symbol = Symbol('a');
+const a: symbol = Symbol("a");
 const a: undefined = void someValue;
 
 class Foo {
@@ -302,6 +313,7 @@ function fn(a: number = 5, b: boolean = true) {}
 ```
 
 ### Recommended
+
 ```ts
 const a = 10n;
 const a = -10n;
@@ -313,13 +325,13 @@ const a = Boolean(null);
 const a = !0;
 const a = 10;
 const a = +10;
-const a = -Number('1');
+const a = -Number("1");
 const a = null;
 const a = /a/;
-const a = RegExp('a');
-const a = 'str';
+const a = RegExp("a");
+const a = "str";
 const a = String(1);
-const a = Symbol('a');
+const a = Symbol("a");
 const a = void someValue;
 
 class Foo {
@@ -334,6 +346,7 @@ function fn(a: number, b: boolean, c: string) {}
 **Autofix Available:** Yes
 
 **Locations (2):**
+
 - [ ] `packages/shared/src/reputation/dns-intelligence.ts:184` - Type number trivially inferred from a number literal, remove type annotation
 - [ ] `packages/shared/src/circuit-breaker.ts:19` - Type number trivially inferred from a number literal, remove type annotation
 
@@ -348,6 +361,7 @@ When creating a CLI tool with Node.js, it is necessary to add a shebang to the f
 As the NPM docs say, the file(s) referenced in `bin` must start with `#!/usr/bin/env node`, or the scripts won't be run with the Node.js executable.
 
 <!--more-->
+
 The `bin` field in package.json is used to specify JS files which run as tools when launched with the Node.js launcher.
 
 ### Bad Practice
@@ -362,7 +376,7 @@ console.log("App launched");
 No shebang in a file referenced in package.json's `bin` field:
 
 ```js
-console.log("App launched")
+console.log("App launched");
 ```
 
 ### Recommended
@@ -377,11 +391,12 @@ console.log("App launched");
 ## References
 
 - [`bin` - npm](https://docs.npmjs.com/cli/v7/configuring-npm/package-json#bin)
-- [shebang](https://en.wikipedia.org/wiki/Shebang_(Unix))
+- [shebang](<https://en.wikipedia.org/wiki/Shebang_(Unix)>)
 
 **Autofix Available:** Yes
 
 **Locations (7):**
+
 - [ ] `tests/load/http-load.js:12` - This file needs no shebang
 - [ ] `scripts/watch-pairing-code.js:8` - This file needs no shebang
 - [ ] `scripts/validate-config.js:2` - This file needs no shebang
@@ -401,6 +416,7 @@ The method doesn't use its bound instance. Decorate this method with `@staticmet
 **Autofix Available:** Yes
 
 **Locations (7):**
+
 - [ ] `scripts/agent_orchestrator/tests/test_orchestrator.py:109` - Method doesn't use the class instance and could be converted into a static method
 - [ ] `scripts/agent_orchestrator/tests/test_orchestrator.py:106` - Method doesn't use the class instance and could be converted into a static method
 - [ ] `scripts/agent_orchestrator/tests/test_orchestrator.py:101` - Method doesn't use the class instance and could be converted into a static method
@@ -421,6 +437,7 @@ When exiting a function all local variables are deleted, so it is unnecessary to
 It is recommended to remove this `del` statement.
 
 Not preferred:
+
 ```python
 def my_func():
     task = do_some_task()
@@ -429,6 +446,7 @@ def my_func():
 ```
 
 Preferred:
+
 ```python
 def my_func():
     task = do_some_task()
@@ -438,6 +456,7 @@ def my_func():
 **Autofix Available:** Yes
 
 **Locations (2):**
+
 - [ ] `scripts/agent_orchestrator/cli_agents.py:108` - Unnecessary `del` statement in a local scope
 - [ ] `scripts/agent_orchestrator/cli_agents.py:62` - Unnecessary `del` statement in a local scope
 
@@ -450,6 +469,7 @@ def my_func():
 Using a single `import` statement per module will make the code clearer because you can see everything being imported from that module on one line.
 
 In the following example the `module` import on line 1 is repeated on line 3. These can be combined to make the list of imports more succinct.
+
 ```
 import { merge } from 'module';
 import something from 'another-module';
@@ -459,19 +479,20 @@ import { find } from 'module';
 ### Bad Practice
 
 ```js
-import { merge } from 'module';
-import something from 'another-module';
-import { find } from 'module';
+import { merge } from "module";
+import something from "another-module";
+import { find } from "module";
 ```
 
 ### Recommended
 
 ```js
-import { merge, find } from 'module';
-import something from 'another-module';
+import { merge, find } from "module";
+import something from "another-module";
 ```
 
 **Locations (1):**
+
 - [ ] `scripts/setup/orchestrator.mjs:178` - './ui/hotkeys.mjs' import is duplicated
 
 ---
@@ -493,12 +514,14 @@ var count = people.length;
 var enoughFood = count > sandwiches.length;
 
 if (enoughFood) {
-    var count = sandwiches.length; // accidentally overriding the count variable
-    console.log("We have " + count + " sandwiches for everyone. Plenty for all!");
+  var count = sandwiches.length; // accidentally overriding the count variable
+  console.log("We have " + count + " sandwiches for everyone. Plenty for all!");
 }
 
 // our count variable is no longer accurate
-console.log("We have " + count + " people and " + sandwiches.length + " sandwiches!");
+console.log(
+  "We have " + count + " people and " + sandwiches.length + " sandwiches!",
+);
 ```
 
 Block scoped variables shadow outer declarations instead of writing to them.
@@ -508,7 +531,7 @@ There are certain edge cases where users might want to consider var.
 Consider this example:
 
 ```js
-var lib = lib || { run: () => {} }
+var lib = lib || { run: () => {} };
 ```
 
 Here, `lib` might be a library that is exposed to an HTML file using a `<script>` tag.
@@ -524,12 +547,14 @@ var CONFIG = {};
 ```
 
 ### Recommended
+
 ```js
 let x = "y";
 const CONFIG = {};
 ```
 
 **Locations (10):**
+
 - [ ] `whatsapp-web.js/src/util/Util.js:23` - Unexpected var, use let or const instead
 - [ ] `whatsapp-web.js/src/util/Util.js:22` - Unexpected var, use let or const instead
 - [ ] `whatsapp-web.js/src/util/Util.js:21` - Unexpected var, use let or const instead
@@ -548,18 +573,22 @@ const CONFIG = {};
 **Category:** Issue
 **Description:**
 The process.exit() method in Node.js is used to immediately stop the Node.js process and exit. This is a dangerous operation because it can occur in any method at any point in time, potentially stopping a Node.js application completely when an error occurs. For example:
+
 ```
 if (somethingBadHappened) {
     console.error("Something bad happened!");
     process.exit(1);
 }
 ```
+
 This code could appear in any module and will stop the entire application when somethingBadHappened is truthy. This doesn't give the application any chance to respond to the error. It's usually better to throw an error and allow the application to handle it appropriately:
+
 ```
 if (somethingBadHappened) {
     throw new Error("Something bad happened!");
 }
 ```
+
 By throwing an error in this way, other parts of the application have an opportunity to handle the error rather than stopping the application altogether. If the error bubbles all the way up to the process without being handled, then the process will exit and a non-zero exit code will returned, so the end result is the same.
 
 If you are using process.exit() only for specifying the exit code, you can set process.exitCode (introduced in Node.js 0.11.8) instead.
@@ -571,7 +600,6 @@ process.exit(1);
 process.exit(0);
 ```
 
-
 ### Recommended
 
 ```js
@@ -580,6 +608,7 @@ var exit = process.exit;
 ```
 
 **Locations (10):**
+
 - [ ] `tests/load/http-load.js:103` - Don't use process.exit(); throw an error instead
 - [ ] `tests/load/http-load.js:41` - Don't use process.exit(); throw an error instead
 - [ ] `tests/load/http-load.js:36` - Don't use process.exit(); throw an error instead
@@ -598,9 +627,10 @@ var exit = process.exit;
 **Category:** Issue
 **Description:**
 Since its inception, NodeJS has deprecated many APIs for one of the following reasons:
-  - Use of the API is unsafe.
-  - An improved version of the API was introduced later.
-  - The API may have breaking changes in a future version of Node.
+
+- Use of the API is unsafe.
+- An improved version of the API was introduced later.
+- The API may have breaking changes in a future version of Node.
 
 This issue prevents the use of deprecated Node APIs in favor of modern ones.
 
@@ -612,7 +642,7 @@ function fetchData(fileName) {
   // 'fs.exists' was deprecated since v4.
   // Use 'fs.stat()' or 'fs.access()' instead.
   if (fs.exists(fileName)) {
-    // ... 
+    // ...
   }
 }
 ```
@@ -627,11 +657,12 @@ async function fetchData(fileName) {
     } else {
       // ...
     }
-  })
+  });
 }
 ```
 
 **Locations (1):**
+
 - [ ] `packages/shared/src/homoglyph.ts:2` - 'punycode' module was deprecated since v7.0.0. Use 'https://www.npmjs.com/package/punycode' instead
 
 ---
@@ -647,7 +678,7 @@ If you still need to use one, write a [skipcq comment](https://docs.deepsource.c
 Ideally, you want to have a validation function that confirms a value isn't null, with a return type like this:
 
 ```ts
-type AccentedColor = `${Color}-${Accent}`
+type AccentedColor = `${Color}-${Accent}`;
 function isColorValid(name: string): name is AccentedColor {
   // ...
 }
@@ -677,11 +708,11 @@ const pfp_ = injuly ? injuly.pfp : defaultPfp; // pfp: Image
 Alternatively:
 
 ```ts
-function isUserValid(userObj: User | null | undefined ): userObj is User {
+function isUserValid(userObj: User | null | undefined): userObj is User {
   return Boolean(userObj) && validate(userObj);
 }
 
-const injuly = db.getUserByName("injuly")
+const injuly = db.getUserByName("injuly");
 if (isUserValid(injuly)) {
   const pfp = injuly.profilePicture;
   // ...
@@ -689,6 +720,7 @@ if (isUserValid(injuly)) {
 ```
 
 **Locations (5):**
+
 - [ ] `tests/e2e/message-flow.test.ts:38` - Forbidden non-null assertion
 - [ ] `tests/e2e/message-flow.test.ts:21` - Forbidden non-null assertion
 - [ ] `services/wa-client/src/verdictTracker.ts:63` - Forbidden non-null assertion
@@ -706,30 +738,33 @@ Unused variables are generally considered a code smell and should be avoided.
 <!--more-->
 
 Removing unused references
+
 - It prevents unused modules from being loaded at runtime, improving performance, and preventing the compiler from loading metadata that will never be used.
 - It prevents conflicts that may occur when trying to reference another variable.
 
 **NOTE:** If you have intentionally left a variable unused, we suggest you to prefix the variable name with a `_` to prevent them from being flagged by DeepSource.
 
 ### Bad Practice
-```ts
-import fs from 'fs' // <- unused
-import { readFileSync } from 'fs'
 
-const text = readFileSync('declaration_of_independence.txt', 'utf-8')
-console.log(text)
+```ts
+import fs from "fs"; // <- unused
+import { readFileSync } from "fs";
+
+const text = readFileSync("declaration_of_independence.txt", "utf-8");
+console.log(text);
 ```
 
 ### Recommended
 
 ```ts
-import { readFileSync } from 'fs'
+import { readFileSync } from "fs";
 
-const text = readFileSync('declaration_of_independence.txt', 'utf-8')
-console.log(text)
+const text = readFileSync("declaration_of_independence.txt", "utf-8");
+console.log(text);
 ```
 
 **Locations (6):**
+
 - [ ] `services/wa-client/src/index.ts:25` - 'VerdictAttemptPayload' is defined but never used
 - [ ] `services/wa-client/src/__tests__/functional/session-flow.test.ts:45` - 'result' is assigned a value but never used
 - [ ] `services/scan-orchestrator/src/index.ts:49` - 'WhoisXmlResponse' is defined but never used
@@ -743,7 +778,7 @@ console.log(text)
 
 **Category:** Issue
 **Description:**
-Variables, functions and types should always be used *after* they've been defined.
+Variables, functions and types should always be used _after_ they've been defined.
 This issue will flag any code snippets that use variables or types before definition.
 
 <!-- more -->
@@ -752,11 +787,11 @@ Sometimes, the code will run just fine even when the variable is declared after 
 Consider the following example:
 
 ```ts
-const ram: Resource = { type: "memory", limit: 1024 ** 3 }
+const ram: Resource = { type: "memory", limit: 1024 ** 3 };
 type Resource = {
   type: string;
   limit: number;
-}
+};
 ```
 
 Here, `Resource` is used in the annotation before it has been defined.
@@ -769,7 +804,7 @@ function twice(n: number) {
 }
 ```
 
-However, it makes the code harder to follow when variables or types are declared *after* being used.
+However, it makes the code harder to follow when variables or types are declared _after_ being used.
 
 ### Bad Practice
 
@@ -800,6 +835,7 @@ const knight: Radiant = {
 ```
 
 **Locations (9):**
+
 - [ ] `services/wa-client/src/index.ts:1080` - 'replayCachedQr' was used before it was defined
 - [ ] `services/wa-client/src/index.ts:996` - 'replayCachedQr' was used before it was defined
 - [ ] `services/wa-client/src/index.ts:954` - 'requestPairingCodeWithRetry' was used before it was defined
@@ -821,21 +857,21 @@ In other words, the use of forms such as `var foo = require("foo")` are banned. 
 ### Bad Practice
 
 ```ts
-var foo = require('foo');
-const foo = require('foo');
-let foo = require('foo');
+var foo = require("foo");
+const foo = require("foo");
+let foo = require("foo");
 ```
-
 
 ### Recommended
 
 ```ts
-import foo = require('foo');
-require('foo');
-import foo from 'foo';
+import foo = require("foo");
+require("foo");
+import foo from "foo";
 ```
 
 **Locations (7):**
+
 - [ ] `tests/integration/vitest.setup.ts:17` - Require statement not part of import statement
 - [ ] `services/control-plane/src/__tests__/routes.test.ts:110` - Require statement not part of import statement
 - [ ] `packages/shared/src/__tests__/url.test.ts:11` - Require statement not part of import statement
@@ -870,7 +906,6 @@ class Container {
 }
 ```
 
-
 ### Recommended
 
 ```ts
@@ -882,15 +917,16 @@ class Container {
   protected protectedMember: number;
 
   // This is modified later on by the class
-  private modifiedLater = 'unchanged';
+  private modifiedLater = "unchanged";
 
   public mutate() {
-    this.modifiedLater = 'mutated';
+    this.modifiedLater = "mutated";
   }
 }
 ```
 
 **Locations (1):**
+
 - [ ] `tests/stubs/bottleneck.ts:5` - Member 'reservoir' is never reassigned; mark it as `readonly`
 
 ---
@@ -905,60 +941,64 @@ If the return values from these functions aren't used, the function call is esse
 ```js
 // These calls do not modify the array, instead they
 // return new arrays with the desired properties.
-xs.map(x => x.prop)
-xs.filter(x => x.prop === 'value')
-xs.concat(ys)
-xs.reduce((x, y) => (x.value + y.value))
+xs.map((x) => x.prop);
+xs.filter((x) => x.prop === "value");
+xs.concat(ys);
+xs.reduce((x, y) => x.value + y.value);
 ```
+
 <!-- more -->
 
 Perhaps, you're using `map` to iterate over an array and induce some side-effect, like logging to the console as shown here:
 
 ```js
-xs.map((x, i) => console.log(`element #${i}:`, x))
+xs.map((x, i) => console.log(`element #${i}:`, x));
 ```
+
 This use of `map` is however misleading.
 The `map`/`filter`/`concat` methods should only ever be used to produce new arrays that are used elsewhere.
 Instead, you should use the `forEach` method:
 
 ```js
-xs.forEach((x, i) => console.log(`element #${i}:`, x))
+xs.forEach((x, i) => console.log(`element #${i}:`, x));
 ```
 
 ### Bad Practice
 
 ```js
 const characters = [
-  { name: 'Paul Atreides', age: 15 },
-  { name: 'Kaladin Stormblessed', age: 19 },
-  { name: 'Miss Kobayashi', age: 25 },
-  { name: 'Eren Yeager', age: 14 },
-  { name: 'Illidan Stormrage', age: 3000 }
-]
+  { name: "Paul Atreides", age: 15 },
+  { name: "Kaladin Stormblessed", age: 19 },
+  { name: "Miss Kobayashi", age: 25 },
+  { name: "Eren Yeager", age: 14 },
+  { name: "Illidan Stormrage", age: 3000 },
+];
 
-characters.map(character => character.name);
+characters.map((character) => character.name);
 
 // characters array is not modified by the call to `map`.
-console.log(characters) 
+console.log(characters);
 ```
 
 ### Recommended
+
 ```js
 const characters = [
-  { name: 'Paul Atreides', age: 15 },
-  { name: 'Kaladin Stormblessed', age: 19 },
-  { name: 'Miss Kobayashi', age: 25 },
-  { name: 'Eren Yeager', age: 14 },
-  { name: 'Illidan Stormrage', age: 3000 }
-]
+  { name: "Paul Atreides", age: 15 },
+  { name: "Kaladin Stormblessed", age: 19 },
+  { name: "Miss Kobayashi", age: 25 },
+  { name: "Eren Yeager", age: 14 },
+  { name: "Illidan Stormrage", age: 3000 },
+];
 
 // array returned by call to `map` is now stored.
-const characterNames = characters.map(character=> character.name);
-console.log(characterNames)
+const characterNames = characters.map((character) => character.name);
+console.log(characterNames);
 //  [ 'Paul Atreides', 'Kaladin Stormblessed', 'Miss Kobayashi', 'Eren Yeager', 'Illidan Stormrage' ]
 ```
 
 **Locations (2):**
+
 - [ ] `whatsapp-web.js/src/structures/GroupChat.js:113` - Return value from 'map' method is unused
 - [ ] `whatsapp-web.js/src/Client.js:1661` - Return value from 'map' method is unused
 
@@ -972,15 +1012,15 @@ The following pattern:
 
 ```javascript
 if (condition) {
-  return true
+  return true;
 }
-return false
+return false;
 ```
 
 can be refactored to:
 
 ```javascript
-return condition
+return condition;
 ```
 
 When `condition` is not a boolean value,
@@ -990,13 +1030,13 @@ it can be cast into one using the `Boolean` constructor.
 
 ```typescript
 function isEven(num: number) {
-  if (num % 2 === 0) return true
-  return false
+  if (num % 2 === 0) return true;
+  return false;
 }
 
 async function userExists(name: string) {
-  if (await db.getUser(name)) return true
-  return false
+  if (await db.getUser(name)) return true;
+  return false;
 }
 ```
 
@@ -1004,15 +1044,16 @@ async function userExists(name: string) {
 
 ```typescript
 function isEven(num: number) {
-  return num % 2 === 0
+  return num % 2 === 0;
 }
 
 async function userExists(name: string) {
-  return Boolean(await db.getUser(name))
+  return Boolean(await db.getUser(name));
 }
 ```
 
 **Locations (3):**
+
 - [ ] `whatsapp-web.js/src/structures/Chat.js:198` - Boolean return can be simplified
 - [ ] `whatsapp-web.js/src/structures/Channel.js:295` - Boolean return can be simplified
 - [ ] `services/scan-orchestrator/src/blocklists.ts:40` - Boolean return can be simplified
@@ -1033,24 +1074,24 @@ Usage of such constructs in a development environment for debugging triggers is 
 
 ```js
 if (false) {
-    doSomethingUnfinished();
+  doSomethingUnfinished();
 }
 
 if (void x) {
-    doSomethingUnfinished();
+  doSomethingUnfinished();
 }
 
-for (;-2;) {
-    doSomethingForever();
+for (; -2; ) {
+  doSomethingForever();
 }
 
 while (typeof x) {
-    doSomethingForever();
+  doSomethingForever();
 }
 
 do {
-    doSomethingForever();
-} while (x = -1);
+  doSomethingForever();
+} while ((x = -1));
 
 const result = 0 ? a : b;
 ```
@@ -1059,25 +1100,26 @@ const result = 0 ? a : b;
 
 ```js
 if (foo()) {
-    doSomethingUnfinished();
+  doSomethingUnfinished();
 }
 
 for (let i = 0; i < foo; ++i) {
-    doSomethingForever();
+  doSomethingForever();
 }
 
 while (true) {
-    doSomethingForever();
+  doSomethingForever();
 }
 
 do {
-    doSomethingForever();
+  doSomethingForever();
 } while (x == -1);
 
 const result = cond() ? a : b;
 ```
 
 **Locations (1):**
+
 - [ ] `packages/shared/src/circuit-breaker.ts:98` - Unexpected constant condition
 
 ---
@@ -1106,6 +1148,7 @@ const pattern2 = new RegExp("\x20");
 ```
 
 **Locations (1):**
+
 - [ ] `packages/shared/src/homoglyph.ts:25` - Unexpected control character(s) in regular expression: \x00
 
 ---
@@ -1123,8 +1166,8 @@ The use of `eval()` in most contexts can be substituted for a better, alternativ
 ### Bad Practice
 
 ```js
-const obj = { x: "foo" }
-const key = "x"
+const obj = { x: "foo" };
+const key = "x";
 const value = eval("obj." + key);
 
 (0, eval)("var a = 0");
@@ -1154,10 +1197,12 @@ class A {
 ```
 
 ## References
+
 - [OWASP A03:2021 - Injection](https://owasp.org/Top10/A03_2021-Injection/)
 - [OWASP Direct Dynamic Code Evaluation - Eval Injection](https://owasp.org/www-community/attacks/Direct_Dynamic_Code_Evaluation_Eval%20Injection)
 
 **Locations (1):**
+
 - [ ] `whatsapp-web.js/src/util/Injected/AuthStore/LegacyAuthStore.js:6` - eval can be harmful
 
 ---
@@ -1170,6 +1215,7 @@ Test methods should always start with the `test`. If there are no such methods,
 the class overriding `unittest.TestCase` won't run any test.
 
 Not preferred:
+
 ```python
 import unittest
 
@@ -1179,6 +1225,7 @@ def Tests(unittest.TestCase):
 ```
 
 Preferred:
+
 ```python
 import unittest
 
@@ -1188,6 +1235,7 @@ def Tests(unittest.TestCase):
 ```
 
 **Locations (1):**
+
 - [ ] `scripts/agent_orchestrator/tests/test_orchestrator.py:74` - Unittest class `BaseOrchestratorTest` contains no test methods
 
 ---
@@ -1198,9 +1246,9 @@ def Tests(unittest.TestCase):
 **Description:**
 Returning an awaited value (like with `return await f()`) has two problems:
 
- - It queues an extra microtask, blocking the callstack until `return` is executed.
+- It queues an extra microtask, blocking the callstack until `return` is executed.
 
- - `try` blocks only catch a rejected promise if its *`await`ed*. `return await` may introduce unexpected hidden control-flow when handling errors.
+- `try` blocks only catch a rejected promise if its _`await`ed_. `return await` may introduce unexpected hidden control-flow when handling errors.
 
 ### Bad Practice
 
@@ -1236,6 +1284,7 @@ async function getUserByName(name: string) {
 - [ESLint - no-return-await](https://eslint.org/docs/latest/rules/no-return-await)
 
 **Locations (10):**
+
 - [ ] `whatsapp-web.js/src/util/InterfaceController.js:93` - Redundant use of `await` on a return value
 - [ ] `whatsapp-web.js/src/util/InterfaceController.js:82` - Redundant use of `await` on a return value
 - [ ] `whatsapp-web.js/src/util/Injected/Utils.js:575` - Redundant use of `await` on a return value
@@ -1278,20 +1327,20 @@ let z = 0;
 z = z + 1;
 
 // Unused argument
-(function(x) {
-    return 5;
+(function (x) {
+  return 5;
 })();
 
 // Unused recursive functions also raise this issue.
 function fact(n) {
-    if (n < 2) return 1;
-    return n * fact(n - 1);
+  if (n < 2) return 1;
+  return n * fact(n - 1);
 }
 
 // When a function definition destructures an array,
 // unused entries from the array also cause warnings.
 function getY([x, y]) {
-    return y;
+  return y;
 }
 ```
 
@@ -1302,13 +1351,13 @@ let x = 10;
 alert(x);
 
 ((arg1) => {
-    return arg1;
+  return arg1;
 })();
 
 let myFunc;
 myFunc = (n) => {
-    // this is legal
-    if (n < 0) myFunc();
+  // this is legal
+  if (n < 0) myFunc();
 };
 
 // this is also considered legal
@@ -1317,11 +1366,12 @@ var declaredLater;
 
 // Only the second argument from the descructured array is used.
 function getY([, y]) {
-    return y;
+  return y;
 }
 ```
 
 **Locations (2):**
+
 - [ ] `scripts/setup/orchestrator.mjs:441` - 'runtime' is defined but never used
 - [ ] `scripts/setup/core/env-file.mjs:3` - 'path' is defined but never used
 
@@ -1349,13 +1399,13 @@ f();
 function f() {}
 
 function g() {
-    return b;
+  return b;
 }
 var b = 1;
 
 {
-    alert(c);
-    let c = 1;
+  alert(c);
+  let c = 1;
 }
 ```
 
@@ -1371,16 +1421,17 @@ f(1);
 
 var b = 1;
 function g() {
-    return b;
+  return b;
 }
 
 {
-    let c;
-    c++;
+  let c;
+  c++;
 }
 ```
 
 **Locations (1):**
+
 - [ ] `scripts/watch-pairing-code.js:158` - 'shutdown' was used before it was defined
 
 ---
@@ -1394,6 +1445,7 @@ function g() {
 Make sure the regex used here, which is vulnerable to super-linear runtime due to backtracking, cannot lead to denial of service.
 
 **Locations (9):**
+
 - [ ] `packages/shared/src/reputation/advanced-heuristics.ts:31` - Make sure the regex used here, which is vulnerable to super-linear runtime due to backtracking, cannot lead to denial of service.
 - [ ] `packages/shared/src/url-shortener.ts:103` - Make sure the regex used here, which is vulnerable to super-linear runtime due to backtracking, cannot lead to denial of service.
 - [ ] `services/scan-orchestrator/src/__tests__/fallback.test.ts:141` - Make sure the regex used here, which is vulnerable to super-linear runtime due to backtracking, cannot lead to denial of service.
@@ -1413,6 +1465,7 @@ Make sure the regex used here, which is vulnerable to super-linear runtime due t
 Make sure that using this pseudorandom number generator is safe here.
 
 **Locations (1):**
+
 - [ ] `scripts/watch-pairing-code.js:162` - Make sure that using this pseudorandom number generator is safe here.
 
 ---
@@ -1424,6 +1477,7 @@ Make sure that using this pseudorandom number generator is safe here.
 Make sure that using this pseudorandom number generator is safe here.
 
 **Locations (4):**
+
 - [ ] `packages/shared/src/reputation/http-fingerprint.ts:79` - Make sure that using this pseudorandom number generator is safe here.
 - [ ] `packages/shared/src/reputation/http-fingerprint.ts:83` - Make sure that using this pseudorandom number generator is safe here.
 - [ ] `packages/shared/src/reputation/virustotal.ts:98` - Make sure that using this pseudorandom number generator is safe here.
@@ -1446,14 +1500,14 @@ Using `&&` for this purpose is no longer required.
 
 ```typescript
 function getUsernameFromId(id: number): string | undefined {
-  const user = db.getUser(id)
-  return user && user.name
+  const user = db.getUser(id);
+  return user && user.name;
 }
 
-someFunc && someFunc()
+someFunc && someFunc();
 //        ^~~~ not necessary
 
-maybeArray && maybeArray[index]
+maybeArray && maybeArray[index];
 //          ^~~~ not necessary
 ```
 
@@ -1461,18 +1515,19 @@ maybeArray && maybeArray[index]
 
 ```typescript
 function getUsernameFromId(id: number): string | undefined {
-  const user = db.getUser(id)
-  return user?.name
+  const user = db.getUser(id);
+  return user?.name;
 }
 
-someFunc?.()
+someFunc?.();
 
-maybeArray?.[index]
+maybeArray?.[index];
 ```
 
 **Autofix Available:** Yes
 
 **Locations (10):**
+
 - [ ] `whatsapp-web.js/src/util/Injected/Utils.js:820` - Prefer using an optional chain expression instead, as it's more concise and easier to read
 - [ ] `whatsapp-web.js/src/util/Injected/Utils.js:608` - Prefer using an optional chain expression instead, as it's more concise and easier to read
 - [ ] `whatsapp-web.js/src/util/Injected/Utils.js:491` - Prefer using an optional chain expression instead, as it's more concise and easier to read
@@ -1504,21 +1559,22 @@ you can replace the template expression with a regular string literal.
 ### Bad Practice
 
 ```js
-const dialogue = `"Journey before destination", said Dalinar.`
-const dialogue2 = `What is a 'Kwisatz Haderach'?`
+const dialogue = `"Journey before destination", said Dalinar.`;
+const dialogue2 = `What is a 'Kwisatz Haderach'?`;
 ```
 
 ### Recommended
 
 ```js
-const dialogue = '"Journey before destination", said Dalinar.'
-const dialogue2 = "What is a 'Kwisatz Haderach'?"
-const dialogue3 = `"${getLine()}", said ${getChararcter()}`
+const dialogue = '"Journey before destination", said Dalinar.';
+const dialogue2 = "What is a 'Kwisatz Haderach'?";
+const dialogue3 = `"${getLine()}", said ${getChararcter()}`;
 ```
 
 **Autofix Available:** Yes
 
 **Locations (10):**
+
 - [ ] `services/scan-orchestrator/src/index.ts:1491` - Template string can be replaced with regular string literal
 - [ ] `services/scan-orchestrator/src/index.ts:1478` - Template string can be replaced with regular string literal
 - [ ] `scripts/setup/artifacts/transcript.mjs:104` - Template string can be replaced with regular string literal
@@ -1541,7 +1597,8 @@ It is recommended to use the `u` flag with regular expressions.
 <!--more-->
 
 The `u` flag has two effects:
-- It enables correct handling of  UTF-16 surrogate pairs.
+
+- It enables correct handling of UTF-16 surrogate pairs.
 - It ensures the correct behavior of regex character ranges.
 
 ```js
@@ -1559,32 +1616,32 @@ This way, you can find errors early.
 It can therefore be thought of as a "strict mode" for RegEx literals.
 
 This issue is raised when:
+
 - A regular expression contains unicode property escapes i.e `\p{<property-name>}`
 - A regular expression contains 4 bytes characters like emojis or some special characters
 
 ### Bad Practice
 
 ```js
-const a = /aaa/
-const b = /bbb/gi
-const c = new RegExp("ccc")
-const d = new RegExp("ddd", "gi")
+const a = /aaa/;
+const b = /bbb/gi;
+const c = new RegExp("ccc");
+const d = new RegExp("ddd", "gi");
 ```
 
 ### Recommended
 
 ```js
-const a = /aaa/u
-const b = /bbb/giu
-const c = new RegExp("ccc", "u")
-const d = new RegExp("ddd", "giu")
+const a = /aaa/u;
+const b = /bbb/giu;
+const c = new RegExp("ccc", "u");
+const d = new RegExp("ddd", "giu");
 
 // This rule ignores RegExp calls if the flags are not a compile time constant.
 function f(flags) {
-    return new RegExp("eee", flags)
+  return new RegExp("eee", flags);
 }
 ```
-
 
 ## References
 
@@ -1595,6 +1652,7 @@ function f(flags) {
 **Autofix Available:** Yes
 
 **Locations (2):**
+
 - [ ] `packages/shared/src/url.ts:13` - Use the 'u' flag with regular expressions
 - [ ] `packages/shared/src/homoglyph.ts:25` - Use the 'u' flag with regular expressions
 
@@ -1620,41 +1678,46 @@ console.log(boundGetName());      // "ESLint"
 
 ```js
 let x = function () {
-    foo();
+  foo();
 }.bind(bar);
 
 x = (() => foo()).bind(bar);
 x = (() => this.foo()).bind(bar);
 
 x = function () {
-    (function () {
-      this.foo();
-    }());
+  (function () {
+    this.foo();
+  })();
 }.bind(bar);
 
 x = function () {
-    function foo() {
-      this.bar();
-    }
+  function foo() {
+    this.bar();
+  }
 }.bind(baz);
 ```
 
 ### Recommended
 
 ```js
-let x = (function () {
-    this.foo();
-}).bind({ foo() { console.log("foo") }  } );
+let x = function () {
+  this.foo();
+}.bind({
+  foo() {
+    console.log("foo");
+  },
+});
 
 // no uneccessary `bind`s
 function f(a) {
-    return a + 1;
+  return a + 1;
 }
 ```
 
 **Autofix Available:** Yes
 
 **Locations (3):**
+
 - [ ] `whatsapp-web.js/src/Client.js:810` - The function binding is unnecessary
 - [ ] `whatsapp-web.js/src/Client.js:796` - The function binding is unnecessary
 - [ ] `whatsapp-web.js/src/Client.js:763` - The function binding is unnecessary
@@ -1669,21 +1732,24 @@ function f(a) {
 For example, the following are all valid JavaScript numbers:
 
 ```js
-let num = .5;
-num = 2.;
-num = -.7;
+let num = 0.5;
+num = 2;
+num = -0.7;
 ```
+
 Although not a syntax error, this format for numbers can make it difficult to distinguish between true decimal numbers and the dot operator.
 For this reason, some recommend that you should always include a number before and after a decimal point to make it clear the intent is to create a decimal number.
 
 ### Bad Practice
+
 ```js
-let num = .5;
-num = 2.;
-num = -.7;
+let num = 0.5;
+num = 2;
+num = -0.7;
 ```
 
 ### Recommended
+
 ```js
 let num = 0.5;
 num = 2.0;
@@ -1693,6 +1759,7 @@ num = -0.7;
 **Autofix Available:** Yes
 
 **Locations (1):**
+
 - [ ] `whatsapp-web.js/src/util/Injected/Utils.js:851` - A leading decimal point can be confused with a dot
 
 ---
@@ -1705,6 +1772,7 @@ Prefer using explicit casts by calling `Number`, `Boolean`, or `String` over usi
 This is considered best practice as it improves readability.
 
 ### Bad Practice
+
 ```js
 const b = !!foo;
 // The `+` operator does not change the value of its operand
@@ -1725,6 +1793,7 @@ const s = String(foo);
 **Autofix Available:** Yes
 
 **Locations (10):**
+
 - [ ] `whatsapp-web.js/src/util/Puppeteer.js:15` - use `Boolean(window[name])` instead
 - [ ] `whatsapp-web.js/src/util/Injected/Utils.js:1065` - use `Number(error)` instead
 - [ ] `whatsapp-web.js/src/util/Injected/Utils.js:988` - use `Number(code)` instead
@@ -1750,12 +1819,14 @@ You can ignore this issue if this behaviour is intended.
 <!--more-->
 
 ### Bad practice
+
 ```python
 # Nonzero exit code will be ignored here
 subprocess.run(['notify-send', '-u', 'critical', msg])
 ```
 
 ### Recommended
+
 ```python
 # Exception will be raised for nonzero exit code
 subprocess.run(['notify-send', '-u', 'critical', msg], check=True) # some comment
@@ -1764,6 +1835,7 @@ subprocess.run(['notify-send', '-u', 'critical', msg], check=True) # some commen
 **Autofix Available:** Yes
 
 **Locations (8):**
+
 - [ ] `scripts/agent_orchestrator/main.py:515` - 'subprocess.run' used without explicitly defining the value for 'check'.
 - [ ] `scripts/agent_orchestrator/main.py:506` - 'subprocess.run' used without explicitly defining the value for 'check'.
 - [ ] `scripts/agent_orchestrator/main.py:497` - 'subprocess.run' used without explicitly defining the value for 'check'.
@@ -1786,17 +1858,17 @@ An unused expression that does not affect the state of the program indicates a l
 For example, if a programmer wants to increment the value of a variable `a` by one, and intends to do so through this code:
 
 ```js
-let a = 0
-a = a + 1
-console.log(a) // output 1
+let a = 0;
+a = a + 1;
+console.log(a); // output 1
 ```
 
 But because of a typo, writes the following:
 
 ```js
-let a = 0
-a + 1
-console.log(a)
+let a = 0;
+a + 1;
+console.log(a);
 ```
 
 Here, the expression `a + 1` does nothing meaningful in the program's runtime.
@@ -1805,52 +1877,57 @@ The expression is thus considered "unused" and should be removed.
 ### Bad Practice
 
 ```js
-0
+0;
 
-if(0) 0
+if (0) 0;
 
-{0}
+{
+  0;
+}
 
-f(0), {}
+(f(0), {});
 
-a, b()
+(a, b());
 
-c = a, b;
+((c = a), b);
 
-a() && function namedFunctionInExpressionContext () {f();}
+a() &&
+  (function namedFunctionInExpressionContext() {
+    f();
+  })(function anIncompleteIIFE() {});
 
-(function anIncompleteIIFE () {});
-
-injectGlobal`body{ color: red; }`
-
+injectGlobal`body{ color: red; }`;
 ```
-
 
 ### Recommended
 
 ```js
-{} // In this context, this is a block statement, not an object literal
+{
+} // In this context, this is a block statement, not an object literal
 
-{myLabel: someVar} // In this context, this is a block statement with a label and expression, not an object literal
+{
+  myLabel: someVar;
+} // In this context, this is a block statement with a label and expression, not an object literal
 
-function namedFunctionDeclaration () {}
+function namedFunctionDeclaration() {}
 
-(function aGenuineIIFE () {}());
+(function aGenuineIIFE() {})();
 
-f()
+f();
 
-a = 0
+a = 0;
 
-new C
+new C();
 
-delete a.b
+delete a.b;
 
-void a
+void a;
 ```
 
 **Autofix Available:** Yes
 
 **Locations (10):**
+
 - [ ] `whatsapp-web.js/src/util/Injected/Utils.js:1078` - Found unused expression
 - [ ] `whatsapp-web.js/src/util/Injected/Utils.js:1030` - Found unused expression
 - [ ] `whatsapp-web.js/src/util/Injected/Utils.js:1007` - Found unused expression
@@ -1878,7 +1955,7 @@ function hasOptionalParam(a: number, b?: number) {
   // ...
 }
 
-hasOptionalParam(1, undefined)
+hasOptionalParam(1, undefined);
 ```
 
 ### Recommended
@@ -1888,13 +1965,14 @@ function hasOptionalParam(a: number, b?: number) {
   // ...
 }
 
-hasOptionalParam(1)
-hasOptionalParam(1, 2)
+hasOptionalParam(1);
+hasOptionalParam(1, 2);
 ```
 
 **Autofix Available:** Yes
 
 **Locations (3):**
+
 - [ ] `whatsapp-web.js/tests/structures/group.js:42` - Remove redundant `undefined` from function call
 - [ ] `whatsapp-web.js/src/util/Injected/Utils.js:922` - Remove redundant `undefined` from function call
 - [ ] `scripts/jest-env-setup.js:26` - Remove redundant `undefined` from function call
@@ -1906,6 +1984,7 @@ hasOptionalParam(1, 2)
 **Category:** Issue
 **Description:**
 ES2015 provides a default class constructor if one is not specified. As such, it is unnecessary to provide an empty constructor or one that simply delegates into its parent class, as in the following examples:
+
 ```
 class A {
     constructor () {
@@ -1923,43 +2002,43 @@ class B extends A {
 
 ```js
 class A {
-    constructor () {
-    }
+  constructor() {}
 }
 
 class B extends A {
-    constructor (...args) {
-      super(...args);
-    }
+  constructor(...args) {
+    super(...args);
+  }
 }
 ```
 
 ### Recommended
 
 ```js
-class A { }
+class A {}
 
 class A {
-    constructor () {
-        doSomething();
-    }
+  constructor() {
+    doSomething();
+  }
 }
 
 class B extends A {
-    constructor() {
-        super('foo');
-    }
+  constructor() {
+    super("foo");
+  }
 }
 
 class B extends A {
-    constructor() {
-        super();
-        doSomething();
-    }
+  constructor() {
+    super();
+    doSomething();
+  }
 }
 ```
 
 **Locations (4):**
+
 - [ ] `whatsapp-web.js/src/structures/ScheduledEvent.js:63` - Useless constructor
 - [ ] `whatsapp-web.js/src/structures/ScheduledEvent.js:57` - Useless constructor
 - [ ] `whatsapp-web.js/src/authStrategies/BaseAuthStrategy.js:7` - Useless constructor
@@ -1975,6 +2054,7 @@ ECMAScript 6 provides a concise form for defining object literal methods and pro
 This syntax can make defining complex object literals much cleaner.
 
 Here are a few common examples using the ES5 syntax:
+
 ```
 const x = 1, y = 2, z = 3;
 // properties
@@ -1992,6 +2072,7 @@ const foo = {
 ```
 
 The ES6 equivalent syntax is::
+
 ```
 // properties
 const foo = {x, y, z};
@@ -2009,18 +2090,20 @@ It is still possible to access properties from the object inside a shorthand mem
 
 ```js
 const object = {
-    x: 1,
-    getX() {
-        return this.x // valid
-    }
-}
+  x: 1,
+  getX() {
+    return this.x; // valid
+  },
+};
 ```
 
 ### Bad Practice
 
 ```js
 const foo = {
-    bar: function () { return 1 }
+  bar: function () {
+    return 1;
+  },
 };
 ```
 
@@ -2028,11 +2111,14 @@ const foo = {
 
 ```js
 const foo = {
-    bar() { return 1 }
-}
+  bar() {
+    return 1;
+  },
+};
 ```
 
 **Locations (10):**
+
 - [ ] `whatsapp-web.js/src/util/Util.js:127` - Expected property shorthand
 - [ ] `whatsapp-web.js/src/util/InterfaceController.js:54` - Expected property shorthand
 - [ ] `whatsapp-web.js/src/util/Injected/Utils.js:533` - Expected property shorthand
@@ -2056,7 +2142,7 @@ This prevents the programmer from erroneously re-assigning to a read-only variab
 ### Bad Practice
 
 ```js
-let pi = Math.PI
+let pi = Math.PI;
 
 for (let x of xs) {
   use(x);
@@ -2069,7 +2155,7 @@ use(a, b);
 ### Recommended
 
 ```js
-const pi = Math.PI
+const pi = Math.PI;
 
 for (const x of xs) {
   use(x);
@@ -2080,6 +2166,7 @@ use(a, b);
 ```
 
 **Locations (10):**
+
 - [ ] `whatsapp-web.js/src/util/Util.js:167` - 'exif' is never reassigned. Use 'const' instead
 - [ ] `whatsapp-web.js/src/util/Util.js:166` - 'jsonBuffer' is never reassigned. Use 'const' instead
 - [ ] `whatsapp-web.js/src/util/Util.js:165` - 'exifAttr' is never reassigned. Use 'const' instead
@@ -2098,6 +2185,7 @@ use(a, b);
 **Category:** Issue
 **Description:**
 In ES2015 (ES6), we can use template literals instead of string concatenation.
+
 ```
 var str = `Hello, ${name}!`;
 ```
@@ -2106,7 +2194,7 @@ var str = `Hello, ${name}!`;
 
 ```js
 var str = "Hello, " + name + "!";
-var str = "Time: " + (12 * 60 * 60 * 1000);
+var str = "Time: " + 12 * 60 * 60 * 1000;
 ```
 
 ### Recommended
@@ -2120,6 +2208,7 @@ var str = "Hello, " + "World!";
 ```
 
 **Locations (10):**
+
 - [ ] `whatsapp-web.js/src/util/Injected/Utils.js:829` - Unexpected string concatenation
 - [ ] `whatsapp-web.js/src/util/Injected/Utils.js:828` - Unexpected string concatenation
 - [ ] `whatsapp-web.js/src/util/Injected/AuthStore/LegacyAuthStore.js:6` - Unexpected string concatenation
@@ -2140,23 +2229,26 @@ var str = "Hello, " + "World!";
 Deleting dynamically computed keys can be dangerous and in some cases not well optimized.
 
 <!-- more -->
+
 Using the `delete` operator on keys that aren't runtime constants could be a sign that you're using the wrong data structures.
 Using `Objects` with added and removed keys can cause occasional edge case bugs, such as if a key is named `"hasOwnProperty"`.
 Consider using a `Map` or `Set` if you’re storing collections of objects.
 
 ### Bad Practice
+
 ```ts
 // Can be replaced with the constant equivalents, such as container.aaa
-delete container['aaa'];
-delete container['Infinity'];
+delete container["aaa"];
+delete container["Infinity"];
 
 // Dynamic, difficult-to-reason-about lookups
-const name = 'name';
+const name = "name";
 delete container[name];
 delete container[name.toUpperCase()];
 ```
 
 ### Recommended
+
 ```ts
 const container: { [i: string]: number } = {
   /* ... */
@@ -2167,10 +2259,11 @@ delete container.aaa;
 
 // Constants that must be accessed by []
 delete container[7];
-delete container['-Infinity'];
+delete container["-Infinity"];
 ```
 
 **Locations (1):**
+
 - [ ] `services/wa-client/src/state/messageStore.ts:182` - Do not delete dynamically computed property keys
 
 ---
@@ -2186,18 +2279,19 @@ If you must use one, consider adding a comment to inform the reader of its purpo
 ### Bad Practice
 
 ```ts
-getUser('SwaGaLisTiQuE', () => {})
+getUser("SwaGaLisTiQuE", () => {});
 ```
 
 ### Recommended
 
 ```ts
-getUser('SwaGaLisTiQuE', () => {
-    // empty because <reason>
-})
+getUser("SwaGaLisTiQuE", () => {
+  // empty because <reason>
+});
 ```
 
 **Locations (9):**
+
 - [ ] `tests/e2e/control-plane.test.ts:22` - Unexpected empty method 'on'
 - [ ] `services/wa-client/src/index.ts:151` - Unexpected empty method 'on'
 - [ ] `services/wa-client/src/__tests__/sessionCleanup.test.ts:15` - Unexpected empty arrow function
@@ -2226,10 +2320,10 @@ Consider this example:
 
 ```js
 async function fetchData(processDataItem) {
-    const response = await fetch(DATA_URL);
-    const data = await response.json();
+  const response = await fetch(DATA_URL);
+  const data = await response.json();
 
-    return data.map(processDataItem);
+  return data.map(processDataItem);
 }
 ```
 
@@ -2246,20 +2340,24 @@ This situation can easily be circumvented by returning the value with a call to 
 
 ```ts
 interface HasAsyncFunc {
-  getNum: () => Promise<number>
+  getNum: () => Promise<number>;
 }
 
 // Not recommended:
 const o: HasAsyncFunc = {
-  async getNum() { return 1 }
-}
+  async getNum() {
+    return 1;
+  },
+};
 
 // Recommended:
 const o: HasAsyncFunc = {
   // We only use `Promise.resolve` to adhere to the type
   // of the surrounding object.
-  getNum() { return Promise.resolve(1) }
-}
+  getNum() {
+    return Promise.resolve(1);
+  },
+};
 ```
 
 It is also advised to add a comment near the redundant promise to make the intent clear.
@@ -2268,11 +2366,11 @@ It is also advised to add a comment near the redundant promise to make the inten
 
 ```ts
 async function promise1() {
-  return 1
+  return 1;
 }
 
 async function fetchJSON(url: string) {
-  return axios.get(url)
+  return axios.get(url);
 }
 ```
 
@@ -2284,12 +2382,13 @@ function promise1() {
 }
 
 async function fetchJSON(url: string) {
-  const data = await axios.get(url)
+  const data = await axios.get(url);
   return data.payload;
 }
 ```
 
 **Locations (1):**
+
 - [ ] `tests/stubs/bottleneck.ts:17` - Async method 'currentReservoir' has no 'await' expression
 
 ---
@@ -2299,6 +2398,7 @@ async function fetchJSON(url: string) {
 **Category:** Issue
 **Description:**
 Short variable names affect code readability and complicate code refactoring, because of the difficulty in searching and replacing such short characters.
+
 <!--more-->
 
 This issue will not be raised for certain special identifiers, such as `i`, `j` or `n`. It will also not be reported for the parameters used in `for` and `while` loops.
@@ -2307,7 +2407,7 @@ This issue will not be raised for certain special identifiers, such as `i`, `j` 
 
 ```js
 var a;
-const l = 90
+const l = 90;
 ```
 
 ### Recommended
@@ -2316,13 +2416,13 @@ const l = 90
 var age;
 const limit = 90;
 
-
-for(let o = 2; o < 10; o++){
-    sum += o
+for (let o = 2; o < 10; o++) {
+  sum += o;
 }
 ```
 
 **Locations (10):**
+
 - [ ] `services/wa-client/src/index.ts:1282` - Variable name is too small
 - [ ] `services/scan-orchestrator/src/index.ts:967` - Variable name is too small
 - [ ] `scripts/ui/prompt-runner.mjs:7` - Variable name is too small
@@ -2346,7 +2446,7 @@ but make it harder to pick out the specific functions or objects from a dependen
 ```typescript
 import * from 'module';
 
-// there is no clear way to tell if 
+// there is no clear way to tell if
 // `someFunction` has been imported
 // from 'module'.
 someFunction();
@@ -2361,8 +2461,8 @@ to suppress this issue.
 ### Bad Practice
 
 ```javascript
-import * as axios from 'axios'
-import * as Sentry from '@sentry/node'
+import * as axios from "axios";
+import * as Sentry from "@sentry/node";
 
 try {
   const result = await axios.get();
@@ -2375,9 +2475,9 @@ try {
 ### Recommended
 
 ```javascript
-import axios from 'axios'
+import axios from "axios";
 // skipcq: JS-C1003 - sentry does not expose itself as an ES Module.
-import * as Sentry from '@sentry/node'
+import * as Sentry from "@sentry/node";
 
 try {
   const result = await axios.get();
@@ -2388,6 +2488,7 @@ try {
 ```
 
 **Locations (3):**
+
 - [ ] `packages/shared/src/reputation/http-fingerprint.ts:1` - Explicitly import the specific method needed
 - [ ] `packages/shared/src/reputation/certificate-intelligence.ts:2` - Explicitly import the specific method needed
 - [ ] `packages/shared/src/reputation/certificate-intelligence.ts:1` - Explicitly import the specific method needed
@@ -2399,30 +2500,33 @@ try {
 **Category:** Issue
 **Description:**
 Class constructors being invoked and then dropped immediately is an anti-pattern and should be avoided.
+
 <!--more-->
+
 Objects instantiated with `new` should always be useful in some way (passed as a function argument, stored in a variable for later use, etc).
 If the object is instantiated only to invoke some side effect in the constructor, then the side effect should be refactored out into it's own function.
 
 ### Bad Practice
 
 ```js
-new Foo()
+new Foo();
 ```
 
 ### Recommended
 
 ```js
-const myFoo = new Foo()
+const myFoo = new Foo();
 ```
 
 **Locations (3):**
+
 - [ ] `services/wa-client/src/index.ts:1760` - Avoid instantiating unused object 'new Worker(config.queues.scanVerdict, async (job) => {
-    const queueName = config.queues.scanVerdict;
-    const started = Date.now();
-    const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
-    metrics.queueJobWait.labels(queueName).observe(waitSeconds);
-    const data = job.data as VerdictJobData & { decidedAt?: number; redirectChain?: string[]; shortener?: { provider: string; chain: string[] } | null };
-    const payload: VerdictJobData = {
+      const queueName = config.queues.scanVerdict;
+      const started = Date.now();
+      const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
+      metrics.queueJobWait.labels(queueName).observe(waitSeconds);
+      const data = job.data as VerdictJobData & { decidedAt?: number; redirectChain?: string[]; shortener?: { provider: string; chain: string[] } | null };
+      const payload: VerdictJobData = {
       chatId: data.chatId,
       messageId: data.messageId,
       verdict: data.verdict,
@@ -2432,50 +2536,50 @@ const myFoo = new Foo()
       decidedAt: data.decidedAt,
       redirectChain: data.redirectChain,
       shortener: data.shortener ?? null,
-    };
-    try {
-      const delay = Math.floor(800 + Math.random() * 1200);
+      };
+      try {
+      const delay = Math.floor(800 + Math.random() \* 1200);
       await new Promise<void>((resolve) => {
-        setTimeout(async () => {
-          try {
-            try {
-              await groupLimiter.consume(payload.chatId);
-              await groupHourlyLimiter.consume(payload.chatId);
-            } catch {
-              metrics.waMessagesDropped.labels('verdict_rate_limited').inc();
-              return;
-            }
-            const key = `verdict:${payload.chatId}:${payload.urlHash}`;
-            const nx = await redis.set(key, '1', 'EX', 3600, 'NX');
-            if (nx === null) {
-              metrics.waMessagesDropped.labels('verdict_duplicate').inc();
-              return;
-            }
-            const context: VerdictContext = {
-              chatId: payload.chatId,
-              messageId: payload.messageId,
-              urlHash: payload.urlHash,
-            };
-            await deliverVerdictMessage(client, payload, context);
-          } finally {
-            const verdictLatencySeconds = Math.max(0, (Date.now() - (payload.decidedAt ?? started)) / 1000);
-            metrics.waVerdictLatency.observe(verdictLatencySeconds);
-            const processingSeconds = (Date.now() - started) / 1000;
-            metrics.queueProcessingDuration.labels(queueName).observe(processingSeconds);
-            metrics.queueCompleted.labels(queueName).inc();
-            if (job.attemptsMade > 0) {
-              metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
-            }
-            resolve();
-          }
-        }, delay);
+      setTimeout(async () => {
+      try {
+      try {
+      await groupLimiter.consume(payload.chatId);
+      await groupHourlyLimiter.consume(payload.chatId);
+      } catch {
+      metrics.waMessagesDropped.labels('verdict_rate_limited').inc();
+      return;
+      }
+      const key = `verdict:${payload.chatId}:${payload.urlHash}`;
+      const nx = await redis.set(key, '1', 'EX', 3600, 'NX');
+      if (nx === null) {
+      metrics.waMessagesDropped.labels('verdict_duplicate').inc();
+      return;
+      }
+      const context: VerdictContext = {
+      chatId: payload.chatId,
+      messageId: payload.messageId,
+      urlHash: payload.urlHash,
+      };
+      await deliverVerdictMessage(client, payload, context);
+      } finally {
+      const verdictLatencySeconds = Math.max(0, (Date.now() - (payload.decidedAt ?? started)) / 1000);
+      metrics.waVerdictLatency.observe(verdictLatencySeconds);
+      const processingSeconds = (Date.now() - started) / 1000;
+      metrics.queueProcessingDuration.labels(queueName).observe(processingSeconds);
+      metrics.queueCompleted.labels(queueName).inc();
+      if (job.attemptsMade > 0) {
+      metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
+      }
+      resolve();
+      }
+      }, delay);
       });
-    } catch (err) {
+      } catch (err) {
       metrics.queueFailures.labels(queueName).inc();
       metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
       throw err;
-    }
-  }, { connection: redis })'
+      }
+      }, { connection: redis })'
 - [ ] `services/scan-orchestrator/src/index.ts:1440` - Avoid instantiating unused object 'new Worker(config.queues.urlscan, async (job) => {
       const queueName = config.queues.urlscan;
       const started = Date.now();
@@ -2483,83 +2587,83 @@ const myFoo = new Foo()
       metrics.queueJobWait.labels(queueName).observe(waitSeconds);
       const { url, urlHash: urlHashValue } = job.data as { url: string; urlHash: string };
       try {
-        const submission: UrlscanSubmissionResponse = await urlscanCircuit.execute(() =>
-          withRetry(
-            () =>
-              submitUrlscan(url, {
-                callbackUrl: config.urlscan.callbackUrl || undefined,
-                visibility: config.urlscan.visibility,
-                tags: config.urlscan.tags,
-              }),
-            {
-              retries: 2,
-              baseDelayMs: 1000,
-              factor: 2,
-              retryable: shouldRetry,
-            }
-          )
-        );
-        recordLatency(CIRCUIT_LABELS.urlscan, submission.latencyMs);
-        if (submission.uuid) {
-          await redis.set(
-            `${URLSCAN_UUID_PREFIX}${submission.uuid}`,
-            urlHashValue,
-            'EX',
-            config.urlscan.uuidTtlSeconds
-          );
-          await redis.set(
-            `${URLSCAN_SUBMITTED_PREFIX}${urlHashValue}`,
-            submission.uuid,
-            'EX',
-            config.urlscan.uuidTtlSeconds
-          );
-          await pg.query(
-            `UPDATE scans SET urlscan_uuid=$1, urlscan_status=$2, urlscan_submitted_at=now(), urlscan_result_url=$3 WHERE url_hash=$4`,
-            [submission.uuid, 'submitted', submission.result ?? null, urlHashValue]
-          );
-        }
-        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
-        metrics.queueCompleted.labels(queueName).inc();
-        if (job.attemptsMade > 0) {
-          metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
-        }
-      } catch (err) {
-        recordError(CIRCUIT_LABELS.urlscan, err);
-        logger.error({ err, url }, 'urlscan submission failed');
-        await pg.query(
-          `UPDATE scans SET urlscan_status=$1, urlscan_completed_at=now() WHERE url_hash=$2`,
-          ['failed', urlHashValue]
-        ).catch(() => undefined);
-        metrics.queueFailures.labels(queueName).inc();
-        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
-        throw err;
-      } finally {
-        await refreshQueueMetrics(urlscanQueue, queueName).catch(() => undefined);
+      const submission: UrlscanSubmissionResponse = await urlscanCircuit.execute(() =>
+      withRetry(
+      () =>
+      submitUrlscan(url, {
+      callbackUrl: config.urlscan.callbackUrl || undefined,
+      visibility: config.urlscan.visibility,
+      tags: config.urlscan.tags,
+      }),
+      {
+      retries: 2,
+      baseDelayMs: 1000,
+      factor: 2,
+      retryable: shouldRetry,
       }
-    }, { connection: redis, concurrency: config.urlscan.concurrency })'
+      )
+      );
+      recordLatency(CIRCUIT_LABELS.urlscan, submission.latencyMs);
+      if (submission.uuid) {
+      await redis.set(
+      `${URLSCAN_UUID_PREFIX}${submission.uuid}`,
+      urlHashValue,
+      'EX',
+      config.urlscan.uuidTtlSeconds
+      );
+      await redis.set(
+      `${URLSCAN_SUBMITTED_PREFIX}${urlHashValue}`,
+      submission.uuid,
+      'EX',
+      config.urlscan.uuidTtlSeconds
+      );
+      await pg.query(
+      `UPDATE scans SET urlscan_uuid=$1, urlscan_status=$2, urlscan_submitted_at=now(), urlscan_result_url=$3 WHERE url_hash=$4`,
+      [submission.uuid, 'submitted', submission.result ?? null, urlHashValue]
+      );
+      }
+      metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
+      metrics.queueCompleted.labels(queueName).inc();
+      if (job.attemptsMade > 0) {
+      metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
+      }
+      } catch (err) {
+      recordError(CIRCUIT_LABELS.urlscan, err);
+      logger.error({ err, url }, 'urlscan submission failed');
+      await pg.query(
+      `UPDATE scans SET urlscan_status=$1, urlscan_completed_at=now() WHERE url_hash=$2`,
+      ['failed', urlHashValue]
+      ).catch(() => undefined);
+      metrics.queueFailures.labels(queueName).inc();
+      metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
+      throw err;
+      } finally {
+      await refreshQueueMetrics(urlscanQueue, queueName).catch(() => undefined);
+      }
+      }, { connection: redis, concurrency: config.urlscan.concurrency })'
 - [ ] `services/scan-orchestrator/src/index.ts:943` - Avoid instantiating unused object 'new Worker(config.queues.scanRequest, async (job) => {
-    const queueName = config.queues.scanRequest;
-    const started = Date.now();
-    const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
-    metrics.queueJobWait.labels(queueName).observe(waitSeconds);
-    const { chatId, messageId, url, timestamp, rescan } = job.data as {
+      const queueName = config.queues.scanRequest;
+      const started = Date.now();
+      const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
+      metrics.queueJobWait.labels(queueName).observe(waitSeconds);
+      const { chatId, messageId, url, timestamp, rescan } = job.data as {
       chatId?: string;
       messageId?: string;
       url: string;
       timestamp?: number;
       rescan?: boolean;
-    };
-    const ingestionTimestamp = typeof timestamp === 'number' ? timestamp : job.timestamp ?? started;
-    const hasChatContext = typeof chatId === 'string' && typeof messageId === 'string';
-    try {
+      };
+      const ingestionTimestamp = typeof timestamp === 'number' ? timestamp : job.timestamp ?? started;
+      const hasChatContext = typeof chatId === 'string' && typeof messageId === 'string';
+      try {
       const norm = normalizeUrl(url);
       if (!norm) {
-        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
-        metrics.queueCompleted.labels(queueName).inc();
-        if (job.attemptsMade > 0) {
-          metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
-        }
-        return;
+      metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
+      metrics.queueCompleted.labels(queueName).inc();
+      if (job.attemptsMade > 0) {
+      metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
+      }
+      return;
       }
       const h = urlHash(norm);
       const cacheKey = `scan:${h}`;
@@ -2569,30 +2673,30 @@ const myFoo = new Foo()
       const cachedRaw = await redis.get(cacheKey);
       cacheStop();
       if (cachedRaw) {
-        recordCacheOutcome(CACHE_LABELS.verdict, 'hit');
-        metrics.cacheHit.inc();
-        metrics.cacheEntryBytes.labels(CACHE_LABELS.verdict).set(Buffer.byteLength(cachedRaw));
-        cachedTtl = await redis.ttl(cacheKey);
-        if (cachedTtl >= 0) {
-          metrics.cacheEntryTtl.labels(CACHE_LABELS.verdict).set(cachedTtl);
-        }
-        try {
-          cachedVerdict = JSON.parse(cachedRaw);
-        } catch {
-          metrics.cacheStaleTotal.labels(CACHE_LABELS.verdict).inc();
-        }
-        if (
-          cachedVerdict &&
-          typeof cachedVerdict.cacheTtl === 'number' &&
-          cachedTtl >= 0 &&
-          cachedTtl < Math.max(1, Math.floor(cachedVerdict.cacheTtl * 0.2))
-        ) {
-          metrics.cacheStaleTotal.labels(CACHE_LABELS.verdict).inc();
-        }
+      recordCacheOutcome(CACHE_LABELS.verdict, 'hit');
+      metrics.cacheHit.inc();
+      metrics.cacheEntryBytes.labels(CACHE_LABELS.verdict).set(Buffer.byteLength(cachedRaw));
+      cachedTtl = await redis.ttl(cacheKey);
+      if (cachedTtl >= 0) {
+      metrics.cacheEntryTtl.labels(CACHE_LABELS.verdict).set(cachedTtl);
+      }
+      try {
+      cachedVerdict = JSON.parse(cachedRaw);
+      } catch {
+      metrics.cacheStaleTotal.labels(CACHE_LABELS.verdict).inc();
+      }
+      if (
+      cachedVerdict &&
+      typeof cachedVerdict.cacheTtl === 'number' &&
+      cachedTtl >= 0 &&
+      cachedTtl < Math.max(1, Math.floor(cachedVerdict.cacheTtl \* 0.2))
+      ) {
+      metrics.cacheStaleTotal.labels(CACHE_LABELS.verdict).inc();
+      }
       } else {
-        recordCacheOutcome(CACHE_LABELS.verdict, 'miss');
-        metrics.cacheMiss.inc();
-        metrics.cacheEntryTtl.labels(CACHE_LABELS.verdict).set(0);
+      recordCacheOutcome(CACHE_LABELS.verdict, 'miss');
+      metrics.cacheMiss.inc();
+      metrics.cacheEntryTtl.labels(CACHE_LABELS.verdict).set(0);
       }
 
       if (cachedVerdict) {
@@ -2639,10 +2743,10 @@ const myFoo = new Foo()
       }
 
       const enhancedSecurityResult = await enhancedSecurity.analyze(finalUrl, h);
-      
+
       if (enhancedSecurityResult.verdict === 'malicious' && enhancedSecurityResult.confidence === 'high' && enhancedSecurityResult.skipExternalAPIs) {
         logger.info({ url: finalUrl, score: enhancedSecurityResult.score, reasons: enhancedSecurityResult.reasons }, 'Tier 1 high-confidence threat detected, skipping external APIs');
-        
+
         const signals = {
           gsbThreatTypes: [],
           phishtankVerified: false,
@@ -2660,12 +2764,12 @@ const myFoo = new Foo()
           enhancedSecurityScore: enhancedSecurityResult.score,
           enhancedSecurityReasons: enhancedSecurityResult.reasons,
         };
-        
+
         const verdictResult = scoreFromSignals(signals);
         const verdict = 'malicious';
         const { score, reasons } = verdictResult;
         const enhancedReasons = [...reasons, ...enhancedSecurityResult.reasons];
-        
+
         const cacheTtl = config.orchestrator.cacheTtl.malicious;
         const verdictPayload = {
           url: norm,
@@ -2684,7 +2788,7 @@ const myFoo = new Foo()
           },
           decidedAt: Date.now(),
         };
-        
+
         await setJsonCache(CACHE_LABELS.verdict, cacheKey, verdictPayload, cacheTtl);
         await pg.query(
           `INSERT INTO scans (url_hash, url, final_url, verdict, score, reasons, cache_ttl, redirect_chain, was_shortened, final_url_mismatch, homoglyph_detected, homoglyph_risk_level, decided_at)
@@ -2705,17 +2809,17 @@ const myFoo = new Foo()
         ).catch((err: Error) => {
           logger.error({ err, url: norm }, 'failed to persist enhanced security verdict');
         });
-        
+
         metrics.verdictScore.observe(score);
         for (const reason of enhancedReasons) {
           metrics.verdictReasons.labels(normalizeVerdictReason(reason)).inc();
         }
-        
+
         const verdictLatencySeconds = Math.max(0, (Date.now() - ingestionTimestamp) / 1000);
         metrics.verdictLatency.observe(verdictLatencySeconds);
         metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
         metrics.queueCompleted.labels(queueName).inc();
-        
+
         if (hasChatContext) {
           await scanVerdictQueue.add('verdict', {
             chatId,
@@ -2723,7 +2827,7 @@ const myFoo = new Foo()
             ...verdictPayload,
           }, { removeOnComplete: true });
         }
-        
+
         await enhancedSecurity.recordVerdict(finalUrl, 'malicious', enhancedSecurityResult.score / 3.0);
         return;
       }
@@ -2881,7 +2985,7 @@ const myFoo = new Foo()
       const verdictResult = scoreFromSignals(signals);
       const verdict = verdictResult.level;
       let { score, reasons } = verdictResult;
-      
+
       if (enhancedSecurityResult.reasons.length > 0) {
         reasons = [...reasons, ...enhancedSecurityResult.reasons];
       }
@@ -3006,7 +3110,7 @@ const myFoo = new Foo()
       } else {
         logger.info({ url: finalUrl, jobId: job.id, rescan: Boolean(rescan) }, 'Completed scan without chat context; skipping messaging flow');
       }
-      
+
       await enhancedSecurity.recordVerdict(
         finalUrl,
         verdict === 'malicious' ? 'malicious' : verdict === 'suspicious' ? 'suspicious' : 'benign',
@@ -3014,7 +3118,7 @@ const myFoo = new Foo()
       ).catch((err) => {
         logger.warn({ err, url: finalUrl }, 'failed to record verdict for collaborative learning');
       });
-      
+
       metrics.verdictCounter.labels(verdict).inc();
       const totalProcessingSeconds = (Date.now() - started) / 1000;
       metrics.verdictLatency.observe(Math.max(0, (Date.now() - ingestionTimestamp) / 1000));
@@ -3024,13 +3128,14 @@ const myFoo = new Foo()
       if (job.attemptsMade > 0) {
         metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
       }
-    } catch (e) {
-      metrics.queueFailures.labels(queueName).inc();
-      metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
-      logger.error(e, 'scan worker error');
-    } finally {
-      await refreshQueueMetrics(scanRequestQueue, queueName).catch(() => undefined);
-    }
+
+  } catch (e) {
+  metrics.queueFailures.labels(queueName).inc();
+  metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
+  logger.error(e, 'scan worker error');
+  } finally {
+  await refreshQueueMetrics(scanRequestQueue, queueName).catch(() => undefined);
+  }
   }, { connection: redis, concurrency: config.orchestrator.concurrency })'
 
 ---
@@ -3061,16 +3166,16 @@ To reduce the cyclomatic complexity of a function, you can:
 ```js
 // When `cyclomatic_complexity_threshold` is set to `low`, by default it is `high`
 function getCapitalCity(countryName) {
-  if (countryName === 'India') {
-    return 'New Delhi'
-  } else if (countryName === 'China') {
-    return 'Beijing'
-  } else if (countryName === 'France') {
-    return 'Paris'
-  } else if (countryName === 'Germany') {
-    return 'Berlin'
-  } else if (countryName === 'Italy') {
-    return 'Rome'
+  if (countryName === "India") {
+    return "New Delhi";
+  } else if (countryName === "China") {
+    return "Beijing";
+  } else if (countryName === "France") {
+    return "Paris";
+  } else if (countryName === "Germany") {
+    return "Berlin";
+  } else if (countryName === "Italy") {
+    return "Rome";
   }
 }
 ```
@@ -3080,14 +3185,14 @@ function getCapitalCity(countryName) {
 ```js
 function getCapitalCity(countryName) {
   const capitalCities = {
-    India: 'New Delhi',
-    China: 'Beijing',
-    France: 'Paris',
-    Germany: 'Berlin',
-    Italy: 'Rome'
-  }
+    India: "New Delhi",
+    China: "Beijing",
+    France: "Paris",
+    Germany: "Berlin",
+    Italy: "Rome",
+  };
 
-  return capitalCities[countryName]
+  return capitalCities[countryName];
 }
 ```
 
@@ -3113,6 +3218,7 @@ help you configure this better:
 |   critical    |             >50             |          Must refactor this. This can make the code untestable and very difficult to understand.           |
 
 **Locations (7):**
+
 - [ ] `whatsapp-web.js/src/util/Injected/Utils.js:23` - Function has a cyclomatic complexity of 59 with "critical" risk
 - [ ] `whatsapp-web.js/src/structures/Message.js:24` - `_patch` has a cyclomatic complexity of 45 with "very-high" risk
 - [ ] `whatsapp-web.js/src/Client.js:949` - `sendMessage` has a cyclomatic complexity of 28 with "very-high" risk
@@ -3128,27 +3234,30 @@ help you configure this better:
 **Category:** Issue
 **Description:**
 Consecutively reassigning to the same variable or property is a code smell and should be avoided.
+
 <!--more-->
+
 It is likely that this is the result of some undeleted code and can have unexpected side effects.
 The first assignment is rendered useless by the second and can therefore be removed without observing any changes to the value of the assignment target.
 
 ### Bad Practice
 
 ```js
-a[1] = 'something'
-a[1] = 'some other thing'
+a[1] = "something";
+a[1] = "some other thing";
 ```
 
 ### Recommended
 
 ```js
-a[1] = 'something'
+a[1] = "something";
 if (condition()) {
-  a[1] = 'some other thing'
+  a[1] = "some other thing";
 }
 ```
 
 **Locations (3):**
+
 - [ ] `whatsapp-web.js/src/util/Injected/Utils.js:336` - Duplicate assignment statement found
 - [ ] `whatsapp-web.js/src/util/Injected/Utils.js:69` - Duplicate assignment statement found
 - [ ] `packages/shared/src/url.ts:22` - Duplicate assignment statement found
@@ -3164,8 +3273,8 @@ Such characters are unlikely to be present in JavaScript strings, and matching t
 Even when you do want to match them, it is recommended to use the character literals for better clarity:
 
 ```js
-const tabsAndSpaces = / \t/
-const tabsSpacesAndNewLines = /\s/
+const tabsAndSpaces = / \t/;
+const tabsSpacesAndNewLines = /\s/;
 ```
 
 <!-- more -->
@@ -3179,17 +3288,18 @@ This will also prevent DeepSource from raising the issue.
 ```js
 const rSpaces = /\x1a/;
 // A regex like this one is rarely useful:
-const regExp  = new RegExp("\x12");
+const regExp = new RegExp("\x12");
 ```
 
 ### Recommended
 
 ```js
 const rSpaces = / /;
-const regExp  = new RegExp("[\sa-z]+no-control-chars-here");
+const regExp = new RegExp("[\sa-z]+no-control-chars-here");
 ```
 
 **Locations (1):**
+
 - [ ] `packages/shared/src/homoglyph.ts:25` - Regular expression contains non-printing character
 
 ---
@@ -3208,13 +3318,14 @@ If you still want to keep an empty block, add a comment saying `empty` inside th
 ### Bad Practice
 
 ```js
-if (someCheck) {}
+if (someCheck) {
+}
 
 while (someCheck) {}
 
 try {
-    doSomething();
-} catch(err) {
+  doSomething();
+} catch (err) {
 } finally {
 }
 ```
@@ -3223,27 +3334,28 @@ try {
 
 ```js
 if (someCheck) {
-    // empty
+  // empty
 }
 
 while (someCheck) {
-    /* empty */
+  /* empty */
 }
 
 try {
-    doSomething();
+  doSomething();
 } catch (err) {
-    // continue regardless of error
+  // continue regardless of error
 }
 
 try {
-    doSomething();
+  doSomething();
 } finally {
-    /* continue regardless of error */
+  /* continue regardless of error */
 }
 ```
 
 **Locations (1):**
+
 - [ ] `tests/integration/vt-throttling.test.ts:13` - Empty block statement
 
 ---
@@ -3267,18 +3379,18 @@ or malformed input to a function call.
 
 ```js
 function getUser(name) {
-    if (userExists(name)) {
-        return userDb.get(name);
-    }
-    // whoops! Implicit undefined return
+  if (userExists(name)) {
+    return userDb.get(name);
+  }
+  // whoops! Implicit undefined return
 }
 
 function readFile(fileName) {
-    if (fs.existsSync(fileName)) {
-        return fs.readFileSync(fileName, 'utf-8');
-    }
+  if (fs.existsSync(fileName)) {
+    return fs.readFileSync(fileName, "utf-8");
+  }
 
-    return; // Implicit undefined return.
+  return; // Implicit undefined return.
 }
 ```
 
@@ -3286,21 +3398,21 @@ function readFile(fileName) {
 
 ```js
 function getUser(name) {
-    if (userExists(name)) {
-        return userDb.get(name);
-    }
+  if (userExists(name)) {
+    return userDb.get(name);
+  }
 
-    // `null` indicates there is no such user.
-    return null;
+  // `null` indicates there is no such user.
+  return null;
 }
 
 function readFile(fileName) {
-    if (fs.existsSync(fileName)) {
-        return fs.readFileSync(fileName, 'utf-8');
-    }
+  if (fs.existsSync(fileName)) {
+    return fs.readFileSync(fileName, "utf-8");
+  }
 
-    // `null` indicates there is no such file.
-    return null;
+  // `null` indicates there is no such file.
+  return null;
 }
 ```
 
@@ -3309,6 +3421,7 @@ function readFile(fileName) {
 - [Stack Overflow: When is null or undefined used in JavaScript?](https://stackoverflow.com/questions/6429225/when-is-null-or-undefined-used-in-javascript)
 
 **Locations (10):**
+
 - [ ] `whatsapp-web.js/tests/helper.js:19` - Expected to return a value at the end of function 'getSessionFromEnv'
 - [ ] `whatsapp-web.js/src/util/Injected/Utils.js:908` - Async arrow function expected no return value
 - [ ] `whatsapp-web.js/src/util/Injected/Utils.js:906` - Async arrow function expected no return value
@@ -3337,39 +3450,42 @@ The strict equality operators (`===` and `!==`) use the strict equality comparis
 - If both operands are `null` or both operands are `undefined`, return `true`.
 - If either operand is `NaN`, return `false`.
 - Otherwise, compare the two operand's values:
-    - Numbers must have the same numeric values. `+0` and `-0` are considered to be the same value.
-    - Strings must have the same characters in the same order.
-    - Booleans must be both `true` or both `false`.
+  - Numbers must have the same numeric values. `+0` and `-0` are considered to be the same value.
+  - Strings must have the same characters in the same order.
+  - Booleans must be both `true` or both `false`.
 
 The most notable difference between this operator and the equality (`==`) operator is that if the operands are of different types, the `==` operator attempts to convert them to the same type before comparing.
 
 ### Bad Practice
+
 ```js
-a == b
-foo == true
-bananas != 1
-value == undefined
-typeof foo == 'undefined'
-'hello' != 'world'
-0 == 0
-true == true
-foo == null
+a == b;
+foo == true;
+bananas != 1;
+value == undefined;
+typeof foo == "undefined";
+"hello" != "world";
+0 == 0;
+true == true;
+foo == null;
 ```
 
 ### Recommended
+
 ```js
-a === b
-foo === true
-bananas !== 1
-value === undefined
-typeof foo === 'undefined'
-'hello' !== 'world'
-0 === 0
-true === true
-foo === null
+a === b;
+foo === true;
+bananas !== 1;
+value === undefined;
+typeof foo === "undefined";
+"hello" !== "world";
+0 === 0;
+true === true;
+foo === null;
 ```
 
 **Locations (10):**
+
 - [ ] `whatsapp-web.js/src/util/Injected/Utils.js:369` - Expected '===' and instead saw '=='
 - [ ] `whatsapp-web.js/src/structures/Message.js:455` - Expected '!==' and instead saw '!='
 - [ ] `whatsapp-web.js/src/Client.js:2426` - Expected '!==' and instead saw '!='
@@ -3391,26 +3507,29 @@ Looping over objects with a `for in` loop will include properties that are inher
 This behavior can lead to unexpected keys in your for loop.
 
 ### Bad Practice
+
 ```js
 for (const key in foo) {
-    doSomething(key);
+  doSomething(key);
 }
 ```
 
 ### Recommended
+
 ```js
 for (const key in foo) {
-    if (Object.prototype.hasOwnProperty.call(foo, key)) {
-        doSomething(key);
-    }
+  if (Object.prototype.hasOwnProperty.call(foo, key)) {
+    doSomething(key);
+  }
 }
 
 for (const key of Object.keys(foo)) {
-    doSomething(key);
+  doSomething(key);
 }
 ```
 
 **Locations (2):**
+
 - [ ] `whatsapp-web.js/src/util/InterfaceController.js:119` - Wrap the body of a for-in loop in an if statement with a hasOwnProperty guard
 - [ ] `whatsapp-web.js/src/util/InterfaceController.js:106` - Wrap the body of a for-in loop in an if statement with a hasOwnProperty guard
 
@@ -3436,17 +3555,17 @@ To ensure that the lexical declaration only applies to the current case clause, 
 
 ```js
 switch (points) {
-    case 1:
-        let x = 1;
-        break;
-    case 2:
-        const y = 2;
-        break;
-    case 3:
-        function f() {}
-        break;
-    default:
-        class C {}
+  case 1:
+    let x = 1;
+    break;
+  case 2:
+    const y = 2;
+    break;
+  case 3:
+    function f() {}
+    break;
+  default:
+    class C {}
 }
 ```
 
@@ -3457,30 +3576,31 @@ switch (points) {
 const a = 0;
 
 switch (points) {
-    // The following case clauses are wrapped into blocks using brackets
-    case 1: {
-        let x = 1;
-        break;
-    }
-    case 2: {
-        const y = 2;
-        break;
-    }
-    case 3: {
-        function f() {}
-        break;
-    }
-    case 4:
-        // Declarations using var without brackets are valid due to function-scope hoisting
-        var z = 4;
-        break;
-    default: {
-        class C {}
-    }
+  // The following case clauses are wrapped into blocks using brackets
+  case 1: {
+    let x = 1;
+    break;
+  }
+  case 2: {
+    const y = 2;
+    break;
+  }
+  case 3: {
+    function f() {}
+    break;
+  }
+  case 4:
+    // Declarations using var without brackets are valid due to function-scope hoisting
+    var z = 4;
+    break;
+  default: {
+    class C {}
+  }
 }
 ```
 
 **Locations (4):**
+
 - [ ] `scripts/deepsource-api.js:306` - Unexpected lexical declaration in case block
 - [ ] `scripts/deepsource-api.js:301` - Unexpected lexical declaration in case block
 - [ ] `scripts/deepsource-api.js:296` - Unexpected lexical declaration in case block
@@ -3499,7 +3619,7 @@ If you must use one, consider adding a comment to inform the reader of its purpo
 ### Bad Practice
 
 ```ts
-getUser('SwaGaLisTiQuE', () => {})
+getUser("SwaGaLisTiQuE", () => {});
 
 function f() {}
 ```
@@ -3507,16 +3627,17 @@ function f() {}
 ### Recommended
 
 ```ts
-getUser('SwaGaLisTiQuE', () => {
-    // empty because <reason>
-})
+getUser("SwaGaLisTiQuE", () => {
+  // empty because <reason>
+});
 
 function f() {
-    // intentionally empty. <reason>
+  // intentionally empty. <reason>
 }
 ```
 
 **Locations (10):**
+
 - [ ] `whatsapp-web.js/src/webCache/WebCache.js:6` - Unexpected empty async method 'persist'
 - [ ] `whatsapp-web.js/src/authStrategies/RemoteAuth.js:197` - Unexpected empty arrow function
 - [ ] `whatsapp-web.js/src/authStrategies/RemoteAuth.js:195` - Unexpected empty arrow function
@@ -3542,17 +3663,19 @@ The comma operator includes multiple expressions where only one is expected. It 
 
 ```js
 let a = (3, 5); // a = 5
-a = b += 5, a + b;
-while (a = next(), a && a.length);
+((a = b += 5), a + b);
+while (((a = next()), a && a.length));
 (0, eval)("doSomething();");
-res = doSomething(), val;
-0, eval("doSomething();");
-do {} while (doSomething(), !!test);
+((res = doSomething()), val);
+(0, eval("doSomething();"));
+do {} while ((doSomething(), !!test));
 for (; doSomething(), !!test; );
-if (doSomething(), !!test);
-switch (val = func(), val) {}
-while (val = func(), val < 42);
-with (doSomething(), val) {}
+if ((doSomething(), !!test));
+switch (((val = func()), val)) {
+}
+while (((val = func()), val < 42));
+with ((doSomething(), val)) {
+}
 ```
 
 ### Recommended
@@ -3563,12 +3686,15 @@ res = (doSomething(), val);
 do {} while ((doSomething(), !!test));
 for (i = 0, j = 10; i < j; i++, j--);
 if ((doSomething(), !!test));
-switch ((val = func(), val)) {}
-while ((val = func(), val < 42));
-with ((doSomething(), val)) {}
+switch (((val = func()), val)) {
+}
+while (((val = func()), val < 42));
+with ((doSomething(), val)) {
+}
 ```
 
 **Locations (2):**
+
 - [ ] `whatsapp-web.js/src/Client.js:1000` - Unexpected use of comma operator
 - [ ] `whatsapp-web.js/src/Client.js:995` - Unexpected use of comma operator
 
@@ -3581,11 +3707,13 @@ with ((doSomething(), val)) {}
 Python possesses many mechanisms to invoke an external executable. If the desired executable path is not fully qualified relative to the filesystem root then this may present a potential security risk.
 
 <!--more-->
+
 In POSIX environments, the PATH environment variable is used to specify a set of standard locations that will be searched for the first matching named executable. While convenient, this behavior may allow a malicious actor to exert control over a system. If they are able to adjust the contents of the PATH variable, or manipulate the file system, then a bogus executable may be discovered in place of the desired one. This executable will be invoked with the user privileges of the Python process that spawned it, potentially a highly privileged user.
 
 This test will scan the parameters of all configured Python methods, looking for paths that do not start at the filesystem root, that is, do not have a leading ‘/’ character.
 
 ### Bad practice
+
 ```python
 import subprocess
 
@@ -3593,6 +3721,7 @@ subprocess.run(['calculator', '-u', 'critical', msg], check=True) # Sensitive, P
 ```
 
 ### Recommended
+
 ```python
 import subprocess
 
@@ -3600,10 +3729,12 @@ subprocess.run(['/usr/bin/calculator', '-u', 'critical', msg], check=True) # Pat
 ```
 
 ## References:
+
 - [Bandit B607](https://bandit.readthedocs.io/en/latest/plugins/b607_start_process_with_partial_path.html#b607-start-process-with-partial-path)
 - OWASP Top 10 2021 Category A03 - [Injection](https://owasp.org/Top10/A03_2021-Injection/)
 
 **Locations (9):**
+
 - [ ] `scripts/agent_orchestrator/main.py:515` - Starting a process with a partial executable path
 - [ ] `scripts/agent_orchestrator/main.py:506` - Starting a process with a partial executable path
 - [ ] `scripts/agent_orchestrator/main.py:497` - Starting a process with a partial executable path
@@ -3620,7 +3751,7 @@ subprocess.run(['/usr/bin/calculator', '-u', 'critical', msg], check=True) # Pat
 
 **Category:** Issue
 **Description:**
-Only use `cd` in a subshell. Most commands can work with absolute paths and in most cases, it is not necessary to change directories. Docker provides the `WORKDIR` instruction if you really need to change the current working directory. 
+Only use `cd` in a subshell. Most commands can work with absolute paths and in most cases, it is not necessary to change directories. Docker provides the `WORKDIR` instruction if you really need to change the current working directory.
 
 <!--more-->
 
@@ -3642,6 +3773,7 @@ RUN git clone git@github.com:lukasmartinelli/hadolint.git
 ```
 
 **Locations (9):**
+
 - [ ] `services/wa-client/Dockerfile:26` - Use WORKDIR to switch to a directory
 - [ ] `services/wa-client/Dockerfile:21` - Use WORKDIR to switch to a directory
 - [ ] `services/wa-client/Dockerfile:14` - Use WORKDIR to switch to a directory
@@ -3663,6 +3795,7 @@ The benefit of `Error` objects is that they automatically keep track of where th
 This rule restricts what can be thrown as an exception.
 
 ### Bad Practice
+
 ```js
 throw "error";
 
@@ -3677,7 +3810,7 @@ throw "an " + err;
 // err is recast to a string literal
 
 var err = new Error();
-throw `${err}`
+throw `${err}`;
 ```
 
 ### Recommended
@@ -3691,13 +3824,14 @@ var e = new Error("error");
 throw e;
 
 try {
-    throw new Error("error");
+  throw new Error("error");
 } catch (e) {
-    throw e;
+  throw e;
 }
 ```
 
 **Locations (10):**
+
 - [ ] `whatsapp-web.js/tests/helper.js:17` - Expected an error object to be thrown
 - [ ] `whatsapp-web.js/src/util/Injected/Utils.js:784` - Expected an error object to be thrown
 - [ ] `whatsapp-web.js/src/util/Injected/Utils.js:214` - Expected an error object to be thrown
@@ -3751,6 +3885,7 @@ Escaping non-special characters in strings, template literals, and regular expre
 ```
 
 **Locations (2):**
+
 - [ ] `scripts/export-wwebjs-docs.mjs:36` - Unnecessary escape character: \/
 - [ ] `packages/shared/src/url.ts:13` - Unnecessary escape character: \[
 
@@ -3760,17 +3895,17 @@ Escaping non-special characters in strings, template literals, and regular expre
 
 **Category:** Issue
 **Description:**
-The void operator takes an operand and returns undefined. It can be used to ignore the value produced by an expression. 
-However, this can lead to code that is difficult to understand and maintain. 
-Historically, the void operator was used to get a "pure" undefined value, as the undefined variable was mutable prior to ES5. 
+The void operator takes an operand and returns undefined. It can be used to ignore the value produced by an expression.
+However, this can lead to code that is difficult to understand and maintain.
+Historically, the void operator was used to get a "pure" undefined value, as the undefined variable was mutable prior to ES5.
 Nowadays, this is no longer necessary as undefined is immutable in modern JavaScript.
 
 ### Bad Practice
 
 ```js
 // will always return undefined
-(function(){
-    return void 0;
+(function () {
+  return void 0;
 })();
 ```
 
@@ -3778,12 +3913,13 @@ Nowadays, this is no longer necessary as undefined is immutable in modern JavaSc
 
 ```js
 // Use explicit undefined
-(function(){
-    return undefined;
+(function () {
+  return undefined;
 })();
 ```
 
 **Locations (10):**
+
 - [ ] `tests/integration/stubs/bottleneck.ts:28` - Expected 'undefined' and instead saw 'void'
 - [ ] `services/wa-client/src/pairingOrchestrator.ts:133` - Expected 'undefined' and instead saw 'void'
 - [ ] `services/wa-client/src/index.ts:1130` - Expected 'undefined' and instead saw 'void'
@@ -3808,39 +3944,42 @@ Declare variables at the top of their scope as it improves code readability, per
 The `vars-on-top` rule generates warnings when variable declarations are not used serially at the top of a function scope or the top of a program. By default variable declarations are always moved (“hoisted”) invisibly to the top of their containing scope by the JavaScript interpreter. This rule forces the programmer to represent that behavior by manually moving the variable declaration to the top of its containing scope.
 
 ### Bad Practice
+
 ```js
 // Variable declarations in a block:
 function doSomething() {
-    var first;
-    if (true) {
-        first = true;
-    }
-    var second;
+  var first;
+  if (true) {
+    first = true;
+  }
+  var second;
 }
 
 // Variable declaration in for initializer:
 function doSomething() {
-    for (var i=0; i<10; i++) {}
+  for (var i = 0; i < 10; i++) {}
 }
 ```
 
 ### Recommended
+
 ```js
 function doSomething() {
-    var first;
-    var second; //multiple declarations are allowed at the top
-    if (true) {
-        first = true;
-    }
+  var first;
+  var second; //multiple declarations are allowed at the top
+  if (true) {
+    first = true;
+  }
 }
 
 function doSomething() {
-    var i;
-    for (i=0; i<10; i++) {}
+  var i;
+  for (i = 0; i < 10; i++) {}
 }
 ```
 
 **Locations (6):**
+
 - [ ] `whatsapp-web.js/src/util/Util.js:23` - All 'var' declarations must be at the top of the function scope
 - [ ] `whatsapp-web.js/src/util/Injected/Utils.js:714` - All 'var' declarations must be at the top of the function scope
 - [ ] `whatsapp-web.js/src/authStrategies/RemoteAuth.js:98` - All 'var' declarations must be at the top of the function scope
@@ -3886,13 +4025,14 @@ Person.sayHi();
 ```
 
 **Locations (10):**
+
 - [ ] `whatsapp-web.js/src/webCache/WebCache.js:6` - Expected 'this' to be used by class async method 'persist'
 - [ ] `whatsapp-web.js/src/webCache/WebCache.js:5` - Expected 'this' to be used by class async method 'resolve'
 - [ ] `whatsapp-web.js/src/webCache/RemoteWebCache.js:35` - Expected 'this' to be used by class async method 'persist'
-- [ ] `whatsapp-web.js/src/structures/ScheduledEvent.js:54` - Expected 'this' to be used by class method '_validateInputs'
-- [ ] `whatsapp-web.js/src/structures/List.js:58` - Expected 'this' to be used by class method '_format'
-- [ ] `whatsapp-web.js/src/structures/Buttons.js:73` - Expected 'this' to be used by class method '_format'
-- [ ] `whatsapp-web.js/src/structures/Base.js:19` - Expected 'this' to be used by class method '_patch'
+- [ ] `whatsapp-web.js/src/structures/ScheduledEvent.js:54` - Expected 'this' to be used by class method '\_validateInputs'
+- [ ] `whatsapp-web.js/src/structures/List.js:58` - Expected 'this' to be used by class method '\_format'
+- [ ] `whatsapp-web.js/src/structures/Buttons.js:73` - Expected 'this' to be used by class method '\_format'
+- [ ] `whatsapp-web.js/src/structures/Base.js:19` - Expected 'this' to be used by class method '\_patch'
 - [ ] `whatsapp-web.js/src/authStrategies/RemoteAuth.js:219` - Expected 'this' to be used by class async method 'delay'
 - [ ] `whatsapp-web.js/src/authStrategies/RemoteAuth.js:210` - Expected 'this' to be used by class async method 'isValidPath'
 - [ ] `whatsapp-web.js/src/authStrategies/BaseAuthStrategy.js:24` - Expected 'this' to be used by class async method 'logout'
@@ -3915,10 +4055,10 @@ Consider this example:
 
 ```js
 async function fetchData(processDataItem) {
-    const response = await fetch(DATA_URL);
-    const data = await response.json();
+  const response = await fetch(DATA_URL);
+  const data = await response.json();
 
-    return data.map(processDataItem);
+  return data.map(processDataItem);
 }
 ```
 
@@ -3935,20 +4075,24 @@ This situation can easily be circumvented by returning the value with a call to 
 
 ```ts
 interface HasAsyncFunc {
-  getNum: () => Promise<number>
+  getNum: () => Promise<number>;
 }
 
 // Not recommended:
 const o: HasAsyncFunc = {
-  async getNum() { return 1 }
-}
+  async getNum() {
+    return 1;
+  },
+};
 
 // Recommended:
 const o: HasAsyncFunc = {
   // We only use `Promise.resolve` to adhere to the type
   // of the surrounding object.
-  getNum() { return Promise.resolve(1) }
-}
+  getNum() {
+    return Promise.resolve(1);
+  },
+};
 ```
 
 It is also advised to add a comment near the redundant promise to make the intent clear.
@@ -3979,6 +4123,7 @@ async function no_op() {}
 ```
 
 **Locations (10):**
+
 - [ ] `whatsapp-web.js/src/webCache/WebCache.js:5` - Found `async` function without any `await` expressions
 - [ ] `whatsapp-web.js/src/webCache/LocalWebCache.js:32` - Found `async` function without any `await` expressions
 - [ ] `whatsapp-web.js/src/webCache/LocalWebCache.js:20` - Found `async` function without any `await` expressions
@@ -4003,9 +4148,9 @@ var foo = 1;
 var bar;
 
 if (foo) {
-    bar = 1;
+  bar = 1;
 } else {
-    bar = 2;
+  bar = 2;
 }
 ```
 
@@ -4013,8 +4158,8 @@ if (foo) {
 
 ```js
 function foo() {
-    var bar;
-    let baz;
+  var bar;
+  let baz;
 }
 ```
 
@@ -4022,13 +4167,14 @@ function foo() {
 
 ```js
 function foo() {
-    var bar = 1;
-    let baz = 2;
-    const qux = 3;
+  var bar = 1;
+  let baz = 2;
+  const qux = 3;
 }
 ```
 
 **Locations (10):**
+
 - [ ] `whatsapp-web.js/tests/structures/message.js:51` - Variable 'replyMsg' should be initialized on declaration
 - [ ] `whatsapp-web.js/tests/structures/message.js:12` - Variable 'message' should be initialized on declaration
 - [ ] `whatsapp-web.js/tests/structures/message.js:11` - Variable 'chat' should be initialized on declaration
@@ -4051,9 +4197,9 @@ In the example below, the parameter `x` is said to "shadow" the variable `x` dec
 The outer `x` can no longer be accessed inside the `sum` function.
 
 ```js
-const x = 1
+const x = 1;
 function add(x, y) {
-    return x + y
+  return x + y;
 }
 ```
 
@@ -4062,9 +4208,10 @@ We highly recommend against shadowing.
 However, if you want to shadow some variable name and don't want DeepSource to flag it, add a [skipcq comment](https://docs.deepsource.com/docs/issues-ignore-rules) alongside an explanation:
 
 ```js
-const x = 1
-function add(x, y) { // skipcq: JS-0123 - `x` can be safely shadowed
-    return x + y
+const x = 1;
+function add(x, y) {
+  // skipcq: JS-0123 - `x` can be safely shadowed
+  return x + y;
 }
 ```
 
@@ -4073,14 +4220,14 @@ If you want to disable this issue project-wide, you can add it to the list of di
 ### Bad Practice
 
 ```js
-const file = "data.txt"
+const file = "data.txt";
 
 function readFile(file) {
-    // The parameter `file` shadows the toplevel variable `file`.
-    if (fs.existsSync(file)) {
-        return fs.readFileSync(file)
-    }
-    return null
+  // The parameter `file` shadows the toplevel variable `file`.
+  if (fs.existsSync(file)) {
+    return fs.readFileSync(file);
+  }
+  return null;
 }
 ```
 
@@ -4089,27 +4236,29 @@ function readFile(file) {
 ```js
 // Prefer variable names that are distinct and convey as much
 // meaning as possible.
-const dataFile = "data.txt"
+const dataFile = "data.txt";
 
 function readFile(filePath) {
-    if (fs.existsSync(filePath)) {
-        return fs.readFileSync(filePath)
-    }
-    return null
+  if (fs.existsSync(filePath)) {
+    return fs.readFileSync(filePath);
+  }
+  return null;
 }
 ```
 
 Alternatively:
 
 ```js
-const file = "data.txt"
+const file = "data.txt";
 
-function readFile(file) { // skipcq: JS-0123 - Shadowing is safe here
-    // ...
+function readFile(file) {
+  // skipcq: JS-0123 - Shadowing is safe here
+  // ...
 }
 ```
 
 **Locations (10):**
+
 - [ ] `whatsapp-web.js/tests/structures/message.js:31` - 'chat' is already declared in the upper scope on line 11 column 9
 - [ ] `whatsapp-web.js/tests/client.js:354` - 'expectedModules' is already declared in the upper scope on line 306 column 23
 - [ ] `whatsapp-web.js/src/util/Util.js:181` - 'path' is already declared in the upper scope on line 3 column 7
@@ -4132,6 +4281,7 @@ function readFile(file) { // skipcq: JS-0123 - Shadowing is safe here
 Using http protocol is insecure. Use https instead.
 
 **Locations (13):**
+
 - [ ] `packages/shared/src/config.ts:142` - Using http protocol is insecure. Use https instead.
 - [ ] `services/wa-client/src/index.ts:755` - Using http protocol is insecure. Use https instead.
 - [ ] `tests/e2e/admin-commands.test.ts:24` - Using http protocol is insecure. Use https instead.
@@ -4155,6 +4305,7 @@ Using http protocol is insecure. Use https instead.
 Make sure using a hardcoded IP address 10.0.0.1 is safe here.
 
 **Locations (21):**
+
 - [ ] `packages/shared/src/__tests__/ssrf.test.ts:15` - Make sure using a hardcoded IP address 10.0.0.1 is safe here.
 - [ ] `packages/shared/src/__tests__/ssrf.test.ts:16` - Make sure using a hardcoded IP address 172.16.5.2 is safe here.
 - [ ] `packages/shared/src/__tests__/ssrf.test.ts:17` - Make sure using a hardcoded IP address 192.168.1.10 is safe here.
@@ -4186,6 +4337,7 @@ Make sure using a hardcoded IP address 10.0.0.1 is safe here.
 Make sure the "PATH" variable only contains fixed, unwriteable directories.
 
 **Locations (3):**
+
 - [ ] `scripts/watch-pairing-code.js:62` - Make sure the "PATH" variable only contains fixed, unwriteable directories.
 - [ ] `scripts/watch-pairing-code.js:64` - Make sure the "PATH" variable only contains fixed, unwriteable directories.
 - [ ] `scripts/watch-pairing-code.js:107` - Make sure the "PATH" variable only contains fixed, unwriteable directories.
@@ -4199,6 +4351,7 @@ Make sure the "PATH" variable only contains fixed, unwriteable directories.
 Make sure the "PATH" variable only contains fixed, unwriteable directories.
 
 **Locations (1):**
+
 - [ ] `tests/integration/setup-wizard.test.ts:10` - Make sure the "PATH" variable only contains fixed, unwriteable directories.
 
 ---
@@ -4210,6 +4363,7 @@ Make sure the "PATH" variable only contains fixed, unwriteable directories.
 Omitting "--ignore-scripts" can lead to the execution of shell scripts. Make sure it is safe here.
 
 **Locations (9):**
+
 - [ ] `services/control-plane/Dockerfile:11` - Omitting "--ignore-scripts" can lead to the execution of shell scripts. Make sure it is safe here.
 - [ ] `services/control-plane/Dockerfile:17` - Omitting "--ignore-scripts" can lead to the execution of shell scripts. Make sure it is safe here.
 - [ ] `services/control-plane/Dockerfile:18` - Omitting "--ignore-scripts" can lead to the execution of shell scripts. Make sure it is safe here.
@@ -4221,4 +4375,3 @@ Omitting "--ignore-scripts" can lead to the execution of shell scripts. Make sur
 - [ ] `services/wa-client/Dockerfile:23` - Omitting "--ignore-scripts" can lead to the execution of shell scripts. Make sure it is safe here.
 
 ---
-

@@ -1,6 +1,6 @@
-import { request } from 'undici';
-import { config } from '../config';
-import { HttpError } from '../http-errors';
+import { request } from "undici";
+import { config } from "../config";
+import { HttpError } from "../http-errors";
 
 export interface UrlhausLookupResult {
   listed: boolean;
@@ -13,18 +13,21 @@ export interface UrlhausLookupResult {
   latencyMs?: number;
 }
 
-export async function urlhausLookup(url: string, timeoutMs = config.urlhaus.timeoutMs): Promise<UrlhausLookupResult> {
+export async function urlhausLookup(
+  url: string,
+  timeoutMs = config.urlhaus.timeoutMs,
+): Promise<UrlhausLookupResult> {
   if (!config.urlhaus.enabled) return { listed: false, latencyMs: 0 };
   const start = Date.now();
-  const res = await request('https://urlhaus-api.abuse.ch/v1/url/', {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+  const res = await request("https://urlhaus-api.abuse.ch/v1/url/", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ url }).toString(),
     headersTimeout: timeoutMs,
-    bodyTimeout: timeoutMs
+    bodyTimeout: timeoutMs,
   });
   if (res.statusCode === 429) {
-    const err = new Error('URLhaus rate limited') as HttpError;
+    const err = new Error("URLhaus rate limited") as HttpError;
     err.code = 429;
     throw err;
   }
@@ -33,7 +36,7 @@ export async function urlhausLookup(url: string, timeoutMs = config.urlhaus.time
     err.statusCode = res.statusCode;
     throw err;
   }
-  const json = await res.body.json() as {
+  const json = (await res.body.json()) as {
     query_status?: string;
     threat?: string;
     threat_type?: string;
@@ -45,7 +48,7 @@ export async function urlhausLookup(url: string, timeoutMs = config.urlhaus.time
     reporter?: string;
     blacklists?: string[];
   };
-  if (json?.query_status === 'ok') {
+  if (json?.query_status === "ok") {
     return {
       listed: true,
       threat: json.threat ?? json.threat_type ?? undefined,
@@ -54,14 +57,14 @@ export async function urlhausLookup(url: string, timeoutMs = config.urlhaus.time
       lastSeen: json.last_seen ?? undefined,
       reporter: json.reporter ?? undefined,
       blacklists: Array.isArray(json.blacklists) ? json.blacklists : undefined,
-      latencyMs: Date.now() - start
+      latencyMs: Date.now() - start,
     };
   }
-  if (json?.query_status === 'no_results') {
+  if (json?.query_status === "no_results") {
     return { listed: false, latencyMs: Date.now() - start };
   }
   // Unknown response – treat as error to trigger fallback handling
-  const err = new Error('URLhaus unexpected response') as HttpError;
+  const err = new Error("URLhaus unexpected response") as HttpError;
   err.details = json;
   throw err;
 }
