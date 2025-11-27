@@ -13,7 +13,7 @@ export interface IDatabaseConnection {
   query(sql: string, params?: unknown[]): Promise<{ rows: unknown[] }>;
   transaction<T>(fn: () => T | Promise<T>): Promise<T>;
   close(): void;
-  getDatabase(): any;
+  getDatabase(): Database.Database | Pool;
 }
 
 export class SQLiteConnection implements IDatabaseConnection {
