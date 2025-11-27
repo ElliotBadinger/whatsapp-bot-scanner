@@ -53,6 +53,7 @@ export async function certificateIntelligence(
         const socket = tls.connect(443, hostname, {
           servername: hostname,
           rejectUnauthorized: true, // Secure by default
+          checkServerIdentity: tls.checkServerIdentity, // Explicit hostname verification
         }, () => {
           clearTimeout(timeout);
           const cert = socket.getPeerCertificate(true);
@@ -78,6 +79,11 @@ export async function certificateIntelligence(
         const socket = tls.connect(443, hostname, {
           servername: hostname,
           rejectUnauthorized: false, // Only bypass validation to analyze invalid certs
+          checkServerIdentity: (servername, cert) => {
+            // Still perform hostname verification even when bypassing cert validation
+            // This allows us to detect hostname mismatches in invalid certificates
+            return tls.checkServerIdentity(servername, cert);
+          },
         }, () => {
           clearTimeout(timeout);
           const cert = socket.getPeerCertificate(true);
