@@ -40,26 +40,57 @@ export async function certificateIntelligence(
   };
 
   try {
-    const certInfo = await new Promise<unknown>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('Certificate check timeout'));
-      }, timeoutMs);
+    // First attempt with certificate validation enabled for security
+    let certInfo: unknown;
+    let isValidCert = true;
+    
+    try {
+      certInfo = await new Promise<unknown>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Certificate check timeout'));
+        }, timeoutMs);
 
-      const socket = tls.connect(443, hostname, {
-        servername: hostname,
-        rejectUnauthorized: false, // We want to analyze even invalid certs
-      }, () => {
-        clearTimeout(timeout);
-        const cert = socket.getPeerCertificate(true);
-        socket.destroy();
-        resolve(cert);
-      });
+        const socket = tls.connect(443, hostname, {
+          servername: hostname,
+          rejectUnauthorized: true, // Secure by default
+        }, () => {
+          clearTimeout(timeout);
+          const cert = socket.getPeerCertificate(true);
+          socket.destroy();
+          resolve(cert);
+        });
 
-      socket.on('error', (err: Error) => {
-        clearTimeout(timeout);
-        reject(err);
+        socket.on('error', (err: Error) => {
+          clearTimeout(timeout);
+          reject(err);
+        });
       });
-    });
+    } catch (validCertError) {
+      // If validation fails, try again without validation to analyze the invalid cert
+      logger.debug({ hostname, err: validCertError }, 'Certificate validation failed, attempting to analyze invalid certificate');
+      isValidCert = false;
+      
+      certInfo = await new Promise<unknown>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Certificate check timeout'));
+        }, timeoutMs);
+
+        const socket = tls.connect(443, hostname, {
+          servername: hostname,
+          rejectUnauthorized: false, // Only bypass validation to analyze invalid certs
+        }, () => {
+          clearTimeout(timeout);
+          const cert = socket.getPeerCertificate(true);
+          socket.destroy();
+          resolve(cert);
+        });
+
+        socket.on('error', (err: Error) => {
+          clearTimeout(timeout);
+          reject(err);
+        });
+      });
+    }
 
     // Type definition for certificate info
     const cert = certInfo as {
@@ -90,6 +121,13 @@ export async function certificateIntelligence(
       // Count Subject Alternative Names
       if (cert.subjectaltname) {
         result.sanCount = cert.subjectaltname.split(',').length;
+      }
+
+      // Update validation status based on our check
+      result.isValid = isValidCert;
+      if (!isValidCert) {
+        result.suspicionScore += 0.7;
+        result.reasons.push('Certificate validation failed');
       }
 
       // Check for suspicious patterns
