@@ -1,4 +1,4 @@
-export type Verdict = 'benign' | 'suspicious' | 'malicious';
+export type Verdict = "benign" | "suspicious" | "malicious";
 
 export interface ScanRequest {
   chatId: string;
@@ -18,7 +18,7 @@ export interface ScanResult {
   score: number;
   reasons: string[];
   override?: {
-    status: 'allow' | 'deny';
+    status: "allow" | "deny";
     reason?: string | null;
   };
   vt?: unknown;
@@ -30,7 +30,7 @@ export interface ScanResult {
     uuid?: string;
   };
   whois?: {
-    source?: 'rdap' | 'whoisxml';
+    source?: "rdap" | "whoisxml";
     ageDays?: number;
     registrar?: string;
   };
