@@ -1,6 +1,6 @@
-import Fastify from 'fastify';
-import Redis from 'ioredis';
-import { Queue, Worker } from 'bullmq';
+import Fastify from "fastify";
+import Redis from "ioredis";
+import { Queue, Worker } from "bullmq";
 import {
   config,
   logger,
@@ -36,20 +36,27 @@ import {
   QuotaExceededError,
   detectHomoglyphs,
   assertEssentialConfig,
-} from '@wbscanner/shared';
-import { EnhancedSecurityAnalyzer } from './enhanced-security';
+} from "@wbscanner/shared";
+import { EnhancedSecurityAnalyzer } from "./enhanced-security";
 import {
   checkBlocklistsWithRedundancy,
   shouldQueryPhishtank,
   type GsbFetchResult,
   type PhishtankFetchResult,
-} from './blocklists';
-import type { GsbThreatMatch, UrlhausLookupResult, PhishtankLookupResult, VirusTotalAnalysis, UrlscanSubmissionResponse, HomoglyphResult } from '@wbscanner/shared';
-import { downloadUrlscanArtifacts } from './urlscan-artifacts';
-import { getSharedConnection } from './database';
+} from "./blocklists";
+import type {
+  GsbThreatMatch,
+  UrlhausLookupResult,
+  PhishtankLookupResult,
+  VirusTotalAnalysis,
+  UrlscanSubmissionResponse,
+  HomoglyphResult,
+} from "@wbscanner/shared";
+import { downloadUrlscanArtifacts } from "./urlscan-artifacts";
+import { getSharedConnection } from "./database";
 
-const TEST_REDIS_KEY = '__WBSCANNER_TEST_REDIS__';
-const TEST_QUEUE_FACTORY_KEY = '__WBSCANNER_TEST_QUEUE_FACTORY__';
+const TEST_REDIS_KEY = "__WBSCANNER_TEST_REDIS__";
+const TEST_QUEUE_FACTORY_KEY = "__WBSCANNER_TEST_QUEUE_FACTORY__";
 
 class InMemoryRedis {
   private store = new Map<string, string>();
@@ -62,10 +69,16 @@ class InMemoryRedis {
     return this.store.get(key) ?? null;
   }
 
-  async set(key: string, value: string, mode?: string, ttlArg?: number, nxArg?: string): Promise<'OK' | null> {
-    if (mode === 'EX') {
-      const ttlSeconds = typeof ttlArg === 'number' ? ttlArg : 0;
-      if (nxArg === 'NX' && this.store.has(key)) {
+  async set(
+    key: string,
+    value: string,
+    mode?: string,
+    ttlArg?: number,
+    nxArg?: string,
+  ): Promise<"OK" | null> {
+    if (mode === "EX") {
+      const ttlSeconds = typeof ttlArg === "number" ? ttlArg : 0;
+      if (nxArg === "NX" && this.store.has(key)) {
         return null;
       }
       this.store.set(key, value);
@@ -74,11 +87,11 @@ class InMemoryRedis {
       } else {
         this.ttlStore.delete(key);
       }
-      return 'OK';
+      return "OK";
     }
     this.store.set(key, value);
     this.ttlStore.delete(key);
-    return 'OK';
+    return "OK";
   }
 
   async del(key: string): Promise<number> {
@@ -173,7 +186,7 @@ class InMemoryRedis {
 }
 
 class InMemoryQueue {
-  constructor(private readonly name: string) { }
+  constructor(private readonly name: string) {}
   async add(jobName: string, data: unknown) {
     return { id: `${this.name}:${jobName}:${Date.now()}`, data };
   }
@@ -183,44 +196,61 @@ class InMemoryQueue {
   async getWaitingCount() {
     return 0;
   }
-  on(): void { }
+  on(): void {}
   async close(): Promise<void> {
     return Promise.resolve();
   }
 }
 
 function createRedisConnection(): Redis {
-  if (typeof globalThis !== 'undefined' && (globalThis as unknown as Record<string, unknown>)[TEST_REDIS_KEY]) {
-    return (globalThis as unknown as Record<string, unknown>)[TEST_REDIS_KEY] as Redis;
+  if (
+    typeof globalThis !== "undefined" &&
+    (globalThis as unknown as Record<string, unknown>)[TEST_REDIS_KEY]
+  ) {
+    return (globalThis as unknown as Record<string, unknown>)[
+      TEST_REDIS_KEY
+    ] as Redis;
   }
-  if (process.env.NODE_ENV === 'test') {
+  if (process.env.NODE_ENV === "test") {
     return new InMemoryRedis() as unknown as Redis;
   }
   return new Redis(config.redisUrl, { maxRetriesPerRequest: null });
 }
 
 const redis = createRedisConnection();
-const scanRequestQueue = createQueue(config.queues.scanRequest, { connection: redis });
-const scanVerdictQueue = createQueue(config.queues.scanVerdict, { connection: redis });
+const scanRequestQueue = createQueue(config.queues.scanRequest, {
+  connection: redis,
+});
+const scanVerdictQueue = createQueue(config.queues.scanVerdict, {
+  connection: redis,
+});
 const urlscanQueue = createQueue(config.queues.urlscan, { connection: redis });
 
 function createQueue(name: string, options: { connection: Redis }): Queue {
-  if (typeof globalThis !== 'undefined') {
-    const factory = (globalThis as unknown as Record<string, unknown>)[TEST_QUEUE_FACTORY_KEY];
-    if (typeof factory === 'function') {
+  if (typeof globalThis !== "undefined") {
+    const factory = (globalThis as unknown as Record<string, unknown>)[
+      TEST_QUEUE_FACTORY_KEY
+    ];
+    if (typeof factory === "function") {
       return factory(name, options) as Queue;
     }
   }
-  if (process.env.NODE_ENV === 'test') {
+  if (process.env.NODE_ENV === "test") {
     return new InMemoryQueue(name) as unknown as Queue;
   }
   return new Queue(name, options);
 }
 
 const queueMetricsInterval = setInterval(() => {
-  refreshQueueMetrics(scanRequestQueue, config.queues.scanRequest).catch(() => undefined);
-  refreshQueueMetrics(scanVerdictQueue, config.queues.scanVerdict).catch(() => undefined);
-  refreshQueueMetrics(urlscanQueue, config.queues.urlscan).catch(() => undefined);
+  refreshQueueMetrics(scanRequestQueue, config.queues.scanRequest).catch(
+    () => undefined,
+  );
+  refreshQueueMetrics(scanVerdictQueue, config.queues.scanVerdict).catch(
+    () => undefined,
+  );
+  refreshQueueMetrics(urlscanQueue, config.queues.urlscan).catch(
+    () => undefined,
+  );
 }, 10_000);
 queueMetricsInterval.unref();
 
@@ -233,20 +263,20 @@ const ANALYSIS_TTLS = {
   whois: 7 * 24 * 60 * 60,
 };
 
-const URLSCAN_UUID_PREFIX = 'urlscan:uuid:';
-const URLSCAN_QUEUED_PREFIX = 'urlscan:queued:';
-const URLSCAN_SUBMITTED_PREFIX = 'urlscan:submitted:';
-const URLSCAN_RESULT_PREFIX = 'urlscan:result:';
-const SHORTENER_CACHE_PREFIX = 'url:shortener:';
+const URLSCAN_UUID_PREFIX = "urlscan:uuid:";
+const URLSCAN_QUEUED_PREFIX = "urlscan:queued:";
+const URLSCAN_SUBMITTED_PREFIX = "urlscan:submitted:";
+const URLSCAN_RESULT_PREFIX = "urlscan:result:";
+const SHORTENER_CACHE_PREFIX = "url:shortener:";
 
 const CACHE_LABELS = {
-  gsb: 'gsb_analysis',
-  phishtank: 'phishtank_analysis',
-  vt: 'virustotal_analysis',
-  urlhaus: 'urlhaus_analysis',
-  shortener: 'shortener_resolution',
-  whois: 'whois_analysis',
-  verdict: 'scan_result',
+  gsb: "gsb_analysis",
+  phishtank: "phishtank_analysis",
+  vt: "virustotal_analysis",
+  urlhaus: "urlhaus_analysis",
+  shortener: "shortener_resolution",
+  whois: "whois_analysis",
+  verdict: "scan_result",
 } as const;
 
 const CIRCUIT_DEFAULTS = {
@@ -257,70 +287,76 @@ const CIRCUIT_DEFAULTS = {
 } as const;
 
 const CIRCUIT_LABELS = {
-  gsb: 'google_safe_browsing',
-  phishtank: 'phishtank',
-  urlhaus: 'urlhaus',
-  vt: 'virustotal',
-  urlscan: 'urlscan',
-  whoisxml: 'whoisxml',
-  whodat: 'whodat',
+  gsb: "google_safe_browsing",
+  phishtank: "phishtank",
+  urlhaus: "urlhaus",
+  vt: "virustotal",
+  urlscan: "urlscan",
+  whoisxml: "whoisxml",
+  whodat: "whodat",
 } as const;
 
 const cacheRatios = new Map<string, { hits: number; misses: number }>();
 const circuitOpenSince = new Map<string, number>();
 
-const VERDICT_REASON_OTHER_LABEL = 'other';
+const VERDICT_REASON_OTHER_LABEL = "other";
 
 // Refactored normalizeVerdictReason function (complexity 28 -> 15)
 function normalizeVerdictReason(reason: string): string {
   // Manual overrides
-  if (reason === 'Manually allowed') return 'manual_allow';
-  if (reason === 'Manually blocked') return 'manual_deny';
-  
+  if (reason === "Manually allowed") return "manual_allow";
+  if (reason === "Manually blocked") return "manual_deny";
+
   // Google Safe Browsing threats
-  if (reason.startsWith('Google Safe Browsing')) {
-    if (reason.includes('MALWARE')) return 'gsb_malware';
-    if (reason.includes('SOCIAL_ENGINEERING')) return 'gsb_social_engineering';
-    return 'gsb_threat';
+  if (reason.startsWith("Google Safe Browsing")) {
+    if (reason.includes("MALWARE")) return "gsb_malware";
+    if (reason.includes("SOCIAL_ENGINEERING")) return "gsb_social_engineering";
+    return "gsb_threat";
   }
-  
+
   // Blocklist threats
-  if (reason === 'Verified phishing (Phishtank)') return 'phishtank_verified';
-  if (reason === 'Known malware distribution (URLhaus)') return 'urlhaus_listed';
-  
+  if (reason === "Verified phishing (Phishtank)") return "phishtank_verified";
+  if (reason === "Known malware distribution (URLhaus)")
+    return "urlhaus_listed";
+
   // VirusTotal threats
-  if (reason.includes('VT engine')) return 'vt_malicious';
-  
+  if (reason.includes("VT engine")) return "vt_malicious";
+
   // Domain age threats
-  if (reason.startsWith('Domain registered')) {
-    if (reason.includes('<7')) return 'domain_age_lt7';
-    if (reason.includes('<14')) return 'domain_age_lt14';
-    if (reason.includes('<30')) return 'domain_age_lt30';
-    return 'domain_age';
+  if (reason.startsWith("Domain registered")) {
+    if (reason.includes("<7")) return "domain_age_lt7";
+    if (reason.includes("<14")) return "domain_age_lt14";
+    if (reason.includes("<30")) return "domain_age_lt30";
+    return "domain_age";
   }
-  
+
   // Homoglyph threats
-  if (reason.startsWith('High-risk homoglyph attack detected')) return 'homoglyph_high';
-  if (reason.startsWith('Suspicious characters detected') || 
-      reason === 'Suspicious homoglyph characters detected') return 'homoglyph_medium';
-  if (reason === 'Punycode/IDN domain detected') return 'homoglyph_low';
-  
+  if (reason.startsWith("High-risk homoglyph attack detected"))
+    return "homoglyph_high";
+  if (
+    reason.startsWith("Suspicious characters detected") ||
+    reason === "Suspicious homoglyph characters detected"
+  )
+    return "homoglyph_medium";
+  if (reason === "Punycode/IDN domain detected") return "homoglyph_low";
+
   // URL structure threats
-  if (reason === 'URL uses IP address') return 'ip_literal';
-  if (reason === 'Suspicious TLD') return 'suspicious_tld';
-  if (reason.startsWith('Multiple redirects')) return 'multiple_redirects';
-  if (reason === 'Uncommon port') return 'uncommon_port';
-  if (reason.startsWith('Long URL')) return 'long_url';
-  if (reason === 'Executable file extension') return 'executable_extension';
-  if (reason === 'Shortened URL expanded') return 'shortener_expanded';
-  if (reason === 'Redirect leads to mismatched domain/brand') return 'redirect_mismatch';
-  
+  if (reason === "URL uses IP address") return "ip_literal";
+  if (reason === "Suspicious TLD") return "suspicious_tld";
+  if (reason.startsWith("Multiple redirects")) return "multiple_redirects";
+  if (reason === "Uncommon port") return "uncommon_port";
+  if (reason.startsWith("Long URL")) return "long_url";
+  if (reason === "Executable file extension") return "executable_extension";
+  if (reason === "Shortened URL expanded") return "shortener_expanded";
+  if (reason === "Redirect leads to mismatched domain/brand")
+    return "redirect_mismatch";
+
   return VERDICT_REASON_OTHER_LABEL;
 }
 
-function recordCacheOutcome(cacheType: string, outcome: 'hit' | 'miss'): void {
+function recordCacheOutcome(cacheType: string, outcome: "hit" | "miss"): void {
   const state = cacheRatios.get(cacheType) ?? { hits: 0, misses: 0 };
-  if (outcome === 'hit') {
+  if (outcome === "hit") {
     state.hits += 1;
   } else {
     state.misses += 1;
@@ -333,7 +369,12 @@ function recordCacheOutcome(cacheType: string, outcome: 'hit' | 'miss'): void {
 }
 
 async function refreshQueueMetrics(queue: Queue, name: string): Promise<void> {
-  const counts = await queue.getJobCounts('waiting', 'active', 'delayed', 'failed');
+  const counts = await queue.getJobCounts(
+    "waiting",
+    "active",
+    "delayed",
+    "failed",
+  );
   queueDepthGauge.labels(name).set(counts.waiting ?? 0);
   metrics.queueActive.labels(name).set(counts.active ?? 0);
   metrics.queueDelayed.labels(name).set(counts.delayed ?? 0);
@@ -346,19 +387,23 @@ function makeCircuit(name: string) {
     name,
     onStateChange: (state, from) => {
       circuitStates.labels(name).set(state);
-      circuitBreakerTransitionCounter.labels(name, String(from ?? ''), String(state)).inc();
+      circuitBreakerTransitionCounter
+        .labels(name, String(from ?? ""), String(state))
+        .inc();
       const now = Date.now();
       if (state === CircuitState.OPEN) {
         circuitOpenSince.set(name, now);
       } else if (from === CircuitState.OPEN) {
         const openedAt = circuitOpenSince.get(name);
         if (openedAt) {
-          circuitBreakerOpenDuration.labels(name).observe((now - openedAt) / 1000);
+          circuitBreakerOpenDuration
+            .labels(name)
+            .observe((now - openedAt) / 1000);
           circuitOpenSince.delete(name);
         }
       }
-      logger.debug({ name, from, to: state }, 'Circuit state change');
-    }
+      logger.debug({ name, from, to: state }, "Circuit state change");
+    },
   });
   circuitStates.labels(name).set(CircuitState.CLOSED);
   return breaker;
@@ -373,57 +418,77 @@ const whoisCircuit = makeCircuit(CIRCUIT_LABELS.whoisxml);
 const whodatCircuit = makeCircuit(CIRCUIT_LABELS.whodat);
 
 function recordLatency(service: string, ms?: number) {
-  if (typeof ms === 'number' && ms >= 0) {
+  if (typeof ms === "number" && ms >= 0) {
     externalLatency.labels(service).observe(ms / 1000);
   }
 }
 
 function classifyError(err: unknown): string {
-  const rawCode = (err as { code?: string | number; statusCode?: string | number })?.code ?? (err as { statusCode?: string | number })?.statusCode;
-  if (rawCode === 'UND_ERR_HEADERS_TIMEOUT' || rawCode === 'UND_ERR_CONNECT_TIMEOUT') return 'timeout';
-  const codeNum = typeof rawCode === 'string' ? Number(rawCode) : rawCode;
-  if (codeNum === 429) return 'rate_limited';
-  if (codeNum === 408) return 'timeout';
-  if (typeof codeNum === 'number' && codeNum >= 500) return 'server_error';
-  if (typeof codeNum === 'number' && codeNum >= 400) return 'client_error';
-  const message = (err as Error)?.message || '';
-  if (message.includes('Circuit') && message.includes('open')) return 'circuit_open';
-  return 'unknown';
+  const rawCode =
+    (err as { code?: string | number; statusCode?: string | number })?.code ??
+    (err as { statusCode?: string | number })?.statusCode;
+  if (
+    rawCode === "UND_ERR_HEADERS_TIMEOUT" ||
+    rawCode === "UND_ERR_CONNECT_TIMEOUT"
+  )
+    return "timeout";
+  const codeNum = typeof rawCode === "string" ? Number(rawCode) : rawCode;
+  if (codeNum === 429) return "rate_limited";
+  if (codeNum === 408) return "timeout";
+  if (typeof codeNum === "number" && codeNum >= 500) return "server_error";
+  if (typeof codeNum === "number" && codeNum >= 400) return "client_error";
+  const message = (err as Error)?.message || "";
+  if (message.includes("Circuit") && message.includes("open"))
+    return "circuit_open";
+  return "unknown";
 }
 
 function recordError(service: string, err: unknown) {
   const reason = classifyError(err);
-  if (reason === 'circuit_open') {
+  if (reason === "circuit_open") {
     circuitBreakerRejections.labels(service).inc();
   }
   externalErrors.labels(service, reason).inc();
 }
 
 function shouldRetry(err: unknown): boolean {
-  const rawCode = (err as { code?: string | number; statusCode?: string | number })?.code ?? (err as { statusCode?: string | number })?.statusCode;
-  if (rawCode === 'UND_ERR_HEADERS_TIMEOUT' || rawCode === 'UND_ERR_CONNECT_TIMEOUT') return true;
-  const codeNum = typeof rawCode === 'string' ? Number(rawCode) : rawCode;
+  const rawCode =
+    (err as { code?: string | number; statusCode?: string | number })?.code ??
+    (err as { statusCode?: string | number })?.statusCode;
+  if (
+    rawCode === "UND_ERR_HEADERS_TIMEOUT" ||
+    rawCode === "UND_ERR_CONNECT_TIMEOUT"
+  )
+    return true;
+  const codeNum = typeof rawCode === "string" ? Number(rawCode) : rawCode;
   if (codeNum === 429) return false;
   if (codeNum === 408) return true;
-  if (typeof codeNum === 'number' && codeNum >= 500) return true;
+  if (typeof codeNum === "number" && codeNum >= 500) return true;
   return !codeNum;
 }
 
-async function getJsonCache<T>(cacheType: string, key: string, ttlSeconds: number): Promise<T | null> {
+async function getJsonCache<T>(
+  cacheType: string,
+  key: string,
+  ttlSeconds: number,
+): Promise<T | null> {
   const stop = metrics.cacheLookupDuration.labels(cacheType).startTimer();
   const raw = await redis.get(key);
   stop();
   if (!raw) {
-    recordCacheOutcome(cacheType, 'miss');
+    recordCacheOutcome(cacheType, "miss");
     metrics.cacheEntryTtl.labels(cacheType).set(0);
     return null;
   }
-  recordCacheOutcome(cacheType, 'hit');
+  recordCacheOutcome(cacheType, "hit");
   metrics.cacheEntryBytes.labels(cacheType).set(Buffer.byteLength(raw));
   const ttlRemaining = await redis.ttl(key);
   if (ttlRemaining >= 0) {
     metrics.cacheEntryTtl.labels(cacheType).set(ttlRemaining);
-    if (ttlSeconds > 0 && ttlRemaining < Math.max(1, Math.floor(ttlSeconds * 0.2))) {
+    if (
+      ttlSeconds > 0 &&
+      ttlRemaining < Math.max(1, Math.floor(ttlSeconds * 0.2))
+    ) {
       metrics.cacheStaleTotal.labels(cacheType).inc();
     }
   }
@@ -435,10 +500,15 @@ async function getJsonCache<T>(cacheType: string, key: string, ttlSeconds: numbe
   }
 }
 
-async function setJsonCache(cacheType: string, key: string, value: unknown, ttlSeconds: number): Promise<void> {
+async function setJsonCache(
+  cacheType: string,
+  key: string,
+  value: unknown,
+  ttlSeconds: number,
+): Promise<void> {
   const payload = JSON.stringify(value);
   const stop = metrics.cacheWriteDuration.labels(cacheType).startTimer();
-  await redis.set(key, payload, 'EX', ttlSeconds);
+  await redis.set(key, payload, "EX", ttlSeconds);
   stop();
   metrics.cacheRefreshTotal.labels(cacheType).inc();
   metrics.cacheEntryBytes.labels(cacheType).set(Buffer.byteLength(payload));
@@ -451,16 +521,19 @@ type UrlhausResult = UrlhausLookupResult;
 type PhishtankResult = PhishtankLookupResult;
 
 type ArtifactCandidate = {
-  type: 'screenshot' | 'dom';
+  type: "screenshot" | "dom";
   url: string;
 };
 
-function normalizeUrlscanArtifactCandidate(candidate: unknown, baseUrl: string): { url?: string; invalid: boolean } {
-  if (typeof candidate !== 'string') return { invalid: false };
+function normalizeUrlscanArtifactCandidate(
+  candidate: unknown,
+  baseUrl: string,
+): { url?: string; invalid: boolean } {
+  if (typeof candidate !== "string") return { invalid: false };
   const trimmed = candidate.trim();
   if (!trimmed) return { invalid: false };
 
-  const sanitizedBase = baseUrl.replace(/\/+$/, '');
+  const sanitizedBase = baseUrl.replace(/\/+$/, "");
   let trustedHostname: string;
   try {
     trustedHostname = new URL(sanitizedBase).hostname.toLowerCase();
@@ -470,7 +543,7 @@ function normalizeUrlscanArtifactCandidate(candidate: unknown, baseUrl: string):
 
   const rawUrl = /^https?:\/\//i.test(trimmed)
     ? trimmed
-    : `${sanitizedBase}/${trimmed.replace(/^\/+/, '')}`;
+    : `${sanitizedBase}/${trimmed.replace(/^\/+/, "")}`;
 
   const normalized = normalizeUrl(rawUrl);
   if (!normalized) {
@@ -480,7 +553,8 @@ function normalizeUrlscanArtifactCandidate(candidate: unknown, baseUrl: string):
   const parsed = new URL(normalized);
   const candidateHostname = parsed.hostname.toLowerCase();
   const hostAllowed =
-    candidateHostname === trustedHostname || candidateHostname.endsWith(`.${trustedHostname}`);
+    candidateHostname === trustedHostname ||
+    candidateHostname.endsWith(`.${trustedHostname}`);
 
   if (!hostAllowed) {
     return { invalid: true };
@@ -489,13 +563,22 @@ function normalizeUrlscanArtifactCandidate(candidate: unknown, baseUrl: string):
   return { url: parsed.toString(), invalid: false };
 }
 
-function normaliseArtifactUrl(candidate: unknown, baseUrl: string): string | undefined {
+function normaliseArtifactUrl(
+  candidate: unknown,
+  baseUrl: string,
+): string | undefined {
   const result = normalizeUrlscanArtifactCandidate(candidate, baseUrl);
   return result.url;
 }
 
-function extractUrlscanArtifactCandidates(uuid: string, payload: unknown): ArtifactCandidate[] {
-  const baseUrl = (config.urlscan.baseUrl || 'https://urlscan.io').replace(/\/+$/, '');
+function extractUrlscanArtifactCandidates(
+  uuid: string,
+  payload: unknown,
+): ArtifactCandidate[] {
+  const baseUrl = (config.urlscan.baseUrl || "https://urlscan.io").replace(
+    /\/+$/,
+    "",
+  );
   const candidates: ArtifactCandidate[] = [];
   const seen = new Set<string>();
 
@@ -517,7 +600,7 @@ function extractUrlscanArtifactCandidates(uuid: string, payload: unknown): Artif
     const resolved = normaliseArtifactUrl(source, baseUrl);
     if (resolved && !seen.has(`screenshot:${resolved}`)) {
       seen.add(`screenshot:${resolved}`);
-      candidates.push({ type: 'screenshot', url: resolved });
+      candidates.push({ type: "screenshot", url: resolved });
     }
   }
 
@@ -531,20 +614,27 @@ function extractUrlscanArtifactCandidates(uuid: string, payload: unknown): Artif
     const resolved = normaliseArtifactUrl(source, baseUrl);
     if (resolved && !seen.has(`dom:${resolved}`)) {
       seen.add(`dom:${resolved}`);
-      candidates.push({ type: 'dom', url: resolved });
+      candidates.push({ type: "dom", url: resolved });
     }
   }
 
   return candidates;
 }
 
-async function fetchGsbAnalysis(finalUrl: string, hash: string): Promise<GsbFetchResult> {
+async function fetchGsbAnalysis(
+  finalUrl: string,
+  hash: string,
+): Promise<GsbFetchResult> {
   if (!config.gsb.enabled) {
-    logger.warn({ url: finalUrl }, 'Google Safe Browsing disabled by config');
+    logger.warn({ url: finalUrl }, "Google Safe Browsing disabled by config");
     return { matches: [], fromCache: true, durationMs: 0, error: null };
   }
   const cacheKey = `url:analysis:${hash}:gsb`;
-  const cached = await getJsonCache<GsbMatch[]>(CACHE_LABELS.gsb, cacheKey, ANALYSIS_TTLS.gsb);
+  const cached = await getJsonCache<GsbMatch[]>(
+    CACHE_LABELS.gsb,
+    cacheKey,
+    ANALYSIS_TTLS.gsb,
+  );
   if (cached) {
     return { matches: cached, fromCache: true, durationMs: 0, error: null };
   }
@@ -555,10 +645,15 @@ async function fetchGsbAnalysis(finalUrl: string, hash: string): Promise<GsbFetc
         baseDelayMs: 1000,
         factor: 2,
         retryable: shouldRetry,
-      })
+      }),
     );
     recordLatency(CIRCUIT_LABELS.gsb, result.latencyMs);
-    await setJsonCache(CACHE_LABELS.gsb, cacheKey, result.matches, ANALYSIS_TTLS.gsb);
+    await setJsonCache(
+      CACHE_LABELS.gsb,
+      cacheKey,
+      result.matches,
+      ANALYSIS_TTLS.gsb,
+    );
     return {
       matches: result.matches,
       fromCache: false,
@@ -567,17 +662,29 @@ async function fetchGsbAnalysis(finalUrl: string, hash: string): Promise<GsbFetc
     };
   } catch (err) {
     recordError(CIRCUIT_LABELS.gsb, err);
-    logger.warn({ err, url: finalUrl }, 'Google Safe Browsing lookup failed');
-    return { matches: [], fromCache: false, durationMs: 0, error: err as Error };
+    logger.warn({ err, url: finalUrl }, "Google Safe Browsing lookup failed");
+    return {
+      matches: [],
+      fromCache: false,
+      durationMs: 0,
+      error: err as Error,
+    };
   }
 }
 
-async function fetchPhishtank(finalUrl: string, hash: string): Promise<PhishtankFetchResult> {
+async function fetchPhishtank(
+  finalUrl: string,
+  hash: string,
+): Promise<PhishtankFetchResult> {
   if (!config.phishtank.enabled) {
     return { result: null, fromCache: true, error: null };
   }
   const cacheKey = `url:analysis:${hash}:phishtank`;
-  const cached = await getJsonCache<PhishtankResult>(CACHE_LABELS.phishtank, cacheKey, ANALYSIS_TTLS.phishtank);
+  const cached = await getJsonCache<PhishtankResult>(
+    CACHE_LABELS.phishtank,
+    cacheKey,
+    ANALYSIS_TTLS.phishtank,
+  );
   if (cached) {
     return { result: cached, fromCache: true, error: null };
   }
@@ -588,14 +695,19 @@ async function fetchPhishtank(finalUrl: string, hash: string): Promise<Phishtank
         baseDelayMs: 1000,
         factor: 2,
         retryable: shouldRetry,
-      })
+      }),
     );
     recordLatency(CIRCUIT_LABELS.phishtank, result.latencyMs);
-    await setJsonCache(CACHE_LABELS.phishtank, cacheKey, result, ANALYSIS_TTLS.phishtank);
+    await setJsonCache(
+      CACHE_LABELS.phishtank,
+      cacheKey,
+      result,
+      ANALYSIS_TTLS.phishtank,
+    );
     return { result, fromCache: false, error: null };
   } catch (err) {
     recordError(CIRCUIT_LABELS.phishtank, err);
-    logger.warn({ err, url: finalUrl }, 'Phishtank lookup failed');
+    logger.warn({ err, url: finalUrl }, "Phishtank lookup failed");
     return { result: null, fromCache: false, error: err as Error };
   }
 }
@@ -607,15 +719,33 @@ interface VirusTotalFetchResult {
   error: Error | null;
 }
 
-async function fetchVirusTotal(finalUrl: string, hash: string): Promise<VirusTotalFetchResult> {
+async function fetchVirusTotal(
+  finalUrl: string,
+  hash: string,
+): Promise<VirusTotalFetchResult> {
   if (!config.vt.enabled || !config.vt.apiKey) {
-    if (!config.vt.enabled) logger.warn({ url: finalUrl }, 'VirusTotal disabled by config');
-    return { stats: undefined, fromCache: true, quotaExceeded: false, error: null };
+    if (!config.vt.enabled)
+      logger.warn({ url: finalUrl }, "VirusTotal disabled by config");
+    return {
+      stats: undefined,
+      fromCache: true,
+      quotaExceeded: false,
+      error: null,
+    };
   }
   const cacheKey = `url:analysis:${hash}:vt`;
-  const cached = await getJsonCache<VtStats>(CACHE_LABELS.vt, cacheKey, ANALYSIS_TTLS.vt);
+  const cached = await getJsonCache<VtStats>(
+    CACHE_LABELS.vt,
+    cacheKey,
+    ANALYSIS_TTLS.vt,
+  );
   if (cached) {
-    return { stats: cached, fromCache: true, quotaExceeded: false, error: null };
+    return {
+      stats: cached,
+      fromCache: true,
+      quotaExceeded: false,
+      error: null,
+    };
   }
   try {
     const analysis = await vtCircuit.execute(() =>
@@ -624,7 +754,7 @@ async function fetchVirusTotal(finalUrl: string, hash: string): Promise<VirusTot
         baseDelayMs: 1000,
         factor: 2,
         retryable: shouldRetry,
-      })
+      }),
     );
     recordLatency(CIRCUIT_LABELS.vt, analysis.latencyMs);
     const stats = vtVerdictStats(analysis as VirusTotalAnalysis);
@@ -634,11 +764,20 @@ async function fetchVirusTotal(finalUrl: string, hash: string): Promise<VirusTot
     return { stats, fromCache: false, quotaExceeded: false, error: null };
   } catch (err) {
     recordError(CIRCUIT_LABELS.vt, err);
-    const quotaExceeded = err instanceof QuotaExceededError || ((err as { code?: string | number; statusCode?: string | number })?.code ?? (err as { statusCode?: string | number })?.statusCode) === 429;
+    const quotaExceeded =
+      err instanceof QuotaExceededError ||
+      ((err as { code?: string | number; statusCode?: string | number })
+        ?.code ?? (err as { statusCode?: string | number })?.statusCode) ===
+        429;
     if (!quotaExceeded) {
-      logger.warn({ err, url: finalUrl }, 'VirusTotal lookup failed');
+      logger.warn({ err, url: finalUrl }, "VirusTotal lookup failed");
     }
-    return { stats: undefined, fromCache: false, quotaExceeded, error: err as Error };
+    return {
+      stats: undefined,
+      fromCache: false,
+      quotaExceeded,
+      error: err as Error,
+    };
   }
 }
 
@@ -648,12 +787,19 @@ interface UrlhausFetchResult {
   error: Error | null;
 }
 
-async function fetchUrlhaus(finalUrl: string, hash: string): Promise<UrlhausFetchResult> {
+async function fetchUrlhaus(
+  finalUrl: string,
+  hash: string,
+): Promise<UrlhausFetchResult> {
   if (!config.urlhaus.enabled) {
     return { result: null, fromCache: true, error: null };
   }
   const cacheKey = `url:analysis:${hash}:urlhaus`;
-  const cached = await getJsonCache<UrlhausResult>(CACHE_LABELS.urlhaus, cacheKey, ANALYSIS_TTLS.urlhaus);
+  const cached = await getJsonCache<UrlhausResult>(
+    CACHE_LABELS.urlhaus,
+    cacheKey,
+    ANALYSIS_TTLS.urlhaus,
+  );
   if (cached) {
     return { result: cached, fromCache: true, error: null };
   }
@@ -664,14 +810,19 @@ async function fetchUrlhaus(finalUrl: string, hash: string): Promise<UrlhausFetc
         baseDelayMs: 1000,
         factor: 2,
         retryable: shouldRetry,
-      })
+      }),
     );
     recordLatency(CIRCUIT_LABELS.urlhaus, result.latencyMs);
-    await setJsonCache(CACHE_LABELS.urlhaus, cacheKey, result, ANALYSIS_TTLS.urlhaus);
+    await setJsonCache(
+      CACHE_LABELS.urlhaus,
+      cacheKey,
+      result,
+      ANALYSIS_TTLS.urlhaus,
+    );
     return { result, fromCache: false, error: null };
   } catch (err) {
     recordError(CIRCUIT_LABELS.urlhaus, err);
-    logger.warn({ err, url: finalUrl }, 'URLhaus lookup failed');
+    logger.warn({ err, url: finalUrl }, "URLhaus lookup failed");
     return { result: null, fromCache: false, error: err as Error };
   }
 }
@@ -683,14 +834,21 @@ interface ShortenerCacheEntry {
   wasShortened: boolean;
 }
 
-async function resolveShortenerWithCache(url: string, hash: string): Promise<ShortenerCacheEntry | null> {
+async function resolveShortenerWithCache(
+  url: string,
+  hash: string,
+): Promise<ShortenerCacheEntry | null> {
   const cacheKey = `${SHORTENER_CACHE_PREFIX}${hash}`;
-  const cached = await getJsonCache<ShortenerCacheEntry>(CACHE_LABELS.shortener, cacheKey, config.shortener.cacheTtlSeconds);
+  const cached = await getJsonCache<ShortenerCacheEntry>(
+    CACHE_LABELS.shortener,
+    cacheKey,
+    config.shortener.cacheTtlSeconds,
+  );
   if (cached) return cached;
   try {
     const start = Date.now();
     const resolved = await resolveShortener(url);
-    recordLatency('shortener', Date.now() - start);
+    recordLatency("shortener", Date.now() - start);
     if (resolved.wasShortened) {
       const payload: ShortenerCacheEntry = {
         finalUrl: resolved.finalUrl,
@@ -698,31 +856,42 @@ async function resolveShortenerWithCache(url: string, hash: string): Promise<Sho
         chain: resolved.chain,
         wasShortened: true,
       };
-      await setJsonCache(CACHE_LABELS.shortener, cacheKey, payload, config.shortener.cacheTtlSeconds);
+      await setJsonCache(
+        CACHE_LABELS.shortener,
+        cacheKey,
+        payload,
+        config.shortener.cacheTtlSeconds,
+      );
       return payload;
     }
     return null;
   } catch (err) {
-    recordError('shortener', err);
-    logger.warn({ err, url }, 'Shortener resolution failed');
+    recordError("shortener", err);
+    logger.warn({ err, url }, "Shortener resolution failed");
     return null;
   }
 }
 
 interface DomainIntelResult {
   ageDays?: number;
-  source: 'rdap' | 'whoisxml' | 'whodat' | 'none';
+  source: "rdap" | "whoisxml" | "whodat" | "none";
   registrar?: string;
 }
 
-async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainIntelResult> {
+async function fetchDomainIntel(
+  hostname: string,
+  hash: string,
+): Promise<DomainIntelResult> {
   if (config.rdap.enabled) {
-    const rdapAge = await domainAgeDaysFromRdap(hostname, config.rdap.timeoutMs).catch(() => undefined);
+    const rdapAge = await domainAgeDaysFromRdap(
+      hostname,
+      config.rdap.timeoutMs,
+    ).catch(() => undefined);
     if (rdapAge !== undefined) {
-      return { ageDays: rdapAge, source: 'rdap' };
+      return { ageDays: rdapAge, source: "rdap" };
     }
   } else {
-    logger.warn({ hostname }, 'RDAP disabled by config');
+    logger.warn({ hostname }, "RDAP disabled by config");
   }
 
   // Try who-dat first if enabled (self-hosted, no quota limits)
@@ -731,10 +900,14 @@ async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainI
     const cached = await getJsonCache<{ ageDays?: number; registrar?: string }>(
       CACHE_LABELS.whois,
       cacheKey,
-      ANALYSIS_TTLS.whois
+      ANALYSIS_TTLS.whois,
     );
     if (cached) {
-      return { ageDays: cached.ageDays, registrar: cached.registrar, source: 'whodat' };
+      return {
+        ageDays: cached.ageDays,
+        registrar: cached.registrar,
+        source: "whodat",
+      };
     }
     try {
       const start = Date.now();
@@ -744,32 +917,48 @@ async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainI
           baseDelayMs: 1000,
           factor: 2,
           retryable: shouldRetry,
-        })
+        }),
       );
       recordLatency(CIRCUIT_LABELS.whodat, Date.now() - start);
-      const record = (response as { record?: { estimatedDomainAgeDays?: number; registrarName?: string } })?.record;
+      const record = (
+        response as {
+          record?: { estimatedDomainAgeDays?: number; registrarName?: string };
+        }
+      )?.record;
       const ageDays = record?.estimatedDomainAgeDays;
       const registrar = record?.registrarName;
-      await setJsonCache(CACHE_LABELS.whois, cacheKey, { ageDays, registrar }, ANALYSIS_TTLS.whois);
-      return { ageDays, registrar, source: 'whodat' };
+      await setJsonCache(
+        CACHE_LABELS.whois,
+        cacheKey,
+        { ageDays, registrar },
+        ANALYSIS_TTLS.whois,
+      );
+      return { ageDays, registrar, source: "whodat" };
     } catch (err) {
       recordError(CIRCUIT_LABELS.whodat, err);
-      logger.warn({ err, hostname }, 'Who-dat lookup failed, falling back to WhoisXML if available');
+      logger.warn(
+        { err, hostname },
+        "Who-dat lookup failed, falling back to WhoisXML if available",
+      );
     }
   }
 
   // Fallback to WhoisXML if who-dat failed or is disabled
   if (!config.whoisxml?.enabled || !config.whoisxml.apiKey) {
-    return { ageDays: undefined, source: 'none' };
+    return { ageDays: undefined, source: "none" };
   }
   const cacheKey = `url:analysis:${hash}:whois`;
   const cached = await getJsonCache<{ ageDays?: number; registrar?: string }>(
     CACHE_LABELS.whois,
     cacheKey,
-    ANALYSIS_TTLS.whois
+    ANALYSIS_TTLS.whois,
   );
   if (cached) {
-    return { ageDays: cached.ageDays, registrar: cached.registrar, source: 'whoisxml' };
+    return {
+      ageDays: cached.ageDays,
+      registrar: cached.registrar,
+      source: "whoisxml",
+    };
   }
   try {
     const start = Date.now();
@@ -779,27 +968,45 @@ async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainI
         baseDelayMs: 1000,
         factor: 2,
         retryable: shouldRetry,
-      })
+      }),
     );
     recordLatency(CIRCUIT_LABELS.whoisxml, Date.now() - start);
-    const record = (response as { record?: { estimatedDomainAgeDays?: number; registrarName?: string } })?.record;
+    const record = (
+      response as {
+        record?: { estimatedDomainAgeDays?: number; registrarName?: string };
+      }
+    )?.record;
     const ageDays = record?.estimatedDomainAgeDays;
     const registrar = record?.registrarName;
-    await setJsonCache(CACHE_LABELS.whois, cacheKey, { ageDays, registrar }, ANALYSIS_TTLS.whois);
-    return { ageDays, registrar, source: 'whoisxml' };
+    await setJsonCache(
+      CACHE_LABELS.whois,
+      cacheKey,
+      { ageDays, registrar },
+      ANALYSIS_TTLS.whois,
+    );
+    return { ageDays, registrar, source: "whoisxml" };
   } catch (err) {
     recordError(CIRCUIT_LABELS.whoisxml, err);
     if (err instanceof QuotaExceededError) {
-      logger.warn({ hostname }, 'WhoisXML quota exhausted, disabling for remainder of month');
+      logger.warn(
+        { hostname },
+        "WhoisXML quota exhausted, disabling for remainder of month",
+      );
       disableWhoisXmlForMonth();
     } else {
-      logger.warn({ err, hostname }, 'WhoisXML lookup failed');
+      logger.warn({ err, hostname }, "WhoisXML lookup failed");
     }
-    return { ageDays: undefined, source: 'none' };
+    return { ageDays: undefined, source: "none" };
   }
 }
 
-async function loadManualOverride(dbClient: { query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }> }, urlHash: string, hostname: string): Promise<'allow' | 'deny' | null> {
+async function loadManualOverride(
+  dbClient: {
+    query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
+  },
+  urlHash: string,
+  hostname: string,
+): Promise<"allow" | "deny" | null> {
   try {
     const { rows } = await dbClient.query(
       `SELECT status FROM overrides
@@ -807,13 +1014,13 @@ async function loadManualOverride(dbClient: { query: (sql: string, params?: unkn
            AND (expires_at IS NULL OR expires_at > datetime('now'))
          ORDER BY created_at DESC
          LIMIT 1`,
-      [urlHash, hostname]
+      [urlHash, hostname],
     );
     const record = rows[0] as { status?: string } | undefined;
     const status = record?.status;
-    return status === 'allow' || status === 'deny' ? status : null;
+    return status === "allow" || status === "deny" ? status : null;
   } catch (err) {
-    logger.warn({ err, urlHash, hostname }, 'Failed to load manual override');
+    logger.warn({ err, urlHash, hostname }, "Failed to load manual override");
     return null;
   }
 }
@@ -829,17 +1036,23 @@ interface CachedVerdict {
   [key: string]: unknown;
 }
 
-async function getCachedVerdict(cacheKey: string): Promise<CachedVerdict | null> {
+async function getCachedVerdict(
+  cacheKey: string,
+): Promise<CachedVerdict | null> {
   let cachedVerdict: CachedVerdict | null = null;
   let cachedTtl = -1;
-  const cacheStop = metrics.cacheLookupDuration.labels(CACHE_LABELS.verdict).startTimer();
+  const cacheStop = metrics.cacheLookupDuration
+    .labels(CACHE_LABELS.verdict)
+    .startTimer();
   const cachedRaw = await redis.get(cacheKey);
   cacheStop();
-  
+
   if (cachedRaw) {
-    recordCacheOutcome(CACHE_LABELS.verdict, 'hit');
+    recordCacheOutcome(CACHE_LABELS.verdict, "hit");
     metrics.cacheHit.inc();
-    metrics.cacheEntryBytes.labels(CACHE_LABELS.verdict).set(Buffer.byteLength(cachedRaw));
+    metrics.cacheEntryBytes
+      .labels(CACHE_LABELS.verdict)
+      .set(Buffer.byteLength(cachedRaw));
     cachedTtl = await redis.ttl(cacheKey);
     if (cachedTtl >= 0) {
       metrics.cacheEntryTtl.labels(CACHE_LABELS.verdict).set(cachedTtl);
@@ -851,18 +1064,18 @@ async function getCachedVerdict(cacheKey: string): Promise<CachedVerdict | null>
     }
     if (
       cachedVerdict &&
-      typeof cachedVerdict.cacheTtl === 'number' &&
+      typeof cachedVerdict.cacheTtl === "number" &&
       cachedTtl >= 0 &&
       cachedTtl < Math.max(1, Math.floor(cachedVerdict.cacheTtl * 0.2))
     ) {
       metrics.cacheStaleTotal.labels(CACHE_LABELS.verdict).inc();
     }
   } else {
-    recordCacheOutcome(CACHE_LABELS.verdict, 'miss');
+    recordCacheOutcome(CACHE_LABELS.verdict, "miss");
     metrics.cacheMiss.inc();
     metrics.cacheEntryTtl.labels(CACHE_LABELS.verdict).set(0);
   }
-  
+
   return cachedVerdict;
 }
 
@@ -877,31 +1090,43 @@ async function handleCachedVerdict(
   attemptsMade: number,
   url: string,
   rescan: boolean | undefined,
-  jobId: string | undefined
+  jobId: string | undefined,
 ): Promise<void> {
-  const verdictLatencySeconds = Math.max(0, (Date.now() - ingestionTimestamp) / 1000);
+  const verdictLatencySeconds = Math.max(
+    0,
+    (Date.now() - ingestionTimestamp) / 1000,
+  );
   metrics.verdictLatency.observe(verdictLatencySeconds);
   recordQueueMetrics(queueName, started, attemptsMade);
 
   if (hasChatContext) {
-    const resolvedMessageId = messageId ?? '';
+    const resolvedMessageId = messageId ?? "";
     await scanVerdictQueue.add(
-      'verdict',
+      "verdict",
       {
         chatId,
         messageId: resolvedMessageId,
         ...cachedVerdict,
         decidedAt: cachedVerdict.decidedAt ?? Date.now(),
       },
-      { removeOnComplete: true }
+      { removeOnComplete: true },
     );
   } else {
-    logger.info({ url, jobId, rescan: Boolean(rescan) }, 'Skipping verdict dispatch without chat context');
+    logger.info(
+      { url, jobId, rescan: Boolean(rescan) },
+      "Skipping verdict dispatch without chat context",
+    );
   }
 }
 
-function recordQueueMetrics(queueName: string, started: number, attemptsMade: number): void {
-  metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
+function recordQueueMetrics(
+  queueName: string,
+  started: number,
+  attemptsMade: number,
+): void {
+  metrics.queueProcessingDuration
+    .labels(queueName)
+    .observe((Date.now() - started) / 1000);
   metrics.queueCompleted.labels(queueName).inc();
   if (attemptsMade > 0) {
     metrics.queueRetries.labels(queueName).inc(attemptsMade);
@@ -915,7 +1140,12 @@ interface UrlAnalysisResult {
   heurSignals: Record<string, unknown>;
   wasShortened: boolean;
   finalUrlMismatch: boolean;
-  shortenerInfo: { finalUrl: string; provider: string; chain: string[]; wasShortened: boolean } | null;
+  shortenerInfo: {
+    finalUrl: string;
+    provider: string;
+    chain: string[];
+    wasShortened: boolean;
+  } | null;
 }
 
 async function analyzeUrl(norm: string, h: string): Promise<UrlAnalysisResult> {
@@ -924,11 +1154,17 @@ async function analyzeUrl(norm: string, h: string): Promise<UrlAnalysisResult> {
   const exp = await expandUrl(preExpansionUrl, config.orchestrator.expansion);
   const finalUrl = exp.finalUrl;
   const finalUrlObj = new URL(finalUrl);
-  const redirectChain = [...(shortenerInfo?.chain ?? []), ...exp.chain.filter((item: string) => !(shortenerInfo?.chain ?? []).includes(item))];
+  const redirectChain = [
+    ...(shortenerInfo?.chain ?? []),
+    ...exp.chain.filter(
+      (item: string) => !(shortenerInfo?.chain ?? []).includes(item),
+    ),
+  ];
   const heurSignals = extraHeuristics(finalUrlObj);
   const wasShortened = Boolean(shortenerInfo?.wasShortened);
-  const finalUrlMismatch = wasShortened && new URL(norm).hostname !== finalUrlObj.hostname;
-  
+  const finalUrlMismatch =
+    wasShortened && new URL(norm).hostname !== finalUrlObj.hostname;
+
   return {
     finalUrl,
     finalUrlObj,
@@ -936,7 +1172,7 @@ async function analyzeUrl(norm: string, h: string): Promise<UrlAnalysisResult> {
     heurSignals,
     wasShortened,
     finalUrlMismatch,
-    shortenerInfo
+    shortenerInfo,
   };
 }
 
@@ -949,7 +1185,13 @@ async function handleHighConfidenceThreat(
   finalUrlMismatch: boolean,
   homoglyphResult: HomoglyphResult,
   heurSignals: Record<string, unknown>,
-  enhancedSecurityResult: { verdict: string; confidence: string; score: number; reasons: string[]; skipExternalAPIs: boolean },
+  enhancedSecurityResult: {
+    verdict: string;
+    confidence: string;
+    score: number;
+    reasons: string[];
+    skipExternalAPIs: boolean;
+  },
   cacheKey: string,
   chatId: string | undefined,
   messageId: string | undefined,
@@ -959,9 +1201,16 @@ async function handleHighConfidenceThreat(
   attemptsMade: number,
   ingestionTimestamp: number,
   dbClient: any,
-  enhancedSecurity: any
+  enhancedSecurity: any,
 ): Promise<void> {
-  logger.info({ url: finalUrl, score: enhancedSecurityResult.score, reasons: enhancedSecurityResult.reasons }, 'Tier 1 high-confidence threat detected, skipping external APIs');
+  logger.info(
+    {
+      url: finalUrl,
+      score: enhancedSecurityResult.score,
+      reasons: enhancedSecurityResult.reasons,
+    },
+    "Tier 1 high-confidence threat detected, skipping external APIs",
+  );
 
   // Create a proper HomoglyphResult object with all required properties
   const fullHomoglyphResult: HomoglyphResult = {
@@ -972,7 +1221,7 @@ async function handleHighConfidenceThreat(
     mixedScript: false,
     unicodeHostname: finalUrl,
     normalizedDomain: finalUrl,
-    riskReasons: []
+    riskReasons: [],
   };
 
   const signals = {
@@ -994,7 +1243,7 @@ async function handleHighConfidenceThreat(
   };
 
   const verdictResult = scoreFromSignals(signals);
-  const verdict = 'malicious';
+  const verdict = "malicious";
   const { score, reasons } = verdictResult;
   const enhancedReasons = [...reasons, ...enhancedSecurityResult.reasons];
 
@@ -1040,11 +1289,25 @@ async function handleHighConfidenceThreat(
       `;
 
       await dbClient.query(standardSql, [
-        h, norm, finalUrl, verdict, score, JSON.stringify(enhancedReasons), cacheTtl, JSON.stringify(redirectChain), wasShortened, finalUrlMismatch, homoglyphResult.detected, homoglyphResult.riskLevel
+        h,
+        norm,
+        finalUrl,
+        verdict,
+        score,
+        JSON.stringify(enhancedReasons),
+        cacheTtl,
+        JSON.stringify(redirectChain),
+        wasShortened,
+        finalUrlMismatch,
+        homoglyphResult.detected,
+        homoglyphResult.riskLevel,
       ]);
     });
   } catch (err) {
-    logger.error({ err, url: norm }, 'failed to persist enhanced security verdict');
+    logger.error(
+      { err, url: norm },
+      "failed to persist enhanced security verdict",
+    );
   }
 
   metrics.verdictScore.observe(score);
@@ -1052,19 +1315,30 @@ async function handleHighConfidenceThreat(
     metrics.verdictReasons.labels(normalizeVerdictReason(reason)).inc();
   }
 
-  const verdictLatencySeconds = Math.max(0, (Date.now() - ingestionTimestamp) / 1000);
+  const verdictLatencySeconds = Math.max(
+    0,
+    (Date.now() - ingestionTimestamp) / 1000,
+  );
   metrics.verdictLatency.observe(verdictLatencySeconds);
   recordQueueMetrics(queueName, started, attemptsMade);
 
   if (hasChatContext) {
-    await scanVerdictQueue.add('verdict', {
-      chatId,
-      messageId,
-      ...verdictPayload,
-    }, { removeOnComplete: true });
+    await scanVerdictQueue.add(
+      "verdict",
+      {
+        chatId,
+        messageId,
+        ...verdictPayload,
+      },
+      { removeOnComplete: true },
+    );
   }
 
-  await enhancedSecurity.recordVerdict(finalUrl, 'malicious', enhancedSecurityResult.score / 3.0);
+  await enhancedSecurity.recordVerdict(
+    finalUrl,
+    "malicious",
+    enhancedSecurityResult.score / 3.0,
+  );
 }
 
 interface ExternalCheckResults {
@@ -1077,10 +1351,10 @@ interface ExternalCheckResults {
   };
   domainIntel: {
     ageDays?: number;
-    source: 'rdap' | 'whoisxml' | 'whodat' | 'none';
+    source: "rdap" | "whoisxml" | "whodat" | "none";
     registrar?: string;
   };
-  manualOverride: 'allow' | 'deny' | null;
+  manualOverride: "allow" | "deny" | null;
   vtStats?: VtStats;
   vtQuotaExceeded: boolean;
   vtError: Error | null;
@@ -1089,7 +1363,12 @@ interface ExternalCheckResults {
   urlhausConsulted: boolean;
 }
 
-async function performExternalChecks(finalUrl: string, finalUrlObj: URL, h: string, dbClient: any): Promise<ExternalCheckResults> {
+async function performExternalChecks(
+  finalUrl: string,
+  finalUrlObj: URL,
+  h: string,
+  dbClient: any,
+): Promise<ExternalCheckResults> {
   const [blocklistResult, domainIntel, manualOverride] = await Promise.all([
     checkBlocklistsWithRedundancy({
       finalUrl,
@@ -1132,12 +1411,8 @@ async function performExternalChecks(finalUrl: string, finalUrlObj: URL, h: stri
   let urlhausError: Error | null = null;
   let urlhausConsulted = false;
   const shouldQueryUrlhaus =
-    !gsbHit && (
-      !config.vt.apiKey ||
-      vtQuotaExceeded ||
-      vtError !== null ||
-      !vtStats
-    );
+    !gsbHit &&
+    (!config.vt.apiKey || vtQuotaExceeded || vtError !== null || !vtStats);
   if (shouldQueryUrlhaus) {
     urlhausConsulted = true;
     const urlhausResponse = await fetchUrlhaus(finalUrl, h);
@@ -1154,7 +1429,7 @@ async function performExternalChecks(finalUrl: string, finalUrlObj: URL, h: stri
     vtError,
     urlhausResult,
     urlhausError,
-    urlhausConsulted
+    urlhausConsulted,
   };
 }
 
@@ -1180,11 +1455,32 @@ async function generateVerdict(
   finalUrlMismatch: boolean,
   homoglyphResult: HomoglyphResult,
   heurSignals: Record<string, unknown>,
-  enhancedSecurityResult: { verdict: string; confidence: string; score: number; reasons: string[]; skipExternalAPIs: boolean },
-  shortenerInfo: { finalUrl: string; provider: string; chain: string[]; wasShortened: boolean } | null
+  enhancedSecurityResult: {
+    verdict: string;
+    confidence: string;
+    score: number;
+    reasons: string[];
+    skipExternalAPIs: boolean;
+  },
+  shortenerInfo: {
+    finalUrl: string;
+    provider: string;
+    chain: string[];
+    wasShortened: boolean;
+  } | null,
 ): Promise<VerdictResult> {
-  const { blocklistResult, domainIntel, manualOverride, vtStats, vtQuotaExceeded, vtError, urlhausResult, urlhausError, urlhausConsulted } = externalResults;
-  
+  const {
+    blocklistResult,
+    domainIntel,
+    manualOverride,
+    vtStats,
+    vtQuotaExceeded,
+    vtError,
+    urlhausResult,
+    urlhausError,
+    urlhausConsulted,
+  } = externalResults;
+
   const domainAgeDays = domainIntel.ageDays;
   const gsbMatches = blocklistResult.gsbMatches;
   const gsbHit = gsbMatches.length > 0;
@@ -1192,9 +1488,9 @@ async function generateVerdict(
   const phishtankHit = Boolean(phishtankResult?.verified);
 
   const summarizeReason = (input?: string | null) => {
-    if (!input) return 'unavailable';
+    if (!input) return "unavailable";
     const trimmed = input.trim();
-    if (trimmed.length === 0) return 'unavailable';
+    if (trimmed.length === 0) return "unavailable";
     return trimmed.length > 80 ? `${trimmed.slice(0, 77)}...` : trimmed;
   };
 
@@ -1208,21 +1504,25 @@ async function generateVerdict(
 
   const providerStates: ProviderState[] = [
     {
-      key: 'gsb',
-      name: 'Google Safe Browsing',
+      key: "gsb",
+      name: "Google Safe Browsing",
       consulted: true,
       available: !blocklistResult.gsbResult.error,
-      reason: blocklistResult.gsbResult.error ? summarizeReason(blocklistResult.gsbResult.error.message) : undefined,
+      reason: blocklistResult.gsbResult.error
+        ? summarizeReason(blocklistResult.gsbResult.error.message)
+        : undefined,
     },
   ];
 
   if (blocklistResult.phishtankNeeded) {
     providerStates.push({
-      key: 'phishtank',
-      name: 'Phishtank',
+      key: "phishtank",
+      name: "Phishtank",
       consulted: true,
       available: !blocklistResult.phishtankError,
-      reason: blocklistResult.phishtankError ? summarizeReason(blocklistResult.phishtankError.message) : undefined,
+      reason: blocklistResult.phishtankError
+        ? summarizeReason(blocklistResult.phishtankError.message)
+        : undefined,
     });
   }
 
@@ -1230,11 +1530,13 @@ async function generateVerdict(
   if (vtConsulted) {
     let vtReason: string | undefined;
     if (!vtStats) {
-      vtReason = vtQuotaExceeded ? 'quota_exhausted' : summarizeReason(vtError?.message ?? null);
+      vtReason = vtQuotaExceeded
+        ? "quota_exhausted"
+        : summarizeReason(vtError?.message ?? null);
     }
     providerStates.push({
-      key: 'virustotal',
-      name: 'VirusTotal',
+      key: "virustotal",
+      name: "VirusTotal",
       consulted: true,
       available: Boolean(vtStats) || (!vtError && !vtQuotaExceeded),
       reason: vtStats ? undefined : vtReason,
@@ -1243,8 +1545,8 @@ async function generateVerdict(
 
   if (urlhausConsulted) {
     providerStates.push({
-      key: 'urlhaus',
-      name: 'URLhaus',
+      key: "urlhaus",
+      name: "URLhaus",
       consulted: true,
       available: !urlhausError,
       reason: urlhausError ? summarizeReason(urlhausError.message) : undefined,
@@ -1252,21 +1554,29 @@ async function generateVerdict(
   }
 
   const consultedProviders = providerStates.filter((state) => state.consulted);
-  const availableProviders = consultedProviders.filter((state) => state.available);
-  const degradedProviders = consultedProviders.filter((state) => !state.available);
-  const degradedMode = consultedProviders.length > 0 && availableProviders.length === 0
-    ? {
-      providers: degradedProviders.map((state) => ({
-        name: state.name,
-        reason: state.reason ?? 'unavailable',
-      })),
-    }
-    : undefined;
+  const availableProviders = consultedProviders.filter(
+    (state) => state.available,
+  );
+  const degradedProviders = consultedProviders.filter(
+    (state) => !state.available,
+  );
+  const degradedMode =
+    consultedProviders.length > 0 && availableProviders.length === 0
+      ? {
+          providers: degradedProviders.map((state) => ({
+            name: state.name,
+            reason: state.reason ?? "unavailable",
+          })),
+        }
+      : undefined;
 
   if (degradedMode) {
     metrics.degradedModeEvents.inc();
     metrics.externalScannersDegraded.set(1);
-    logger.warn({ url: finalUrl, urlHash: h, providers: degradedMode.providers }, 'Operating in degraded mode with no external providers available');
+    logger.warn(
+      { url: finalUrl, urlHash: h, providers: degradedMode.providers },
+      "Operating in degraded mode with no external providers available",
+    );
   } else {
     metrics.externalScannersDegraded.set(0);
   }
@@ -1297,7 +1607,10 @@ async function generateVerdict(
   if (enhancedSecurityResult.reasons.length > 0) {
     reasons = [...reasons, ...enhancedSecurityResult.reasons];
   }
-  const baselineVerdict = scoreFromSignals({ ...signals, manualOverride: null }).level;
+  const baselineVerdict = scoreFromSignals({
+    ...signals,
+    manualOverride: null,
+  }).level;
 
   metrics.verdictScore.observe(score);
   for (const reason of reasons) {
@@ -1307,34 +1620,38 @@ async function generateVerdict(
     metrics.verdictEscalations.labels(baselineVerdict, verdict).inc();
   }
   if (gsbMatches.length > 0) {
-    metrics.verdictSignals.labels('gsb_match').inc(gsbMatches.length);
+    metrics.verdictSignals.labels("gsb_match").inc(gsbMatches.length);
   }
   if (phishtankHit) {
-    metrics.verdictSignals.labels('phishtank_verified').inc();
+    metrics.verdictSignals.labels("phishtank_verified").inc();
   }
   if (urlhausResult?.listed) {
-    metrics.verdictSignals.labels('urlhaus_listed').inc();
+    metrics.verdictSignals.labels("urlhaus_listed").inc();
   }
   if ((vtStats?.malicious ?? 0) > 0) {
-    metrics.verdictSignals.labels('vt_malicious').inc(vtStats?.malicious ?? 0);
+    metrics.verdictSignals.labels("vt_malicious").inc(vtStats?.malicious ?? 0);
   }
   if ((vtStats?.suspicious ?? 0) > 0) {
-    metrics.verdictSignals.labels('vt_suspicious').inc(vtStats?.suspicious ?? 0);
+    metrics.verdictSignals
+      .labels("vt_suspicious")
+      .inc(vtStats?.suspicious ?? 0);
   }
   if (wasShortened) {
-    metrics.verdictSignals.labels('shortener').inc();
+    metrics.verdictSignals.labels("shortener").inc();
   }
   if (finalUrlMismatch) {
-    metrics.verdictSignals.labels('redirect_mismatch').inc();
+    metrics.verdictSignals.labels("redirect_mismatch").inc();
   }
   if (redirectChain.length > 0) {
-    metrics.verdictSignals.labels('redirect_chain').inc(redirectChain.length);
+    metrics.verdictSignals.labels("redirect_chain").inc(redirectChain.length);
   }
   if (homoglyphResult.detected) {
-    metrics.verdictSignals.labels(`homoglyph_${homoglyphResult.riskLevel}`).inc();
+    metrics.verdictSignals
+      .labels(`homoglyph_${homoglyphResult.riskLevel}`)
+      .inc();
   }
-  if (typeof domainAgeDays === 'number') {
-    metrics.verdictSignals.labels('domain_age').inc();
+  if (typeof domainAgeDays === "number") {
+    metrics.verdictSignals.labels("domain_age").inc();
   }
   if (signals.manualOverride) {
     metrics.verdictSignals.labels(`override_${signals.manualOverride}`).inc();
@@ -1343,18 +1660,22 @@ async function generateVerdict(
   const blocklistHit = gsbHit || phishtankHit || Boolean(urlhausResult?.listed);
 
   let enqueuedUrlscan = false;
-  if (config.urlscan.enabled && config.urlscan.apiKey && verdict === 'suspicious') {
+  if (
+    config.urlscan.enabled &&
+    config.urlscan.apiKey &&
+    verdict === "suspicious"
+  ) {
     const queued = await redis.set(
       `${URLSCAN_QUEUED_PREFIX}${h}`,
-      '1',
-      'EX',
+      "1",
+      "EX",
       config.urlscan.uuidTtlSeconds,
-      'NX'
+      "NX",
     );
     if (queued) {
       enqueuedUrlscan = true;
       await urlscanQueue.add(
-        'submit',
+        "submit",
         {
           url: finalUrl,
           urlHash: h,
@@ -1363,7 +1684,7 @@ async function generateVerdict(
           removeOnComplete: true,
           removeOnFail: 500,
           attempts: 1,
-        }
+        },
       );
     }
   }
@@ -1381,7 +1702,7 @@ async function generateVerdict(
     verdict,
     ttl,
     enqueuedUrlscan,
-    degradedMode
+    degradedMode,
   };
 }
 
@@ -1395,14 +1716,21 @@ async function storeAndDispatchResults(
   attemptsMade: number,
   ingestionTimestamp: number,
   finalUrl: string,
-  enhancedSecurityResult: { verdict: string; confidence: string; score: number; reasons: string[]; skipExternalAPIs: boolean },
+  enhancedSecurityResult: {
+    verdict: string;
+    confidence: string;
+    score: number;
+    reasons: string[];
+    skipExternalAPIs: boolean;
+  },
   dbClient: any,
-  enhancedSecurity: any
+  enhancedSecurity: any,
 ): Promise<void> {
-  const { verdict, score, reasons, ttl, enqueuedUrlscan, degradedMode } = verdictResult;
+  const { verdict, score, reasons, ttl, enqueuedUrlscan, degradedMode } =
+    verdictResult;
   const h = urlHash(finalUrl);
   const cacheKey = `scan:${h}`;
-  
+
   const res = {
     messageId,
     chatId,
@@ -1416,8 +1744,8 @@ async function storeAndDispatchResults(
     phishtank: null, // Will be filled in by the caller
     urlhaus: null, // Will be filled in by the caller
     vt: undefined, // Will be filled in by the caller
-    urlscan: enqueuedUrlscan ? { status: 'queued' } : undefined,
-    whois: { source: 'none' }, // Will be filled in by the caller
+    urlscan: enqueuedUrlscan ? { status: "queued" } : undefined,
+    whois: { source: "none" }, // Will be filled in by the caller
     domainAgeDays: undefined, // Will be filled in by the caller
     redirectChain: [], // Will be filled in by the caller
     ttlLevel: verdict,
@@ -1427,7 +1755,7 @@ async function storeAndDispatchResults(
     decidedAt: Date.now(),
     degradedMode,
   };
-  
+
   await setJsonCache(CACHE_LABELS.verdict, cacheKey, res, ttl);
 
   try {
@@ -1458,14 +1786,28 @@ async function storeAndDispatchResults(
       `;
 
       await dbClient.query(scanSql, [
-        h, finalUrl, verdict, score, JSON.stringify(reasons), JSON.stringify({}),
-        false, null, JSON.stringify([]), ttl,
-        'wa', enqueuedUrlscan ? 'queued' : null,
-        null, null, null
+        h,
+        finalUrl,
+        verdict,
+        score,
+        JSON.stringify(reasons),
+        JSON.stringify({}),
+        false,
+        null,
+        JSON.stringify([]),
+        ttl,
+        "wa",
+        enqueuedUrlscan ? "queued" : null,
+        null,
+        null,
+        null,
       ]);
 
       if (enqueuedUrlscan) {
-        await dbClient.query('UPDATE scans SET urlscan_status=? WHERE url_hash=?', ['queued', h]);
+        await dbClient.query(
+          "UPDATE scans SET urlscan_status=? WHERE url_hash=?",
+          ["queued", h],
+        );
       }
 
       if (chatId && messageId) {
@@ -1478,33 +1820,59 @@ async function storeAndDispatchResults(
       }
     });
   } catch (err) {
-    logger.warn({ err, chatId, messageId }, 'failed to persist message metadata for scan');
+    logger.warn(
+      { err, chatId, messageId },
+      "failed to persist message metadata for scan",
+    );
   }
 
   if (chatId && messageId) {
-    await scanVerdictQueue.add('verdict', { ...res, chatId, messageId }, { removeOnComplete: true });
+    await scanVerdictQueue.add(
+      "verdict",
+      { ...res, chatId, messageId },
+      { removeOnComplete: true },
+    );
   } else {
-    logger.info({ url: finalUrl }, 'Completed scan without chat context; skipping messaging flow');
+    logger.info(
+      { url: finalUrl },
+      "Completed scan without chat context; skipping messaging flow",
+    );
   }
 
-  await enhancedSecurity.recordVerdict(
-    finalUrl,
-    verdict === 'malicious' ? 'malicious' : verdict === 'suspicious' ? 'suspicious' : 'benign',
-    score / 15.0
-  ).catch((err: Error) => {
-    logger.warn({ err, url: finalUrl }, 'failed to record verdict for collaborative learning');
-  });
+  await enhancedSecurity
+    .recordVerdict(
+      finalUrl,
+      verdict === "malicious"
+        ? "malicious"
+        : verdict === "suspicious"
+          ? "suspicious"
+          : "benign",
+      score / 15.0,
+    )
+    .catch((err: Error) => {
+      logger.warn(
+        { err, url: finalUrl },
+        "failed to record verdict for collaborative learning",
+      );
+    });
 
   metrics.verdictCounter.labels(verdict).inc();
   const totalProcessingSeconds = (Date.now() - started) / 1000;
-  metrics.verdictLatency.observe(Math.max(0, (Date.now() - ingestionTimestamp) / 1000));
+  metrics.verdictLatency.observe(
+    Math.max(0, (Date.now() - ingestionTimestamp) / 1000),
+  );
   metrics.scanLatency.observe(totalProcessingSeconds);
   recordQueueMetrics(queueName, started, attemptsMade);
 }
 
 interface UrlscanCallbackBody {
   uuid?: string;
-  task?: { uuid?: string; url?: string; screenshotURL?: string; domURL?: string };
+  task?: {
+    uuid?: string;
+    url?: string;
+    screenshotURL?: string;
+    domURL?: string;
+  };
   visual?: { data?: { screenshotURL?: string } };
   screenshotURL?: string;
   domURL?: string;
@@ -1512,32 +1880,45 @@ interface UrlscanCallbackBody {
 }
 
 // Refactored urlscan callback handler (complexity 17 -> 15)
-async function handleUrlscanCallback(req: any, reply: any, dbClient: any): Promise<void> {
+async function handleUrlscanCallback(
+  req: any,
+  reply: any,
+  dbClient: any,
+): Promise<void> {
   if (!config.urlscan.enabled) {
-    reply.code(503).send({ ok: false, error: 'urlscan disabled' });
+    reply.code(503).send({ ok: false, error: "urlscan disabled" });
     return;
   }
-  
+
   const secret = config.urlscan.callbackSecret;
   const headers = req.headers as Record<string, string | string[] | undefined>;
-  const rawHeaderToken = headers['x-urlscan-secret'] ?? headers['x-urlscan-token'];
-  const headerToken = Array.isArray(rawHeaderToken) ? rawHeaderToken[0] : rawHeaderToken;
-  const queryTokenRaw = (req.query as Record<string, string | string[] | undefined> | undefined)?.token;
-  const queryToken = Array.isArray(queryTokenRaw) ? queryTokenRaw[0] : queryTokenRaw;
+  const rawHeaderToken =
+    headers["x-urlscan-secret"] ?? headers["x-urlscan-token"];
+  const headerToken = Array.isArray(rawHeaderToken)
+    ? rawHeaderToken[0]
+    : rawHeaderToken;
+  const queryTokenRaw = (
+    req.query as Record<string, string | string[] | undefined> | undefined
+  )?.token;
+  const queryToken = Array.isArray(queryTokenRaw)
+    ? queryTokenRaw[0]
+    : queryTokenRaw;
 
   if (!secret || (headerToken !== secret && queryToken !== secret)) {
-    reply.code(401).send({ ok: false, error: 'unauthorized' });
+    reply.code(401).send({ ok: false, error: "unauthorized" });
     return;
   }
-  
+
   const body = req.body as UrlscanCallbackBody;
   const uuid = body?.uuid || body?.task?.uuid;
   if (!uuid) {
-    reply.code(400).send({ ok: false, error: 'missing uuid' });
+    reply.code(400).send({ ok: false, error: "missing uuid" });
     return;
   }
-  
-  const urlscanBaseUrl = (config.urlscan.baseUrl || 'https://urlscan.io').replace(/\/+$/, '');
+
+  const urlscanBaseUrl = (
+    config.urlscan.baseUrl || "https://urlscan.io"
+  ).replace(/\/+$/, "");
   const artifactSources = [
     body?.screenshotURL,
     body?.task?.screenshotURL,
@@ -1547,14 +1928,20 @@ async function handleUrlscanCallback(req: any, reply: any, dbClient: any): Promi
   ];
 
   for (const source of artifactSources) {
-    const validation = normalizeUrlscanArtifactCandidate(source, urlscanBaseUrl);
+    const validation = normalizeUrlscanArtifactCandidate(
+      source,
+      urlscanBaseUrl,
+    );
     if (validation.invalid) {
-      logger.warn({ uuid, source }, 'urlscan callback rejected due to artifact host validation');
-      reply.code(400).send({ ok: false, error: 'invalid artifact url' });
+      logger.warn(
+        { uuid, source },
+        "urlscan callback rejected due to artifact host validation",
+      );
+      reply.code(400).send({ ok: false, error: "invalid artifact url" });
       return;
     }
   }
-  
+
   let urlHashValue = await redis.get(`${URLSCAN_UUID_PREFIX}${uuid}`);
   if (!urlHashValue) {
     const taskUrl: string | undefined = body?.task?.url;
@@ -1566,7 +1953,7 @@ async function handleUrlscanCallback(req: any, reply: any, dbClient: any): Promi
     }
   }
   if (!urlHashValue) {
-    logger.warn({ uuid }, 'urlscan callback without known url hash');
+    logger.warn({ uuid }, "urlscan callback without known url hash");
     reply.code(202).send({ ok: true });
     return;
   }
@@ -1574,19 +1961,23 @@ async function handleUrlscanCallback(req: any, reply: any, dbClient: any): Promi
   await redis.set(
     `${URLSCAN_RESULT_PREFIX}${urlHashValue}`,
     JSON.stringify(body),
-    'EX',
-    config.urlscan.resultTtlSeconds
+    "EX",
+    config.urlscan.resultTtlSeconds,
   );
 
-  let artifacts: { screenshotPath: string | null; domPath: string | null } | null = null;
+  let artifacts: {
+    screenshotPath: string | null;
+    domPath: string | null;
+  } | null = null;
   try {
     artifacts = await downloadUrlscanArtifacts(uuid, urlHashValue);
   } catch (err) {
-    logger.warn({ err, uuid }, 'failed to download urlscan artifacts');
+    logger.warn({ err, uuid }, "failed to download urlscan artifacts");
   }
 
-  await dbClient.query(
-    `UPDATE scans
+  await dbClient
+    .query(
+      `UPDATE scans
        SET urlscan_status=?,
            urlscan_completed_at=datetime('now'),
            urlscan_result=?,
@@ -1597,23 +1988,32 @@ async function handleUrlscanCallback(req: any, reply: any, dbClient: any): Promi
              ELSE urlscan_artifact_stored_at
            END
      WHERE url_hash=?`,
-    ['completed', JSON.stringify(body), artifacts?.screenshotPath ?? null, artifacts?.domPath ?? null, artifacts?.screenshotPath ?? null, artifacts?.domPath ?? null, urlHashValue]
-  ).catch((err: Error) => {
-    logger.error({ err }, 'failed to persist urlscan callback');
-  });
+      [
+        "completed",
+        JSON.stringify(body),
+        artifacts?.screenshotPath ?? null,
+        artifacts?.domPath ?? null,
+        artifacts?.screenshotPath ?? null,
+        artifacts?.domPath ?? null,
+        urlHashValue,
+      ],
+    )
+    .catch((err: Error) => {
+      logger.error({ err }, "failed to persist urlscan callback");
+    });
 
   reply.send({ ok: true });
 }
 
 async function main() {
-  assertEssentialConfig('scan-orchestrator');
+  assertEssentialConfig("scan-orchestrator");
 
   // Validate Redis connectivity before starting
   try {
     await redis.ping();
-    logger.info('Redis connectivity validated');
+    logger.info("Redis connectivity validated");
   } catch (err) {
-    logger.error({ err }, 'Redis connectivity check failed during startup');
+    logger.error({ err }, "Redis connectivity check failed during startup");
     // Don't throw, let healthcheck handle it so container doesn't crash loop immediately
     // throw new Error('Redis is required but unreachable');
   }
@@ -1624,185 +2024,317 @@ async function main() {
   await enhancedSecurity.start();
 
   const app = Fastify();
-  app.get('/healthz', async (_req, reply) => {
+  app.get("/healthz", async (_req, reply) => {
     try {
       // Check Redis connectivity
       await redis.ping();
-      return { ok: true, redis: 'connected' };
+      return { ok: true, redis: "connected" };
     } catch (err) {
-      logger.warn({ err }, 'Health check failed - Redis connectivity issue');
+      logger.warn({ err }, "Health check failed - Redis connectivity issue");
       reply.code(503);
-      return { ok: false, redis: 'disconnected', error: 'Redis unreachable' };
+      return { ok: false, redis: "disconnected", error: "Redis unreachable" };
     }
   });
-  app.get('/metrics', async (_req, reply) => {
-    reply.header('Content-Type', register.contentType);
+  app.get("/metrics", async (_req, reply) => {
+    reply.header("Content-Type", register.contentType);
     return register.metrics();
   });
 
-  app.post('/urlscan/callback', (req, reply) => handleUrlscanCallback(req, reply, dbClient));
+  app.post("/urlscan/callback", (req, reply) =>
+    handleUrlscanCallback(req, reply, dbClient),
+  );
 
   // Refactored scan request worker (complexity 89 -> 15)
-  new Worker(config.queues.scanRequest, async (job) => {
-    const queueName = config.queues.scanRequest;
-    const started = Date.now();
-    const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
-    metrics.queueJobWait.labels(queueName).observe(waitSeconds);
-    const { chatId, messageId, url, timestamp, rescan } = job.data as {
-      chatId?: string;
-      messageId?: string;
-      url: string;
-      timestamp?: number;
-      rescan?: boolean;
-    };
-    const ingestionTimestamp = typeof timestamp === 'number' ? timestamp : job.timestamp ?? started;
-    const hasChatContext = typeof chatId === 'string' && typeof messageId === 'string';
-    
-    try {
-      const norm = normalizeUrl(url);
-      if (!norm) {
-        recordQueueMetrics(queueName, started, job.attemptsMade);
-        return;
-      }
-      
-      const h = urlHash(norm);
-      const cacheKey = `scan:${h}`;
-      
-      // Check for cached verdict
-      const cachedVerdict = await getCachedVerdict(cacheKey);
-      if (cachedVerdict) {
-        await handleCachedVerdict(cachedVerdict, chatId, messageId, hasChatContext, ingestionTimestamp, queueName, started, job.attemptsMade, norm, rescan, job.id);
-        return;
-      }
-      
-      // Process URL and gather signals
-      const urlAnalysis = await analyzeUrl(norm, h);
-      const { finalUrl, finalUrlObj, redirectChain, heurSignals, wasShortened, finalUrlMismatch, shortenerInfo } = urlAnalysis;
-      
-      // Detect homoglyphs
-      const homoglyphResult = detectHomoglyphs(finalUrlObj.hostname);
-      if (homoglyphResult.detected) {
-        metrics.homoglyphDetections.labels(homoglyphResult.riskLevel).inc();
-        logger.info({ hostname: finalUrlObj.hostname, risk: homoglyphResult.riskLevel, confusables: homoglyphResult.confusableChars }, 'Homoglyph detection');
-      }
-      
-      // Enhanced security analysis
-      const enhancedSecurityResult = await enhancedSecurity.analyze(finalUrl, h);
-      
-      // Handle high-confidence malicious URLs
-      if (enhancedSecurityResult.verdict === 'malicious' && enhancedSecurityResult.confidence === 'high' && enhancedSecurityResult.skipExternalAPIs) {
-        await handleHighConfidenceThreat(
-          norm, finalUrl, h, redirectChain, wasShortened, finalUrlMismatch, 
-          homoglyphResult, heurSignals, { verdict: enhancedSecurityResult.verdict || "unknown", confidence: enhancedSecurityResult.confidence || "unknown", score: enhancedSecurityResult.score, reasons: enhancedSecurityResult.reasons, skipExternalAPIs: enhancedSecurityResult.skipExternalAPIs }, cacheKey,
-          chatId, messageId, hasChatContext, queueName, started, job.attemptsMade, ingestionTimestamp, dbClient, enhancedSecurity
+  new Worker(
+    config.queues.scanRequest,
+    async (job) => {
+      const queueName = config.queues.scanRequest;
+      const started = Date.now();
+      const waitSeconds = Math.max(
+        0,
+        (started - (job.timestamp ?? started)) / 1000,
+      );
+      metrics.queueJobWait.labels(queueName).observe(waitSeconds);
+      const { chatId, messageId, url, timestamp, rescan } = job.data as {
+        chatId?: string;
+        messageId?: string;
+        url: string;
+        timestamp?: number;
+        rescan?: boolean;
+      };
+      const ingestionTimestamp =
+        typeof timestamp === "number" ? timestamp : (job.timestamp ?? started);
+      const hasChatContext =
+        typeof chatId === "string" && typeof messageId === "string";
+
+      try {
+        const norm = normalizeUrl(url);
+        if (!norm) {
+          recordQueueMetrics(queueName, started, job.attemptsMade);
+          return;
+        }
+
+        const h = urlHash(norm);
+        const cacheKey = `scan:${h}`;
+
+        // Check for cached verdict
+        const cachedVerdict = await getCachedVerdict(cacheKey);
+        if (cachedVerdict) {
+          await handleCachedVerdict(
+            cachedVerdict,
+            chatId,
+            messageId,
+            hasChatContext,
+            ingestionTimestamp,
+            queueName,
+            started,
+            job.attemptsMade,
+            norm,
+            rescan,
+            job.id,
+          );
+          return;
+        }
+
+        // Process URL and gather signals
+        const urlAnalysis = await analyzeUrl(norm, h);
+        const {
+          finalUrl,
+          finalUrlObj,
+          redirectChain,
+          heurSignals,
+          wasShortened,
+          finalUrlMismatch,
+          shortenerInfo,
+        } = urlAnalysis;
+
+        // Detect homoglyphs
+        const homoglyphResult = detectHomoglyphs(finalUrlObj.hostname);
+        if (homoglyphResult.detected) {
+          metrics.homoglyphDetections.labels(homoglyphResult.riskLevel).inc();
+          logger.info(
+            {
+              hostname: finalUrlObj.hostname,
+              risk: homoglyphResult.riskLevel,
+              confusables: homoglyphResult.confusableChars,
+            },
+            "Homoglyph detection",
+          );
+        }
+
+        // Enhanced security analysis
+        const enhancedSecurityResult = await enhancedSecurity.analyze(
+          finalUrl,
+          h,
         );
-        return;
+
+        // Handle high-confidence malicious URLs
+        if (
+          enhancedSecurityResult.verdict === "malicious" &&
+          enhancedSecurityResult.confidence === "high" &&
+          enhancedSecurityResult.skipExternalAPIs
+        ) {
+          await handleHighConfidenceThreat(
+            norm,
+            finalUrl,
+            h,
+            redirectChain,
+            wasShortened,
+            finalUrlMismatch,
+            homoglyphResult,
+            heurSignals,
+            {
+              verdict: enhancedSecurityResult.verdict || "unknown",
+              confidence: enhancedSecurityResult.confidence || "unknown",
+              score: enhancedSecurityResult.score,
+              reasons: enhancedSecurityResult.reasons,
+              skipExternalAPIs: enhancedSecurityResult.skipExternalAPIs,
+            },
+            cacheKey,
+            chatId,
+            messageId,
+            hasChatContext,
+            queueName,
+            started,
+            job.attemptsMade,
+            ingestionTimestamp,
+            dbClient,
+            enhancedSecurity,
+          );
+          return;
+        }
+
+        // External API checks
+        const externalResults = await performExternalChecks(
+          finalUrl,
+          finalUrlObj,
+          h,
+          dbClient,
+        );
+
+        // Generate verdict
+        const verdictResult = await generateVerdict(
+          externalResults,
+          finalUrl,
+          h,
+          redirectChain,
+          wasShortened,
+          finalUrlMismatch,
+          homoglyphResult,
+          heurSignals,
+          {
+            verdict: enhancedSecurityResult.verdict || "unknown",
+            confidence: enhancedSecurityResult.confidence || "unknown",
+            score: enhancedSecurityResult.score,
+            reasons: enhancedSecurityResult.reasons,
+            skipExternalAPIs: enhancedSecurityResult.skipExternalAPIs,
+          },
+          shortenerInfo,
+        );
+
+        // Store results and dispatch
+        await storeAndDispatchResults(
+          verdictResult,
+          chatId,
+          messageId,
+          hasChatContext,
+          queueName,
+          started,
+          job.attemptsMade,
+          ingestionTimestamp,
+          finalUrl,
+          {
+            verdict: enhancedSecurityResult.verdict || "unknown",
+            confidence: enhancedSecurityResult.confidence || "unknown",
+            score: enhancedSecurityResult.score,
+            reasons: enhancedSecurityResult.reasons,
+            skipExternalAPIs: enhancedSecurityResult.skipExternalAPIs,
+          },
+          dbClient,
+          enhancedSecurity,
+        );
+      } catch (e) {
+        metrics.queueFailures.labels(queueName).inc();
+        metrics.queueProcessingDuration
+          .labels(queueName)
+          .observe((Date.now() - started) / 1000);
+        logger.error(e, "scan worker error");
+      } finally {
+        await refreshQueueMetrics(scanRequestQueue, queueName).catch(
+          () => undefined,
+        );
       }
-      
-      // External API checks
-      const externalResults = await performExternalChecks(finalUrl, finalUrlObj, h, dbClient);
-      
-      // Generate verdict
-      const verdictResult = await generateVerdict(
-        externalResults, finalUrl, h, redirectChain, wasShortened, finalUrlMismatch,
-        homoglyphResult, heurSignals, { verdict: enhancedSecurityResult.verdict || "unknown", confidence: enhancedSecurityResult.confidence || "unknown", score: enhancedSecurityResult.score, reasons: enhancedSecurityResult.reasons, skipExternalAPIs: enhancedSecurityResult.skipExternalAPIs }, shortenerInfo
-      );
-      
-      // Store results and dispatch
-      await storeAndDispatchResults(
-        verdictResult, chatId, messageId, hasChatContext, queueName, started,
-        job.attemptsMade, ingestionTimestamp, finalUrl, { verdict: enhancedSecurityResult.verdict || "unknown", confidence: enhancedSecurityResult.confidence || "unknown", score: enhancedSecurityResult.score, reasons: enhancedSecurityResult.reasons, skipExternalAPIs: enhancedSecurityResult.skipExternalAPIs }, dbClient, enhancedSecurity
-      );
-      
-    } catch (e) {
-      metrics.queueFailures.labels(queueName).inc();
-      metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
-      logger.error(e, 'scan worker error');
-    } finally {
-      await refreshQueueMetrics(scanRequestQueue, queueName).catch(() => undefined);
-    }
-  }, { connection: redis, concurrency: config.orchestrator.concurrency });
+    },
+    { connection: redis, concurrency: config.orchestrator.concurrency },
+  );
 
   if (config.urlscan.enabled && config.urlscan.apiKey) {
-    new Worker(config.queues.urlscan, async (job) => {
-      const queueName = config.queues.urlscan;
-      const started = Date.now();
-      const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
-      metrics.queueJobWait.labels(queueName).observe(waitSeconds);
-      const { url, urlHash: urlHashValue } = job.data as { url: string; urlHash: string };
-      try {
-        const submission: UrlscanSubmissionResponse = await urlscanCircuit.execute(() =>
-          withRetry(
-            () =>
-              submitUrlscan(url, {
-                callbackUrl: config.urlscan.callbackUrl || undefined,
-                visibility: config.urlscan.visibility,
-                tags: config.urlscan.tags,
-              }),
-            {
-              retries: 2,
-              baseDelayMs: 1000,
-              factor: 2,
-              retryable: shouldRetry,
-            }
-          )
+    new Worker(
+      config.queues.urlscan,
+      async (job) => {
+        const queueName = config.queues.urlscan;
+        const started = Date.now();
+        const waitSeconds = Math.max(
+          0,
+          (started - (job.timestamp ?? started)) / 1000,
         );
-        recordLatency(CIRCUIT_LABELS.urlscan, submission.latencyMs);
-        if (submission.uuid) {
-          await redis.set(
-            `${URLSCAN_UUID_PREFIX}${submission.uuid}`,
-            urlHashValue,
-            'EX',
-            config.urlscan.uuidTtlSeconds
-          );
-          await redis.set(
-            `${URLSCAN_SUBMITTED_PREFIX}${urlHashValue}`,
-            submission.uuid,
-            'EX',
-            config.urlscan.uuidTtlSeconds
-          );
-          await dbClient.query(
-            `UPDATE scans SET urlscan_uuid=?, urlscan_status=?, urlscan_submitted_at=datetime('now'), urlscan_result_url=? WHERE url_hash=?`,
-            [submission.uuid, 'submitted', submission.result ?? null, urlHashValue]
+        metrics.queueJobWait.labels(queueName).observe(waitSeconds);
+        const { url, urlHash: urlHashValue } = job.data as {
+          url: string;
+          urlHash: string;
+        };
+        try {
+          const submission: UrlscanSubmissionResponse =
+            await urlscanCircuit.execute(() =>
+              withRetry(
+                () =>
+                  submitUrlscan(url, {
+                    callbackUrl: config.urlscan.callbackUrl || undefined,
+                    visibility: config.urlscan.visibility,
+                    tags: config.urlscan.tags,
+                  }),
+                {
+                  retries: 2,
+                  baseDelayMs: 1000,
+                  factor: 2,
+                  retryable: shouldRetry,
+                },
+              ),
+            );
+          recordLatency(CIRCUIT_LABELS.urlscan, submission.latencyMs);
+          if (submission.uuid) {
+            await redis.set(
+              `${URLSCAN_UUID_PREFIX}${submission.uuid}`,
+              urlHashValue,
+              "EX",
+              config.urlscan.uuidTtlSeconds,
+            );
+            await redis.set(
+              `${URLSCAN_SUBMITTED_PREFIX}${urlHashValue}`,
+              submission.uuid,
+              "EX",
+              config.urlscan.uuidTtlSeconds,
+            );
+            await dbClient.query(
+              `UPDATE scans SET urlscan_uuid=?, urlscan_status=?, urlscan_submitted_at=datetime('now'), urlscan_result_url=? WHERE url_hash=?`,
+              [
+                submission.uuid,
+                "submitted",
+                submission.result ?? null,
+                urlHashValue,
+              ],
+            );
+          }
+          metrics.queueProcessingDuration
+            .labels(queueName)
+            .observe((Date.now() - started) / 1000);
+          metrics.queueCompleted.labels(queueName).inc();
+          if (job.attemptsMade > 0) {
+            metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
+          }
+        } catch (err) {
+          recordError(CIRCUIT_LABELS.urlscan, err);
+          logger.error({ err, url }, "urlscan submission failed");
+          await dbClient
+            .query(
+              `UPDATE scans SET urlscan_status=?, urlscan_completed_at=datetime('now') WHERE url_hash=?`,
+              ["failed", urlHashValue],
+            )
+            .catch(() => undefined);
+          metrics.queueFailures.labels(queueName).inc();
+          metrics.queueProcessingDuration
+            .labels(queueName)
+            .observe((Date.now() - started) / 1000);
+          throw err;
+        } finally {
+          await refreshQueueMetrics(urlscanQueue, queueName).catch(
+            () => undefined,
           );
         }
-        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
-        metrics.queueCompleted.labels(queueName).inc();
-        if (job.attemptsMade > 0) {
-          metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
-        }
-      } catch (err) {
-        recordError(CIRCUIT_LABELS.urlscan, err);
-        logger.error({ err, url }, 'urlscan submission failed');
-        await dbClient.query(
-          `UPDATE scans SET urlscan_status=?, urlscan_completed_at=datetime('now') WHERE url_hash=?`,
-          ['failed', urlHashValue]
-        ).catch(() => undefined);
-        metrics.queueFailures.labels(queueName).inc();
-        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
-        throw err;
-      } finally {
-        await refreshQueueMetrics(urlscanQueue, queueName).catch(() => undefined);
-      }
-    }, { connection: redis, concurrency: config.urlscan.concurrency });
+      },
+      { connection: redis, concurrency: config.urlscan.concurrency },
+    );
   }
 
-  await app.listen({ host: '0.0.0.0', port: 3001 });
+  await app.listen({ host: "0.0.0.0", port: 3001 });
 
   const shutdown = async () => {
-    logger.info('Shutting down scan orchestrator...');
+    logger.info("Shutting down scan orchestrator...");
     await enhancedSecurity.stop();
     await app.close();
     await redis.quit();
     process.exit(0);
   };
 
-  process.on('SIGTERM', shutdown);
-  process.on('SIGINT', shutdown);
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
 }
 
-if (process.env.NODE_ENV !== 'test') {
-  main().catch(err => { logger.error(err, 'Fatal in orchestrator'); process.exit(1); });
+if (process.env.NODE_ENV !== "test") {
+  main().catch((err) => {
+    logger.error(err, "Fatal in orchestrator");
+    process.exit(1);
+  });
 }
 
 export const __testables = {
