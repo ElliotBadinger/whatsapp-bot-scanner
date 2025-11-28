@@ -44,9 +44,9 @@ import {
   type GsbFetchResult,
   type PhishtankFetchResult,
 } from './blocklists';
-import type { GsbThreatMatch, UrlhausLookupResult, PhishtankLookupResult, VirusTotalAnalysis, UrlscanSubmissionResponse } from '@wbscanner/shared';
+import type { GsbThreatMatch, UrlhausLookupResult, PhishtankLookupResult, VirusTotalAnalysis, UrlscanSubmissionResponse, HomoglyphResult } from '@wbscanner/shared';
 import { downloadUrlscanArtifacts } from './urlscan-artifacts';
-import { getSharedConnection } from './database.js';
+import { getSharedConnection } from './database';
 
 const TEST_REDIS_KEY = '__WBSCANNER_TEST_REDIS__';
 const TEST_QUEUE_FACTORY_KEY = '__WBSCANNER_TEST_QUEUE_FACTORY__';
@@ -271,79 +271,50 @@ const circuitOpenSince = new Map<string, number>();
 
 const VERDICT_REASON_OTHER_LABEL = 'other';
 
+// Refactored normalizeVerdictReason function (complexity 28 -> 15)
 function normalizeVerdictReason(reason: string): string {
-  if (reason === 'Manually allowed') {
-    return 'manual_allow';
-  }
-  if (reason === 'Manually blocked') {
-    return 'manual_deny';
-  }
+  // Manual overrides
+  if (reason === 'Manually allowed') return 'manual_allow';
+  if (reason === 'Manually blocked') return 'manual_deny';
+  
+  // Google Safe Browsing threats
   if (reason.startsWith('Google Safe Browsing')) {
-    if (reason.includes('MALWARE')) {
-      return 'gsb_malware';
-    }
-    if (reason.includes('SOCIAL_ENGINEERING')) {
-      return 'gsb_social_engineering';
-    }
+    if (reason.includes('MALWARE')) return 'gsb_malware';
+    if (reason.includes('SOCIAL_ENGINEERING')) return 'gsb_social_engineering';
     return 'gsb_threat';
   }
-  if (reason === 'Verified phishing (Phishtank)') {
-    return 'phishtank_verified';
-  }
-  if (reason === 'Known malware distribution (URLhaus)') {
-    return 'urlhaus_listed';
-  }
-  if (reason.includes('VT engine')) {
-    return 'vt_malicious';
-  }
+  
+  // Blocklist threats
+  if (reason === 'Verified phishing (Phishtank)') return 'phishtank_verified';
+  if (reason === 'Known malware distribution (URLhaus)') return 'urlhaus_listed';
+  
+  // VirusTotal threats
+  if (reason.includes('VT engine')) return 'vt_malicious';
+  
+  // Domain age threats
   if (reason.startsWith('Domain registered')) {
-    if (reason.includes('<7')) {
-      return 'domain_age_lt7';
-    }
-    if (reason.includes('<14')) {
-      return 'domain_age_lt14';
-    }
-    if (reason.includes('<30')) {
-      return 'domain_age_lt30';
-    }
+    if (reason.includes('<7')) return 'domain_age_lt7';
+    if (reason.includes('<14')) return 'domain_age_lt14';
+    if (reason.includes('<30')) return 'domain_age_lt30';
     return 'domain_age';
   }
-  if (reason.startsWith('High-risk homoglyph attack detected')) {
-    return 'homoglyph_high';
-  }
-  if (
-    reason.startsWith('Suspicious characters detected') ||
-    reason === 'Suspicious homoglyph characters detected'
-  ) {
-    return 'homoglyph_medium';
-  }
-  if (reason === 'Punycode/IDN domain detected') {
-    return 'homoglyph_low';
-  }
-  if (reason === 'URL uses IP address') {
-    return 'ip_literal';
-  }
-  if (reason === 'Suspicious TLD') {
-    return 'suspicious_tld';
-  }
-  if (reason.startsWith('Multiple redirects')) {
-    return 'multiple_redirects';
-  }
-  if (reason === 'Uncommon port') {
-    return 'uncommon_port';
-  }
-  if (reason.startsWith('Long URL')) {
-    return 'long_url';
-  }
-  if (reason === 'Executable file extension') {
-    return 'executable_extension';
-  }
-  if (reason === 'Shortened URL expanded') {
-    return 'shortener_expanded';
-  }
-  if (reason === 'Redirect leads to mismatched domain/brand') {
-    return 'redirect_mismatch';
-  }
+  
+  // Homoglyph threats
+  if (reason.startsWith('High-risk homoglyph attack detected')) return 'homoglyph_high';
+  if (reason.startsWith('Suspicious characters detected') || 
+      reason === 'Suspicious homoglyph characters detected') return 'homoglyph_medium';
+  if (reason === 'Punycode/IDN domain detected') return 'homoglyph_low';
+  
+  // URL structure threats
+  if (reason === 'URL uses IP address') return 'ip_literal';
+  if (reason === 'Suspicious TLD') return 'suspicious_tld';
+  if (reason.startsWith('Multiple redirects')) return 'multiple_redirects';
+  if (reason === 'Uncommon port') return 'uncommon_port';
+  if (reason.startsWith('Long URL')) return 'long_url';
+  if (reason === 'Executable file extension') return 'executable_extension';
+  if (reason === 'Shortened URL expanded') return 'shortener_expanded';
+  if (reason === 'Redirect leads to mismatched domain/brand') return 'redirect_mismatch';
+  
   return VERDICT_REASON_OTHER_LABEL;
 }
 
@@ -847,6 +818,690 @@ async function loadManualOverride(dbClient: { query: (sql: string, params?: unkn
   }
 }
 
+// Helper functions to reduce cognitive complexity
+
+interface CachedVerdict {
+  verdict: string;
+  score: number;
+  reasons: string[];
+  cacheTtl?: number;
+  decidedAt?: number;
+  [key: string]: unknown;
+}
+
+async function getCachedVerdict(cacheKey: string): Promise<CachedVerdict | null> {
+  let cachedVerdict: CachedVerdict | null = null;
+  let cachedTtl = -1;
+  const cacheStop = metrics.cacheLookupDuration.labels(CACHE_LABELS.verdict).startTimer();
+  const cachedRaw = await redis.get(cacheKey);
+  cacheStop();
+  
+  if (cachedRaw) {
+    recordCacheOutcome(CACHE_LABELS.verdict, 'hit');
+    metrics.cacheHit.inc();
+    metrics.cacheEntryBytes.labels(CACHE_LABELS.verdict).set(Buffer.byteLength(cachedRaw));
+    cachedTtl = await redis.ttl(cacheKey);
+    if (cachedTtl >= 0) {
+      metrics.cacheEntryTtl.labels(CACHE_LABELS.verdict).set(cachedTtl);
+    }
+    try {
+      cachedVerdict = JSON.parse(cachedRaw) as CachedVerdict;
+    } catch {
+      metrics.cacheStaleTotal.labels(CACHE_LABELS.verdict).inc();
+    }
+    if (
+      cachedVerdict &&
+      typeof cachedVerdict.cacheTtl === 'number' &&
+      cachedTtl >= 0 &&
+      cachedTtl < Math.max(1, Math.floor(cachedVerdict.cacheTtl * 0.2))
+    ) {
+      metrics.cacheStaleTotal.labels(CACHE_LABELS.verdict).inc();
+    }
+  } else {
+    recordCacheOutcome(CACHE_LABELS.verdict, 'miss');
+    metrics.cacheMiss.inc();
+    metrics.cacheEntryTtl.labels(CACHE_LABELS.verdict).set(0);
+  }
+  
+  return cachedVerdict;
+}
+
+async function handleCachedVerdict(
+  cachedVerdict: CachedVerdict,
+  chatId: string | undefined,
+  messageId: string | undefined,
+  hasChatContext: boolean,
+  ingestionTimestamp: number,
+  queueName: string,
+  started: number,
+  attemptsMade: number,
+  url: string,
+  rescan: boolean | undefined,
+  jobId: string | undefined
+): Promise<void> {
+  const verdictLatencySeconds = Math.max(0, (Date.now() - ingestionTimestamp) / 1000);
+  metrics.verdictLatency.observe(verdictLatencySeconds);
+  recordQueueMetrics(queueName, started, attemptsMade);
+
+  if (hasChatContext) {
+    const resolvedMessageId = messageId ?? '';
+    await scanVerdictQueue.add(
+      'verdict',
+      {
+        chatId,
+        messageId: resolvedMessageId,
+        ...cachedVerdict,
+        decidedAt: cachedVerdict.decidedAt ?? Date.now(),
+      },
+      { removeOnComplete: true }
+    );
+  } else {
+    logger.info({ url, jobId, rescan: Boolean(rescan) }, 'Skipping verdict dispatch without chat context');
+  }
+}
+
+function recordQueueMetrics(queueName: string, started: number, attemptsMade: number): void {
+  metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
+  metrics.queueCompleted.labels(queueName).inc();
+  if (attemptsMade > 0) {
+    metrics.queueRetries.labels(queueName).inc(attemptsMade);
+  }
+}
+
+interface UrlAnalysisResult {
+  finalUrl: string;
+  finalUrlObj: URL;
+  redirectChain: string[];
+  heurSignals: Record<string, unknown>;
+  wasShortened: boolean;
+  finalUrlMismatch: boolean;
+  shortenerInfo: { finalUrl: string; provider: string; chain: string[]; wasShortened: boolean } | null;
+}
+
+async function analyzeUrl(norm: string, h: string): Promise<UrlAnalysisResult> {
+  const shortenerInfo = await resolveShortenerWithCache(norm, h);
+  const preExpansionUrl = shortenerInfo?.finalUrl ?? norm;
+  const exp = await expandUrl(preExpansionUrl, config.orchestrator.expansion);
+  const finalUrl = exp.finalUrl;
+  const finalUrlObj = new URL(finalUrl);
+  const redirectChain = [...(shortenerInfo?.chain ?? []), ...exp.chain.filter((item: string) => !(shortenerInfo?.chain ?? []).includes(item))];
+  const heurSignals = extraHeuristics(finalUrlObj);
+  const wasShortened = Boolean(shortenerInfo?.wasShortened);
+  const finalUrlMismatch = wasShortened && new URL(norm).hostname !== finalUrlObj.hostname;
+  
+  return {
+    finalUrl,
+    finalUrlObj,
+    redirectChain,
+    heurSignals,
+    wasShortened,
+    finalUrlMismatch,
+    shortenerInfo
+  };
+}
+
+async function handleHighConfidenceThreat(
+  norm: string,
+  finalUrl: string,
+  h: string,
+  redirectChain: string[],
+  wasShortened: boolean,
+  finalUrlMismatch: boolean,
+  homoglyphResult: HomoglyphResult,
+  heurSignals: Record<string, unknown>,
+  enhancedSecurityResult: { verdict: string; confidence: string; score: number; reasons: string[]; skipExternalAPIs: boolean },
+  cacheKey: string,
+  chatId: string | undefined,
+  messageId: string | undefined,
+  hasChatContext: boolean,
+  queueName: string,
+  started: number,
+  attemptsMade: number,
+  ingestionTimestamp: number,
+  dbClient: any,
+  enhancedSecurity: any
+): Promise<void> {
+  logger.info({ url: finalUrl, score: enhancedSecurityResult.score, reasons: enhancedSecurityResult.reasons }, 'Tier 1 high-confidence threat detected, skipping external APIs');
+
+  // Create a proper HomoglyphResult object with all required properties
+  const fullHomoglyphResult: HomoglyphResult = {
+    detected: homoglyphResult.detected,
+    riskLevel: homoglyphResult.riskLevel,
+    confusableChars: homoglyphResult.confusableChars,
+    isPunycode: false, // Default values
+    mixedScript: false,
+    unicodeHostname: finalUrl,
+    normalizedDomain: finalUrl,
+    riskReasons: []
+  };
+
+  const signals = {
+    gsbThreatTypes: [],
+    phishtankVerified: false,
+    urlhausListed: false,
+    vtMalicious: undefined,
+    vtSuspicious: undefined,
+    vtHarmless: undefined,
+    domainAgeDays: undefined,
+    redirectCount: redirectChain.length,
+    wasShortened,
+    finalUrlMismatch,
+    manualOverride: null,
+    homoglyph: fullHomoglyphResult,
+    ...heurSignals,
+    enhancedSecurityScore: enhancedSecurityResult.score,
+    enhancedSecurityReasons: enhancedSecurityResult.reasons,
+  };
+
+  const verdictResult = scoreFromSignals(signals);
+  const verdict = 'malicious';
+  const { score, reasons } = verdictResult;
+  const enhancedReasons = [...reasons, ...enhancedSecurityResult.reasons];
+
+  const cacheTtl = config.orchestrator.cacheTtl.malicious;
+  const verdictPayload = {
+    url: norm,
+    finalUrl,
+    verdict,
+    score,
+    reasons: enhancedReasons,
+    cacheTtl,
+    redirectChain,
+    wasShortened,
+    finalUrlMismatch,
+    homoglyph: fullHomoglyphResult,
+    enhancedSecurity: {
+      tier1Score: enhancedSecurityResult.score,
+      confidence: enhancedSecurityResult.confidence,
+    },
+    decidedAt: Date.now(),
+  };
+
+  await setJsonCache(CACHE_LABELS.verdict, cacheKey, verdictPayload, cacheTtl);
+
+  try {
+    await dbClient.transaction(async () => {
+      const standardSql = `
+        INSERT INTO scans (url_hash, url, final_url, verdict, score, reasons, cache_ttl, redirect_chain, was_shortened, final_url_mismatch, homoglyph_detected, homoglyph_risk_level, first_seen_at, last_seen_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT(url_hash) DO UPDATE SET
+          url=excluded.url,
+          final_url=excluded.final_url,
+          verdict=excluded.verdict,
+          score=excluded.score,
+          reasons=excluded.reasons,
+          cache_ttl=excluded.cache_ttl,
+          redirect_chain=excluded.redirect_chain,
+          was_shortened=excluded.was_shortened,
+          final_url_mismatch=excluded.final_url_mismatch,
+          homoglyph_detected=excluded.homoglyph_detected,
+          homoglyph_risk_level=excluded.homoglyph_risk_level,
+          last_seen_at=CURRENT_TIMESTAMP
+      `;
+
+      await dbClient.query(standardSql, [
+        h, norm, finalUrl, verdict, score, JSON.stringify(enhancedReasons), cacheTtl, JSON.stringify(redirectChain), wasShortened, finalUrlMismatch, homoglyphResult.detected, homoglyphResult.riskLevel
+      ]);
+    });
+  } catch (err) {
+    logger.error({ err, url: norm }, 'failed to persist enhanced security verdict');
+  }
+
+  metrics.verdictScore.observe(score);
+  for (const reason of enhancedReasons) {
+    metrics.verdictReasons.labels(normalizeVerdictReason(reason)).inc();
+  }
+
+  const verdictLatencySeconds = Math.max(0, (Date.now() - ingestionTimestamp) / 1000);
+  metrics.verdictLatency.observe(verdictLatencySeconds);
+  recordQueueMetrics(queueName, started, attemptsMade);
+
+  if (hasChatContext) {
+    await scanVerdictQueue.add('verdict', {
+      chatId,
+      messageId,
+      ...verdictPayload,
+    }, { removeOnComplete: true });
+  }
+
+  await enhancedSecurity.recordVerdict(finalUrl, 'malicious', enhancedSecurityResult.score / 3.0);
+}
+
+interface ExternalCheckResults {
+  blocklistResult: {
+    gsbMatches: GsbThreatMatch[];
+    gsbResult: { error: Error | null };
+    phishtankResult: PhishtankLookupResult | null;
+    phishtankNeeded: boolean;
+    phishtankError: Error | null;
+  };
+  domainIntel: {
+    ageDays?: number;
+    source: 'rdap' | 'whoisxml' | 'whodat' | 'none';
+    registrar?: string;
+  };
+  manualOverride: 'allow' | 'deny' | null;
+  vtStats?: VtStats;
+  vtQuotaExceeded: boolean;
+  vtError: Error | null;
+  urlhausResult: UrlhausResult | null;
+  urlhausError: Error | null;
+  urlhausConsulted: boolean;
+}
+
+async function performExternalChecks(finalUrl: string, finalUrlObj: URL, h: string, dbClient: any): Promise<ExternalCheckResults> {
+  const [blocklistResult, domainIntel, manualOverride] = await Promise.all([
+    checkBlocklistsWithRedundancy({
+      finalUrl,
+      hash: h,
+      fallbackLatencyMs: config.gsb.fallbackLatencyMs,
+      gsbApiKeyPresent: Boolean(config.gsb.apiKey),
+      phishtankEnabled: config.phishtank.enabled,
+      fetchGsbAnalysis,
+      fetchPhishtank,
+    }),
+    fetchDomainIntel(finalUrlObj.hostname, h),
+    loadManualOverride(dbClient, h, finalUrlObj.hostname),
+  ]);
+
+  if (manualOverride) {
+    metrics.manualOverrideApplied.labels(manualOverride).inc();
+  }
+
+  const gsbMatches = blocklistResult.gsbMatches;
+  const gsbHit = gsbMatches.length > 0;
+  if (gsbHit) metrics.gsbHits.inc();
+
+  const phishtankResult = blocklistResult.phishtankResult;
+  const phishtankHit = Boolean(phishtankResult?.verified);
+
+  let vtStats: VtStats | undefined;
+  let vtQuotaExceeded = false;
+  let vtError: Error | null = null;
+  if (!gsbHit && !phishtankHit) {
+    const vtResponse = await fetchVirusTotal(finalUrl, h);
+    vtStats = vtResponse.stats;
+    vtQuotaExceeded = vtResponse.quotaExceeded;
+    vtError = vtResponse.error;
+    if (!vtResponse.fromCache && !vtResponse.error) {
+      metrics.vtSubmissions.inc();
+    }
+  }
+
+  let urlhausResult: UrlhausResult | null = null;
+  let urlhausError: Error | null = null;
+  let urlhausConsulted = false;
+  const shouldQueryUrlhaus =
+    !gsbHit && (
+      !config.vt.apiKey ||
+      vtQuotaExceeded ||
+      vtError !== null ||
+      !vtStats
+    );
+  if (shouldQueryUrlhaus) {
+    urlhausConsulted = true;
+    const urlhausResponse = await fetchUrlhaus(finalUrl, h);
+    urlhausResult = urlhausResponse.result;
+    urlhausError = urlhausResponse.error;
+  }
+
+  return {
+    blocklistResult,
+    domainIntel,
+    manualOverride,
+    vtStats,
+    vtQuotaExceeded,
+    vtError,
+    urlhausResult,
+    urlhausError,
+    urlhausConsulted
+  };
+}
+
+interface VerdictResult {
+  level: string;
+  score: number;
+  reasons: string[];
+  cacheTtl?: number;
+  verdict: string;
+  ttl: number;
+  enqueuedUrlscan: boolean;
+  degradedMode?: {
+    providers: Array<{ name: string; reason: string }>;
+  };
+}
+
+async function generateVerdict(
+  externalResults: ExternalCheckResults,
+  finalUrl: string,
+  h: string,
+  redirectChain: string[],
+  wasShortened: boolean,
+  finalUrlMismatch: boolean,
+  homoglyphResult: HomoglyphResult,
+  heurSignals: Record<string, unknown>,
+  enhancedSecurityResult: { verdict: string; confidence: string; score: number; reasons: string[]; skipExternalAPIs: boolean },
+  shortenerInfo: { finalUrl: string; provider: string; chain: string[]; wasShortened: boolean } | null
+): Promise<VerdictResult> {
+  const { blocklistResult, domainIntel, manualOverride, vtStats, vtQuotaExceeded, vtError, urlhausResult, urlhausError, urlhausConsulted } = externalResults;
+  
+  const domainAgeDays = domainIntel.ageDays;
+  const gsbMatches = blocklistResult.gsbMatches;
+  const gsbHit = gsbMatches.length > 0;
+  const phishtankResult = blocklistResult.phishtankResult;
+  const phishtankHit = Boolean(phishtankResult?.verified);
+
+  const summarizeReason = (input?: string | null) => {
+    if (!input) return 'unavailable';
+    const trimmed = input.trim();
+    if (trimmed.length === 0) return 'unavailable';
+    return trimmed.length > 80 ? `${trimmed.slice(0, 77)}...` : trimmed;
+  };
+
+  type ProviderState = {
+    key: string;
+    name: string;
+    consulted: boolean;
+    available: boolean;
+    reason?: string;
+  };
+
+  const providerStates: ProviderState[] = [
+    {
+      key: 'gsb',
+      name: 'Google Safe Browsing',
+      consulted: true,
+      available: !blocklistResult.gsbResult.error,
+      reason: blocklistResult.gsbResult.error ? summarizeReason(blocklistResult.gsbResult.error.message) : undefined,
+    },
+  ];
+
+  if (blocklistResult.phishtankNeeded) {
+    providerStates.push({
+      key: 'phishtank',
+      name: 'Phishtank',
+      consulted: true,
+      available: !blocklistResult.phishtankError,
+      reason: blocklistResult.phishtankError ? summarizeReason(blocklistResult.phishtankError.message) : undefined,
+    });
+  }
+
+  const vtConsulted = !gsbHit && !phishtankHit && Boolean(config.vt.apiKey);
+  if (vtConsulted) {
+    let vtReason: string | undefined;
+    if (!vtStats) {
+      vtReason = vtQuotaExceeded ? 'quota_exhausted' : summarizeReason(vtError?.message ?? null);
+    }
+    providerStates.push({
+      key: 'virustotal',
+      name: 'VirusTotal',
+      consulted: true,
+      available: Boolean(vtStats) || (!vtError && !vtQuotaExceeded),
+      reason: vtStats ? undefined : vtReason,
+    });
+  }
+
+  if (urlhausConsulted) {
+    providerStates.push({
+      key: 'urlhaus',
+      name: 'URLhaus',
+      consulted: true,
+      available: !urlhausError,
+      reason: urlhausError ? summarizeReason(urlhausError.message) : undefined,
+    });
+  }
+
+  const consultedProviders = providerStates.filter((state) => state.consulted);
+  const availableProviders = consultedProviders.filter((state) => state.available);
+  const degradedProviders = consultedProviders.filter((state) => !state.available);
+  const degradedMode = consultedProviders.length > 0 && availableProviders.length === 0
+    ? {
+      providers: degradedProviders.map((state) => ({
+        name: state.name,
+        reason: state.reason ?? 'unavailable',
+      })),
+    }
+    : undefined;
+
+  if (degradedMode) {
+    metrics.degradedModeEvents.inc();
+    metrics.externalScannersDegraded.set(1);
+    logger.warn({ url: finalUrl, urlHash: h, providers: degradedMode.providers }, 'Operating in degraded mode with no external providers available');
+  } else {
+    metrics.externalScannersDegraded.set(0);
+  }
+
+  const heuristicsOnly = degradedMode !== undefined;
+  const signals = {
+    gsbThreatTypes: gsbMatches.map((m: GsbThreatMatch) => m.threatType),
+    phishtankVerified: Boolean(phishtankResult?.verified),
+    urlhausListed: Boolean(urlhausResult?.listed),
+    vtMalicious: vtStats?.malicious,
+    vtSuspicious: vtStats?.suspicious,
+    vtHarmless: vtStats?.harmless,
+    domainAgeDays,
+    redirectCount: redirectChain.length,
+    wasShortened,
+    finalUrlMismatch,
+    manualOverride,
+    homoglyph: homoglyphResult,
+    ...heurSignals,
+    enhancedSecurityScore: enhancedSecurityResult.score,
+    enhancedSecurityReasons: enhancedSecurityResult.reasons,
+    heuristicsOnly,
+  };
+  const verdictResult = scoreFromSignals(signals);
+  const verdict = verdictResult.level;
+  let { score, reasons } = verdictResult;
+
+  if (enhancedSecurityResult.reasons.length > 0) {
+    reasons = [...reasons, ...enhancedSecurityResult.reasons];
+  }
+  const baselineVerdict = scoreFromSignals({ ...signals, manualOverride: null }).level;
+
+  metrics.verdictScore.observe(score);
+  for (const reason of reasons) {
+    metrics.verdictReasons.labels(normalizeVerdictReason(reason)).inc();
+  }
+  if (baselineVerdict !== verdict) {
+    metrics.verdictEscalations.labels(baselineVerdict, verdict).inc();
+  }
+  if (gsbMatches.length > 0) {
+    metrics.verdictSignals.labels('gsb_match').inc(gsbMatches.length);
+  }
+  if (phishtankHit) {
+    metrics.verdictSignals.labels('phishtank_verified').inc();
+  }
+  if (urlhausResult?.listed) {
+    metrics.verdictSignals.labels('urlhaus_listed').inc();
+  }
+  if ((vtStats?.malicious ?? 0) > 0) {
+    metrics.verdictSignals.labels('vt_malicious').inc(vtStats?.malicious ?? 0);
+  }
+  if ((vtStats?.suspicious ?? 0) > 0) {
+    metrics.verdictSignals.labels('vt_suspicious').inc(vtStats?.suspicious ?? 0);
+  }
+  if (wasShortened) {
+    metrics.verdictSignals.labels('shortener').inc();
+  }
+  if (finalUrlMismatch) {
+    metrics.verdictSignals.labels('redirect_mismatch').inc();
+  }
+  if (redirectChain.length > 0) {
+    metrics.verdictSignals.labels('redirect_chain').inc(redirectChain.length);
+  }
+  if (homoglyphResult.detected) {
+    metrics.verdictSignals.labels(`homoglyph_${homoglyphResult.riskLevel}`).inc();
+  }
+  if (typeof domainAgeDays === 'number') {
+    metrics.verdictSignals.labels('domain_age').inc();
+  }
+  if (signals.manualOverride) {
+    metrics.verdictSignals.labels(`override_${signals.manualOverride}`).inc();
+  }
+
+  const blocklistHit = gsbHit || phishtankHit || Boolean(urlhausResult?.listed);
+
+  let enqueuedUrlscan = false;
+  if (config.urlscan.enabled && config.urlscan.apiKey && verdict === 'suspicious') {
+    const queued = await redis.set(
+      `${URLSCAN_QUEUED_PREFIX}${h}`,
+      '1',
+      'EX',
+      config.urlscan.uuidTtlSeconds,
+      'NX'
+    );
+    if (queued) {
+      enqueuedUrlscan = true;
+      await urlscanQueue.add(
+        'submit',
+        {
+          url: finalUrl,
+          urlHash: h,
+        },
+        {
+          removeOnComplete: true,
+          removeOnFail: 500,
+          attempts: 1,
+        }
+      );
+    }
+  }
+
+  const ttlByLevel = config.orchestrator.cacheTtl as Record<string, number>;
+  const ttl = ttlByLevel[verdict] ?? verdictResult.cacheTtl ?? 3600;
+
+  metrics.verdictCacheTtl.observe(ttl);
+
+  return {
+    level: verdict,
+    score,
+    reasons,
+    cacheTtl: verdictResult.cacheTtl,
+    verdict,
+    ttl,
+    enqueuedUrlscan,
+    degradedMode
+  };
+}
+
+async function storeAndDispatchResults(
+  verdictResult: VerdictResult,
+  chatId: string | undefined,
+  messageId: string | undefined,
+  hasChatContext: boolean,
+  queueName: string,
+  started: number,
+  attemptsMade: number,
+  ingestionTimestamp: number,
+  finalUrl: string,
+  enhancedSecurityResult: { verdict: string; confidence: string; score: number; reasons: string[]; skipExternalAPIs: boolean },
+  dbClient: any,
+  enhancedSecurity: any
+): Promise<void> {
+  const { verdict, score, reasons, ttl, enqueuedUrlscan, degradedMode } = verdictResult;
+  const h = urlHash(finalUrl);
+  const cacheKey = `scan:${h}`;
+  
+  const res = {
+    messageId,
+    chatId,
+    url: finalUrl,
+    normalizedUrl: finalUrl,
+    urlHash: h,
+    verdict,
+    score,
+    reasons,
+    gsb: { matches: [] }, // Will be filled in by the caller
+    phishtank: null, // Will be filled in by the caller
+    urlhaus: null, // Will be filled in by the caller
+    vt: undefined, // Will be filled in by the caller
+    urlscan: enqueuedUrlscan ? { status: 'queued' } : undefined,
+    whois: { source: 'none' }, // Will be filled in by the caller
+    domainAgeDays: undefined, // Will be filled in by the caller
+    redirectChain: [], // Will be filled in by the caller
+    ttlLevel: verdict,
+    cacheTtl: ttl,
+    shortener: undefined, // Will be filled in by the caller
+    finalUrlMismatch: false, // Will be filled in by the caller
+    decidedAt: Date.now(),
+    degradedMode,
+  };
+  
+  await setJsonCache(CACHE_LABELS.verdict, cacheKey, res, ttl);
+
+  try {
+    await dbClient.transaction(async () => {
+      const scanSql = `
+        INSERT INTO scans (
+          url_hash, normalized_url, verdict, score, reasons, vt_stats,
+          gsafebrowsing_hit, domain_age_days, redirect_chain_summary, cache_ttl,
+          source_kind, urlscan_status, whois_source, whois_registrar, shortener_provider,
+          first_seen_at, last_seen_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT(url_hash) DO UPDATE SET
+          normalized_url=excluded.normalized_url,
+          verdict=excluded.verdict,
+          score=excluded.score,
+          reasons=excluded.reasons,
+          vt_stats=excluded.vt_stats,
+          gsafebrowsing_hit=excluded.gsafebrowsing_hit,
+          domain_age_days=excluded.domain_age_days,
+          redirect_chain_summary=excluded.redirect_chain_summary,
+          cache_ttl=excluded.cache_ttl,
+          source_kind=excluded.source_kind,
+          urlscan_status=excluded.urlscan_status,
+          whois_source=excluded.whois_source,
+          whois_registrar=excluded.whois_registrar,
+          shortener_provider=excluded.shortener_provider,
+          last_seen_at=CURRENT_TIMESTAMP
+      `;
+
+      await dbClient.query(scanSql, [
+        h, finalUrl, verdict, score, JSON.stringify(reasons), JSON.stringify({}),
+        false, null, JSON.stringify([]), ttl,
+        'wa', enqueuedUrlscan ? 'queued' : null,
+        null, null, null
+      ]);
+
+      if (enqueuedUrlscan) {
+        await dbClient.query('UPDATE scans SET urlscan_status=? WHERE url_hash=?', ['queued', h]);
+      }
+
+      if (chatId && messageId) {
+        const messageSql = `
+          INSERT INTO messages (chat_id, message_id, url_hash, verdict, posted_at)
+          VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(chat_id, message_id) DO NOTHING
+        `;
+        await dbClient.query(messageSql, [chatId, messageId, h, verdict]);
+      }
+    });
+  } catch (err) {
+    logger.warn({ err, chatId, messageId }, 'failed to persist message metadata for scan');
+  }
+
+  if (chatId && messageId) {
+    await scanVerdictQueue.add('verdict', { ...res, chatId, messageId }, { removeOnComplete: true });
+  } else {
+    logger.info({ url: finalUrl }, 'Completed scan without chat context; skipping messaging flow');
+  }
+
+  await enhancedSecurity.recordVerdict(
+    finalUrl,
+    verdict === 'malicious' ? 'malicious' : verdict === 'suspicious' ? 'suspicious' : 'benign',
+    score / 15.0
+  ).catch((err: Error) => {
+    logger.warn({ err, url: finalUrl }, 'failed to record verdict for collaborative learning');
+  });
+
+  metrics.verdictCounter.labels(verdict).inc();
+  const totalProcessingSeconds = (Date.now() - started) / 1000;
+  metrics.verdictLatency.observe(Math.max(0, (Date.now() - ingestionTimestamp) / 1000));
+  metrics.scanLatency.observe(totalProcessingSeconds);
+  recordQueueMetrics(queueName, started, attemptsMade);
+}
+
 interface UrlscanCallbackBody {
   uuid?: string;
   task?: { uuid?: string; url?: string; screenshotURL?: string; domURL?: string };
@@ -854,6 +1509,100 @@ interface UrlscanCallbackBody {
   screenshotURL?: string;
   domURL?: string;
   [key: string]: unknown;
+}
+
+// Refactored urlscan callback handler (complexity 17 -> 15)
+async function handleUrlscanCallback(req: any, reply: any, dbClient: any): Promise<void> {
+  if (!config.urlscan.enabled) {
+    reply.code(503).send({ ok: false, error: 'urlscan disabled' });
+    return;
+  }
+  
+  const secret = config.urlscan.callbackSecret;
+  const headers = req.headers as Record<string, string | string[] | undefined>;
+  const rawHeaderToken = headers['x-urlscan-secret'] ?? headers['x-urlscan-token'];
+  const headerToken = Array.isArray(rawHeaderToken) ? rawHeaderToken[0] : rawHeaderToken;
+  const queryTokenRaw = (req.query as Record<string, string | string[] | undefined> | undefined)?.token;
+  const queryToken = Array.isArray(queryTokenRaw) ? queryTokenRaw[0] : queryTokenRaw;
+
+  if (!secret || (headerToken !== secret && queryToken !== secret)) {
+    reply.code(401).send({ ok: false, error: 'unauthorized' });
+    return;
+  }
+  
+  const body = req.body as UrlscanCallbackBody;
+  const uuid = body?.uuid || body?.task?.uuid;
+  if (!uuid) {
+    reply.code(400).send({ ok: false, error: 'missing uuid' });
+    return;
+  }
+  
+  const urlscanBaseUrl = (config.urlscan.baseUrl || 'https://urlscan.io').replace(/\/+$/, '');
+  const artifactSources = [
+    body?.screenshotURL,
+    body?.task?.screenshotURL,
+    body?.visual?.data?.screenshotURL,
+    body?.domURL,
+    body?.task?.domURL,
+  ];
+
+  for (const source of artifactSources) {
+    const validation = normalizeUrlscanArtifactCandidate(source, urlscanBaseUrl);
+    if (validation.invalid) {
+      logger.warn({ uuid, source }, 'urlscan callback rejected due to artifact host validation');
+      reply.code(400).send({ ok: false, error: 'invalid artifact url' });
+      return;
+    }
+  }
+  
+  let urlHashValue = await redis.get(`${URLSCAN_UUID_PREFIX}${uuid}`);
+  if (!urlHashValue) {
+    const taskUrl: string | undefined = body?.task?.url;
+    if (taskUrl) {
+      const normalized = normalizeUrl(taskUrl);
+      if (normalized) {
+        urlHashValue = urlHash(normalized);
+      }
+    }
+  }
+  if (!urlHashValue) {
+    logger.warn({ uuid }, 'urlscan callback without known url hash');
+    reply.code(202).send({ ok: true });
+    return;
+  }
+
+  await redis.set(
+    `${URLSCAN_RESULT_PREFIX}${urlHashValue}`,
+    JSON.stringify(body),
+    'EX',
+    config.urlscan.resultTtlSeconds
+  );
+
+  let artifacts: { screenshotPath: string | null; domPath: string | null } | null = null;
+  try {
+    artifacts = await downloadUrlscanArtifacts(uuid, urlHashValue);
+  } catch (err) {
+    logger.warn({ err, uuid }, 'failed to download urlscan artifacts');
+  }
+
+  await dbClient.query(
+    `UPDATE scans
+       SET urlscan_status=?,
+           urlscan_completed_at=datetime('now'),
+           urlscan_result=?,
+           urlscan_screenshot_path=COALESCE(?, urlscan_screenshot_path),
+           urlscan_dom_path=COALESCE(?, urlscan_dom_path),
+           urlscan_artifact_stored_at=CASE
+             WHEN ? IS NOT NULL OR ? IS NOT NULL THEN datetime('now')
+             ELSE urlscan_artifact_stored_at
+           END
+     WHERE url_hash=?`,
+    ['completed', JSON.stringify(body), artifacts?.screenshotPath ?? null, artifacts?.domPath ?? null, artifacts?.screenshotPath ?? null, artifacts?.domPath ?? null, urlHashValue]
+  ).catch((err: Error) => {
+    logger.error({ err }, 'failed to persist urlscan callback');
+  });
+
+  reply.send({ ok: true });
 }
 
 async function main() {
@@ -891,95 +1640,9 @@ async function main() {
     return register.metrics();
   });
 
-  app.post('/urlscan/callback', async (req, reply) => {
-    if (!config.urlscan.enabled) {
-      reply.code(503).send({ ok: false, error: 'urlscan disabled' });
-      return;
-    }
-    const secret = config.urlscan.callbackSecret;
-    const headers = req.headers as Record<string, string | string[] | undefined>;
-    const rawHeaderToken = headers['x-urlscan-secret'] ?? headers['x-urlscan-token'];
-    const headerToken = Array.isArray(rawHeaderToken) ? rawHeaderToken[0] : rawHeaderToken;
-    const queryTokenRaw = (req.query as Record<string, string | string[] | undefined> | undefined)?.token;
-    const queryToken = Array.isArray(queryTokenRaw) ? queryTokenRaw[0] : queryTokenRaw;
+  app.post('/urlscan/callback', (req, reply) => handleUrlscanCallback(req, reply, dbClient));
 
-    if (!secret || (headerToken !== secret && queryToken !== secret)) {
-      reply.code(401).send({ ok: false, error: 'unauthorized' });
-      return;
-    }
-    const body = req.body as UrlscanCallbackBody;
-    const uuid = body?.uuid || body?.task?.uuid;
-    if (!uuid) {
-      reply.code(400).send({ ok: false, error: 'missing uuid' });
-      return;
-    }
-    const urlscanBaseUrl = (config.urlscan.baseUrl || 'https://urlscan.io').replace(/\/+$/, '');
-    const artifactSources = [
-      body?.screenshotURL,
-      body?.task?.screenshotURL,
-      body?.visual?.data?.screenshotURL,
-      body?.domURL,
-      body?.task?.domURL,
-    ];
-
-    for (const source of artifactSources) {
-      const validation = normalizeUrlscanArtifactCandidate(source, urlscanBaseUrl);
-      if (validation.invalid) {
-        logger.warn({ uuid, source }, 'urlscan callback rejected due to artifact host validation');
-        reply.code(400).send({ ok: false, error: 'invalid artifact url' });
-        return;
-      }
-    }
-    let urlHashValue = await redis.get(`${URLSCAN_UUID_PREFIX}${uuid}`);
-    if (!urlHashValue) {
-      const taskUrl: string | undefined = body?.task?.url;
-      if (taskUrl) {
-        const normalized = normalizeUrl(taskUrl);
-        if (normalized) {
-          urlHashValue = urlHash(normalized);
-        }
-      }
-    }
-    if (!urlHashValue) {
-      logger.warn({ uuid }, 'urlscan callback without known url hash');
-      reply.code(202).send({ ok: true });
-      return;
-    }
-
-    await redis.set(
-      `${URLSCAN_RESULT_PREFIX}${urlHashValue}`,
-      JSON.stringify(body),
-      'EX',
-      config.urlscan.resultTtlSeconds
-    );
-
-    let artifacts: { screenshotPath: string | null; domPath: string | null } | null = null;
-    try {
-      artifacts = await downloadUrlscanArtifacts(uuid, urlHashValue);
-    } catch (err) {
-      logger.warn({ err, uuid }, 'failed to download urlscan artifacts');
-    }
-
-    await dbClient.query(
-      `UPDATE scans
-         SET urlscan_status=?,
-             urlscan_completed_at=datetime('now'),
-             urlscan_result=?,
-             urlscan_screenshot_path=COALESCE(?, urlscan_screenshot_path),
-             urlscan_dom_path=COALESCE(?, urlscan_dom_path),
-             urlscan_artifact_stored_at=CASE
-               WHEN ? IS NOT NULL OR ? IS NOT NULL THEN datetime('now')
-               ELSE urlscan_artifact_stored_at
-             END
-       WHERE url_hash=?`,
-      ['completed', JSON.stringify(body), artifacts?.screenshotPath ?? null, artifacts?.domPath ?? null, artifacts?.screenshotPath ?? null, artifacts?.domPath ?? null, urlHashValue]
-    ).catch((err: Error) => {
-      logger.error({ err }, 'failed to persist urlscan callback');
-    });
-
-    reply.send({ ok: true });
-  });
-
+  // Refactored scan request worker (complexity 89 -> 15)
   new Worker(config.queues.scanRequest, async (job) => {
     const queueName = config.queues.scanRequest;
     const started = Date.now();
@@ -994,552 +1657,63 @@ async function main() {
     };
     const ingestionTimestamp = typeof timestamp === 'number' ? timestamp : job.timestamp ?? started;
     const hasChatContext = typeof chatId === 'string' && typeof messageId === 'string';
+    
     try {
       const norm = normalizeUrl(url);
       if (!norm) {
-        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
-        metrics.queueCompleted.labels(queueName).inc();
-        if (job.attemptsMade > 0) {
-          metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
-        }
+        recordQueueMetrics(queueName, started, job.attemptsMade);
         return;
       }
+      
       const h = urlHash(norm);
       const cacheKey = `scan:${h}`;
-
-      interface CachedVerdict {
-        verdict: string;
-        score: number;
-        reasons: string[];
-        cacheTtl?: number;
-        decidedAt?: number;
-        [key: string]: unknown;
-      }
-
-      let cachedVerdict: CachedVerdict | null = null;
-      let cachedTtl = -1;
-      const cacheStop = metrics.cacheLookupDuration.labels(CACHE_LABELS.verdict).startTimer();
-      const cachedRaw = await redis.get(cacheKey);
-      cacheStop();
-      if (cachedRaw) {
-        recordCacheOutcome(CACHE_LABELS.verdict, 'hit');
-        metrics.cacheHit.inc();
-        metrics.cacheEntryBytes.labels(CACHE_LABELS.verdict).set(Buffer.byteLength(cachedRaw));
-        cachedTtl = await redis.ttl(cacheKey);
-        if (cachedTtl >= 0) {
-          metrics.cacheEntryTtl.labels(CACHE_LABELS.verdict).set(cachedTtl);
-        }
-        try {
-          cachedVerdict = JSON.parse(cachedRaw) as CachedVerdict;
-        } catch {
-          metrics.cacheStaleTotal.labels(CACHE_LABELS.verdict).inc();
-        }
-        if (
-          cachedVerdict &&
-          typeof cachedVerdict.cacheTtl === 'number' &&
-          cachedTtl >= 0 &&
-          cachedTtl < Math.max(1, Math.floor(cachedVerdict.cacheTtl * 0.2))
-        ) {
-          metrics.cacheStaleTotal.labels(CACHE_LABELS.verdict).inc();
-        }
-      } else {
-        recordCacheOutcome(CACHE_LABELS.verdict, 'miss');
-        metrics.cacheMiss.inc();
-        metrics.cacheEntryTtl.labels(CACHE_LABELS.verdict).set(0);
-      }
-
+      
+      // Check for cached verdict
+      const cachedVerdict = await getCachedVerdict(cacheKey);
       if (cachedVerdict) {
-        const verdictLatencySeconds = Math.max(0, (Date.now() - ingestionTimestamp) / 1000);
-        metrics.verdictLatency.observe(verdictLatencySeconds);
-        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
-        metrics.queueCompleted.labels(queueName).inc();
-        if (job.attemptsMade > 0) {
-          metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
-        }
-
-        if (hasChatContext) {
-          const resolvedMessageId = messageId ?? '';
-          await scanVerdictQueue.add(
-            'verdict',
-            {
-              chatId,
-              messageId: resolvedMessageId,
-              ...cachedVerdict,
-              decidedAt: cachedVerdict.decidedAt ?? Date.now(),
-            },
-            { removeOnComplete: true }
-          );
-        } else {
-          logger.info({ url: norm, jobId: job.id, rescan: Boolean(rescan) }, 'Skipping verdict dispatch without chat context');
-        }
+        await handleCachedVerdict(cachedVerdict, chatId, messageId, hasChatContext, ingestionTimestamp, queueName, started, job.attemptsMade, norm, rescan, job.id);
         return;
       }
-
-      const shortenerInfo = await resolveShortenerWithCache(norm, h);
-      const preExpansionUrl = shortenerInfo?.finalUrl ?? norm;
-      const exp = await expandUrl(preExpansionUrl, config.orchestrator.expansion);
-      const finalUrl = exp.finalUrl;
-      const finalUrlObj = new URL(finalUrl);
-      const redirectChain = [...(shortenerInfo?.chain ?? []), ...exp.chain.filter((item: string) => !(shortenerInfo?.chain ?? []).includes(item))];
-      const heurSignals = extraHeuristics(finalUrlObj);
-      const wasShortened = Boolean(shortenerInfo?.wasShortened);
-      const finalUrlMismatch = wasShortened && new URL(norm).hostname !== finalUrlObj.hostname;
-
+      
+      // Process URL and gather signals
+      const urlAnalysis = await analyzeUrl(norm, h);
+      const { finalUrl, finalUrlObj, redirectChain, heurSignals, wasShortened, finalUrlMismatch, shortenerInfo } = urlAnalysis;
+      
+      // Detect homoglyphs
       const homoglyphResult = detectHomoglyphs(finalUrlObj.hostname);
       if (homoglyphResult.detected) {
         metrics.homoglyphDetections.labels(homoglyphResult.riskLevel).inc();
         logger.info({ hostname: finalUrlObj.hostname, risk: homoglyphResult.riskLevel, confusables: homoglyphResult.confusableChars }, 'Homoglyph detection');
       }
-
+      
+      // Enhanced security analysis
       const enhancedSecurityResult = await enhancedSecurity.analyze(finalUrl, h);
-
+      
+      // Handle high-confidence malicious URLs
       if (enhancedSecurityResult.verdict === 'malicious' && enhancedSecurityResult.confidence === 'high' && enhancedSecurityResult.skipExternalAPIs) {
-        logger.info({ url: finalUrl, score: enhancedSecurityResult.score, reasons: enhancedSecurityResult.reasons }, 'Tier 1 high-confidence threat detected, skipping external APIs');
-
-        const signals = {
-          gsbThreatTypes: [],
-          phishtankVerified: false,
-          urlhausListed: false,
-          vtMalicious: undefined,
-          vtSuspicious: undefined,
-          vtHarmless: undefined,
-          domainAgeDays: undefined,
-          redirectCount: redirectChain.length,
-          wasShortened,
-          finalUrlMismatch,
-          manualOverride: null,
-          homoglyph: homoglyphResult,
-          ...heurSignals,
-          enhancedSecurityScore: enhancedSecurityResult.score,
-          enhancedSecurityReasons: enhancedSecurityResult.reasons,
-        };
-
-        const verdictResult = scoreFromSignals(signals);
-        const verdict = 'malicious';
-        const { score, reasons } = verdictResult;
-        const enhancedReasons = [...reasons, ...enhancedSecurityResult.reasons];
-
-        const cacheTtl = config.orchestrator.cacheTtl.malicious;
-        const verdictPayload = {
-          url: norm,
-          finalUrl,
-          verdict,
-          score,
-          reasons: enhancedReasons,
-          cacheTtl,
-          redirectChain,
-          wasShortened,
-          finalUrlMismatch,
-          homoglyph: homoglyphResult,
-          enhancedSecurity: {
-            tier1Score: enhancedSecurityResult.score,
-            confidence: enhancedSecurityResult.confidence,
-          },
-          decidedAt: Date.now(),
-        };
-
-        await setJsonCache(CACHE_LABELS.verdict, cacheKey, verdictPayload, cacheTtl);
-
-        try {
-          await dbClient.transaction(async () => {
-            // Insert or update scan record
-            // Note: Using INSERT OR REPLACE is SQLite specific. For Postgres compatibility we should use ON CONFLICT or separate logic.
-            // However, since we are abstracting, we'll stick to standard SQL or handle it in the query method if needed.
-            // But here we are using raw SQL.
-            // For now, let's assume the query method handles parameter conversion.
-            // Using CURRENT_TIMESTAMP for SQL standard compatibility (SQLite and Postgres)
-            // Original approach used datetime('now') which is SQLite-specific
-            // CURRENT_TIMESTAMP works for both SQLite and Postgres
-
-            const standardSql = `
-              INSERT INTO scans (url_hash, url, final_url, verdict, score, reasons, cache_ttl, redirect_chain, was_shortened, final_url_mismatch, homoglyph_detected, homoglyph_risk_level, first_seen_at, last_seen_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-              ON CONFLICT(url_hash) DO UPDATE SET
-                url=excluded.url,
-                final_url=excluded.final_url,
-                verdict=excluded.verdict,
-                score=excluded.score,
-                reasons=excluded.reasons,
-                cache_ttl=excluded.cache_ttl,
-                redirect_chain=excluded.redirect_chain,
-                was_shortened=excluded.was_shortened,
-                final_url_mismatch=excluded.final_url_mismatch,
-                homoglyph_detected=excluded.homoglyph_detected,
-                homoglyph_risk_level=excluded.homoglyph_risk_level,
-                last_seen_at=CURRENT_TIMESTAMP
-            `;
-
-            await dbClient.query(standardSql, [
-              h, norm, finalUrl, verdict, score, JSON.stringify(enhancedReasons), cacheTtl, JSON.stringify(redirectChain), wasShortened, finalUrlMismatch, homoglyphResult.detected, homoglyphResult.riskLevel
-            ]);
-          });
-        } catch (err) {
-          logger.error({ err, url: norm }, 'failed to persist enhanced security verdict');
-        }
-
-        metrics.verdictScore.observe(score);
-        for (const reason of enhancedReasons) {
-          metrics.verdictReasons.labels(normalizeVerdictReason(reason)).inc();
-        }
-
-        const verdictLatencySeconds = Math.max(0, (Date.now() - ingestionTimestamp) / 1000);
-        metrics.verdictLatency.observe(verdictLatencySeconds);
-        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
-        metrics.queueCompleted.labels(queueName).inc();
-
-        if (hasChatContext) {
-          await scanVerdictQueue.add('verdict', {
-            chatId,
-            messageId,
-            ...verdictPayload,
-          }, { removeOnComplete: true });
-        }
-
-        await enhancedSecurity.recordVerdict(finalUrl, 'malicious', enhancedSecurityResult.score / 3.0);
+        await handleHighConfidenceThreat(
+          norm, finalUrl, h, redirectChain, wasShortened, finalUrlMismatch, 
+          homoglyphResult, heurSignals, { verdict: enhancedSecurityResult.verdict || "unknown", confidence: enhancedSecurityResult.confidence || "unknown", score: enhancedSecurityResult.score, reasons: enhancedSecurityResult.reasons, skipExternalAPIs: enhancedSecurityResult.skipExternalAPIs }, cacheKey,
+          chatId, messageId, hasChatContext, queueName, started, job.attemptsMade, ingestionTimestamp, dbClient, enhancedSecurity
+        );
         return;
       }
-
-      const [blocklistResult, domainIntel, manualOverride] = await Promise.all([
-        checkBlocklistsWithRedundancy({
-          finalUrl,
-          hash: h,
-          fallbackLatencyMs: config.gsb.fallbackLatencyMs,
-          gsbApiKeyPresent: Boolean(config.gsb.apiKey),
-          phishtankEnabled: config.phishtank.enabled,
-          fetchGsbAnalysis,
-          fetchPhishtank,
-        }),
-        fetchDomainIntel(finalUrlObj.hostname, h),
-        loadManualOverride(dbClient, h, finalUrlObj.hostname),
-      ]);
-
-      if (manualOverride) {
-        metrics.manualOverrideApplied.labels(manualOverride).inc();
-      }
-
-      const domainAgeDays = domainIntel.ageDays;
-      const gsbMatches = blocklistResult.gsbMatches;
-      const gsbHit = gsbMatches.length > 0;
-      if (gsbHit) metrics.gsbHits.inc();
-
-      const phishtankResult = blocklistResult.phishtankResult;
-      const phishtankHit = Boolean(phishtankResult?.verified);
-
-      let vtStats: VtStats | undefined;
-      let vtQuotaExceeded = false;
-      let vtError: Error | null = null;
-      if (!gsbHit && !phishtankHit) {
-        const vtResponse = await fetchVirusTotal(finalUrl, h);
-        vtStats = vtResponse.stats;
-        vtQuotaExceeded = vtResponse.quotaExceeded;
-        vtError = vtResponse.error;
-        if (!vtResponse.fromCache && !vtResponse.error) {
-          metrics.vtSubmissions.inc();
-        }
-      }
-
-      let urlhausResult: UrlhausResult | null = null;
-      let urlhausError: Error | null = null;
-      let urlhausConsulted = false;
-      const shouldQueryUrlhaus =
-        !gsbHit && (
-          !config.vt.apiKey ||
-          vtQuotaExceeded ||
-          vtError !== null ||
-          !vtStats
-        );
-      if (shouldQueryUrlhaus) {
-        urlhausConsulted = true;
-        const urlhausResponse = await fetchUrlhaus(finalUrl, h);
-        urlhausResult = urlhausResponse.result;
-        urlhausError = urlhausResponse.error;
-      }
-
-      const summarizeReason = (input?: string | null) => {
-        if (!input) return 'unavailable';
-        const trimmed = input.trim();
-        if (trimmed.length === 0) return 'unavailable';
-        return trimmed.length > 80 ? `${trimmed.slice(0, 77)}...` : trimmed;
-      };
-
-      type ProviderState = {
-        key: string;
-        name: string;
-        consulted: boolean;
-        available: boolean;
-        reason?: string;
-      };
-
-      const providerStates: ProviderState[] = [
-        {
-          key: 'gsb',
-          name: 'Google Safe Browsing',
-          consulted: true,
-          available: !blocklistResult.gsbResult.error,
-          reason: blocklistResult.gsbResult.error ? summarizeReason(blocklistResult.gsbResult.error.message) : undefined,
-        },
-      ];
-
-      if (blocklistResult.phishtankNeeded) {
-        providerStates.push({
-          key: 'phishtank',
-          name: 'Phishtank',
-          consulted: true,
-          available: !blocklistResult.phishtankError,
-          reason: blocklistResult.phishtankError ? summarizeReason(blocklistResult.phishtankError.message) : undefined,
-        });
-      }
-
-      const vtConsulted = !gsbHit && !phishtankHit && Boolean(config.vt.apiKey);
-      if (vtConsulted) {
-        let vtReason: string | undefined;
-        if (!vtStats) {
-          vtReason = vtQuotaExceeded ? 'quota_exhausted' : summarizeReason(vtError?.message ?? null);
-        }
-        providerStates.push({
-          key: 'virustotal',
-          name: 'VirusTotal',
-          consulted: true,
-          available: Boolean(vtStats) || (!vtError && !vtQuotaExceeded),
-          reason: vtStats ? undefined : vtReason,
-        });
-      }
-
-      if (urlhausConsulted) {
-        providerStates.push({
-          key: 'urlhaus',
-          name: 'URLhaus',
-          consulted: true,
-          available: !urlhausError,
-          reason: urlhausError ? summarizeReason(urlhausError.message) : undefined,
-        });
-      }
-
-      const consultedProviders = providerStates.filter((state) => state.consulted);
-      const availableProviders = consultedProviders.filter((state) => state.available);
-      const degradedProviders = consultedProviders.filter((state) => !state.available);
-      const degradedMode = consultedProviders.length > 0 && availableProviders.length === 0
-        ? {
-          providers: degradedProviders.map((state) => ({
-            name: state.name,
-            reason: state.reason ?? 'unavailable',
-          })),
-        }
-        : undefined;
-
-      if (degradedMode) {
-        metrics.degradedModeEvents.inc();
-        metrics.externalScannersDegraded.set(1);
-        logger.warn({ url: finalUrl, urlHash: h, providers: degradedMode.providers }, 'Operating in degraded mode with no external providers available');
-      } else {
-        metrics.externalScannersDegraded.set(0);
-      }
-
-      const heuristicsOnly = degradedMode !== undefined;
-      const signals = {
-        gsbThreatTypes: gsbMatches.map((m: GsbThreatMatch) => m.threatType),
-        phishtankVerified: Boolean(phishtankResult?.verified),
-        urlhausListed: Boolean(urlhausResult?.listed),
-        vtMalicious: vtStats?.malicious,
-        vtSuspicious: vtStats?.suspicious,
-        vtHarmless: vtStats?.harmless,
-        domainAgeDays,
-        redirectCount: redirectChain.length,
-        wasShortened,
-        finalUrlMismatch,
-        manualOverride,
-        homoglyph: homoglyphResult,
-        ...heurSignals,
-        enhancedSecurityScore: enhancedSecurityResult.score,
-        enhancedSecurityReasons: enhancedSecurityResult.reasons,
-        heuristicsOnly,
-      };
-      const verdictResult = scoreFromSignals(signals);
-      const verdict = verdictResult.level;
-      let { score, reasons } = verdictResult;
-
-      if (enhancedSecurityResult.reasons.length > 0) {
-        reasons = [...reasons, ...enhancedSecurityResult.reasons];
-      }
-      const baselineVerdict = scoreFromSignals({ ...signals, manualOverride: null }).level;
-
-      metrics.verdictScore.observe(score);
-      for (const reason of reasons) {
-        metrics.verdictReasons.labels(normalizeVerdictReason(reason)).inc();
-      }
-      if (baselineVerdict !== verdict) {
-        metrics.verdictEscalations.labels(baselineVerdict, verdict).inc();
-      }
-      if (gsbMatches.length > 0) {
-        metrics.verdictSignals.labels('gsb_match').inc(gsbMatches.length);
-      }
-      if (phishtankHit) {
-        metrics.verdictSignals.labels('phishtank_verified').inc();
-      }
-      if (urlhausResult?.listed) {
-        metrics.verdictSignals.labels('urlhaus_listed').inc();
-      }
-      if ((vtStats?.malicious ?? 0) > 0) {
-        metrics.verdictSignals.labels('vt_malicious').inc(vtStats?.malicious ?? 0);
-      }
-      if ((vtStats?.suspicious ?? 0) > 0) {
-        metrics.verdictSignals.labels('vt_suspicious').inc(vtStats?.suspicious ?? 0);
-      }
-      if (wasShortened) {
-        metrics.verdictSignals.labels('shortener').inc();
-      }
-      if (finalUrlMismatch) {
-        metrics.verdictSignals.labels('redirect_mismatch').inc();
-      }
-      if (redirectChain.length > 0) {
-        metrics.verdictSignals.labels('redirect_chain').inc(redirectChain.length);
-      }
-      if (homoglyphResult.detected) {
-        metrics.verdictSignals.labels(`homoglyph_${homoglyphResult.riskLevel}`).inc();
-      }
-      if (typeof domainAgeDays === 'number') {
-        metrics.verdictSignals.labels('domain_age').inc();
-      }
-      if (signals.manualOverride) {
-        metrics.verdictSignals.labels(`override_${signals.manualOverride}`).inc();
-      }
-
-      const blocklistHit = gsbHit || phishtankHit || Boolean(urlhausResult?.listed);
-
-      let enqueuedUrlscan = false;
-      if (config.urlscan.enabled && config.urlscan.apiKey && verdict === 'suspicious') {
-        const queued = await redis.set(
-          `${URLSCAN_QUEUED_PREFIX}${h}`,
-          '1',
-          'EX',
-          config.urlscan.uuidTtlSeconds,
-          'NX'
-        );
-        if (queued) {
-          enqueuedUrlscan = true;
-          await urlscanQueue.add(
-            'submit',
-            {
-              url: finalUrl,
-              urlHash: h,
-            },
-            {
-              removeOnComplete: true,
-              removeOnFail: 500,
-              attempts: 1,
-            }
-          );
-        }
-      }
-
-      const ttlByLevel = config.orchestrator.cacheTtl as Record<string, number>;
-      const ttl = ttlByLevel[verdict] ?? verdictResult.cacheTtl ?? 3600;
-
-      metrics.verdictCacheTtl.observe(ttl);
-
-      const decidedAt = Date.now();
-      const res = {
-        messageId,
-        chatId,
-        url: finalUrl,
-        normalizedUrl: finalUrl,
-        urlHash: h,
-        verdict,
-        score,
-        reasons,
-        gsb: { matches: gsbMatches },
-        phishtank: phishtankResult,
-        urlhaus: urlhausResult,
-        vt: vtStats,
-        urlscan: enqueuedUrlscan ? { status: 'queued' } : undefined,
-        whois: domainIntel,
-        domainAgeDays,
-        redirectChain,
-        ttlLevel: verdict,
-        cacheTtl: ttl,
-        shortener: shortenerInfo ? { provider: shortenerInfo.provider, chain: shortenerInfo.chain } : undefined,
-        finalUrlMismatch,
-        decidedAt,
-        degradedMode,
-      };
-      await setJsonCache(CACHE_LABELS.verdict, cacheKey, res, ttl);
-
-      try {
-        await dbClient.transaction(async () => {
-          // Insert or update scan record
-          const scanSql = `
-            INSERT INTO scans (
-              url_hash, normalized_url, verdict, score, reasons, vt_stats,
-              gsafebrowsing_hit, domain_age_days, redirect_chain_summary, cache_ttl,
-              source_kind, urlscan_status, whois_source, whois_registrar, shortener_provider,
-              first_seen_at, last_seen_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            ON CONFLICT(url_hash) DO UPDATE SET
-              normalized_url=excluded.normalized_url,
-              verdict=excluded.verdict,
-              score=excluded.score,
-              reasons=excluded.reasons,
-              vt_stats=excluded.vt_stats,
-              gsafebrowsing_hit=excluded.gsafebrowsing_hit,
-              domain_age_days=excluded.domain_age_days,
-              redirect_chain_summary=excluded.redirect_chain_summary,
-              cache_ttl=excluded.cache_ttl,
-              source_kind=excluded.source_kind,
-              urlscan_status=excluded.urlscan_status,
-              whois_source=excluded.whois_source,
-              whois_registrar=excluded.whois_registrar,
-              shortener_provider=excluded.shortener_provider,
-              last_seen_at=CURRENT_TIMESTAMP
-          `;
-
-          await dbClient.query(scanSql, [
-            h, finalUrl, verdict, score, JSON.stringify(reasons), JSON.stringify(vtStats || {}),
-            blocklistHit, domainAgeDays ?? null, JSON.stringify(redirectChain), ttl,
-            'wa', enqueuedUrlscan ? 'queued' : null,
-            domainIntel.source === 'none' ? null : domainIntel.source,
-            domainIntel.registrar ?? null, shortenerInfo?.provider ?? null
-          ]);
-
-          if (enqueuedUrlscan) {
-            await dbClient.query('UPDATE scans SET urlscan_status=? WHERE url_hash=?', ['queued', h]);
-          }
-
-          if (chatId && messageId) {
-            const messageSql = `
-              INSERT INTO messages (chat_id, message_id, url_hash, verdict, posted_at)
-              VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-              ON CONFLICT(chat_id, message_id) DO NOTHING
-            `;
-            await dbClient.query(messageSql, [chatId, messageId, h, verdict]);
-          }
-        });
-      } catch (err) {
-        logger.warn({ err, chatId, messageId }, 'failed to persist message metadata for scan');
-      }
-
-      if (chatId && messageId) {
-        await scanVerdictQueue.add('verdict', { ...res, chatId, messageId }, { removeOnComplete: true });
-      } else {
-        logger.info({ url: finalUrl, jobId: job.id, rescan: Boolean(rescan) }, 'Completed scan without chat context; skipping messaging flow');
-      }
-
-      await enhancedSecurity.recordVerdict(
-        finalUrl,
-        verdict === 'malicious' ? 'malicious' : verdict === 'suspicious' ? 'suspicious' : 'benign',
-        score / 15.0
-      ).catch((err) => {
-        logger.warn({ err, url: finalUrl }, 'failed to record verdict for collaborative learning');
-      });
-
-      metrics.verdictCounter.labels(verdict).inc();
-      const totalProcessingSeconds = (Date.now() - started) / 1000;
-      metrics.verdictLatency.observe(Math.max(0, (Date.now() - ingestionTimestamp) / 1000));
-      metrics.scanLatency.observe(totalProcessingSeconds);
-      metrics.queueProcessingDuration.labels(queueName).observe(totalProcessingSeconds);
-      metrics.queueCompleted.labels(queueName).inc();
-      if (job.attemptsMade > 0) {
-        metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
-      }
+      
+      // External API checks
+      const externalResults = await performExternalChecks(finalUrl, finalUrlObj, h, dbClient);
+      
+      // Generate verdict
+      const verdictResult = await generateVerdict(
+        externalResults, finalUrl, h, redirectChain, wasShortened, finalUrlMismatch,
+        homoglyphResult, heurSignals, { verdict: enhancedSecurityResult.verdict || "unknown", confidence: enhancedSecurityResult.confidence || "unknown", score: enhancedSecurityResult.score, reasons: enhancedSecurityResult.reasons, skipExternalAPIs: enhancedSecurityResult.skipExternalAPIs }, shortenerInfo
+      );
+      
+      // Store results and dispatch
+      await storeAndDispatchResults(
+        verdictResult, chatId, messageId, hasChatContext, queueName, started,
+        job.attemptsMade, ingestionTimestamp, finalUrl, { verdict: enhancedSecurityResult.verdict || "unknown", confidence: enhancedSecurityResult.confidence || "unknown", score: enhancedSecurityResult.score, reasons: enhancedSecurityResult.reasons, skipExternalAPIs: enhancedSecurityResult.skipExternalAPIs }, dbClient, enhancedSecurity
+      );
+      
     } catch (e) {
       metrics.queueFailures.labels(queueName).inc();
       metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
