@@ -27,12 +27,20 @@ function resolveCandidatePaths(job: VerdictJobData): string[] {
   return Array.from(candidates);
 }
 
+async function loadVerdictMedia(file: string): Promise<MessageMedia> {
+  // Ensure we always work with a Promise-returning API, even if the library
+  // typings for MessageMedia.fromFilePath do not declare a Promise type.
+  return Promise.resolve(
+    MessageMedia.fromFilePath(file) as unknown as MessageMedia,
+  );
+}
+
 export async function buildVerdictMedia(job: VerdictJobData, logger: Logger): Promise<{ media: MessageMedia; caption?: string } | null> {
   const files = resolveCandidatePaths(job);
   for (const file of files) {
     if (!existsSync(file)) continue;
     try {
-      const media = await MessageMedia.fromFilePath(file);
+      const media = await loadVerdictMedia(file);
       return { media };
     } catch (err) {
       logger.warn({ err, file }, 'Failed to load verdict attachment');

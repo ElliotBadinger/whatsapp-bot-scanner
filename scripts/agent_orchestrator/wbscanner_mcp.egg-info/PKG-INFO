@@ -1,9 +1,0 @@
-Metadata-Version: 2.4
-Name: wbscanner-mcp
-Version: 0.1.0
-Summary: Codex↔Gemini multi-agent MCP server for whatsapp-bot-scanner
-Author: WhatsApp Bot Scanner Team
-Requires-Python: >=3.10
-Requires-Dist: fastmcp>=0.2.0
-Requires-Dist: opentelemetry-sdk>=1.24.0
-Requires-Dist: psutil>=5.9

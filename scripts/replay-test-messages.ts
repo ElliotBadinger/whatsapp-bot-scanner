@@ -1,4 +1,3 @@
-#!/usr/bin/env ts-node
 /*
  * Synthetic Dataset & Replay Script for WhatsApp Scanner
  *

@@ -121,6 +121,65 @@ async function resolveWithUnshorten(url: string): Promise<string | null> {
 type FetchInput = Parameters<typeof undiciFetch>[0];
 type SafeFetch = (input: FetchInput, init?: Parameters<typeof undiciFetch>[1]) => ReturnType<typeof undiciFetch>;
 
+function extractTargetUrl(input: FetchInput): string {
+  const rawTarget =
+    typeof input === 'string'
+      ? input
+      : input instanceof URL
+        ? input.toString()
+        : input && typeof input === 'object' && 'url' in input && typeof (input as { url?: unknown }).url === 'string'
+          ? (input as { url: string }).url
+          : undefined;
+
+  if (!rawTarget) {
+    throw new DirectExpansionError('expansion-failed', 'Expansion failed: Missing target URL');
+  }
+
+  return rawTarget;
+}
+
+async function validateAndNormalizeUrl(rawTarget: string, chain: string[]): Promise<string> {
+  const normalizedTarget = normalizeUrl(rawTarget) || rawTarget;
+  const parsed = new URL(normalizedTarget);
+
+  if (await isPrivateHostname(parsed.hostname)) {
+    throw new DirectExpansionError('ssrf-blocked', 'SSRF protection: Private host blocked');
+  }
+
+  if (!chain.length || chain[chain.length - 1] !== normalizedTarget) {
+    chain.push(normalizedTarget);
+  }
+
+  return normalizedTarget;
+}
+
+type UndiciResponse = Awaited<ReturnType<typeof undiciFetch>>;
+
+async function checkContentLength(response: UndiciResponse, maxContentLength: number): Promise<void> {
+  const contentLengthHeader = response.headers?.get?.('content-length');
+  if (contentLengthHeader) {
+    const contentLength = Number.parseInt(contentLengthHeader, 10);
+    if (Number.isFinite(contentLength) && contentLength > maxContentLength) {
+      // @ts-ignore - body.cancel is not in the type definition but exists at runtime for undici streams
+      response.body?.cancel?.();
+      throw new DirectExpansionError('max-content-length', `Content too large: ${contentLength} bytes`);
+    }
+  }
+}
+
+function handleFetchError(error: unknown, timeoutMs: number): never {
+  if (error instanceof DirectExpansionError) {
+    throw error;
+  }
+  if (error instanceof Error && error.name === 'AbortError') {
+    throw new DirectExpansionError('timeout', `Expansion timed out after ${timeoutMs}ms`);
+  }
+  throw new DirectExpansionError(
+    'http-error',
+    error instanceof Error ? error.message : 'Expansion failed',
+  );
+}
+
 function createGuardedFetch(
   chain: string[],
   maxRedirects: number,
@@ -130,33 +189,13 @@ function createGuardedFetch(
   let attempts = 0;
 
   return async (input, init) => {
-    const rawTarget =
-      typeof input === 'string'
-        ? input
-        : input instanceof URL
-          ? input.toString()
-          : input && typeof input === 'object' && 'url' in input && typeof (input as { url?: unknown }).url === 'string'
-            ? (input as { url: string }).url
-            : undefined;
-
-    if (!rawTarget) {
-      throw new DirectExpansionError('expansion-failed', 'Expansion failed: Missing target URL');
-    }
-
-    const normalizedTarget = normalizeUrl(rawTarget) || rawTarget;
-    const parsed = new URL(normalizedTarget);
-    if (await isPrivateHostname(parsed.hostname)) {
-      throw new DirectExpansionError('ssrf-blocked', 'SSRF protection: Private host blocked');
-    }
+    const rawTarget = extractTargetUrl(input);
+    const normalizedTarget = await validateAndNormalizeUrl(rawTarget, chain);
 
     if (attempts >= maxRedirects) {
       throw new DirectExpansionError('expansion-failed', `Redirect limit exceeded (${maxRedirects})`);
     }
     attempts += 1;
-
-    if (!chain.length || chain[chain.length - 1] !== normalizedTarget) {
-      chain.push(normalizedTarget);
-    }
 
     try {
       const response = await undiciFetch(normalizedTarget, {
@@ -165,29 +204,59 @@ function createGuardedFetch(
         signal: AbortSignal.timeout(timeoutMs),
       });
 
-      const contentLengthHeader = response.headers?.get?.('content-length');
-      if (contentLengthHeader) {
-        const contentLength = Number.parseInt(contentLengthHeader, 10);
-        if (Number.isFinite(contentLength) && contentLength > maxContentLength) {
-          void response.body?.cancel?.();
-          throw new DirectExpansionError('max-content-length', `Content too large: ${contentLength} bytes`);
-        }
-      }
-
+      await checkContentLength(response, maxContentLength);
       return response;
     } catch (error) {
-      if (error instanceof DirectExpansionError) {
-        throw error;
-      }
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new DirectExpansionError('timeout', `Expansion timed out after ${timeoutMs}ms`);
-      }
-      throw new DirectExpansionError(
-        'http-error',
-        error instanceof Error ? error.message : 'Expansion failed',
-      );
+      handleFetchError(error, timeoutMs);
     }
   };
+}
+
+async function processRedirectResponse(response: UndiciResponse, normalized: string, chain: string[]): Promise<{ nextUrl?: string; result?: { finalUrl: string; chain: string[] } }> {
+  const location = response.headers?.get?.('location');
+  if (response.status >= 300 && response.status < 400) {
+    if (!location) {
+      // @ts-ignore
+      response.body?.cancel?.();
+      return { result: { finalUrl: normalized, chain } };
+    }
+    // @ts-ignore
+    response.body?.cancel?.();
+    return { nextUrl: new URL(location, normalized).toString() };
+  }
+
+  // @ts-ignore
+  response.body?.cancel?.();
+  return { result: { finalUrl: normalized, chain } };
+}
+
+async function fetchAndValidateUrl(normalized: string, timeoutMs: number, maxContentLength: number): Promise<UndiciResponse | null> {
+  const response = await undiciFetch(normalized, {
+    method: 'GET',
+    redirect: 'manual',
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+
+  const contentLengthHeader = response.headers?.get?.('content-length');
+  if (contentLengthHeader) {
+    const contentLength = Number.parseInt(contentLengthHeader, 10);
+    if (Number.isFinite(contentLength) && contentLength > maxContentLength) {
+      // @ts-ignore
+      response.body?.cancel?.();
+      throw new DirectExpansionError('max-content-length', `Content too large: ${contentLength} bytes`);
+    }
+  }
+
+  if (response.status >= 400) {
+    if (response.status >= 500) {
+      // @ts-ignore
+      response.body?.cancel?.();
+      throw new DirectExpansionError('http-error', `Expansion request failed with status ${response.status}`);
+    }
+    return null;
+  }
+
+  return response;
 }
 
 async function resolveDirectly(url: string): Promise<{ finalUrl: string; chain: string[] } | null> {
@@ -209,42 +278,15 @@ async function resolveDirectly(url: string): Promise<{ finalUrl: string; chain: 
     }
 
     try {
-      const response = await undiciFetch(normalized, {
-        method: 'GET',
-        redirect: 'manual',
-        signal: AbortSignal.timeout(timeoutMs),
-      });
+      const response = await fetchAndValidateUrl(normalized, timeoutMs, maxContentLength);
+      if (!response) return null;
 
-      const contentLengthHeader = response.headers?.get?.('content-length');
-      if (contentLengthHeader) {
-        const contentLength = Number.parseInt(contentLengthHeader, 10);
-        if (Number.isFinite(contentLength) && contentLength > maxContentLength) {
-          void response.body?.cancel?.();
-          throw new DirectExpansionError('max-content-length', `Content too large: ${contentLength} bytes`);
-        }
-      }
-
-      if (response.status >= 400) {
-        if (response.status >= 500) {
-          void response.body?.cancel?.();
-          throw new DirectExpansionError('http-error', `Expansion request failed with status ${response.status}`);
-        }
-        return null;
-      }
-
-      const location = response.headers?.get?.('location');
-      if (response.status >= 300 && response.status < 400) {
-        if (!location) {
-          void response.body?.cancel?.();
-          return { finalUrl: normalized, chain };
-        }
-        void response.body?.cancel?.();
-        current = new URL(location, normalized).toString();
+      const { nextUrl, result } = await processRedirectResponse(response, normalized, chain);
+      if (result) return result;
+      if (nextUrl) {
+        current = nextUrl;
         continue;
       }
-
-      void response.body?.cancel?.();
-      return { finalUrl: normalized, chain };
     } catch (error) {
       if (error instanceof DirectExpansionError) {
         throw error;
@@ -262,49 +304,38 @@ async function resolveDirectly(url: string): Promise<{ finalUrl: string; chain: 
   return chain.length ? { finalUrl: chain[chain.length - 1], chain } : null;
 }
 
-async function resolveWithUrlExpand(url: string): Promise<{ finalUrl: string; chain: string[] }> {
-  const { maxRedirects, timeoutMs, maxContentLength } = config.orchestrator.expansion;
-  const normalizedInput = normalizeUrl(url) || url;
-  const chain: string[] = [normalizedInput];
+function getUrlExpandModule() {
   const moduleUnknown = urlExpandModuleRaw as unknown;
   const moduleAny = moduleUnknown as { expand?: unknown };
   const modernExpand: ((shortUrl: string, options: { fetch: SafeFetch; maxRedirects: number; timeoutMs: number }) => Promise<{ url: string; redirects?: string[] }>) | undefined =
     typeof moduleAny?.expand === 'function' ? (moduleAny.expand as typeof modernExpand) : undefined;
 
-  if (modernExpand) {
-    const fetchWithGuards = createGuardedFetch(chain, maxRedirects, timeoutMs, maxContentLength);
-    const result = await modernExpand(normalizedInput, {
-      fetch: fetchWithGuards,
-      maxRedirects,
-      timeoutMs,
-    });
-
-    if (Array.isArray(result.redirects)) {
-      for (const redirect of result.redirects) {
-        const normalizedRedirect = normalizeUrl(redirect) || redirect;
-        if (chain[chain.length - 1] !== normalizedRedirect) {
-          chain.push(normalizedRedirect);
-        }
-      }
-    }
-
-    const finalUrl = normalizeUrl(result.url) || result.url;
-    if (chain[chain.length - 1] !== finalUrl) {
-      chain.push(finalUrl);
-    }
-
-    return { finalUrl, chain };
-  }
-
   const legacyExpand = typeof moduleAny === 'function'
     ? promisify(moduleAny as (shortUrl: string, callback: (error: unknown, expandedUrl?: string | null) => void) => void)
     : undefined;
 
-  if (!legacyExpand) {
-    throw new Error('url-expand module does not expose a supported interface');
+  return { modernExpand, legacyExpand };
+}
+
+async function processModernExpandResult(result: { url: string; redirects?: string[] }, chain: string[]): Promise<{ finalUrl: string; chain: string[] }> {
+  if (Array.isArray(result.redirects)) {
+    for (const redirect of result.redirects) {
+      const normalizedRedirect = normalizeUrl(redirect) || redirect;
+      if (chain[chain.length - 1] !== normalizedRedirect) {
+        chain.push(normalizedRedirect);
+      }
+    }
   }
 
-  const expandedUrl = await legacyExpand(normalizedInput) as string;
+  const finalUrl = normalizeUrl(result.url) || result.url;
+  if (chain[chain.length - 1] !== finalUrl) {
+    chain.push(finalUrl);
+  }
+
+  return { finalUrl, chain };
+}
+
+async function processLegacyExpandResult(expandedUrl: string, chain: string[]): Promise<{ finalUrl: string; chain: string[] }> {
   if (!expandedUrl) {
     throw new Error('url-expand returned empty response');
   }
@@ -327,6 +358,32 @@ async function resolveWithUrlExpand(url: string): Promise<{ finalUrl: string; ch
   }
 
   return { finalUrl: normalizedFinal, chain };
+}
+
+async function resolveWithUrlExpand(url: string): Promise<{ finalUrl: string; chain: string[] }> {
+  const { maxRedirects, timeoutMs, maxContentLength } = config.orchestrator.expansion;
+  const normalizedInput = normalizeUrl(url) || url;
+  const chain: string[] = [normalizedInput];
+
+  const { modernExpand, legacyExpand } = getUrlExpandModule();
+
+  if (modernExpand) {
+    const fetchWithGuards = createGuardedFetch(chain, maxRedirects, timeoutMs, maxContentLength);
+    const result = await modernExpand(normalizedInput, {
+      fetch: fetchWithGuards,
+      maxRedirects,
+      timeoutMs,
+    });
+
+    return processModernExpandResult(result, chain);
+  }
+
+  if (!legacyExpand) {
+    throw new Error('url-expand module does not expose a supported interface');
+  }
+
+  const expandedUrl = await legacyExpand(normalizedInput) as string;
+  return processLegacyExpandResult(expandedUrl, chain);
 }
 
 export async function resolveShortener(url: string): Promise<ShortenerResolution> {

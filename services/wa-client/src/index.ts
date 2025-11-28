@@ -149,7 +149,9 @@ function createRedisConnection(): Redis {
         return list.slice(start, normalizedStop + 1);
       }
 
-      on(): void { }
+      on(): void {
+        // intentionally no-op: event subscriptions are not required for in-memory Redis used in tests
+      }
 
       quit(): Promise<void> {
         return Promise.resolve();
@@ -336,6 +338,30 @@ const MAX_PAIRING_CODE_RETRIES = FORCE_PHONE_PAIRING ? Number.MAX_SAFE_INTEGER :
 const PAIRING_RETRY_DELAY_MS = Math.max(1000, config.wa.remoteAuth.pairingRetryDelayMs ?? 15000);
 const PHONE_PAIRING_CODE_TTL_MS = 160000;
 
+interface PairingCodeWindow {
+  AuthStore?: {
+    PairingCodeLinkUtils?: unknown;
+    AppState?: { state?: string };
+  };
+  codeInterval?: ReturnType<typeof setInterval> | number;
+  onCodeReceivedEvent?: (codeValue: string) => void;
+}
+
+interface PairingCodeUtils {
+  setPairingType?: (mode: string) => void;
+  initializeAltDeviceLinking?: () => Promise<void>;
+  startAltLinkingFlow?: (phoneNumber: string, showNotification: boolean) => Promise<string>;
+}
+
+type PageHandle = {
+  evaluate: (
+    pageFn: (phoneNumber: string, showNotification: boolean, intervalMs: number) => Promise<unknown>,
+    phoneNumber: string | undefined,
+    showNotification: boolean,
+    intervalMs: number
+  ) => Promise<unknown>;
+};
+
 const ackWatchers = new Map<string, NodeJS.Timeout>();
 let currentWaState: string | null = null;
 let botWid: string | null = null;
@@ -469,7 +495,25 @@ async function collectVerdictMedia(job: VerdictJobData): Promise<Array<{ media: 
   if (!config.features.attachMediaToVerdicts) {
     return [];
   }
+
   const attachments: Array<{ media: MessageMedia; type: 'screenshot' | 'ioc' }> = [];
+
+  // Collect screenshot attachment
+  const screenshotAttachment = await collectScreenshotAttachment(job);
+  if (screenshotAttachment) {
+    attachments.push(screenshotAttachment);
+  }
+
+  // Collect IOC (Indicators of Compromise) attachment
+  const iocAttachment = createIocAttachment(job);
+  if (iocAttachment) {
+    attachments.push(iocAttachment);
+  }
+
+  return attachments;
+}
+
+async function collectScreenshotAttachment(job: VerdictJobData): Promise<{ media: MessageMedia; type: 'screenshot' } | null> {
   const base = resolveControlPlaneBase();
   const token = assertControlPlaneToken();
 
@@ -481,28 +525,48 @@ async function collectVerdictMedia(job: VerdictJobData): Promise<Array<{ media: 
       const buffer = Buffer.from(await resp.arrayBuffer());
       if (buffer.length > 0) {
         const media = new MessageMedia('image/png', buffer.toString('base64'), `screenshot-${job.urlHash.slice(0, 8)}.png`);
-        attachments.push({ media, type: 'screenshot' });
+        return { media, type: 'screenshot' };
       }
     }
   } catch (err) {
     logger.warn({ err, urlHash: job.urlHash }, 'Failed to fetch screenshot attachment');
   }
 
+  return null;
+}
+
+function createIocAttachment(job: VerdictJobData): { media: MessageMedia; type: 'ioc' } | null {
+  const lines = buildIocTextLines(job);
+  const textPayload = lines.join('\n');
+
+  if (textPayload.trim().length === 0) {
+    return null;
+  }
+
+  const data = Buffer.from(textPayload, 'utf8').toString('base64');
+  const media = new MessageMedia('text/plain', data, `scan-${job.urlHash.slice(0, 8)}.txt`);
+  return { media, type: 'ioc' };
+}
+
+function buildIocTextLines(job: VerdictJobData): string[] {
   const lines: string[] = [];
   lines.push(`URL: ${job.url}`);
   lines.push(`Verdict: ${job.verdict}`);
+
   if (job.reasons.length > 0) {
     lines.push('Reasons:');
     for (const reason of job.reasons) {
       lines.push(`- ${reason}`);
     }
   }
+
   if (job.redirectChain && job.redirectChain.length > 0) {
     lines.push('Redirect chain:');
     for (const hop of job.redirectChain) {
       lines.push(`- ${hop}`);
     }
   }
+
   if (job.shortener?.chain && job.shortener.chain.length > 0) {
     lines.push(`Shortener expansion (${job.shortener.provider ?? 'unknown'}):`);
     for (const hop of job.shortener.chain) {
@@ -510,14 +574,7 @@ async function collectVerdictMedia(job: VerdictJobData): Promise<Array<{ media: 
     }
   }
 
-  const textPayload = lines.join('\n');
-  if (textPayload.trim().length > 0) {
-    const data = Buffer.from(textPayload, 'utf8').toString('base64');
-    const media = new MessageMedia('text/plain', data, `scan-${job.urlHash.slice(0, 8)}.txt`);
-    attachments.push({ media, type: 'ioc' });
-  }
-
-  return attachments;
+  return lines;
 }
 
 async function deliverVerdictMessage(
@@ -783,16 +840,25 @@ function updateSessionStateGauge(state: string): void {
 
 function resolveControlPlaneBase(): string {
   const candidate = (process.env.CONTROL_PLANE_BASE || SAFE_CONTROL_PLANE_DEFAULT).trim();
+
   try {
     const parsed = new URL(candidate);
-    if (!['http:', 'https:'].includes(parsed.protocol)) {
-      throw new Error('invalid protocol');
-    }
-    parsed.hash = '';
-    return parsed.toString().replace(/\/+$/, '');
+    validateUrlProtocol(parsed);
+    return normalizeUrlString(parsed);
   } catch {
     return SAFE_CONTROL_PLANE_DEFAULT;
   }
+}
+
+function validateUrlProtocol(parsed: URL): void {
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error('invalid protocol');
+  }
+}
+
+function normalizeUrlString(parsed: URL): string {
+  parsed.hash = '';
+  return parsed.toString().replace(/\/+$/, '');
 }
 
 async function isUrlAllowedForScanning(normalized: string): Promise<boolean> {
@@ -858,7 +924,7 @@ async function initializeWhatsAppWithRetry(client: Client, maxAttempts = 5): Pro
       }, 'WhatsApp initialization failed, retrying with exponential backoff');
 
       metrics.waSessionReconnects.labels('init_retry').inc();
-      
+
       await new Promise(resolve => setTimeout(resolve, totalDelay));
     }
   }
@@ -867,7 +933,7 @@ async function initializeWhatsAppWithRetry(client: Client, maxAttempts = 5): Pro
 async function main() {
   assertEssentialConfig('wa-client');
   assertControlPlaneToken();
-  
+
   // Validate Redis connectivity before starting
   try {
     await redis.ping();
@@ -964,111 +1030,155 @@ async function main() {
   const MAX_CONSECUTIVE_AUTO_REFRESHES = 3;
 
   const performPairingCodeRequest = async (): Promise<string | null> => {
-    const pageHandle = (client as unknown as { pupPage?: { evaluate?: (...args: unknown[]) => Promise<unknown> } }).pupPage;
-    if (!pageHandle || typeof pageHandle.evaluate !== 'function') {
+    const pageHandle = getPageHandle(client);
+    if (!pageHandle) {
       throw new Error('Puppeteer page handle unavailable for pairing');
     }
-    if (remotePhone) {
-      lastPairingAttemptMs = Date.now();
-      void recordPairingAttempt(remotePhone, lastPairingAttemptMs);
+
+    recordPairingAttemptIfNeeded();
+    await addHumanBehaviorJitter();
+
+    const interval = Math.max(60000, config.wa.remoteAuth.pairingDelayMs ?? 0);
+    const outcome = await executePairingCodeRequest(pageHandle, interval);
+
+    return processPairingOutcome(outcome);
+  };
+
+  function getPageHandle(client: Client): PageHandle | null {
+    const page = (client as unknown as { pupPage?: { evaluate?: (...args: unknown[]) => Promise<unknown> } }).pupPage;
+    if (!page || typeof page.evaluate !== 'function') {
+      return null;
     }
 
+    const evaluateFn = page.evaluate.bind(page) as (...args: unknown[]) => Promise<unknown>;
+
+    return {
+      evaluate: (pageFn, phoneNumber, showNotification, intervalMs) =>
+        evaluateFn(pageFn as (...args: unknown[]) => unknown, phoneNumber, showNotification, intervalMs),
+    };
+  }
+
+  function recordPairingAttemptIfNeeded(): void {
+    if (remotePhone) {
+      lastPairingAttemptMs = Date.now();
+      recordPairingAttempt(remotePhone, lastPairingAttemptMs).catch(err => {
+        logger.warn({ err, phoneNumber: maskPhone(remotePhone!) }, 'Failed to record pairing attempt');
+      });
+    }
+  }
+
+  async function addHumanBehaviorJitter(): Promise<void> {
     // Add jitter to mimic human behavior (1-5 seconds)
     const jitter = Math.floor(Math.random() * 4000) + 1000;
     await new Promise(resolve => setTimeout(resolve, jitter));
+  }
 
-    const interval = Math.max(60000, config.wa.remoteAuth.pairingDelayMs ?? 0);
-
-    const outcome = await pageHandle.evaluate(async (phoneNumber: string, showNotification: boolean, intervalMs: number) => {
+  async function executePairingCodeRequest(pageHandle: PageHandle, interval: number): Promise<unknown> {
+    return await pageHandle.evaluate(async (phoneNumber: string, showNotification: boolean, intervalMs: number) => {
       const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-      const globalWindow = window as unknown as {
-        AuthStore?: { PairingCodeLinkUtils?: unknown; AppState?: { state?: string } };
-        codeInterval?: ReturnType<typeof setInterval> | number;
-        onCodeReceivedEvent?: (code: string) => void;
-      };
+      const globalWindow = window as unknown as PairingCodeWindow;
 
-      const waitForUtils = async (retries = 20): Promise<unknown> => {
-        for (let i = 0; i < retries; i++) {
-          if (globalWindow.AuthStore?.PairingCodeLinkUtils) {
-            return globalWindow.AuthStore.PairingCodeLinkUtils;
-          }
-          await wait(500);
-        }
-        throw new Error('AuthStore.PairingCodeLinkUtils not found after timeout');
-      };
-
-      const requestCode = async () => {
-        const utils = await waitForUtils() as {
-          setPairingType?: (type: string) => void;
-          initializeAltDeviceLinking?: () => Promise<void>;
-          startAltLinkingFlow?: (phone: string, notify: boolean) => Promise<string>;
-        };
-
-        // Random small delay before interaction
-        await wait(Math.random() * 500 + 200);
-
-        if (typeof utils.setPairingType === 'function') {
-          utils.setPairingType('ALT_DEVICE_LINKING');
-        }
-        if (typeof utils.initializeAltDeviceLinking === 'function') {
-          await utils.initializeAltDeviceLinking();
-        }
-
-        if (typeof utils.startAltLinkingFlow !== 'function') {
-          throw new Error('startAltLinkingFlow function missing on PairingCodeLinkUtils');
-        }
-
-        return utils.startAltLinkingFlow(phoneNumber, showNotification);
-      };
-
-      if (typeof globalWindow.onCodeReceivedEvent !== 'function') {
-        globalWindow.onCodeReceivedEvent = (codeValue: string) => codeValue;
-      }
-
-      if (globalWindow.codeInterval) {
-        clearInterval(globalWindow.codeInterval as number);
-      }
-
-      // Setup interval for refreshing code if needed
-      globalWindow.codeInterval = setInterval(async () => {
-        const state = globalWindow.AuthStore?.AppState?.state;
-        if (state !== 'UNPAIRED' && state !== 'UNPAIRED_IDLE') {
-          clearInterval(globalWindow.codeInterval as number);
-          return;
-        }
-        // Only refresh if we can silently get a new code, otherwise we might trigger rate limits
-        // For now, we rely on the orchestrator to manage re-requests
-      }, intervalMs);
+      const utils = await waitForUtils(globalWindow, wait);
+      setupEventHandlers(globalWindow, intervalMs);
 
       try {
-        const firstCode = await requestCode();
-        if (firstCode && typeof firstCode === 'string' && firstCode.length > 0) {
-          // Verify it looks like a code (XXX-XXX or similar)
+        const firstCode = await requestCode(utils, phoneNumber, showNotification, wait);
+        if (isValidCode(firstCode)) {
           return { ok: true, code: firstCode };
         }
         return { ok: false, reason: 'empty_code', state: globalWindow.AuthStore?.AppState?.state };
       } catch (err: unknown) {
-        const typedErr = err as { message?: string; stack?: string; name?: string };
-        const raw = typeof err === 'object' && err !== null
-          ? Object.assign({}, err, { message: typedErr?.message, stack: typedErr?.stack })
-          : err;
-
-        // Detect rate limit errors from WA internal exceptions if possible
-        const msg = typedErr?.message || '';
-        const isRateLimit = msg.includes('429') || msg.includes('rate-overlimit');
-
-        return {
-          ok: false,
-          reason: msg || String(err ?? 'unknown'),
-          stack: typedErr?.stack,
-          state: globalWindow.AuthStore?.AppState?.state,
-          hasUtils: Boolean(globalWindow.AuthStore?.PairingCodeLinkUtils),
-          isRateLimit,
-          rawError: raw,
-        };
+        return formatErrorForResponse(err, globalWindow);
       }
     }, remotePhone, true, interval);
+  }
 
+  async function waitForUtils(globalWindow: PairingCodeWindow, wait: (ms: number) => Promise<unknown>): Promise<PairingCodeUtils> {
+    for (let i = 0; i < 20; i++) {
+      if (globalWindow.AuthStore?.PairingCodeLinkUtils) {
+        return globalWindow.AuthStore.PairingCodeLinkUtils as PairingCodeUtils;
+      }
+      await wait(500);
+    }
+    throw new Error('AuthStore.PairingCodeLinkUtils not found after timeout');
+  }
+
+  function setupEventHandlers(globalWindow: PairingCodeWindow, intervalMs: number): void {
+    if (typeof globalWindow.onCodeReceivedEvent !== 'function') {
+      globalWindow.onCodeReceivedEvent = (codeValue: string) => codeValue;
+    }
+
+    if (globalWindow.codeInterval) {
+      clearInterval(globalWindow.codeInterval as number);
+    }
+
+    // Setup interval for refreshing code if needed
+    globalWindow.codeInterval = setInterval(async () => {
+      const state = globalWindow.AuthStore?.AppState?.state;
+      if (state !== 'UNPAIRED' && state !== 'UNPAIRED_IDLE') {
+        clearInterval(globalWindow.codeInterval as number);
+        return;
+      }
+      // Only refresh if we can silently get a new code, otherwise we might trigger rate limits
+      // For now, we rely on the orchestrator to manage re-requests
+    }, intervalMs);
+  }
+
+  async function requestCode(utils: PairingCodeUtils, phoneNumber: string, showNotification: boolean, wait: (ms: number) => Promise<unknown>): Promise<string> {
+    // Random small delay before interaction
+    await wait(Math.random() * 500 + 200);
+
+    if (typeof utils.setPairingType === 'function') {
+      utils.setPairingType('ALT_DEVICE_LINKING');
+    }
+    if (typeof utils.initializeAltDeviceLinking === 'function') {
+      await utils.initializeAltDeviceLinking();
+    }
+
+    if (typeof utils.startAltLinkingFlow !== 'function') {
+      throw new Error('startAltLinkingFlow function missing on PairingCodeLinkUtils');
+    }
+
+    return utils.startAltLinkingFlow(phoneNumber, showNotification);
+  }
+
+  function isValidCode(code: unknown): code is string {
+    return typeof code === 'string' && code.length > 0;
+  }
+
+  interface PairingErrorPayload {
+    ok: false;
+    reason: string;
+    stack?: string;
+    state?: string;
+    hasUtils: boolean;
+    isRateLimit: boolean;
+    rawError: unknown;
+  }
+
+  function formatErrorForResponse(err: unknown, globalWindow: PairingCodeWindow): PairingErrorPayload {
+    const typedErr = err as { message?: string; stack?: string; name?: string };
+    const raw =
+      typeof err === 'object' && err !== null
+        ? Object.assign({}, err, { message: typedErr?.message, stack: typedErr?.stack })
+        : err;
+
+    // Detect rate limit errors from WA internal exceptions if possible
+    const msg = typedErr?.message || '';
+    const isRateLimit = msg.includes('429') || msg.includes('rate-overlimit');
+
+    return {
+      ok: false,
+      reason: msg || String(err ?? 'unknown'),
+      stack: typedErr?.stack,
+      state: globalWindow.AuthStore?.AppState?.state,
+      hasUtils: Boolean(globalWindow.AuthStore?.PairingCodeLinkUtils),
+      isRateLimit,
+      rawError: raw,
+    };
+  }
+
+  function processPairingOutcome(outcome: unknown): string | null {
     if (outcome && typeof outcome === 'object' && 'ok' in outcome) {
       const payload = outcome as { ok?: unknown; code?: unknown; reason?: unknown; isRateLimit?: boolean };
       if (payload.ok === true && typeof payload.code === 'string' && payload.code.length > 0) {
@@ -1082,7 +1192,7 @@ async function main() {
       throw new Error(`pairing_code_request_failed:${errPayload}`);
     }
     return typeof outcome === 'string' ? outcome : null;
-  };
+  }
 
   function cancelPairingCodeRefresh() {
     if (pairingCodeExpiryTimer) {
@@ -1127,8 +1237,8 @@ async function main() {
   // Hybrid approach: manual-only for re-pairing, allow automatic for first-time setup
   const useManualOnlyMode = !isFirstTimeSetup;
 
-  pairingOrchestrator = shouldRequestPhonePairing && remotePhone
-    ? new PairingOrchestrator({
+  if (shouldRequestPhonePairing && remotePhone) {
+    const orchestrator = new PairingOrchestrator({
       enabled: true,
       forcePhonePairing: FORCE_PHONE_PAIRING,
       maxAttempts: MAX_PAIRING_CODE_RETRIES,
@@ -1154,7 +1264,9 @@ async function main() {
       },
       onSuccess: (code, attempt) => {
         if (remotePhone) {
-          void cachePairingCode(remotePhone, code);
+          cachePairingCode(remotePhone, code).catch(err => {
+            logger.warn({ err, phoneNumber: maskPhone(remotePhone!) }, 'Failed to cache pairing code');
+          });
           schedulePairingCodeRefresh(PHONE_PAIRING_CODE_TTL_MS);
         }
         const msg = `\n╔${'═'.repeat(50)}╗\n║  WhatsApp Pairing Code: ${code.padEnd(24)} ║\n║  Phone: ${maskPhone(remotePhone).padEnd(37)} ║\n║  Valid for: ~2:40 minutes${' '.repeat(22)} ║\n╚${'═'.repeat(50)}╝\n`;
@@ -1186,7 +1298,7 @@ async function main() {
         }, 'Failed to request pairing code.');
       },
       onFallback: () => {
-        pairingOrchestrator?.setEnabled(false);
+        orchestrator.setEnabled(false);
         cancelPairingCodeRefresh();
         allowQrOutput = true;
         logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code retries exhausted; falling back to QR pairing.');
@@ -1207,8 +1319,12 @@ async function main() {
           errorType: errorInfo?.type,
         }, 'Pairing retries exhausted; QR fallback disabled.');
       },
-    })
-    : null;
+    });
+    await orchestrator.init();
+    pairingOrchestrator = orchestrator;
+  } else {
+    pairingOrchestrator = null;
+  }
 
   if (pairingOrchestrator) {
     pairingOrchestrator.setSessionActive(remoteSessionActive);
@@ -1348,7 +1464,9 @@ async function main() {
         clearPairingRetry();
         pairingOrchestrator?.setCodeDelivered(true);
         if (remotePhone) {
-          void cachePairingCode(remotePhone, code);
+          cachePairingCode(remotePhone, code).catch(err => {
+            logger.warn({ err, phoneNumber: maskPhone(remotePhone!) }, 'Failed to cache pairing code');
+          });
         }
         schedulePairingCodeRefresh(PHONE_PAIRING_CODE_TTL_MS);
         logger.info({ pairingCode: code, phoneNumber: maskPhone(remotePhone) }, 'Enter this pairing code in WhatsApp > Linked devices > Link with phone number.');
@@ -2071,6 +2189,188 @@ export function formatGroupVerdict(verdict: string, reasons: string[], url: stri
   return `Link scan: ${level}\nDomain: ${domain}\n${advice}${reasonsStr ? `\nWhy: ${reasonsStr}` : ''}`;
 }
 
+interface AdminCommandContext {
+  client: Client;
+  msg: Message;
+  chat: GroupChat;
+  redis: Redis;
+  senderId: string | undefined;
+  parts: string[];
+  authHeaders: { authorization: string; 'x-csrf-token': string };
+  base: string;
+  pairingOrchestrator: PairingOrchestrator | null;
+  remotePhone: string | undefined;
+  sender: GroupParticipant | undefined;
+  isSelfCommand: boolean;
+}
+
+const adminCommandHandlers: Record<string, (ctx: AdminCommandContext) => Promise<void>> = {
+  mute: async ({ chat, base, authHeaders }) => {
+    const resp = await fetch(`${base}/groups/${encodeURIComponent(chat.id._serialized)}/mute`, { method: 'POST', headers: authHeaders }).catch(() => null);
+    await chat.sendMessage(resp && resp.ok ? 'Scanner muted for 60 minutes.' : 'Mute failed.');
+  },
+  unmute: async ({ chat, base, authHeaders }) => {
+    const resp = await fetch(`${base}/groups/${encodeURIComponent(chat.id._serialized)}/unmute`, { method: 'POST', headers: authHeaders }).catch(() => null);
+    await chat.sendMessage(resp && resp.ok ? 'Scanner unmuted.' : 'Unmute failed.');
+  },
+  status: async ({ chat, base, authHeaders }) => {
+    try {
+      const resp = await fetch(`${base}/status`, { headers: { authorization: authHeaders.authorization } });
+      if (!resp.ok) {
+        logger.warn({ status: resp.status, chatId: chat.id._serialized }, 'Status command fetch failed');
+        await chat.sendMessage('Scanner status temporarily unavailable.');
+        return;
+      }
+      const json = (await resp.json().catch(() => ({}))) as { scans?: number; malicious?: number };
+      await chat.sendMessage(`Scanner status: scans=${json.scans ?? 0}, malicious=${json.malicious ?? 0}`);
+    } catch (err) {
+      logger.warn({ err, chatId: chat.id._serialized }, 'Failed to handle status command');
+      await chat.sendMessage('Scanner status temporarily unavailable.');
+    }
+  },
+  rescan: async ({ chat, parts, base, authHeaders }) => {
+    if (!parts[2]) return;
+    const rescanUrl = parts[2];
+    const resp = await fetch(`${base}/rescan`, {
+      method: 'POST',
+      headers: { ...authHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ url: rescanUrl }),
+    }).catch(() => null);
+    if (resp && resp.ok) {
+      const data = (await resp.json().catch(() => null)) as { ok?: boolean; urlHash?: string; jobId?: string } | null;
+      if (data?.ok && data.urlHash && data.jobId) {
+        await chat.sendMessage(`Rescan queued. hash=${data.urlHash} job=${data.jobId}`);
+      } else {
+        await chat.sendMessage('Rescan queued, awaiting confirmation.');
+      }
+    } else {
+      await chat.sendMessage('Rescan failed.');
+    }
+  },
+  consent: async ({ chat, msg }) => {
+    if (!config.wa.consentOnJoin) {
+      await chat.sendMessage('Consent enforcement is currently disabled.');
+      return;
+    }
+    await markConsentGranted(chat.id._serialized);
+    await chat.setMessagesAdminsOnly(false).catch(() => undefined);
+    await chat.sendMessage('Consent recorded. Automated scanning enabled for this group.');
+    metrics.waGroupEvents.labels('consent_granted').inc();
+    await groupStore.recordEvent({
+      chatId: chat.id._serialized,
+      type: 'consent_granted',
+      timestamp: Date.now(),
+      actorId: msg.author || msg.from,
+      metadata: { source: 'command' },
+    });
+  },
+  consentstatus: async ({ chat }) => {
+    const status = await getConsentStatus(chat.id._serialized) ?? 'none';
+    await chat.sendMessage(`Consent status: ${status}`);
+  },
+  approve: async ({ client, chat, parts, msg }) => {
+    const target = parts[2];
+    if (!target) {
+      const pending = await listPendingMemberships(chat.id._serialized);
+      if (pending.length === 0) {
+        await chat.sendMessage('No pending membership requests recorded.');
+      } else {
+        await chat.sendMessage(`Pending membership requests: ${pending.join(', ')}`);
+      }
+      return;
+    }
+    try {
+      await client.approveGroupMembershipRequests(chat.id._serialized, { requesterIds: [target], sleep: null });
+      await removePendingMembership(chat.id._serialized, target);
+      metrics.waMembershipApprovals.labels('override').inc();
+      metrics.waGovernanceActions.labels('membership_override').inc();
+      metrics.waGroupEvents.labels('membership_override').inc();
+      await groupStore.recordEvent({
+        chatId: chat.id._serialized,
+        type: 'membership_override',
+        timestamp: Date.now(),
+        actorId: msg.author || msg.from,
+        recipients: [target],
+      });
+      await chat.sendMessage(`Approved membership request for ${target}.`);
+    } catch (err) {
+      metrics.waMembershipApprovals.labels('error').inc();
+      logger.warn({ err, target }, 'Failed to approve membership via override');
+      await chat.sendMessage(`Unable to approve ${target}.`);
+    }
+  },
+  governance: async ({ chat, parts }) => {
+    const limit = Number.isFinite(Number(parts[2])) ? Math.max(1, Math.min(25, Number(parts[2]))) : 10;
+    const events = await groupStore.listRecentEvents(chat.id._serialized, limit);
+    if (events.length === 0) {
+      await chat.sendMessage('No recent governance events recorded.');
+      return;
+    }
+    const lines = events.map((event) => {
+      const timestamp = new Date(event.timestamp).toISOString();
+      const recipients = (event.recipients && event.recipients.length > 0) ? ` -> ${event.recipients.join(', ')}` : '';
+      const detail = event.details ? ` :: ${event.details}` : '';
+      return `- ${timestamp} [${event.type}] ${event.actorId ?? 'unknown'}${recipients}${detail}`;
+    });
+    await chat.sendMessage(`Recent governance events:\n${lines.join('\n')}`);
+  },
+  pair: async ({ chat, senderId, pairingOrchestrator }) => {
+    if (!pairingOrchestrator) {
+      await chat.sendMessage('Pairing orchestrator not available (phone pairing may be disabled).');
+      return;
+    }
+    const status = pairingOrchestrator.getStatus();
+    if (status.rateLimited && status.nextAttemptIn > 0) {
+      const minutes = Math.ceil(status.nextAttemptIn / 60000);
+      const seconds = Math.ceil((status.nextAttemptIn % 60000) / 1000);
+      await chat.sendMessage(`⚠️ Rate limited. Please wait ${minutes}m ${seconds}s before requesting another code.`);
+      return;
+    }
+    if (!status.canRequest) {
+      await chat.sendMessage('Cannot request pairing code at this time (session may already be active).');
+      return;
+    }
+    const requested = pairingOrchestrator.requestManually();
+    if (requested) {
+      await chat.sendMessage('Pairing code request sent. Check logs/terminal for the code.');
+      logger.info({ chatId: chat.id._serialized, senderId }, 'Manual pairing code requested via admin command');
+    } else {
+      await chat.sendMessage('Unable to request pairing code. Check status with !scanner pair-status.');
+    }
+  },
+  'pair-status': async ({ chat, pairingOrchestrator }) => {
+    if (!pairingOrchestrator) {
+      await chat.sendMessage('Pairing orchestrator not available.');
+      return;
+    }
+    const status = pairingOrchestrator.getStatus();
+    if (status.canRequest) {
+      await chat.sendMessage('✅ Ready to request pairing code. Use !scanner pair');
+    } else if (status.rateLimited && status.nextAttemptIn > 0) {
+      const minutes = Math.ceil(status.nextAttemptIn / 60000);
+      const seconds = Math.ceil((status.nextAttemptIn % 60000) / 1000);
+      const lastAttempt = status.lastAttemptAt ? new Date(status.lastAttemptAt).toLocaleTimeString() : 'unknown';
+      await chat.sendMessage(`⚠️ Rate limited\nLast attempt: ${lastAttempt}\nRetry in: ${minutes}m ${seconds}s\nConsecutive rate limits: ${status.consecutiveRateLimits}`);
+    } else {
+      await chat.sendMessage(`Status: Session may already be active or code delivered.`);
+    }
+  },
+  'pair-reset': async ({ chat, senderId, remotePhone, redis, sender, isSelfCommand }) => {
+    if (!sender?.isAdmin && !sender?.isSuperAdmin && !isSelfCommand) {
+      await chat.sendMessage('Only admins can use this command.');
+      return;
+    }
+    if (remotePhone) {
+      const cacheKey = pairingCodeCacheKey(remotePhone);
+      await redis.del(cacheKey);
+      await chat.sendMessage('Pairing code cache cleared.');
+      logger.info({ chatId: chat.id._serialized, senderId }, 'Pairing cache cleared via admin command');
+    } else {
+      await chat.sendMessage('No phone number configured for remote auth.');
+    }
+  },
+};
+
 export async function handleAdminCommand(client: Client, msg: Message, existingChat: GroupChat | undefined, redis: Redis) {
   const chat = existingChat ?? (await msg.getChat());
   if (!(chat as GroupChat).isGroup) return;
@@ -2099,172 +2399,31 @@ export async function handleAdminCommand(client: Client, msg: Message, existingC
 
   const cmd = parts[1];
   if (!cmd) return;
-  const base = resolveControlPlaneBase();
-  const token = assertControlPlaneToken();
-  const csrfToken = config.controlPlane.csrfToken;
-  const authHeaders = {
-    authorization: `Bearer ${token}`,
-    'x-csrf-token': csrfToken,
-  } as const;
 
-  if (cmd === 'mute') {
-    const resp = await fetch(`${base}/groups/${encodeURIComponent(chat.id._serialized)}/mute`, { method: 'POST', headers: authHeaders }).catch(() => null);
-    await chat.sendMessage(resp && resp.ok ? 'Scanner muted for 60 minutes.' : 'Mute failed.');
-  } else if (cmd === 'unmute') {
-    const resp = await fetch(`${base}/groups/${encodeURIComponent(chat.id._serialized)}/unmute`, { method: 'POST', headers: authHeaders }).catch(() => null);
-    await chat.sendMessage(resp && resp.ok ? 'Scanner unmuted.' : 'Unmute failed.');
-  } else if (cmd === 'status') {
-    try {
-      const resp = await fetch(`${base}/status`, { headers: { authorization: `Bearer ${token}` } });
-      if (!resp.ok) {
-        logger.warn({ status: resp.status, chatId: gc.id._serialized }, 'Status command fetch failed');
-        await chat.sendMessage('Scanner status temporarily unavailable.');
-        return;
-      }
-      const json = await resp.json().catch(() => ({}));
-      await chat.sendMessage(`Scanner status: scans=${json.scans ?? 0}, malicious=${json.malicious ?? 0}`);
-    } catch (err) {
-      logger.warn({ err, chatId: gc.id._serialized }, 'Failed to handle status command');
-      await chat.sendMessage('Scanner status temporarily unavailable.');
-    }
-  } else if (cmd === 'rescan' && parts[2]) {
-    const rescanUrl = parts[2];
-    const resp = await fetch(`${base}/rescan`, {
-      method: 'POST',
-      headers: {
-        ...authHeaders,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({ url: rescanUrl }),
-    }).catch(() => null);
-    if (resp && resp.ok) {
-      const data = await resp.json().catch(() => null);
-      if (data?.ok && data.urlHash && data.jobId) {
-        await chat.sendMessage(`Rescan queued. hash=${data.urlHash} job=${data.jobId}`);
-      } else {
-        await chat.sendMessage('Rescan queued, awaiting confirmation.');
-      }
-    } else {
-      await chat.sendMessage('Rescan failed.');
-    }
-  } else if (cmd === 'consent') {
-    if (!config.wa.consentOnJoin) {
-      await chat.sendMessage('Consent enforcement is currently disabled.');
-      return;
-    }
-    await markConsentGranted(chat.id._serialized);
-    await gc.setMessagesAdminsOnly(false).catch(() => undefined);
-    await chat.sendMessage('Consent recorded. Automated scanning enabled for this group.');
-    metrics.waGroupEvents.labels('consent_granted').inc();
-    await groupStore.recordEvent({
-      chatId: chat.id._serialized,
-      type: 'consent_granted',
-      timestamp: Date.now(),
-      actorId: msg.author || msg.from,
-      metadata: { source: 'command' },
+  const handler = adminCommandHandlers[cmd];
+  if (handler) {
+    const base = resolveControlPlaneBase();
+    const token = assertControlPlaneToken();
+    const csrfToken = config.controlPlane.csrfToken;
+    const authHeaders = {
+      authorization: `Bearer ${token}`,
+      'x-csrf-token': csrfToken,
+    };
+
+    await handler({
+      client,
+      msg,
+      chat: gc,
+      redis,
+      senderId,
+      parts,
+      authHeaders,
+      base,
+      pairingOrchestrator,
+      remotePhone,
+      sender,
+      isSelfCommand,
     });
-  } else if (cmd === 'consentstatus') {
-    const status = await getConsentStatus(chat.id._serialized) ?? 'none';
-    await chat.sendMessage(`Consent status: ${status}`);
-  } else if (cmd === 'approve') {
-    const target = parts[2];
-    if (!target) {
-      const pending = await listPendingMemberships(chat.id._serialized);
-      if (pending.length === 0) {
-        await chat.sendMessage('No pending membership requests recorded.');
-      } else {
-        await chat.sendMessage(`Pending membership requests: ${pending.join(', ')}`);
-      }
-      return;
-    }
-    try {
-      await client.approveGroupMembershipRequests(chat.id._serialized, { requesterIds: [target], sleep: null });
-      await removePendingMembership(chat.id._serialized, target);
-      metrics.waMembershipApprovals.labels('override').inc();
-      metrics.waGovernanceActions.labels('membership_override').inc();
-      metrics.waGroupEvents.labels('membership_override').inc();
-      await groupStore.recordEvent({
-        chatId: chat.id._serialized,
-        type: 'membership_override',
-        timestamp: Date.now(),
-        actorId: msg.author || msg.from,
-        recipients: [target],
-      });
-      await chat.sendMessage(`Approved membership request for ${target}.`);
-    } catch (err) {
-      metrics.waMembershipApprovals.labels('error').inc();
-      logger.warn({ err, target }, 'Failed to approve membership via override');
-      await chat.sendMessage(`Unable to approve ${target}. Check logs for details.`);
-    }
-  } else if (cmd === 'governance') {
-    const limit = Number.isFinite(Number(parts[2])) ? Math.max(1, Math.min(25, Number(parts[2]))) : 10;
-    const events = await groupStore.listRecentEvents(chat.id._serialized, limit);
-    if (events.length === 0) {
-      await chat.sendMessage('No recent governance events recorded.');
-      return;
-    }
-    const lines = events.map((event) => {
-      const timestamp = new Date(event.timestamp).toISOString();
-      const recipients = (event.recipients && event.recipients.length > 0) ? ` -> ${event.recipients.join(', ')}` : '';
-      const detail = event.details ? ` :: ${event.details}` : '';
-      return `- ${timestamp} [${event.type}] ${event.actorId ?? 'unknown'}${recipients}${detail}`;
-    });
-    await chat.sendMessage(`Recent governance events:\n${lines.join('\n')}`);
-  } else if (cmd === 'pair') {
-    // Manual pairing code request
-    if (!pairingOrchestrator) {
-      await chat.sendMessage('Pairing orchestrator not available (phone pairing may be disabled).');
-      return;
-    }
-    const status = pairingOrchestrator.getStatus();
-    if (status.rateLimited && status.nextAttemptIn > 0) {
-      const minutes = Math.ceil(status.nextAttemptIn / 60000);
-      const seconds = Math.ceil((status.nextAttemptIn % 60000) / 1000);
-      await chat.sendMessage(`⚠️ Rate limited. Please wait ${minutes}m ${seconds}s before requesting another code.`);
-      return;
-    }
-    if (!status.canRequest) {
-      await chat.sendMessage('Cannot request pairing code at this time (session may already be active).');
-      return;
-    }
-    const requested = pairingOrchestrator.requestManually();
-    if (requested) {
-      await chat.sendMessage('Pairing code request sent. Check logs/terminal for the code.');
-      logger.info({ chatId: gc.id._serialized, senderId }, 'Manual pairing code requested via admin command');
-    } else {
-      await chat.sendMessage('Unable to request pairing code. Check status with !scanner pair-status.');
-    }
-  } else if (cmd === 'pair-status') {
-    // Check pairing status and rate limit
-    if (!pairingOrchestrator) {
-      await chat.sendMessage('Pairing orchestrator not available.');
-      return;
-    }
-    const status = pairingOrchestrator.getStatus();
-    if (status.canRequest) {
-      await chat.sendMessage('✅ Ready to request pairing code. Use !scanner pair');
-    } else if (status.rateLimited && status.nextAttemptIn > 0) {
-      const minutes = Math.ceil(status.nextAttemptIn / 60000);
-      const seconds = Math.ceil((status.nextAttemptIn % 60000) / 1000);
-      const lastAttempt = status.lastAttemptAt ? new Date(status.lastAttemptAt).toLocaleTimeString() : 'unknown';
-      await chat.sendMessage(`⚠️ Rate limited\nLast attempt: ${lastAttempt}\nRetry in: ${minutes}m ${seconds}s\nConsecutive rate limits: ${status.consecutiveRateLimits}`);
-    } else {
-      await chat.sendMessage(`Status: Session may already be active or code delivered.`);
-    }
-  } else if (cmd === 'pair-reset') {
-    // Clear cached pairing code (admin only, requires confirmation)
-    if (!sender?.isAdmin && !sender?.isSuperAdmin && !isSelfCommand) {
-      await chat.sendMessage('Only admins can reset pairing cache.');
-      return;
-    }
-    if (remotePhone) {
-      const cacheKey = pairingCodeCacheKey(remotePhone);
-      await redis.del(cacheKey);
-      await chat.sendMessage('Pairing code cache cleared.');
-      logger.info({ chatId: gc.id._serialized, senderId }, 'Pairing cache cleared via admin command');
-    } else {
-      await chat.sendMessage('No phone number configured for remote auth.');
-    }
   } else {
     await chat.sendMessage('Commands: !scanner mute|unmute|status|rescan <url>|consent|consentstatus|approve [memberId]|governance [limit]|pair|pair-status|pair-reset');
   }

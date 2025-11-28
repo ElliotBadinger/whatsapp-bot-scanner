@@ -1,2 +1,0 @@
-[console_scripts]
-wbscanner-mcp = agent_orchestrator.mcp_server:main

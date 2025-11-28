@@ -36,18 +36,7 @@ function pushReason(reasons: string[], reason: string) {
   }
 }
 
-export function scoreFromSignals(signals: Signals): RiskVerdict {
-  if (signals.manualOverride === 'allow') {
-    return { score: 0, level: 'benign', reasons: ['Manually allowed'], cacheTtl: 86400 };
-  }
-  if (signals.manualOverride === 'deny') {
-    return { score: 15, level: 'malicious', reasons: ['Manually blocked'], cacheTtl: 86400 };
-  }
-
-  let score = 0;
-  const reasons: string[] = [];
-
-  // Blocklist signals
+function evaluateBlocklistSignals(signals: Signals, score: number, reasons: string[]): number {
   const threatTypes = signals.gsbThreatTypes ?? [];
   if (threatTypes.includes('MALWARE') || threatTypes.includes('SOCIAL_ENGINEERING')) {
     score += 10;
@@ -61,7 +50,10 @@ export function scoreFromSignals(signals: Signals): RiskVerdict {
     score += 10;
     pushReason(reasons, 'Known malware distribution (URLhaus)');
   }
+  return score;
+}
 
+function evaluateVirusTotalSignals(signals: Signals, score: number, reasons: string[]): number {
   const vtMalicious = signals.vtMalicious ?? 0;
   if (vtMalicious >= 3) {
     score += 8;
@@ -70,8 +62,10 @@ export function scoreFromSignals(signals: Signals): RiskVerdict {
     score += 5;
     pushReason(reasons, `${vtMalicious} VT engine flagged malicious`);
   }
+  return score;
+}
 
-  // Domain age
+function evaluateDomainAge(signals: Signals, score: number, reasons: string[]): number {
   if (signals.domainAgeDays !== undefined && signals.domainAgeDays !== null) {
     if (signals.domainAgeDays < 7) {
       score += 6;
@@ -84,8 +78,10 @@ export function scoreFromSignals(signals: Signals): RiskVerdict {
       pushReason(reasons, `Domain registered ${signals.domainAgeDays} days ago (<30)`);
     }
   }
+  return score;
+}
 
-  // Heuristics
+function evaluateHomoglyphSignals(signals: Signals, score: number, reasons: string[]): number {
   const homoglyph = signals.homoglyph;
   if (homoglyph?.detected) {
     const characterPairs = homoglyph.confusableChars.map(c => `${c.original}→${c.confusedWith}`).join(', ');
@@ -114,6 +110,10 @@ export function scoreFromSignals(signals: Signals): RiskVerdict {
       .filter(reason => !reason.startsWith('Confusable character'))
       .forEach(reason => pushReason(reasons, reason));
   }
+  return score;
+}
+
+function evaluateHeuristicSignals(signals: Signals, score: number, reasons: string[]): number {
   if (signals.isIpLiteral) {
     score += 3;
     pushReason(reasons, 'URL uses IP address');
@@ -146,25 +146,42 @@ export function scoreFromSignals(signals: Signals): RiskVerdict {
     score += 2;
     pushReason(reasons, 'Redirect leads to mismatched domain/brand');
   }
+  return score;
+}
+
+function determineRiskLevel(finalScore: number): { level: RiskVerdict['level']; cacheTtl: number } {
+  if (finalScore <= 3) {
+    return { level: 'benign', cacheTtl: 86400 };
+  } else if (finalScore <= 7) {
+    return { level: 'suspicious', cacheTtl: 3600 };
+  } else {
+    return { level: 'malicious', cacheTtl: 900 };
+  }
+}
+
+export function scoreFromSignals(signals: Signals): RiskVerdict {
+  if (signals.manualOverride === 'allow') {
+    return { score: 0, level: 'benign', reasons: ['Manually allowed'], cacheTtl: 86400 };
+  }
+  if (signals.manualOverride === 'deny') {
+    return { score: 15, level: 'malicious', reasons: ['Manually blocked'], cacheTtl: 86400 };
+  }
+
+  let score = 0;
+  const reasons: string[] = [];
+
+  score = evaluateBlocklistSignals(signals, score, reasons);
+  score = evaluateVirusTotalSignals(signals, score, reasons);
+  score = evaluateDomainAge(signals, score, reasons);
+  score = evaluateHomoglyphSignals(signals, score, reasons);
+  score = evaluateHeuristicSignals(signals, score, reasons);
 
   if (signals.heuristicsOnly) {
     pushReason(reasons, 'Heuristics-only scan (external providers unavailable)');
   }
 
   const finalScore = Math.max(0, Math.min(score, 15));
-
-  let level: RiskVerdict['level'];
-  let cacheTtl: number;
-  if (finalScore <= 3) {
-    level = 'benign';
-    cacheTtl = 86400;
-  } else if (finalScore <= 7) {
-    level = 'suspicious';
-    cacheTtl = 3600;
-  } else {
-    level = 'malicious';
-    cacheTtl = 900;
-  }
+  const { level, cacheTtl } = determineRiskLevel(finalScore);
 
   return { score: finalScore, level, reasons, cacheTtl };
 }

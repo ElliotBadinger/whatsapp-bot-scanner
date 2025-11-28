@@ -1,0 +1,441 @@
+{
+  "metadata": {
+    "timestamp": "2025-11-27T22:36:10.610Z",
+    "source": "DeepSource",
+    "repository": "ElliotBadinger/whatsapp-bot-scanner"
+  },
+  "repository": {
+    "name": "whatsapp-bot-scanner",
+    "isActivated": true
+  },
+  "securityIssues": [
+    {
+      "id": "UmVwb3NpdG9yeUlzc3VlOmxsZWpkeHE=",
+      "shortcode": "JS-S1017",
+      "title": "Certificate validation is disabled in TLS connection",
+      "category": "SECURITY",
+      "severity": "CRITICAL",
+      "description": "Certificate validation is an important aspect of Transport Layer Security (TLS) connections as it helps to ensure the authenticity and integrity of the data being transmitted.\nDisabling certificate validation can lead to several security risks, including Man-in-the-Middle Attacks.\nWithout certificate validation, it is possible for an attacker to intercept the communication and present a fake certificate to the client.\nThis allows the attacker to read and potentially modify the data being transmitted.\n\nSetting the `rejectUnauthorized` option to `false` is one such way of disabling certificate validation when initiating a TLS connection using `http`, `https` or `tls` modules.\nBy default, `rejectUnauthorized` is always `true`.\n\n### Bad Practice\n\n```js\nimport tls from 'tls'\ntls.connect(\n  {\n    rejectUnauthorized: false\n  },\n  response => {}\n)\n```\n\n### Recommended\n\n```js\nimport tls from 'tls'\ntls.connect(\n  {\n    rejectUnauthorized: true // alternatively: Do not set `rejectUnauthorized`, as it is configured correctly by default.\n  },\n  response => {}\n)\n```\n\n## References\n- [OWASP A07:2021 - Identification and Authentication Failures](https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/)\n- [CWE-295: Improper Certificate Validation](https://cwe.mitre.org/data/definitions/295.html)",
+      "shortDescription": "Certificate validation is an important aspect of Transport Layer Security (TLS) connections as it helps to ensure the authenticity and integrity of the data being transmitted. Disabling certificate validation can lead to several security risks, including Man-in-the-Middle Attacks. Without certificate validation, it is possible for an attacker to intercept the communication and present a fake certificate to the client.",
+      "tags": [
+        "a07",
+        "cwe-295",
+        "2021",
+        "owasp-top-10"
+      ],
+      "autofixAvailable": true,
+      "occurrenceCount": 1,
+      "occurrences": [
+        {
+          "path": "packages/shared/src/reputation/certificate-intelligence.ts",
+          "beginLine": 50,
+          "endLine": 50,
+          "beginColumn": 9,
+          "endColumn": 34,
+          "title": "The value of `rejectUnauthorized` should not be set to `false`"
+        }
+      ]
+    },
+    {
+      "id": "UmVwb3NpdG9yeUlzc3VlOmRsbmx4cm0=",
+      "shortcode": "JS-0323",
+      "title": "Detected usage of the `any` type",
+      "category": "ANTI_PATTERN",
+      "severity": "CRITICAL",
+      "description": "The `any` type can sometimes leak into your codebase. TypeScript compiler skips the type checking of the `any` typed variables, so it creates a potential safety hole, and source of bugs in your codebase. We recommend using `unknown` or `never` type variable.\n\n<!--more-->\n\nIn TypeScript, every type is assignable to `any`. This makes `any` a top type (also known as a universal supertype) of the type system.\nThe `any` type is essentially an escape hatch from the type system. As developers, this gives us a ton of freedom: TypeScript lets us perform any operation we want on values of type `any` without having to perform any checking beforehand.\nThe developers should not assign `any` typed value to variables and properties, which can be hard to pick up on, especially from the external library; instead, developers can use the `never` or `unknown` type variable.\n\n### Bad Practice\n```js\nconst age: any = 'seventeen';\n\nconst ages: any[] = ['seventeen'];\n\nconst ages: Array<any> = ['seventeen'];\n\nfunction greet(): any {}\n\nfunction greet(): any[] {}\n\nfunction greet(): Array<any> {}\n\nfunction greet(): Array<Array<any>> {}\n\nfunction greet(param: Array<any>): string {}\n\nfunction greet(param: Array<any>): Array<any> {}\n```\n\n### Recommended\n```ts\nconst age: number = 17;\n\nconst ages: number[] = [17];\n\nconst ages: Array<number> = [17];\n\nfunction greet(): string {}\n\nfunction greet(): string[] {}\n\nfunction greet(): Array<string> {}\n\nfunction greet(): Array<Array<string>> {}\n\nfunction greet(param: Array<string>): string {}\n\nfunction greet(param: Array<string>): Array<string> {}\n```",
+      "shortDescription": "The `any` type can sometimes leak into your codebase. TypeScript compiler skips the type checking of the `any` typed variables, so it creates a potential safety hole, and source of bugs in your codebase. We recommend using `unknown` or `never` type variable.",
+      "tags": [],
+      "autofixAvailable": false,
+      "occurrenceCount": 146,
+      "occurrences": [
+        {
+          "path": "tests/stubs/bottleneck.ts",
+          "beginLine": 9,
+          "endLine": 9,
+          "beginColumn": 44,
+          "endColumn": 47,
+          "title": "Unexpected any. Specify a different type"
+        },
+        {
+          "path": "tests/integration/whois-quota.test.ts",
+          "beginLine": 26,
+          "endLine": 26,
+          "beginColumn": 10,
+          "endColumn": 13,
+          "title": "Unexpected any. Specify a different type"
+        },
+        {
+          "path": "tests/integration/vt-throttling.test.ts",
+          "beginLine": 67,
+          "endLine": 67,
+          "beginColumn": 15,
+          "endColumn": 18,
+          "title": "Unexpected any. Specify a different type"
+        },
+        {
+          "path": "tests/integration/vt-throttling.test.ts",
+          "beginLine": 45,
+          "endLine": 45,
+          "beginColumn": 36,
+          "endColumn": 39,
+          "title": "Unexpected any. Specify a different type"
+        },
+        {
+          "path": "tests/integration/vt-throttling.test.ts",
+          "beginLine": 40,
+          "endLine": 40,
+          "beginColumn": 83,
+          "endColumn": 86,
+          "title": "Unexpected any. Specify a different type"
+        },
+        {
+          "path": "tests/integration/vt-throttling.test.ts",
+          "beginLine": 16,
+          "endLine": 16,
+          "beginColumn": 20,
+          "endColumn": 23,
+          "title": "Unexpected any. Specify a different type"
+        },
+        {
+          "path": "tests/integration/vt-throttling.test.ts",
+          "beginLine": 15,
+          "endLine": 15,
+          "beginColumn": 36,
+          "endColumn": 39,
+          "title": "Unexpected any. Specify a different type"
+        },
+        {
+          "path": "tests/integration/vt-rate-limit.test.ts",
+          "beginLine": 60,
+          "endLine": 60,
+          "beginColumn": 10,
+          "endColumn": 13,
+          "title": "Unexpected any. Specify a different type"
+        },
+        {
+          "path": "tests/integration/vt-rate-limit.test.ts",
+          "beginLine": 36,
+          "endLine": 36,
+          "beginColumn": 12,
+          "endColumn": 15,
+          "title": "Unexpected any. Specify a different type"
+        },
+        {
+          "path": "tests/integration/vt-rate-limit.test.ts",
+          "beginLine": 31,
+          "endLine": 31,
+          "beginColumn": 14,
+          "endColumn": 17,
+          "title": "Unexpected any. Specify a different type"
+        }
+      ]
+    },
+    {
+      "id": "UmVwb3NpdG9yeUlzc3VlOm92b3ZneG0=",
+      "shortcode": "JS-A1004",
+      "title": "Audit: Unsanitized user input passed to server logs",
+      "category": "SECURITY",
+      "severity": "CRITICAL",
+      "description": "Logs serve as important records that are used by monitoring services and developers to investigate incidents.\nLogging unsanitized user input to the server allows the user to forge custom server logs.\n\nIn some more serious scenarios, it opens the application up to attacks like [spoofing](https://en.wikipedia.org/wiki/Spoofing_attack).\nThe attacker may insert a line break in the request object, and make the second line of their log look like a log from a different user, or an info message displayed by the server.\n\n### Bad Practice\n\n```js\nimport http from \"http\"\nimport url from \"url\"\n\nhttp.createServer((req, res) => {\n  const parsedUrl = url.parse(req.url, true)\n  // Vulnerable! user can inject special characters in the terminal\n  console.log(parsedUrl.query.username);\n})\n```\n\n### Recommended\n\n```js\nimport http from \"http\"\nimport url from \"url\"\n\nhttp.createServer((req, res) => {\n  const parsedUrl = url.parse(req.url, true)\n\n  // NOTE: Ideally, stronger sanitization functions should be used.\n  // String#replace is only used as an example.\n  const username = parsedUrl.query.username.replace(/\\n|\\r/g, \"\")\n  console.log(parsedUrl.username);\n})\n```\n\n## References\n- [OWASP: Log injection](https://owasp.org/www-community/attacks/Log_Injection)\n- [OWASP A09:2021 - Security Logging and Monitoring Failures](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/)\n- [OWASP A10:2017 - Insufficient Logging & Monitoring](https://owasp.org/www-project-top-ten/2017/A10_2017-Insufficient_Logging%2526Monitoring)\n- [CWE-117: Improper Output Neutralization for Logs](https://cwe.mitre.org/data/definitions/117.html)",
+      "shortDescription": "Logs serve as important records that are used by monitoring services and developers to investigate incidents. Logging unsanitized user input to the server allows the user to forge custom server logs.",
+      "tags": [
+        "a10",
+        "cwe-117",
+        "owasp-top-10",
+        "2017"
+      ],
+      "autofixAvailable": false,
+      "occurrenceCount": 1,
+      "occurrences": [
+        {
+          "path": "scripts/export-wwebjs-docs.mjs",
+          "beginLine": 70,
+          "endLine": 70,
+          "beginColumn": 5,
+          "endColumn": 71,
+          "title": "Sanitize input before logging to console"
+        }
+      ]
+    },
+    {
+      "id": "UmVwb3NpdG9yeUlzc3VlOmtncGd3bWQ=",
+      "shortcode": "JS-0043",
+      "title": "Invalid variable usage",
+      "category": "ANTI_PATTERN",
+      "severity": "CRITICAL",
+      "description": "Variables should be used inside of their binding context.\nThis helps avoid difficult bugs with variable hoisting.\nIt is a bad practice to use `var` declarations because variables declared using `var` can be accessed in a function-wide scope.\nThey can even be accessed before declaration.\nIn such cases, their value would be `undefined` because only declarations and not initializations are hoisted.\n\n### Bad Practice\n\n```js\nfunction doIf() {\n    if (cond()) {\n        var build = true;\n    }\n    console.log(build);\n}\n\nfunction doIfElse() {\n    if (cond()) {\n        var build = true;\n    } else {\n        var build = false;\n    }\n    console.log(build)\n}\n```\n\n### Recommended\n\n```js\nfunction doIf() {\n    let build;\n    if (cond()) {\n        build = true;\n    }\n    console.log(build);\n}\n```",
+      "shortDescription": "Variables should be used inside of their binding context. This helps avoid difficult bugs with variable hoisting. It is a bad practice to use `var` declarations because variables declared using `var` can be accessed in a function-wide scope.",
+      "tags": [],
+      "autofixAvailable": false,
+      "occurrenceCount": 22,
+      "occurrences": [
+        {
+          "path": "whatsapp-web.js/src/authStrategies/RemoteAuth.js",
+          "beginLine": 212,
+          "endLine": 212,
+          "beginColumn": 19,
+          "endColumn": 21,
+          "title": "'fs' used outside of binding context"
+        },
+        {
+          "path": "whatsapp-web.js/src/authStrategies/RemoteAuth.js",
+          "beginLine": 197,
+          "endLine": 197,
+          "beginColumn": 35,
+          "endColumn": 37,
+          "title": "'fs' used outside of binding context"
+        },
+        {
+          "path": "whatsapp-web.js/src/authStrategies/RemoteAuth.js",
+          "beginLine": 191,
+          "endLine": 191,
+          "beginColumn": 35,
+          "endColumn": 37,
+          "title": "'fs' used outside of binding context"
+        },
+        {
+          "path": "whatsapp-web.js/src/authStrategies/RemoteAuth.js",
+          "beginLine": 188,
+          "endLine": 188,
+          "beginColumn": 45,
+          "endColumn": 47,
+          "title": "'fs' used outside of binding context"
+        },
+        {
+          "path": "whatsapp-web.js/src/authStrategies/RemoteAuth.js",
+          "beginLine": 184,
+          "endLine": 184,
+          "beginColumn": 44,
+          "endColumn": 46,
+          "title": "'fs' used outside of binding context"
+        },
+        {
+          "path": "whatsapp-web.js/src/authStrategies/RemoteAuth.js",
+          "beginLine": 177,
+          "endLine": 177,
+          "beginColumn": 15,
+          "endColumn": 17,
+          "title": "'fs' used outside of binding context"
+        },
+        {
+          "path": "whatsapp-web.js/src/authStrategies/RemoteAuth.js",
+          "beginLine": 171,
+          "endLine": 171,
+          "beginColumn": 25,
+          "endColumn": 33,
+          "title": "'unzipper' used outside of binding context"
+        },
+        {
+          "path": "whatsapp-web.js/src/authStrategies/RemoteAuth.js",
+          "beginLine": 169,
+          "endLine": 169,
+          "beginColumn": 22,
+          "endColumn": 24,
+          "title": "'fs' used outside of binding context"
+        },
+        {
+          "path": "whatsapp-web.js/src/authStrategies/RemoteAuth.js",
+          "beginLine": 151,
+          "endLine": 151,
+          "beginColumn": 15,
+          "endColumn": 17,
+          "title": "'fs' used outside of binding context"
+        },
+        {
+          "path": "whatsapp-web.js/src/authStrategies/RemoteAuth.js",
+          "beginLine": 149,
+          "endLine": 149,
+          "beginColumn": 24,
+          "endColumn": 26,
+          "title": "'fs' used outside of binding context"
+        }
+      ]
+    },
+    {
+      "id": "UmVwb3NpdG9yeUlzc3VlOmd4d3hnbm4=",
+      "shortcode": "JS-0060",
+      "title": "`eval()` should not be used",
+      "category": "SECURITY",
+      "severity": "MAJOR",
+      "description": "JavaScript's `eval()` function is potentially dangerous and is often misused.\nUsing `eval()` on untrusted code can open a program up to several different injection attacks.\nThe use of `eval()` in most contexts can be substituted for a better, alternative approach to the problem.\n\n<!--more-->\n\n### Bad Practice\n\n```js\nconst obj = { x: \"foo\" }\nconst key = \"x\"\nconst value = eval(\"obj.\" + key);\n\n(0, eval)(\"var a = 0\");\n\nconst foo = eval;\nfoo(\"var a = 0\");\n\n// This `this` is the global object.\nthis.eval(\"var a = 0\");\n```\n\n### Recommended\n\n```js\nconst obj = { x: \"foo\" },\n    key = \"x\",\n    value = obj[key];\n\nclass A {\n    foo() {\n        // This is a user-defined method.\n        this.eval(\"var a = 0\");\n    }\n\n    eval() { /* ... * / }\n}\n```\n\n## References\n- [OWASP A03:2021 - Injection](https://owasp.org/Top10/A03_2021-Injection/)\n- [OWASP Direct Dynamic Code Evaluation - Eval Injection](https://owasp.org/www-community/attacks/Direct_Dynamic_Code_Evaluation_Eval%20Injection)",
+      "shortDescription": "JavaScript's `eval()` function is potentially dangerous and is often misused.\nUsing `eval()` on untrusted code can open a program up to several different injection attacks.\nThe use of `eval()` in most contexts can be substituted for a better, alternative approach to the problem.",
+      "tags": [
+        "a03",
+        "2021",
+        "owasp-top-10"
+      ],
+      "autofixAvailable": false,
+      "occurrenceCount": 1,
+      "occurrences": [
+        {
+          "path": "whatsapp-web.js/src/util/Injected/AuthStore/LegacyAuthStore.js",
+          "beginLine": 6,
+          "endLine": 6,
+          "beginColumn": 5,
+          "endColumn": 9,
+          "title": "eval can be harmful"
+        }
+      ]
+    },
+    {
+      "id": "UmVwb3NpdG9yeUlzc3VlOmptbm15cHY=",
+      "shortcode": "BAN-B607",
+      "title": "Audit: Starting a process with a partial executable path",
+      "category": "SECURITY",
+      "severity": "MINOR",
+      "description": "Python possesses many mechanisms to invoke an external executable. If the desired executable path is not fully qualified relative to the filesystem root then this may present a potential security risk.\n\n<!--more-->\nIn POSIX environments, the PATH environment variable is used to specify a set of standard locations that will be searched for the first matching named executable. While convenient, this behavior may allow a malicious actor to exert control over a system. If they are able to adjust the contents of the PATH variable, or manipulate the file system, then a bogus executable may be discovered in place of the desired one. This executable will be invoked with the user privileges of the Python process that spawned it, potentially a highly privileged user.\n\nThis test will scan the parameters of all configured Python methods, looking for paths that do not start at the filesystem root, that is, do not have a leading ‘/’ character.\n\n### Bad practice\n```python\nimport subprocess\n\nsubprocess.run(['calculator', '-u', 'critical', msg], check=True) # Sensitive, Path not qualified from root\n```\n\n### Recommended\n```python\nimport subprocess\n\nsubprocess.run(['/usr/bin/calculator', '-u', 'critical', msg], check=True) # Path qualified from root\n```\n\n## References:\n- [Bandit B607](https://bandit.readthedocs.io/en/latest/plugins/b607_start_process_with_partial_path.html#b607-start-process-with-partial-path)\n- OWASP Top 10 2021 Category A03 - [Injection](https://owasp.org/Top10/A03_2021-Injection/)",
+      "shortDescription": "Python possesses many mechanisms to invoke an external executable. If the desired executable path is not fully qualified relative to the filesystem root then this may present a potential security risk.",
+      "tags": [
+        "a03",
+        "owasp-top-10"
+      ],
+      "autofixAvailable": false,
+      "occurrenceCount": 9,
+      "occurrences": [
+        {
+          "path": "scripts/agent_orchestrator/main.py",
+          "beginLine": 515,
+          "endLine": 520,
+          "beginColumn": 0,
+          "endColumn": 0,
+          "title": "Starting a process with a partial executable path"
+        },
+        {
+          "path": "scripts/agent_orchestrator/main.py",
+          "beginLine": 506,
+          "endLine": 511,
+          "beginColumn": 0,
+          "endColumn": 0,
+          "title": "Starting a process with a partial executable path"
+        },
+        {
+          "path": "scripts/agent_orchestrator/main.py",
+          "beginLine": 497,
+          "endLine": 502,
+          "beginColumn": 0,
+          "endColumn": 0,
+          "title": "Starting a process with a partial executable path"
+        },
+        {
+          "path": "scripts/agent_orchestrator/main.py",
+          "beginLine": 481,
+          "endLine": 487,
+          "beginColumn": 0,
+          "endColumn": 0,
+          "title": "Starting a process with a partial executable path"
+        },
+        {
+          "path": "scripts/agent_orchestrator/main.py",
+          "beginLine": 465,
+          "endLine": 471,
+          "beginColumn": 0,
+          "endColumn": 0,
+          "title": "Starting a process with a partial executable path"
+        },
+        {
+          "path": "scripts/agent_orchestrator/main.py",
+          "beginLine": 452,
+          "endLine": 456,
+          "beginColumn": 0,
+          "endColumn": 0,
+          "title": "Starting a process with a partial executable path"
+        },
+        {
+          "path": "scripts/agent_orchestrator/main.py",
+          "beginLine": 446,
+          "endLine": 450,
+          "beginColumn": 0,
+          "endColumn": 0,
+          "title": "Starting a process with a partial executable path"
+        },
+        {
+          "path": "scripts/agent_orchestrator/main.py",
+          "beginLine": 441,
+          "endLine": 445,
+          "beginColumn": 0,
+          "endColumn": 0,
+          "title": "Starting a process with a partial executable path"
+        },
+        {
+          "path": "scripts/agent_orchestrator/main.py",
+          "beginLine": 418,
+          "endLine": 423,
+          "beginColumn": 0,
+          "endColumn": 0,
+          "title": "Starting a process with a partial executable path"
+        }
+      ]
+    },
+    {
+      "id": "UmVwb3NpdG9yeUlzc3VlOm5qeGpud2U=",
+      "shortcode": "JS-0125",
+      "title": "Found the usage of undeclared variables",
+      "category": "BUG_RISK",
+      "severity": "CRITICAL",
+      "description": "Variables that aren't defined, but accessed may throw reference errors at runtime.\n\n> **NOTE**: In browser applications, DeepSource recommends the use of ESModules over regular `text/javascript` scripts.\n> Using variables that are injected by scripts included in an HTML file is currently not supported.\n\n<!--more-->\n\nPotential `ReferenceError`s may result from misspellings of variable and parameter names, or accidental implicit globals (for example, forgetting the `var` keyword in a `for` loop initializer).\nAny reference to an undeclared variable causes a warning, unless the variable is explicitly mentioned in a `/*global ...*/` comment, or specified in the globals key in the configuration file.\nA common use case for these is if you intentionally use globals that are defined elsewhere (e.g. in a script sourced from HTML).\n\n### Bad Practice\n\n```js\nconst foo = someFunction(); // `someFunction` is not defined\nconst bar = baz + 1; // 'baz' is undeclared\n```\n\n### Recommended\n\n```js\nimport { someFunction } from 'some-file';\n\nconst baz = Math.random();\nconst foo = someFunction();\nconst bar = baz + 1;\n```",
+      "shortDescription": "Variables that aren't defined, but accessed may throw reference errors at runtime.\n\n> **NOTE**: In browser applications, DeepSource recommends the use of ESModules over regular `text/javascript` scripts.\n> Using variables that are injected by scripts included in an HTML file is currently not supported.",
+      "tags": [],
+      "autofixAvailable": false,
+      "occurrenceCount": 7,
+      "occurrences": [
+        {
+          "path": "whatsapp-web.js/docs/scripts/jsdoc-toc.js",
+          "beginLine": 17,
+          "endLine": 17,
+          "beginColumn": 4,
+          "endColumn": 10,
+          "title": "'jQuery' is not defined To fix this, add jquery in `environment` array of  `.deepsource.toml`. Read more in our documentation https://deepsource.io/docs/analyzer/javascript"
+        },
+        {
+          "path": "scripts/jest-env-setup.js",
+          "beginLine": 27,
+          "endLine": 27,
+          "beginColumn": 18,
+          "endColumn": 22,
+          "title": "'jest' is not defined To fix this, add jest in `environment` array of  `.deepsource.toml`. Read more in our documentation https://deepsource.io/docs/analyzer/javascript"
+        },
+        {
+          "path": "scripts/jest-env-setup.js",
+          "beginLine": 25,
+          "endLine": 25,
+          "beginColumn": 9,
+          "endColumn": 13,
+          "title": "'jest' is not defined To fix this, add jest in `environment` array of  `.deepsource.toml`. Read more in our documentation https://deepsource.io/docs/analyzer/javascript"
+        },
+        {
+          "path": "scripts/jest-env-setup.js",
+          "beginLine": 23,
+          "endLine": 23,
+          "beginColumn": 17,
+          "endColumn": 21,
+          "title": "'jest' is not defined To fix this, add jest in `environment` array of  `.deepsource.toml`. Read more in our documentation https://deepsource.io/docs/analyzer/javascript"
+        },
+        {
+          "path": "scripts/jest-env-setup.js",
+          "beginLine": 22,
+          "endLine": 22,
+          "beginColumn": 20,
+          "endColumn": 24,
+          "title": "'jest' is not defined To fix this, add jest in `environment` array of  `.deepsource.toml`. Read more in our documentation https://deepsource.io/docs/analyzer/javascript"
+        },
+        {
+          "path": "scripts/jest-env-setup.js",
+          "beginLine": 21,
+          "endLine": 21,
+          "beginColumn": 1,
+          "endColumn": 5,
+          "title": "'jest' is not defined To fix this, add jest in `environment` array of  `.deepsource.toml`. Read more in our documentation https://deepsource.io/docs/analyzer/javascript"
+        },
+        {
+          "path": "scripts/jest-env-setup.js",
+          "beginLine": 12,
+          "endLine": 12,
+          "beginColumn": 1,
+          "endColumn": 5,
+          "title": "'jest' is not defined To fix this, add jest in `environment` array of  `.deepsource.toml`. Read more in our documentation https://deepsource.io/docs/analyzer/javascript"
+        }
+      ]
+    }
+  ],
+  "metrics": {}
+}

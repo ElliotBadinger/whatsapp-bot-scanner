@@ -1,4 +1,5 @@
 import FakeRedis from './fake-redis';
+import type Redis from 'ioredis';
 
 jest.mock('ioredis', () => FakeRedis);
 
@@ -16,7 +17,9 @@ jest.mock('confusables', () => ({ __esModule: true, default: (input: string) => 
 jest.mock('bottleneck', () => ({
   __esModule: true,
   default: class BottleneckMock {
-    on(): void {}
+    on(): void {
+      // intentionally no-op: bottleneck events are not required in command handler tests
+    }
     async currentReservoir(): Promise<number> { return 1; }
     schedule<T>(fn: (...args: any[]) => T, ...params: any[]): Promise<T> { return Promise.resolve(fn(...params)); }
   }
@@ -53,7 +56,7 @@ describe('handleAdminCommand', () => {
       getChat: jest.fn().mockResolvedValue(mockChat),
     } as unknown as Message;
 
-    await handleAdminCommand({} as Client, mockMessage);
+    await handleAdminCommand({} as Client, mockMessage, undefined, {} as unknown as Redis);
 
     expect(global.fetch).toHaveBeenCalledWith('http://control-plane.test/groups/group-123/mute', expect.objectContaining({
       method: 'POST',
@@ -85,7 +88,7 @@ describe('handleAdminCommand', () => {
       json: async () => ({ ok: true, urlHash: 'abc123', jobId: 'job-1' }),
     });
 
-    await handleAdminCommand({} as Client, mockMessage);
+    await handleAdminCommand({} as Client, mockMessage, undefined, {} as unknown as Redis);
 
     expect(global.fetch).toHaveBeenCalledWith('http://control-plane.test/rescan', expect.objectContaining({
       method: 'POST',
@@ -113,7 +116,7 @@ describe('handleAdminCommand', () => {
       getChat: jest.fn().mockResolvedValue(mockChat),
     } as unknown as Message;
 
-    await handleAdminCommand({} as Client, mockMessage);
+    await handleAdminCommand({} as Client, mockMessage, undefined, {} as unknown as Redis);
 
     expect(setMessagesAdminsOnly).toHaveBeenCalledWith(false);
     expect(sendMessage).toHaveBeenCalledWith('Consent recorded. Automated scanning enabled for this group.');
@@ -138,7 +141,12 @@ describe('handleAdminCommand', () => {
       getChat: jest.fn().mockResolvedValue(mockChat),
     } as unknown as Message;
 
-    await handleAdminCommand({ approveGroupMembershipRequests: approveMembership } as unknown as Client, mockMessage);
+    await handleAdminCommand(
+      { approveGroupMembershipRequests: approveMembership } as unknown as Client,
+      mockMessage,
+      undefined,
+      {} as unknown as Redis,
+    );
 
     expect(approveMembership).toHaveBeenCalledWith('group-456', { requesterIds: ['pending-user'], sleep: null });
     expect(sendMessage).toHaveBeenCalledWith('Approved membership request for pending-user.');
@@ -162,10 +170,10 @@ describe('handleAdminCommand', () => {
       getChat: jest.fn().mockResolvedValue(mockChat),
     } as unknown as Message;
 
-    await handleAdminCommand({} as Client, { ...baseMessage, body: '!scanner consent' });
+    await handleAdminCommand({} as Client, { ...baseMessage, body: '!scanner consent' }, undefined, {} as unknown as Redis);
     sendMessage.mockClear();
 
-    await handleAdminCommand({} as Client, { ...baseMessage, body: '!scanner governance 5' });
+    await handleAdminCommand({} as Client, { ...baseMessage, body: '!scanner governance 5' }, undefined, {} as unknown as Redis);
 
     expect(sendMessage).toHaveBeenCalledWith(expect.stringContaining('consent_granted'));
   });

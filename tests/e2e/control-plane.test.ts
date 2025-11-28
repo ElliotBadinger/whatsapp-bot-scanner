@@ -17,12 +17,14 @@ vi.mock('bullmq', () => ({
 vi.mock('url-expand', () => ({ __esModule: true, default: vi.fn(async (url: string) => url) }));
 vi.mock('confusables', () => ({ __esModule: true, default: (input: string) => input }));
 vi.mock('bottleneck', () => ({
-  __esModule: true,
-  default: class BottleneckMock {
-    on(): void {}
-    async currentReservoir(): Promise<number> { return 1; }
-    schedule<T>(fn: (...args: any[]) => T, ...params: any[]): Promise<T> { return Promise.resolve(fn(...params)); }
+__esModule: true,
+default: class BottleneckMock {
+  on(): void {
+    // intentionally no-op: event subscriptions are not required for test limiter
   }
+  async currentReservoir(): Promise<number> { return 1; }
+  schedule<T>(fn: (...args: any[]) => T, ...params: any[]): Promise<T> { return Promise.resolve(fn(...params)); }
+}
 }));
 
 process.env.CONTROL_PLANE_API_TOKEN = 'test-token';
@@ -174,7 +176,9 @@ describe('WA admin command integration', () => {
       }),
     } as any;
     const { handleAdminCommand } = await import('../../services/wa-client/src/index');
-    await handleAdminCommand({ getChat: msg.getChat.bind(msg) } as any, msg as any);
+    const fakeClient = {} as any;
+    const fakeRedis = {} as any;
+    await handleAdminCommand(fakeClient, msg as any, undefined, fakeRedis);
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/rescan'),
       expect.objectContaining({ method: 'POST' })

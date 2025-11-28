@@ -126,7 +126,10 @@ function createRedisConnection(): Redis {
         return list.slice(start, normalizedStop + 1);
       }
 
-      on(): void { }
+      on(): void {
+        // intentionally no-op: event subscriptions are not required for in-memory Redis used in tests
+        // NOSONAR
+      }
 
       quit(): Promise<void> {
         return Promise.resolve();
