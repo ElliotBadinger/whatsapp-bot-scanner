@@ -1,4 +1,5 @@
-#!/usr/bin/env node
+
+
 
 /**
  * DeepSource API Client
@@ -28,61 +29,61 @@ const REPO_NAME = process.env.DEEPSOURCE_REPO_NAME || 'whatsapp-bot-scanner';
  * Make a GraphQL request to DeepSource API
  */
 async function graphqlRequest(query, variables = {}) {
-    if (!API_TOKEN) {
-        throw new Error('DEEPSOURCE_API_TOKEN environment variable is required');
+  if (!API_TOKEN) {
+    throw new Error('DEEPSOURCE_API_TOKEN environment variable is required');
+  }
+
+  const data = JSON.stringify({
+    query,
+    variables
+  });
+
+  const options = {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${API_TOKEN}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'Content-Length': data.length
     }
+  };
 
-    const data = JSON.stringify({
-        query,
-        variables
-    });
+  return new Promise((resolve, reject) => {
+    const req = https.request(API_ENDPOINT, options, (res) => {
+      let body = '';
 
-    const options = {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${API_TOKEN}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Content-Length': data.length
+      res.on('data', (chunk) => {
+        body += chunk;
+      });
+
+      res.on('end', () => {
+        try {
+          const response = JSON.parse(body);
+          if (response.errors) {
+            reject(new Error(`GraphQL Error: ${JSON.stringify(response.errors, null, 2)}`));
+          } else {
+            resolve(response.data);
+          }
+        } catch (error) {
+          reject(new Error(`Failed to parse response: ${error.message}`));
         }
-    };
-
-    return new Promise((resolve, reject) => {
-        const req = https.request(API_ENDPOINT, options, (res) => {
-            let body = '';
-
-            res.on('data', (chunk) => {
-                body += chunk;
-            });
-
-            res.on('end', () => {
-                try {
-                    const response = JSON.parse(body);
-                    if (response.errors) {
-                        reject(new Error(`GraphQL Error: ${JSON.stringify(response.errors, null, 2)}`));
-                    } else {
-                        resolve(response.data);
-                    }
-                } catch (error) {
-                    reject(new Error(`Failed to parse response: ${error.message}`));
-                }
-            });
-        });
-
-        req.on('error', (error) => {
-            reject(error);
-        });
-
-        req.write(data);
-        req.end();
+      });
     });
+
+    req.on('error', (error) => {
+      reject(error);
+    });
+
+    req.write(data);
+    req.end();
+  });
 }
 
 /**
  * Get current user information
  */
 async function getViewer() {
-    const query = `
+  const query = `
     query {
       viewer {
         email
@@ -92,14 +93,14 @@ async function getViewer() {
     }
   `;
 
-    return graphqlRequest(query);
+  return graphqlRequest(query);
 }
 
 /**
  * Get repository analysis status
  */
 async function getRepositoryStatus() {
-    const query = `
+  const query = `
     query($owner: String!, $name: String!) {
       repository(owner: $owner, name: $name) {
         name
@@ -122,17 +123,17 @@ async function getRepositoryStatus() {
     }
   `;
 
-    return graphqlRequest(query, {
-        owner: REPO_OWNER,
-        name: REPO_NAME
-    });
+  return graphqlRequest(query, {
+    owner: REPO_OWNER,
+    name: REPO_NAME
+  });
 }
 
 /**
  * Get repository issues
  */
 async function getRepositoryIssues(limit = 20) {
-    const query = `
+  const query = `
     query($owner: String!, $name: String!, $limit: Int!) {
       repository(owner: $owner, name: $name) {
         name
@@ -155,18 +156,18 @@ async function getRepositoryIssues(limit = 20) {
     }
   `;
 
-    return graphqlRequest(query, {
-        owner: REPO_OWNER,
-        name: REPO_NAME,
-        limit
-    });
+  return graphqlRequest(query, {
+    owner: REPO_OWNER,
+    name: REPO_NAME,
+    limit
+  });
 }
 
 /**
  * Get repository metrics
  */
 async function getRepositoryMetrics() {
-    const query = `
+  const query = `
     query($owner: String!, $name: String!) {
       repository(owner: $owner, name: $name) {
         name
@@ -189,75 +190,30 @@ async function getRepositoryMetrics() {
     }
   `;
 
-    return graphqlRequest(query, {
-        owner: REPO_OWNER,
-        name: REPO_NAME
-    });
+  return graphqlRequest(query, {
+    owner: REPO_OWNER,
+    name: REPO_NAME
+  });
 }
 
 /**
  * Format and display repository status
  */
 function displayStatus(data) {
-    const repo = data.repository;
+  const repo = data.repository;
 
-    console.log('\n📊 DeepSource Repository Status\n');
-    console.log(`Repository: ${repo.name}`);
-    console.log(`Activated: ${repo.isActivated ? '✅' : '❌'}`);
-    console.log(`Default Branch: ${repo.defaultBranch || 'N/A'}`);
+  console.log('\n📊 DeepSource Repository Status\n');
+  console.log(`Repository: ${repo.name}`);
+  console.log(`Activated: ${repo.isActivated ? '✅' : '❌'}`);
+  console.log(`Default Branch: ${repo.defaultBranch || 'N/A'}`);
 
-    console.log('\n🔍 Analyzers:');
-    repo.analyzers.forEach(analyzer => {
-        console.log(`  ${analyzer.enabled ? '✅' : '❌'} ${analyzer.name}`);
-    });
+  console.log('\n🔍 Analyzers:');
+  repo.analyzers.forEach(analyzer => {
+    console.log(`  ${analyzer.enabled ? '✅' : '❌'} ${analyzer.name}`);
+  });
 
-    if (repo.metrics) {
-        console.log('\n📈 Metrics:');
-        console.log(`  Total Issues: ${repo.metrics.issuesCount || 0}`);
-        console.log(`  Anti-patterns: ${repo.metrics.antipatternCount || 0}`);
-        console.log(`  Bug Risks: ${repo.metrics.bugRiskCount || 0}`);
-        console.log(`  Security: ${repo.metrics.securityCount || 0}`);
-        console.log(`  Performance: ${repo.metrics.performanceCount || 0}`);
-        console.log(`  Style: ${repo.metrics.styleCount || 0}`);
-        console.log(`  Documentation: ${repo.metrics.documentationCount || 0}`);
-    }
-    console.log('');
-}
-
-/**
- * Format and display repository issues
- */
-function displayIssues(data) {
-    const repo = data.repository;
-    const issues = repo.issues.edges;
-
-    console.log('\n🐛 DeepSource Issues\n');
-    console.log(`Repository: ${repo.name}`);
-    console.log(`Total Issues: ${issues.length}\n`);
-
-    issues.forEach((edge, index) => {
-        const issue = edge.node;
-        const severityIcon = issue.severity === 'CRITICAL' ? '🔴' :
-            issue.severity === 'MAJOR' ? '🟠' : '🟡';
-
-        console.log(`${index + 1}. ${severityIcon} ${issue.title}`);
-        console.log(`   Category: ${issue.category}`);
-        console.log(`   Analyzer: ${issue.analyzer.name}`);
-        console.log(`   Occurrences: ${issue.occurrences.totalCount}`);
-        console.log('');
-    });
-}
-
-/**
- * Format and display repository metrics
- */
-function displayMetrics(data) {
-    const repo = data.repository;
-
-    console.log('\n📊 DeepSource Metrics\n');
-    console.log(`Repository: ${repo.name}\n`);
-
-    console.log('Issue Breakdown:');
+  if (repo.metrics) {
+    console.log('\n📈 Metrics:');
     console.log(`  Total Issues: ${repo.metrics.issuesCount || 0}`);
     console.log(`  Anti-patterns: ${repo.metrics.antipatternCount || 0}`);
     console.log(`  Bug Risks: ${repo.metrics.bugRiskCount || 0}`);
@@ -265,80 +221,125 @@ function displayMetrics(data) {
     console.log(`  Performance: ${repo.metrics.performanceCount || 0}`);
     console.log(`  Style: ${repo.metrics.styleCount || 0}`);
     console.log(`  Documentation: ${repo.metrics.documentationCount || 0}`);
+  }
+  console.log('');
+}
 
-    if (repo.metrics.coverage !== null && repo.metrics.coverage !== undefined) {
-        console.log(`\nCode Coverage: ${repo.metrics.coverage}%`);
-    }
+/**
+ * Format and display repository issues
+ */
+function displayIssues(data) {
+  const repo = data.repository;
+  const issues = repo.issues.edges;
 
-    console.log('\nActive Analyzers:');
-    repo.analyzers.forEach(analyzer => {
-        if (analyzer.enabled) {
-            console.log(`  ✅ ${analyzer.name}`);
-        }
-    });
+  console.log('\n🐛 DeepSource Issues\n');
+  console.log(`Repository: ${repo.name}`);
+  console.log(`Total Issues: ${issues.length}\n`);
+
+  issues.forEach((edge, index) => {
+    const issue = edge.node;
+    const severityIcon = issue.severity === 'CRITICAL' ? '🔴' :
+      issue.severity === 'MAJOR' ? '🟠' : '🟡';
+
+    console.log(`${index + 1}. ${severityIcon} ${issue.title}`);
+    console.log(`   Category: ${issue.category}`);
+    console.log(`   Analyzer: ${issue.analyzer.name}`);
+    console.log(`   Occurrences: ${issue.occurrences.totalCount}`);
     console.log('');
+  });
+}
+
+/**
+ * Format and display repository metrics
+ */
+function displayMetrics(data) {
+  const repo = data.repository;
+
+  console.log('\n📊 DeepSource Metrics\n');
+  console.log(`Repository: ${repo.name}\n`);
+
+  console.log('Issue Breakdown:');
+  console.log(`  Total Issues: ${repo.metrics.issuesCount || 0}`);
+  console.log(`  Anti-patterns: ${repo.metrics.antipatternCount || 0}`);
+  console.log(`  Bug Risks: ${repo.metrics.bugRiskCount || 0}`);
+  console.log(`  Security: ${repo.metrics.securityCount || 0}`);
+  console.log(`  Performance: ${repo.metrics.performanceCount || 0}`);
+  console.log(`  Style: ${repo.metrics.styleCount || 0}`);
+  console.log(`  Documentation: ${repo.metrics.documentationCount || 0}`);
+
+  if (repo.metrics.coverage !== null && repo.metrics.coverage !== undefined) {
+    console.log(`\nCode Coverage: ${repo.metrics.coverage}%`);
+  }
+
+  console.log('\nActive Analyzers:');
+  repo.analyzers.forEach(analyzer => {
+    if (analyzer.enabled) {
+      console.log(`  ✅ ${analyzer.name}`);
+    }
+  });
+  console.log('');
 }
 
 /**
  * Main CLI handler
  */
 async function main() {
-    const command = process.argv[2];
+  const command = process.argv[2];
 
-    try {
-        switch (command) {
-            case 'status':
-                const statusData = await getRepositoryStatus();
-                displayStatus(statusData);
-                break;
+  try {
+    switch (command) {
+      case 'status':
+        const statusData = await getRepositoryStatus();
+        displayStatus(statusData);
+        break;
 
-            case 'issues':
-                const issuesData = await getRepositoryIssues(20);
-                displayIssues(issuesData);
-                break;
+      case 'issues':
+        const issuesData = await getRepositoryIssues(20);
+        displayIssues(issuesData);
+        break;
 
-            case 'metrics':
-                const metricsData = await getRepositoryMetrics();
-                displayMetrics(metricsData);
-                break;
+      case 'metrics':
+        const metricsData = await getRepositoryMetrics();
+        displayMetrics(metricsData);
+        break;
 
-            case 'viewer':
-                const viewerData = await getViewer();
-                console.log('\n👤 Current User:');
-                console.log(`  Name: ${viewerData.viewer.name || 'N/A'}`);
-                console.log(`  Email: ${viewerData.viewer.email}`);
-                console.log(`  Login: ${viewerData.viewer.login}\n`);
-                break;
+      case 'viewer':
+        const viewerData = await getViewer();
+        console.log('\n👤 Current User:');
+        console.log(`  Name: ${viewerData.viewer.name || 'N/A'}`);
+        console.log(`  Email: ${viewerData.viewer.email}`);
+        console.log(`  Login: ${viewerData.viewer.login}\n`);
+        break;
 
-            default:
-                console.log('\n🔧 DeepSource API Client\n');
-                console.log('Usage: node scripts/deepsource-api.js <command>\n');
-                console.log('Commands:');
-                console.log('  status   - Show repository analysis status');
-                console.log('  issues   - List current issues');
-                console.log('  metrics  - Show detailed metrics');
-                console.log('  viewer   - Show current user information\n');
-                console.log('Environment Variables:');
-                console.log('  DEEPSOURCE_API_TOKEN - Required: Personal Access Token');
-                console.log('  DEEPSOURCE_REPO_OWNER - Optional: Repository owner (default: ElliotBadinger)');
-                console.log('  DEEPSOURCE_REPO_NAME - Optional: Repository name (default: whatsapp-bot-scanner)\n');
-                process.exit(1);
-        }
-    } catch (error) {
-        console.error('\n❌ Error:', error.message);
+      default:
+        console.log('\n🔧 DeepSource API Client\n');
+        console.log('Usage: node scripts/deepsource-api.js <command>\n');
+        console.log('Commands:');
+        console.log('  status   - Show repository analysis status');
+        console.log('  issues   - List current issues');
+        console.log('  metrics  - Show detailed metrics');
+        console.log('  viewer   - Show current user information\n');
+        console.log('Environment Variables:');
+        console.log('  DEEPSOURCE_API_TOKEN - Required: Personal Access Token');
+        console.log('  DEEPSOURCE_REPO_OWNER - Optional: Repository owner (default: ElliotBadinger)');
+        console.log('  DEEPSOURCE_REPO_NAME - Optional: Repository name (default: whatsapp-bot-scanner)\n');
         process.exit(1);
     }
+  } catch (error) {
+    console.error('\n❌ Error:', error.message);
+    process.exit(1);
+  }
 }
 
 // Run if called directly
 if (require.main === module) {
-    main();
+  main();
 }
 
 module.exports = {
-    graphqlRequest,
-    getViewer,
-    getRepositoryStatus,
-    getRepositoryIssues,
-    getRepositoryMetrics
+  graphqlRequest,
+  getViewer,
+  getRepositoryStatus,
+  getRepositoryIssues,
+  getRepositoryMetrics
 };
