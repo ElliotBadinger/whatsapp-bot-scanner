@@ -20,6 +20,16 @@ The system includes zero-cost, API-independent threat intelligence layers that o
 
 These features reduce external API calls by 30-40% while improving scan latency. See [`docs/ENHANCED_SECURITY.md`](docs/ENHANCED_SECURITY.md) for details.
 
+## Security Setup
+
+> [!IMPORTANT]
+> **Required API Keys and Secrets**: Before running the application, you must configure API keys and generate secure secrets. The `.env` file does not contain any credentials by default.
+> 
+> See [`docs/SECURITY_SETUP.md`](docs/SECURITY_SETUP.md) for detailed instructions on:
+> - Obtaining API keys from VirusTotal, Google Safe Browsing, WhoisXML, and urlscan.io
+> - Generating secure random secrets for authentication and encryption
+> - Quick setup script to generate all required secrets at once
+
 Production-ready, containerized system that ingests WhatsApp group messages, detects URLs, evaluates risk via reputation sources and heuristics, and posts verdicts back to the group.
 
 Quick start:

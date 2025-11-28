@@ -11,7 +11,13 @@
 const https = require('https');
 
 const API_ENDPOINT = 'https://api.deepsource.io/graphql/';
-const API_TOKEN = process.env.DEEPSOURCE_API_TOKEN || 'dsp_40730dd472c7e52abd28e7de0fd2883e76d5';
+const API_TOKEN = process.env.DEEPSOURCE_API_TOKEN;
+
+if (!API_TOKEN) {
+    console.error('\\n❌ Error: DEEPSOURCE_API_TOKEN environment variable is required');
+    console.error('   Generate a token at: https://app.deepsource.com/settings/tokens\\n');
+    process.exit(1);
+}
 
 async function graphqlRequest(query, variables = {}) {
     const data = JSON.stringify({ query, variables });
