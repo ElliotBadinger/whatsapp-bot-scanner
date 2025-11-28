@@ -35,3 +35,14 @@ whatsapp-web.js/
 
 # Research
 Research/
+
+# Security Reports (generated artifacts)
+docs/security-reports/*.json
+docs/security-reports/COMPLETE_FINDINGS.md
+docs/security-reports/SECURITY_FINDINGS.md
+# Keep the comprehensive tickets for reference
+!docs/security-reports/COMPREHENSIVE_SECURITY_TICKETS.md
+
+# Test/utility scripts (not part of core setup)
+test_certificate_validation.js
+services/scan-orchestrator/src/index-original.ts
