@@ -16,7 +16,13 @@ class FakeLimiter {
   private readonly refreshInterval?: number;
   private intervalRef?: NodeJS.Timeout;
 
-  constructor(options: { reservoir?: number; reservoirRefreshAmount?: number; reservoirRefreshInterval?: number } = {}) {
+  constructor(
+    options: {
+      reservoir?: number;
+      reservoirRefreshAmount?: number;
+      reservoirRefreshInterval?: number;
+    } = {},
+  ) {
     const defaultReservoir = options.reservoir ?? Number.POSITIVE_INFINITY;
     this.reservoir = defaultReservoir;
     this.refreshAmount = options.reservoirRefreshAmount ?? this.reservoir;
@@ -27,7 +33,7 @@ class FakeLimiter {
       this.intervalRef = setInterval(() => {
         void this.incrementReservoir();
       }, this.refreshInterval);
-      if (typeof this.intervalRef.unref === 'function') {
+      if (typeof this.intervalRef.unref === "function") {
         this.intervalRef.unref();
       }
     }
@@ -49,7 +55,7 @@ class FakeLimiter {
       return result;
     } finally {
       if (this.reservoir <= 0) {
-        this.handlers['depleted']?.();
+        this.handlers["depleted"]?.();
       }
     }
   }
