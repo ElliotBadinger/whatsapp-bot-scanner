@@ -24,8 +24,9 @@ These features reduce external API calls by 30-40% while improving scan latency.
 
 > [!IMPORTANT]
 > **Required API Keys and Secrets**: Before running the application, you must configure API keys and generate secure secrets. The `.env` file does not contain any credentials by default.
-> 
+>
 > See [`docs/SECURITY_SETUP.md`](docs/SECURITY_SETUP.md) for detailed instructions on:
+>
 > - Obtaining API keys from VirusTotal, Google Safe Browsing, WhoisXML, and urlscan.io
 > - Generating secure random secrets for authentication and encryption
 > - Quick setup script to generate all required secrets at once
