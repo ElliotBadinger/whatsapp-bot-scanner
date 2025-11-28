@@ -66,13 +66,20 @@ test('score clamps at 15 even with stacked blocklists', () => {
     vtMalicious: 5,
     homoglyph: {
       detected: true,
-      riskLevel: 'high',
-      confusableChars: [],
+      isPunycode: false,
+      mixedScript: false,
+      unicodeHostname: 'evil.test',
       normalizedDomain: 'evil.test',
+<<<<<<< Updated upstream
       isPunycode: false,
       mixedScript: false,
       unicodeHostname: 'evil.test',
       riskReasons: ['High-risk homoglyph attack detected'],
+=======
+      confusableChars: [],
+      riskLevel: 'high',
+      riskReasons: [],
+>>>>>>> Stashed changes
     },
     urlLength: 400,
     wasShortened: true,

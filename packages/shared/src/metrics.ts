@@ -415,6 +415,11 @@ export const metrics = {
     labelNames: ['service'],
     registers: [register],
   }),
+  degradedModeEvents: new client.Counter({
+    name: 'wbscanner_degraded_mode_events_total',
+    help: 'Number of times the system entered a degraded operational mode',
+    registers: [register],
+  }),
 };
 
 export const externalLatency = new client.Histogram({
