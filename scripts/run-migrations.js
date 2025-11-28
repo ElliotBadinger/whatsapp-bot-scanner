@@ -1,4 +1,5 @@
-#!/usr/bin/env node
+
+
 const fs = require('fs');
 const path = require('path');
 const { Client } = require('pg');
@@ -62,14 +63,14 @@ async function main() {
     // Create database connection
     const dbPath = process.env.SQLITE_DB_PATH || path.join(__dirname, '..', 'storage', 'wbscanner.db');
     const dbDir = path.dirname(dbPath);
-    
+
     // Ensure directory exists
     if (!fs.existsSync(dbDir)) {
       fs.mkdirSync(dbDir, { recursive: true });
     }
-    
+
     const db = new Database(dbPath);
-    
+
     // Enable WAL mode for better concurrency
     db.pragma('journal_mode = WAL');
     db.pragma('synchronous = NORMAL');
@@ -93,18 +94,18 @@ async function main() {
         console.log(`Skipping already applied migration: ${f}`);
         continue;
       }
-      
+
       const sql = fs.readFileSync(path.join(migrationsDir, f), 'utf8');
       console.log(`Applying migration: ${f}`);
-      
+
       const transaction = db.transaction(() => {
         // Execute migration SQL
         db.exec(sql);
-        
+
         // Record migration as applied
         db.prepare('INSERT INTO schema_migrations (id) VALUES (?)').run(f);
       });
-      
+
       try {
         transaction();
         console.log(`Successfully applied migration: ${f}`);

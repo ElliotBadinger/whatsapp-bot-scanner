@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+
 
 import { runSetup } from './setup/orchestrator.mjs';
 

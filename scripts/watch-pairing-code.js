@@ -1,4 +1,5 @@
-#!/usr/bin/env node
+
+
 
 /**
  * Continuously watch wa-client logs and surface pairing-code events with a

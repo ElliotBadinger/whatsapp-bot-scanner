@@ -1,4 +1,5 @@
-#!/usr/bin/env node
+
+
 
 /**
  * Security Reports Fetcher
@@ -207,74 +208,153 @@ async function fetchDeepSourceSecurityReports() {
         console.log(`✅ Repository: ${repoData.repository.name}`);
         console.log(`   Activated: ${repoData.repository.isActivated ? 'Yes' : 'No'}`);
 
-        // 2. Get all issues with FULL details using correct schema
-        const issuesQuery = `
-            query($owner: String!, $name: String!) {
-                repository(login: $owner, name: $name, vcsProvider: GITHUB) {
-                    issues(first: 100) {
-                        edges {
-                            node {
-                                id
-                                issue {
-                                    shortcode
-                                    title
-                                    category
-                                    severity
-                                    description
-                                    shortDescription
-                                    tags
-                                    autofixAvailable
+        // 2. Get ALL issues with pagination (DeepSource has 1.2k+ occurrences)
+        console.log('   Fetching all issues with ALL occurrences...');
+        let allIssues = [];
+        let hasNextPage = true;
+        let cursor = null;
+        let pageCount = 0;
+
+        while (hasNextPage) {
+            pageCount++;
+            const issuesQuery = `
+                query($owner: String!, $name: String!, $cursor: String) {
+                    repository(login: $owner, name: $name, vcsProvider: GITHUB) {
+                        issues(first: 100, after: $cursor) {
+                            edges {
+                                node {
+                                    id
+                                    issue {
+                                        shortcode
+                                        title
+                                        category
+                                        severity
+                                        description
+                                        shortDescription
+                                        tags
+                                        autofixAvailable
+                                    }
+                                    occurrences(first: 100) {
+                                        totalCount
+                                        edges {
+                                            node {
+                                                path
+                                                beginLine
+                                                endLine
+                                                beginColumn
+                                                endColumn
+                                                title
+                                            }
+                                        }
+                                        pageInfo {
+                                            hasNextPage
+                                            endCursor
+                                        }
+                                    }
                                 }
-                                occurrences(first: 10) {
-                                    totalCount
-                                    edges {
-                                        node {
-                                            path
-                                            beginLine
-                                            endLine
-                                            beginColumn
-                                            endColumn
-                                            title
+                            }
+                            pageInfo {
+                                hasNextPage
+                                endCursor
+                            }
+                            totalCount
+                        }
+                    }
+                }
+            `;
+
+            const issuesData = await deepsourceGraphqlRequest(issuesQuery, {
+                owner: DEEPSOURCE_REPO_OWNER,
+                name: DEEPSOURCE_REPO_NAME,
+                cursor: cursor
+            });
+
+            for (const edge of issuesData.repository.issues.edges) {
+                const node = edge.node;
+
+                // Fetch ALL occurrences for this issue if there are more than 100
+                let allOccurrences = node.occurrences.edges.map(occ => ({
+                    path: occ.node.path,
+                    beginLine: occ.node.beginLine,
+                    endLine: occ.node.endLine,
+                    beginColumn: occ.node.beginColumn,
+                    endColumn: occ.node.endColumn,
+                    title: occ.node.title
+                }));
+
+                // If there are more occurrences, paginate through them
+                let occCursor = node.occurrences.pageInfo.endCursor;
+                let hasMoreOccurrences = node.occurrences.pageInfo.hasNextPage;
+
+                while (hasMoreOccurrences) {
+                    const moreOccQuery = `
+                        query($issueId: ID!, $occCursor: String) {
+                            node(id: $issueId) {
+                                ... on RepositoryIssue {
+                                    occurrences(first: 100, after: $occCursor) {
+                                        edges {
+                                            node {
+                                                path
+                                                beginLine
+                                                endLine
+                                                beginColumn
+                                                endColumn
+                                                title
+                                            }
+                                        }
+                                        pageInfo {
+                                            hasNextPage
+                                            endCursor
                                         }
                                     }
                                 }
                             }
                         }
-                        pageInfo {
-                            hasNextPage
-                            endCursor
-                        }
-                        totalCount
-                    }
+                    `;
+
+                    const moreOccData = await deepsourceGraphqlRequest(moreOccQuery, {
+                        issueId: node.id,
+                        occCursor: occCursor
+                    });
+
+                    const moreOccs = moreOccData.node.occurrences.edges.map(occ => ({
+                        path: occ.node.path,
+                        beginLine: occ.node.beginLine,
+                        endLine: occ.node.endLine,
+                        beginColumn: occ.node.beginColumn,
+                        endColumn: occ.node.endColumn,
+                        title: occ.node.title
+                    }));
+
+                    allOccurrences = allOccurrences.concat(moreOccs);
+                    hasMoreOccurrences = moreOccData.node.occurrences.pageInfo.hasNextPage;
+                    occCursor = moreOccData.node.occurrences.pageInfo.endCursor;
                 }
+
+                const issue = {
+                    id: node.id,
+                    shortcode: node.issue.shortcode,
+                    title: node.issue.title,
+                    category: node.issue.category,
+                    severity: node.issue.severity,
+                    description: node.issue.description,
+                    shortDescription: node.issue.shortDescription,
+                    tags: node.issue.tags,
+                    autofixAvailable: node.issue.autofixAvailable,
+                    occurrenceCount: node.occurrences.totalCount,
+                    occurrences: allOccurrences
+                };
+
+                allIssues.push(issue);
             }
-        `;
 
-        const issuesData = await deepsourceGraphqlRequest(issuesQuery, {
-            owner: DEEPSOURCE_REPO_OWNER,
-            name: DEEPSOURCE_REPO_NAME
-        });
+            hasNextPage = issuesData.repository.issues.pageInfo.hasNextPage;
+            cursor = issuesData.repository.issues.pageInfo.endCursor;
 
-        reports.issues = issuesData.repository.issues.edges.map(edge => ({
-            id: edge.node.id,
-            shortcode: edge.node.issue.shortcode,
-            title: edge.node.issue.title,
-            category: edge.node.issue.category,
-            severity: edge.node.issue.severity,
-            description: edge.node.issue.description,
-            shortDescription: edge.node.issue.shortDescription,
-            tags: edge.node.issue.tags,
-            autofixAvailable: edge.node.issue.autofixAvailable,
-            occurrenceCount: edge.node.occurrences.totalCount,
-            occurrences: edge.node.occurrences.edges.map(occ => ({
-                path: occ.node.path,
-                beginLine: occ.node.beginLine,
-                endLine: occ.node.endLine,
-                beginColumn: occ.node.beginColumn,
-                endColumn: occ.node.endColumn,
-                title: occ.node.title
-            }))
-        }));
+            console.log(`   Page ${pageCount}: fetched ${issuesData.repository.issues.edges.length} issue types (total: ${allIssues.length} issues, ${allIssues.reduce((sum, i) => sum + i.occurrences.length, 0)} occurrences)`);
+        }
+
+        reports.issues = allIssues;
 
         // Filter security-specific issues
         reports.securityIssues = reports.issues.filter(issue =>
@@ -383,29 +463,69 @@ async function fetchSonarQubeSecurityReports() {
         reports.project = await sonarqubeRestRequest(projectEndpoint);
         console.log(`✅ Project: ${reports.project?.component?.name || SONARQUBE_PROJECT_KEY}`);
 
-        // 2. Get vulnerabilities
-        const vulnEndpoint = `/api/issues/search?componentKeys=${SONARQUBE_PROJECT_KEY}&types=VULNERABILITY&ps=500`;
-        const vulnData = await sonarqubeRestRequest(vulnEndpoint);
-        reports.vulnerabilities = vulnData?.issues || [];
+        // 2. Get ALL vulnerabilities with pagination
+        console.log('   Fetching all vulnerabilities...');
+        let allVulnerabilities = [];
+        let vulnPage = 1;
+        let vulnTotal = 0;
+        do {
+            const vulnEndpoint = `/api/issues/search?componentKeys=${SONARQUBE_PROJECT_KEY}&types=VULNERABILITY&ps=500&p=${vulnPage}`;
+            const vulnData = await sonarqubeRestRequest(vulnEndpoint);
+            allVulnerabilities = allVulnerabilities.concat(vulnData?.issues || []);
+            vulnTotal = vulnData?.total || 0;
+            console.log(`   Page ${vulnPage}: ${vulnData?.issues?.length || 0} vulnerabilities (total: ${allVulnerabilities.length}/${vulnTotal})`);
+            vulnPage++;
+        } while (allVulnerabilities.length < vulnTotal && vulnTotal > 0);
+        reports.vulnerabilities = allVulnerabilities;
         console.log(`✅ Found ${reports.vulnerabilities.length} vulnerabilities`);
 
-        // 3. Get security hotspots
-        const hotspotsEndpoint = `/api/hotspots/search?projectKey=${SONARQUBE_PROJECT_KEY}&ps=500`;
-        const hotspotsData = await sonarqubeRestRequest(hotspotsEndpoint);
-        reports.securityHotspots = hotspotsData?.hotspots || [];
+        // 3. Get ALL security hotspots with pagination
+        console.log('   Fetching all security hotspots...');
+        let allHotspots = [];
+        let hotspotPage = 1;
+        let hotspotTotal = 0;
+        do {
+            const hotspotsEndpoint = `/api/hotspots/search?projectKey=${SONARQUBE_PROJECT_KEY}&ps=500&p=${hotspotPage}`;
+            const hotspotsData = await sonarqubeRestRequest(hotspotsEndpoint);
+            allHotspots = allHotspots.concat(hotspotsData?.hotspots || []);
+            hotspotTotal = hotspotsData?.paging?.total || 0;
+            console.log(`   Page ${hotspotPage}: ${hotspotsData?.hotspots?.length || 0} hotspots (total: ${allHotspots.length}/${hotspotTotal})`);
+            hotspotPage++;
+        } while (allHotspots.length < hotspotTotal && hotspotTotal > 0);
+        reports.securityHotspots = allHotspots;
         console.log(`✅ Found ${reports.securityHotspots.length} security hotspots`);
 
-        // 4. Get bugs
-        const bugsEndpoint = `/api/issues/search?componentKeys=${SONARQUBE_PROJECT_KEY}&types=BUG&ps=500`;
-        const bugsData = await sonarqubeRestRequest(bugsEndpoint);
-        reports.bugs = bugsData?.issues || [];
+        // 4. Get ALL bugs with pagination
+        console.log('   Fetching all bugs...');
+        let allBugs = [];
+        let bugPage = 1;
+        let bugTotal = 0;
+        do {
+            const bugsEndpoint = `/api/issues/search?componentKeys=${SONARQUBE_PROJECT_KEY}&types=BUG&ps=500&p=${bugPage}`;
+            const bugsData = await sonarqubeRestRequest(bugsEndpoint);
+            allBugs = allBugs.concat(bugsData?.issues || []);
+            bugTotal = bugsData?.total || 0;
+            console.log(`   Page ${bugPage}: ${bugsData?.issues?.length || 0} bugs (total: ${allBugs.length}/${bugTotal})`);
+            bugPage++;
+        } while (allBugs.length < bugTotal && bugTotal > 0);
+        reports.bugs = allBugs;
         console.log(`✅ Found ${reports.bugs.length} bugs`);
 
-        // 5. Get code smells (quality issues)
-        const smellsEndpoint = `/api/issues/search?componentKeys=${SONARQUBE_PROJECT_KEY}&types=CODE_SMELL&severities=CRITICAL,BLOCKER&ps=500`;
-        const smellsData = await sonarqubeRestRequest(smellsEndpoint);
-        reports.codeSmells = smellsData?.issues || [];
-        console.log(`✅ Found ${reports.codeSmells.length} critical code smells`);
+        // 5. Get ALL code smells with pagination (not just CRITICAL/BLOCKER - get ALL severities)
+        console.log('   Fetching all code smells...');
+        let allCodeSmells = [];
+        let smellPage = 1;
+        let smellTotal = 0;
+        do {
+            const smellsEndpoint = `/api/issues/search?componentKeys=${SONARQUBE_PROJECT_KEY}&types=CODE_SMELL&ps=500&p=${smellPage}`;
+            const smellsData = await sonarqubeRestRequest(smellsEndpoint);
+            allCodeSmells = allCodeSmells.concat(smellsData?.issues || []);
+            smellTotal = smellsData?.total || 0;
+            console.log(`   Page ${smellPage}: ${smellsData?.issues?.length || 0} code smells (total: ${allCodeSmells.length}/${smellTotal})`);
+            smellPage++;
+        } while (allCodeSmells.length < smellTotal && smellTotal > 0);
+        reports.codeSmells = allCodeSmells;
+        console.log(`✅ Found ${reports.codeSmells.length} code smells (all severities)`);
 
         // 6. Get security measures
         const measuresEndpoint = `/api/measures/component?component=${SONARQUBE_PROJECT_KEY}&metricKeys=vulnerabilities,security_hotspots,security_rating,bugs,reliability_rating,code_smells,sqale_rating`;
