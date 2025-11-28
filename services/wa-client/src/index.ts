@@ -18,7 +18,7 @@ import {
   assertControlPlaneToken,
   assertEssentialConfig,
   waSessionStatusGauge,
-  isForbiddenHostname,
+  isPrivateHostname,
 } from '@wbscanner/shared';
 import { RateLimiterRedis } from 'rate-limiter-flexible';
 import { createGlobalTokenBucket, GLOBAL_TOKEN_BUCKET_ID } from './limiters';
@@ -864,7 +864,7 @@ function normalizeUrlString(parsed: URL): string {
 async function isUrlAllowedForScanning(normalized: string): Promise<boolean> {
   try {
     const parsed = new URL(normalized);
-    if (await isForbiddenHostname(parsed.hostname)) {
+    if (await isPrivateHostname(parsed.hostname)) {
       return false;
     }
     if (parsed.port) {
