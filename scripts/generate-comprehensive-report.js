@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 const fs = require('fs');
 const path = require('path');
 
@@ -30,7 +31,8 @@ function formatDeepSourceIssues(report) {
                 line: occ.beginLine,
                 message: occ.title
             })),
-            autofix: issue.autofixAvailable
+            autofix: issue.autofixAvailable,
+            type: issue.category // Map category to type (e.g. BUG_RISK, PERFORMANCE)
         };
     });
 }
@@ -85,35 +87,117 @@ function formatSonarQubeIssues(report) {
         });
     }
 
-    // but the summary file mentioned them.
-    // Let's assume the "latest.json" might have them if I read more, but for now I'll stick to what I saw.
-    // Wait, the summary said "SonarQube: 2 CRITICAL vulnerabilities, 62 security hotspots, 7 bugs, 42 critical code smells".
-    // I should try to include them if they exist in the JSON.
-    // I'll check for 'bugs' and 'codeSmells' keys just in case, or maybe they are all under 'issues' in a different format?
-    // The snippet showed "vulnerabilities": [...] and "securityHotspots": [...].
-    // Standard SonarQube JSON export often puts everything under "issues" or separates them.
-    // I'll stick to what I definitely saw (Vulnerabilities and Hotspots) as they are the most security-relevant.
-    // If I miss bugs, I can add them later if requested. The user asked for "security-reports".
+    // Bugs
+    if (report.bugs) {
+        report.bugs.forEach(bug => {
+            const filePath = bug.component.split(':').pop();
+            issues.push({
+                source: 'SonarQube',
+                severity: bug.severity,
+                title: bug.message,
+                ruleId: bug.rule,
+                description: bug.message,
+                recommendation: 'Fix bug',
+                locations: [{
+                    file: filePath,
+                    line: bug.line,
+                    message: bug.message
+                }],
+                type: 'Bug'
+            });
+        });
+    }
+
+    // Code Smells
+    if (report.codeSmells) {
+        report.codeSmells.forEach(smell => {
+            const filePath = smell.component.split(':').pop();
+            issues.push({
+                source: 'SonarQube',
+                severity: smell.severity,
+                title: smell.message,
+                ruleId: smell.rule,
+                description: smell.message,
+                recommendation: 'Refactor code smell',
+                locations: [{
+                    file: filePath,
+                    line: smell.line,
+                    message: smell.message
+                }],
+                type: 'Code Smell'
+            });
+        });
+    }
 
     return issues;
 }
 
 function generateMarkdown(allIssues) {
     const timestamp = new Date().toISOString();
+
+    // Calculate statistics
+    const totalRules = allIssues.length;
+    const totalOccurrences = allIssues.reduce((sum, issue) => sum + issue.locations.length, 0);
+
+    const bySource = {};
+    const byCategory = {};
+    const bySeverity = {};
+
+    allIssues.forEach(issue => {
+        // Source
+        if (!bySource[issue.source]) bySource[issue.source] = 0;
+        bySource[issue.source] += issue.locations.length;
+
+        // Category
+        const cat = issue.type || 'Other';
+        if (!byCategory[cat]) byCategory[cat] = 0;
+        byCategory[cat] += issue.locations.length;
+
+        // Severity
+        const sev = issue.severity ? issue.severity.toUpperCase() : 'UNKNOWN';
+        if (!bySeverity[sev]) bySeverity[sev] = 0;
+        bySeverity[sev] += issue.locations.length;
+    });
+
     let md = `# Comprehensive Security Tickets Document\n\n`;
     md += `**Generated:** ${timestamp}\n`;
-    md += `**Total Issues:** ${allIssues.length}\n\n`;
-    md += `This document aggregates all security findings from DeepSource and SonarQube into actionable tickets.\n\n`;
+    md += `**Total Findings:** ${totalOccurrences} (across ${totalRules} rules)\n\n`;
+    md += `This document aggregates all findings from DeepSource and SonarQube, organized by severity.\n\n`;
+
+    md += `## 📊 Executive Summary\n\n`;
+
+    md += `### By Source\n`;
+    md += `| Source | Findings |\n`;
+    md += `|--------|----------|\n`;
+    Object.keys(bySource).forEach(src => {
+        md += `| ${src} | ${bySource[src]} |\n`;
+    });
+    md += `\n`;
+
+    md += `### By Severity\n`;
+    md += `| Severity | Findings |\n`;
+    md += `|----------|----------|\n`;
+    Object.keys(bySeverity).sort().forEach(sev => {
+        md += `| ${sev} | ${bySeverity[sev]} |\n`;
+    });
+    md += `\n`;
+
+    md += `### By Category\n`;
+    md += `| Category | Findings |\n`;
+    md += `|----------|----------|\n`;
+    Object.keys(byCategory).sort().forEach(cat => {
+        md += `| ${cat} | ${byCategory[cat]} |\n`;
+    });
+    md += `\n`;
+
     md += `---\n\n`;
 
     // Group by Severity
-    const severityOrder = ['CRITICAL', 'HIGH', 'MAJOR', 'MEDIUM', 'MINOR', 'LOW', 'INFO'];
+    const severityOrder = ['BLOCKER', 'CRITICAL', 'HIGH', 'MAJOR', 'MEDIUM', 'MINOR', 'LOW', 'INFO'];
 
     // Helper to normalize severity
     const normalizeSeverity = (s) => {
-        s = s.toUpperCase();
-        if (s === 'BLOCKER') return 'CRITICAL';
-        return s;
+        return s.toUpperCase();
     };
 
     const grouped = allIssues.reduce((acc, issue) => {
@@ -122,6 +206,8 @@ function generateMarkdown(allIssues) {
         acc[sev].push(issue);
         return acc;
     }, {});
+
+    const MAX_LOCATIONS_BEFORE_GROUPING = 15;
 
     severityOrder.forEach(sev => {
         if (grouped[sev] && grouped[sev].length > 0) {
@@ -149,10 +235,32 @@ function generateMarkdown(allIssues) {
                     md += `**Autofix Available:** Yes\n\n`;
                 }
 
-                md += `**Locations (${issue.locations.length}):**\n`;
-                issue.locations.forEach(loc => {
-                    md += `- [ ] \`${loc.file}:${loc.line}\` - ${loc.message}\n`;
-                });
+                const totalLocs = issue.locations.length;
+                md += `**Total Locations:** ${totalLocs}\n\n`;
+
+                if (totalLocs > MAX_LOCATIONS_BEFORE_GROUPING) {
+                    // Group by directory
+                    const byDir = issue.locations.reduce((acc, loc) => {
+                        const dir = path.dirname(loc.file);
+                        if (!acc[dir]) acc[dir] = [];
+                        acc[dir].push(loc);
+                        return acc;
+                    }, {});
+
+                    md += `**Breakdown by Directory:**\n\n`;
+                    Object.keys(byDir).sort().forEach(dir => {
+                        md += `#### 📂 ${dir} (${byDir[dir].length})\n`;
+                        byDir[dir].forEach(loc => {
+                            md += `- [ ] \`${loc.file}:${loc.line}\` - ${loc.message}\n`;
+                        });
+                        md += `\n`;
+                    });
+                } else {
+                    md += `**Locations:**\n`;
+                    issue.locations.forEach(loc => {
+                        md += `- [ ] \`${loc.file}:${loc.line}\` - ${loc.message}\n`;
+                    });
+                }
                 md += `\n---\n\n`;
             });
         }
@@ -169,10 +277,6 @@ function main() {
     console.log('Processing issues...');
     const dsIssues = formatDeepSourceIssues(deepSourceReport);
     const sqIssues = formatSonarQubeIssues(sonarQubeReport);
-
-    // Consolidate SonarQube issues that might be duplicates (same rule, same file, same line)
-    // But here we are grouping by Rule ID, so it handles "same rule, different files".
-    // SonarQube "Hotspots" are individual items.
 
     const allIssues = [...dsIssues, ...sqIssues];
 

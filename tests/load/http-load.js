@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+
 /*
  * Lightweight HTTP load harness for WhatsApp Scanner services.
  *
@@ -62,7 +62,7 @@ async function worker() {
         headers,
         body: body ? String(body) : undefined,
       });
-      
+
       // Consume body to ensure request completes
       if (response.body && typeof response.body.text === 'function') {
         await response.body.text();
@@ -72,7 +72,7 @@ async function worker() {
 
       const latency = performance.now() - start;
       latencies.push(latency);
-      
+
       const code = response.statusCode;
       statusCodes[code] = (statusCodes[code] || 0) + 1;
 
@@ -106,7 +106,7 @@ async function main() {
     const elapsed = (Date.now() - (endTime - durationSeconds * 1000)) / 1000;
     const remaining = Math.max(0, durationSeconds - elapsed);
     console.log(`[Status] Elapsed: ${elapsed.toFixed(0)}s, Remaining: ${remaining.toFixed(0)}s, Requests: ${success + failures}`);
-    
+
     // Suggest docker stats if running locally
     if (elapsed < 10) {
       console.log('Tip: Run "docker stats" in another terminal to monitor resource usage.');
@@ -115,7 +115,7 @@ async function main() {
 
   const workers = Array.from({ length: concurrency }, () => worker());
   await Promise.all(workers);
-  
+
   clearInterval(statusInterval);
 
   const totalRequests = success + failures;

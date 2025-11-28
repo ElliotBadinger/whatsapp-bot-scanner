@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+/* global jest */
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 process.env.URLSCAN_CALLBACK_SECRET = process.env.URLSCAN_CALLBACK_SECRET || 'test-secret';
 process.env.CONTROL_PLANE_API_TOKEN = process.env.CONTROL_PLANE_API_TOKEN || 'test-token';

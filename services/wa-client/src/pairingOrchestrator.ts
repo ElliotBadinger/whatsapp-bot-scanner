@@ -81,9 +81,11 @@ export class PairingOrchestrator {
     this.scheduler = options.scheduler ?? ((fn, delay) => setTimeout(fn, delay));
     this.clearer = options.clearer ?? ((handle) => clearTimeout(handle));
     this.storage = options.storage;
+  }
 
+  async init(): Promise<void> {
     if (this.storage) {
-      void this.loadState();
+      await this.loadState();
     }
   }
 

@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import TurndownService from 'turndown';
@@ -31,6 +32,24 @@ TURNDOWN.addRule('preserveCodeLanguage', {
 });
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Sanitizes input for logging to prevent log injection attacks
+ * Removes or escapes potentially dangerous characters like newlines, carriage returns, etc.
+ * @param {string} input - The input string to sanitize
+ * @returns {string} - The sanitized string safe for logging
+ */
+function sanitizeForLogging(input) {
+  if (typeof input !== 'string') {
+    return String(input);
+  }
+  // First normalize CRLF to LF to prevent double spaces
+  let sanitized = input.replace(/\r\n/g, '\n');
+  // Then replace all control characters with a single space
+  sanitized = sanitized.replace(/[\n\r\t\x00-\x1F\x7F]/g, ' ');
+  // Finally, replace multiple spaces with a single space and trim
+  return sanitized.replace(/\s+/g, ' ').trim();
+}
 
 function slugFromUrl(url) {
   const trimmed = url.replace(BASE_URL, '').replace(/^[\/]+/, '');
@@ -67,7 +86,7 @@ async function collectSitemapUrls(rootUrl, seen = new Set()) {
   seen.add(rootUrl);
   const res = await fetch(rootUrl, { headers: { 'User-Agent': 'wwebjs-doc-exporter/1.0' } });
   if (!res.ok) {
-    console.error(`Failed to fetch sitemap ${rootUrl}: ${res.status}`);
+    console.error(`Failed to fetch sitemap ${sanitizeForLogging(rootUrl)}: ${res.status}`);
     return [];
   }
   const xml = await res.text();
@@ -88,7 +107,7 @@ async function crawlByLinks(startUrl) {
   console.warn('Falling back to link-based crawl');
   const normalizedStart = normalizeUrl(startUrl);
   if (!normalizedStart) {
-    throw new Error(`Unable to normalize start URL: ${startUrl}`);
+    throw new Error(`Unable to normalize start URL: ${sanitizeForLogging(startUrl)}`);
   }
   const queue = [normalizedStart];
   const enqueued = new Set(queue);
@@ -114,7 +133,7 @@ async function crawlByLinks(startUrl) {
       });
       await delay(150);
     } catch (error) {
-      console.error(`Error crawling ${current}:`, error.message);
+      console.error(`Error crawling ${sanitizeForLogging(current)}:`, sanitizeForLogging(error.message));
     }
   }
   return urls;
@@ -123,7 +142,7 @@ async function crawlByLinks(startUrl) {
 async function fetchPageContent(url) {
   const res = await fetch(url, { headers: { 'User-Agent': 'wwebjs-doc-exporter/1.0' } });
   if (!res.ok) {
-    throw new Error(`Failed to fetch ${url}: ${res.status}`);
+    throw new Error(`Failed to fetch ${sanitizeForLogging(url)}: ${res.status}`);
   }
   return res.text();
 }
@@ -149,7 +168,7 @@ function prepareHtmlForMarkdown(html, url) {
   const main = $('main');
   const content = main.length ? main.html() : $('body').html();
   if (!content) {
-    console.warn(`No content found for ${url}`);
+    console.warn(`No content found for ${sanitizeForLogging(url)}`);
     return '';
   }
   return content;
@@ -159,7 +178,7 @@ function toMarkdown(contentHtml, url) {
   const markdown = TURNDOWN.turndown(contentHtml);
   const frontmatter = [
     '---',
-    `source: ${url}`,
+    `source: ${sanitizeForLogging(url)}`,
     `captured_at: ${new Date().toISOString()}`,
     '---',
     '',
@@ -180,7 +199,7 @@ async function writeMarkdown(url, markdown) {
 
 async function main() {
   await fs.mkdir(OUTPUT_ROOT, { recursive: true });
-  console.log(`Collecting sitemap entries from ${SITEMAP_URL}`);
+  console.log(`Collecting sitemap entries from ${sanitizeForLogging(SITEMAP_URL)}`);
   let urls = Array.from(new Set(await collectSitemapUrls(SITEMAP_URL))).sort();
   if (urls.length === 0) {
     urls = await crawlByLinks(BASE_URL);
@@ -194,7 +213,7 @@ async function main() {
   const writtenFiles = [];
   for (const [index, url] of urls.entries()) {
     try {
-      console.log(`[${index + 1}/${urls.length}] Fetching ${url}`);
+      console.log(`[${index + 1}/${urls.length}] Fetching ${sanitizeForLogging(url)}`);
       const html = await fetchPageContent(url);
       const contentHtml = prepareHtmlForMarkdown(html, url);
       const markdown = toMarkdown(contentHtml, url);
@@ -202,7 +221,7 @@ async function main() {
       writtenFiles.push({ url, file: filePath });
       await delay(250);
     } catch (error) {
-      console.error(`Error processing ${url}:`, error.message);
+      console.error(`Error processing ${sanitizeForLogging(url)}:`, sanitizeForLogging(error.message));
     }
   }
 
@@ -212,6 +231,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(error);
+  console.error(sanitizeForLogging(error));
   process.exitCode = 1;
 });

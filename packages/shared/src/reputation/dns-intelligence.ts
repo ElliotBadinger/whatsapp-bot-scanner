@@ -46,53 +46,69 @@ export async function dnsIntelligence(
   };
 
   try {
-    // DNSBL checks
+    // Perform DNSBL checks
     if (dnsblEnabled) {
-      const dnsblResults = await Promise.allSettled(
-        DNSBL_PROVIDERS.map(provider => checkDNSBL(hostname, provider, dnsblTimeoutMs))
-      );
-
-      for (const dnsblResult of dnsblResults) {
-        if (dnsblResult.status === 'fulfilled' && dnsblResult.value.listed) {
-          result.dnsblResults.push(dnsblResult.value);
-          result.score += 1.0;
-          result.reasons.push(`Domain listed in DNSBL: ${dnsblResult.value.provider}`);
-        }
-      }
+      await performDNSBLChecks(hostname, dnsblTimeoutMs, result);
     }
 
-    // DNSSEC validation (simplified check)
+    // Perform DNSSEC validation
     if (dnssecEnabled) {
-      try {
-        const dnssecValid = await checkDNSSEC(hostname);
-        result.dnssecValid = dnssecValid;
-        if (!dnssecValid) {
-          result.score += 0.3;
-          result.reasons.push('DNSSEC validation failed');
-        }
-      } catch (err) {
-        logger.debug({ hostname, err }, 'DNSSEC check failed');
-      }
+      await performDNSSECCheck(hostname, result);
     }
 
-    // Fast-flux detection (simplified)
+    // Perform fast-flux detection
     if (fastFluxEnabled) {
-      try {
-        const fastFlux = await detectFastFlux(hostname);
-        result.fastFluxDetected = fastFlux;
-        if (fastFlux) {
-          result.score += 0.8;
-          result.reasons.push('Fast-flux DNS pattern detected');
-        }
-      } catch (err) {
-        logger.debug({ hostname, err }, 'Fast-flux detection failed');
-      }
+      await performFastFluxDetection(hostname, result);
     }
 
     return result;
   } catch (err) {
     logger.warn({ hostname, err }, 'DNS intelligence check failed');
     return result;
+  }
+}
+
+async function performDNSBLChecks(
+  hostname: string, 
+  dnsblTimeoutMs: number, 
+  result: DNSIntelligenceResult
+): Promise<void> {
+  const dnsblResults = await Promise.allSettled(
+    DNSBL_PROVIDERS.map(provider => checkDNSBL(hostname, provider, dnsblTimeoutMs))
+  );
+
+  for (const dnsblResult of dnsblResults) {
+    if (dnsblResult.status === 'fulfilled' && dnsblResult.value.listed) {
+      result.dnsblResults.push(dnsblResult.value);
+      result.score += 1.0;
+      result.reasons.push(`Domain listed in DNSBL: ${dnsblResult.value.provider}`);
+    }
+  }
+}
+
+async function performDNSSECCheck(hostname: string, result: DNSIntelligenceResult): Promise<void> {
+  try {
+    const dnssecValid = await checkDNSSEC(hostname);
+    result.dnssecValid = dnssecValid;
+    if (!dnssecValid) {
+      result.score += 0.3;
+      result.reasons.push('DNSSEC validation failed');
+    }
+  } catch (err) {
+    logger.debug({ hostname, err }, 'DNSSEC check failed');
+  }
+}
+
+async function performFastFluxDetection(hostname: string, result: DNSIntelligenceResult): Promise<void> {
+  try {
+    const fastFlux = await detectFastFlux(hostname);
+    result.fastFluxDetected = fastFlux;
+    if (fastFlux) {
+      result.score += 0.8;
+      result.reasons.push('Fast-flux DNS pattern detected');
+    }
+  } catch (err) {
+    logger.debug({ hostname, err }, 'Fast-flux detection failed');
   }
 }
 

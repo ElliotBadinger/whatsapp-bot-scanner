@@ -1,3 +1,4 @@
+/* global jQuery */
 (function($) {
     // TODO: make the node ID configurable
     var treeNode = $('#jsdoc-toc-nav');

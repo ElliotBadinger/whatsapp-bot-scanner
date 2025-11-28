@@ -31,7 +31,7 @@ dependency_file_paths = [
 
   [analyzers.meta]
   plugins = ["react"]
-  environment = ["nodejs", "browser"]
+  environment = ["nodejs", "browser", "jquery", "jest"]
   style_guide = "airbnb"
   dialect = "typescript"
   
