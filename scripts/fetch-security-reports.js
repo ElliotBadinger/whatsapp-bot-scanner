@@ -27,7 +27,8 @@ const { URL } = require('url');
 
 // Configuration
 const DEEPSOURCE_API_ENDPOINT = 'https://api.deepsource.io/graphql/';
-const DEEPSOURCE_API_TOKEN = process.env.DEEPSOURCE_API_TOKEN || 'dsp_40730dd472c7e52abd28e7de0fd2883e76d5';
+// Get your API token from: https://app.deepsource.com/settings/tokens
+const DEEPSOURCE_API_TOKEN = process.env.DEEPSOURCE_API_TOKEN;
 const DEEPSOURCE_REPO_OWNER = process.env.DEEPSOURCE_REPO_OWNER || 'ElliotBadinger';
 const DEEPSOURCE_REPO_NAME = process.env.DEEPSOURCE_REPO_NAME || 'whatsapp-bot-scanner';
 
