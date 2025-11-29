@@ -41,6 +41,8 @@ detect_package_manager() {
   if command -v apt-get >/dev/null 2>&1; then echo "apt";
   elif command -v dnf >/dev/null 2>&1; then echo "dnf";
   elif command -v pacman >/dev/null 2>&1; then echo "pacman";
+  elif command -v apk >/dev/null 2>&1; then echo "apk";
+  elif command -v zypper >/dev/null 2>&1; then echo "zypper";
   elif command -v brew >/dev/null 2>&1; then echo "brew";
   else echo "unknown"; fi
 }
@@ -61,11 +63,23 @@ install_system_packages() {
     pacman)
       sudo pacman -Sy --noconfirm curl git make base-devel unzip
       ;;
+    apk)
+      sudo apk add curl git make build-base unzip
+      ;;
+    zypper)
+      sudo zypper install -y curl git make -t pattern devel_basis unzip
+      ;;
     brew)
       brew install curl git make unzip
       ;;
     *)
-      warning "Unsupported package manager. Please ensure curl, git, make, and unzip are installed."
+      # Check for Windows/MinGW
+      if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
+        warning "Windows detected. We recommend running this in WSL2 (Ubuntu) for the best experience."
+        warning "If you must use Windows directly, please install Git, Node.js, and Docker Desktop manually."
+      else
+        warning "Unsupported package manager. Please ensure curl, git, make, and unzip are installed."
+      fi
       ;;
   esac
 }
@@ -104,7 +118,29 @@ install_docker() {
   sudo usermod -aG docker $USER
   
   success "Docker installed."
-  warning "You may need to log out and back in for group changes to take effect."
+  
+  # Attempt to start Docker daemon
+  if command -v systemctl >/dev/null 2>&1; then
+    echo "Starting Docker service..."
+    sudo systemctl enable docker
+    sudo systemctl start docker
+  elif command -v service >/dev/null 2>&1; then
+    sudo service docker start
+  fi
+}
+
+wait_for_docker() {
+  echo "Waiting for Docker daemon to be ready..."
+  local retries=30
+  while [ $retries -gt 0 ]; do
+    if sudo docker info >/dev/null 2>&1; then
+      success "Docker daemon is running."
+      return 0
+    fi
+    sleep 1
+    retries=$((retries - 1))
+  done
+  error "Docker daemon failed to start. Please check logs."
 }
 
 # -----------------------------------------------------------------------------
@@ -116,15 +152,20 @@ if ! command -v docker >/dev/null 2>&1; then
   install_docker
 fi
 
-# Check Docker daemon
+# Ensure Docker daemon is running
 if command -v docker >/dev/null 2>&1; then
-  if ! docker info >/dev/null 2>&1; then
-    echo "Starting Docker service..."
-    sudo systemctl start docker || warning "Failed to start Docker service automatically."
+  if ! sudo docker info >/dev/null 2>&1; then
+    echo "Docker daemon not running. Attempting to start..."
+    if command -v systemctl >/dev/null 2>&1; then
+      sudo systemctl start docker
+    elif command -v service >/dev/null 2>&1; then
+      sudo service docker start
+    fi
+    wait_for_docker
   fi
 fi
 
-if ! docker info >/dev/null 2>&1; then
+if ! sudo docker info >/dev/null 2>&1; then
   error "Docker daemon is not running. Please start Docker."
 fi
 
