@@ -10,18 +10,101 @@ if [ ! -f "$SETUP_WIZARD" ]; then
   exit 1
 fi
 
+
+# -----------------------------------------------------------------------------
+# Auto-Installation Helpers
+# -----------------------------------------------------------------------------
+
+detect_package_manager() {
+  if command -v apt-get >/dev/null 2>&1; then echo "apt";
+  elif command -v dnf >/dev/null 2>&1; then echo "dnf";
+  elif command -v pacman >/dev/null 2>&1; then echo "pacman";
+  elif command -v brew >/dev/null 2>&1; then echo "brew";
+  else echo "unknown"; fi
+}
+
+install_system_packages() {
+  local pm=$(detect_package_manager)
+  echo "📦 Detected package manager: $pm"
+  echo "Installing system prerequisites (curl, git, make, unzip)..."
+  
+  case "$pm" in
+    apt)
+      sudo apt-get update -qq
+      sudo apt-get install -y -qq curl git make build-essential unzip
+      ;;
+    dnf)
+      sudo dnf install -y curl git make unzip @development-tools
+      ;;
+    pacman)
+      sudo pacman -Sy --noconfirm curl git make base-devel unzip
+      ;;
+    brew)
+      brew install curl git make unzip
+      ;;
+    *)
+      echo "⚠️  Unsupported package manager. Please install curl, git, make, and unzip manually."
+      ;;
+  esac
+}
+
+install_node() {
+  echo "🟢 Node.js not found or too old. Installing via fnm (Fast Node Manager)..."
+  if ! command -v curl >/dev/null 2>&1; then install_system_packages; fi
+  
+  # Install fnm
+  curl -fsSL https://fnm.vercel.app/install | bash -s -- --skip-shell
+  
+  # Load fnm for this session
+  export PATH="$HOME/.local/share/fnm:$PATH"
+  if command -v fnm >/dev/null 2>&1; then
+    eval "$(fnm env --use-on-cd)"
+    echo "Installing Node.js v20 (LTS)..."
+    fnm install 20
+    fnm use 20
+    fnm default 20
+    echo "✅ Node.js installed: $(node -v)"
+  else
+    echo "❌ Failed to install fnm. Please install Node.js 18+ manually."
+    exit 1
+  fi
+}
+
+install_docker() {
+  echo "🐳 Docker not found. Installing via official script..."
+  if ! command -v curl >/dev/null 2>&1; then install_system_packages; fi
+  
+  curl -fsSL https://get.docker.com | sh
+  
+  # Add user to docker group
+  if ! getent group docker >/dev/null 2>&1; then
+    sudo groupadd docker
+  fi
+  sudo usermod -aG docker $USER
+  
+  echo "✅ Docker installed."
+  echo "⚠️  You may need to log out and back in for group changes to take effect."
+}
+
+# -----------------------------------------------------------------------------
+# Prerequisite Checks
+# -----------------------------------------------------------------------------
+
 NODE_BIN="${NODE_BIN:-node}"
 
+# Check for Node.js
 if ! command -v "$NODE_BIN" >/dev/null 2>&1; then
-  echo "Node.js is required to run the setup wizard. Install Node.js 18+ and try again." >&2
-  exit 1
+  install_node
+  NODE_BIN="node" # Update binary path after install
 fi
 
+# Verify Node version
 NODE_VERSION="$("$NODE_BIN" -v | sed 's/^v//')"
 NODE_MAJOR="${NODE_VERSION%%.*}"
 if [ "${NODE_MAJOR:-0}" -lt 18 ]; then
-  echo "Detected Node.js v$NODE_VERSION. Please upgrade to Node.js 18 or newer." >&2
-  exit 1
+  echo "⚠️  Detected Node.js v$NODE_VERSION (too old)."
+  install_node
+  NODE_BIN="node"
 fi
 
 # Check if dependencies are installed properly
@@ -69,7 +152,18 @@ if [ "${1:-}" == "--hobby-mode" ]; then
   echo "✅ Hobby Mode configuration complete!"
   echo ""
   echo "Starting services with Docker Compose..."
+  
+  # Check for Docker
+  if ! command -v docker >/dev/null 2>&1; then
+    install_docker
+  fi
+  
   if command -v docker >/dev/null 2>&1; then
+    if ! docker info >/dev/null 2>&1; then
+      echo "⚠️  Docker daemon is not running. Attempting to start..."
+      sudo systemctl start docker || echo "Failed to start Docker service."
+    fi
+    
     if docker info >/dev/null 2>&1; then
       make up-minimal || {
         echo "⚠️  Warning: Failed to start services automatically."
@@ -108,8 +202,8 @@ if [ "${1:-}" == "--hobby-mode" ]; then
       echo "Please start Docker, then run: make up-minimal"
     fi
   else
-    echo "⚠️  Docker not found in PATH."
-    echo "After installing Docker, run: make up-minimal"
+    echo "❌ Docker installation failed or not found."
+    echo "Please install Docker manually and run: make up-minimal"
   fi
 
   exit 0
