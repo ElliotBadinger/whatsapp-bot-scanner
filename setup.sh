@@ -235,7 +235,7 @@ find_devcontainer_json() {
 show_docker_socket_instructions() {
   echo ""
   echo "╔═══════════════════════════════════════════════════════════════════╗"
-  echo "║  Docker Socket Not Available - Action Required                   ║"
+  echo "║  Docker Socket Not Available - Auto-Configuring                  ║"
   echo "╚═══════════════════════════════════════════════════════════════════╝"
   echo ""
   echo "You're running in a devcontainer, but the Docker socket is not mounted."
@@ -243,33 +243,97 @@ show_docker_socket_instructions() {
   echo ""
   
   local devcontainer_file=$(find_devcontainer_json)
+  local modified=false
+  
   if [ -n "$devcontainer_file" ]; then
     echo "📝 Found devcontainer config: $devcontainer_file"
     echo ""
-    echo "Add this to your devcontainer.json (inside the main object):"
+    
+    # Check if the mount already exists
+    if grep -q "var/run/docker.sock" "$devcontainer_file" 2>/dev/null; then
+      echo "⚠️  Docker socket mount is already in config, but not available."
+      echo "   The container may need to be rebuilt."
+    else
+      echo "🔧 Attempting to add Docker socket mount automatically..."
+      
+      # Backup the file
+      cp "$devcontainer_file" "$devcontainer_file.backup"
+      
+      # Try to add the mount using jq if available, otherwise use sed
+      if command -v jq >/dev/null 2>&1; then
+        # Use jq to properly modify JSON
+        local mount_entry="source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+        jq --arg mount "$mount_entry" '
+          if .mounts then
+            if (.mounts | type) == "array" then
+              .mounts += [$mount]
+            else
+              .mounts = [$mount]
+            end
+          else
+            .mounts = [$mount]
+          end
+        ' "$devcontainer_file.backup" > "$devcontainer_file"
+        
+        if [ $? -eq 0 ]; then
+          echo "✅ Successfully added Docker socket mount to $devcontainer_file"
+          modified=true
+        else
+          echo "❌ Failed to modify devcontainer.json with jq"
+          mv "$devcontainer_file.backup" "$devcontainer_file"
+        fi
+      else
+        echo "⚠️  'jq' not found. Cannot automatically modify JSON."
+        echo "   Please install jq or manually add the mount configuration."
+      fi
+    fi
+    
     echo ""
-    echo '  "mounts": ['
-    echo '    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"'
-    echo '  ]'
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "📋 REQUIRED: Rebuild your devcontainer"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
-    echo "Or if you already have a \"mounts\" array, add this line to it:"
-    echo '  "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"'
+    
+    if [ "$modified" = true ]; then
+      echo "The configuration has been updated. Now you MUST rebuild:"
+    else
+      echo "To apply the Docker socket mount, you MUST rebuild:"
+    fi
+    
     echo ""
-    echo "After editing, rebuild your container:"
-    echo "  1. Press F1 in VS Code"
-    echo "  2. Select 'Dev Containers: Rebuild Container'"
+    echo "Option 1 - VS Code Command Palette:"
+    echo "  1. Press F1 (or Cmd+Shift+P / Ctrl+Shift+P)"
+    echo "  2. Type and select: 'Dev Containers: Rebuild Container'"
+    echo ""
+    echo "Option 2 - Command Line (from your LOCAL machine, not in container):"
+    echo "  docker restart \$(docker ps -q --filter 'label=vsch.local.folder=$ROOT_DIR')"
+    echo ""
+    
+    if [ "$modified" = false ]; then
+      echo "If auto-modification failed, manually add this to devcontainer.json:"
+      echo '  "mounts": ['
+      echo '    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"'
+      echo '  ]'
+      echo ""
+    fi
   else
-    echo "For VS Code devcontainers, add this to .devcontainer/devcontainer.json:"
+    echo "📝 No devcontainer.json found."
     echo ""
+    echo "For VS Code devcontainers, create .devcontainer/devcontainer.json with:"
+    echo ""
+    echo '{'
+    echo '  "name": "WhatsApp Bot Scanner",'
+    echo '  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",'
     echo '  "mounts": ['
     echo '    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"'
     echo '  ]'
+    echo '}'
     echo ""
-    echo "Then rebuild the container (F1 → 'Dev Containers: Rebuild Container')"
   fi
+  
   echo ""
   echo "For GitHub Codespaces, Docker should already be available."
-  echo "If not, contact GitHub Support."
+  echo "If you're in Codespaces and seeing this, please report it as a bug."
   echo ""
 }
 
