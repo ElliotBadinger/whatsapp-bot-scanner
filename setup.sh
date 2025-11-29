@@ -254,7 +254,7 @@ else
     DOCKER_AVAILABLE=true
   else
     # Try to start the daemon
-    local init_system=$(detect_init_system)
+    init_system=$(detect_init_system)
     if [ "$init_system" != "none" ] && ! detect_container_env; then
       echo "Docker daemon not running. Attempting to start..."
       case "$init_system" in

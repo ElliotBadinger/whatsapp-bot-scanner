@@ -234,7 +234,7 @@ else
   # Docker binary exists, check if daemon is running
   if ! docker info >/dev/null 2>&1 && ! sudo docker info >/dev/null 2>&1; then
     # Try to start the daemon
-    local init_system=$(detect_init_system)
+    init_system=$(detect_init_system)
     if [ "$init_system" != "none" ] && ! detect_container_env; then
       echo "Docker daemon not running. Attempting to start..."
       case "$init_system" in
