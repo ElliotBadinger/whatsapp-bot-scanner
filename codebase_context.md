@@ -9,7 +9,19 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--save", "60", "1", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
+    command:
+      [
+        "redis-server",
+        "--save",
+        "60",
+        "1",
+        "--appendonly",
+        "yes",
+        "--maxmemory",
+        "256mb",
+        "--maxmemory-policy",
+        "noeviction",
+      ]
     mem_limit: 512m
     ports:
       - "6379:6379"
@@ -86,7 +98,7 @@ services:
       - wa_session:/app/services/wa-client/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL","wget -qO- http://localhost:3005/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3005/healthz || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -117,7 +129,7 @@ services:
       - DATABASE_URL=postgres://wbscanner:${POSTGRES_PASSWORD}@postgres:5432/wbscanner
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL","wget -qO- http://localhost:3001/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/healthz || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -145,7 +157,11 @@ services:
       - DATABASE_URL=postgres://wbscanner:${POSTGRES_PASSWORD}@postgres:5432/wbscanner
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL","wget --header=\"Authorization: Bearer ${CONTROL_PLANE_API_TOKEN}\" -qO- http://127.0.0.1:8080/healthz || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          'wget --header="Authorization: Bearer ${CONTROL_PLANE_API_TOKEN}" -qO- http://127.0.0.1:8080/healthz || exit 1',
+        ]
       interval: 10s
       timeout: 3s
       retries: 10
@@ -194,7 +210,6 @@ volumes:
   wa_session:
   redisdata:
   uptime_kuma_data:
-
 ```
 
 # File: setup.sh
@@ -280,24 +295,24 @@ if [ "${1:-}" == "--hobby-mode" ]; then
       echo ""
       echo "📋 Next Steps:"
       echo ""
-      
+
       # Function to check and display service URL
       show_service_url() {
         local service=$1
         local container_port=$2
         local description=$3
-        
+
         local host_port=$(docker compose port "$service" "$container_port" 2>/dev/null | cut -d: -f2)
         if [ -n "$host_port" ]; then
           echo "     $description: http://localhost:${host_port}"
         fi
       }
-      
+
       echo "  Service URLs (if running):"
       show_service_url "uptime-kuma" "3001" "• Monitoring Dashboard"
       show_service_url "reverse-proxy" "8088" "• Control Plane API"
       show_service_url "grafana" "3000" "• Grafana Metrics"
-      
+
       echo ""
       echo "  Quick Commands:"
       echo "  1. Check service status: docker compose ps"
@@ -392,14 +407,14 @@ echo "Step 3/5: Configuring environment..."
 if [ ! -f ".env" ]; then
   echo "Creating .env from hobby template..."
   cp .env.hobby .env || error "Failed to copy .env.hobby"
-  
+
   # Prompt for required VirusTotal API key
   echo ""
   echo "📝 VirusTotal API Key Required (free tier available)"
   echo "   Get yours at: https://www.virustotal.com/gui/join-us"
   echo ""
   read -p "Enter your VirusTotal API key: " VT_KEY
-  
+
   if [ -n "$VT_KEY" ]; then
     # Update .env file
     if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -412,7 +427,7 @@ if [ ! -f ".env" ]; then
     warning "No API key provided. Services may fail to start."
     warning "You can add it later by editing .env and restarting services"
   fi
-  
+
   # Optional: Ask for Google Safe Browsing
   echo ""
   read -p "Do you have a Google Safe Browsing API key? (y/N) " -n 1 -r
@@ -428,7 +443,7 @@ if [ ! -f ".env" ]; then
       success "Google Safe Browsing API key configured"
     fi
   fi
-  
+
   # Phone number and polling configuration
   echo ""
   echo "📱 WhatsApp Remote Auth Configuration (Optional)"
@@ -442,7 +457,7 @@ if [ ! -f ".env" ]; then
     echo "Enter phone numbers (digits only, comma-separated):"
     echo "Example: 12025550123,12025550124"
     read -p "Phone numbers: " PHONE_NUMBERS
-    
+
     if [ -n "$PHONE_NUMBERS" ]; then
       if [[ "$OSTYPE" == "darwin"* ]]; then
         sed -i '' "s|WA_REMOTE_AUTH_PHONE_NUMBERS=|WA_REMOTE_AUTH_PHONE_NUMBERS=$PHONE_NUMBERS|g" .env
@@ -450,7 +465,7 @@ if [ ! -f ".env" ]; then
         sed -i "s|WA_REMOTE_AUTH_PHONE_NUMBERS=|WA_REMOTE_AUTH_PHONE_NUMBERS=$PHONE_NUMBERS|g" .env
       fi
       success "Phone numbers configured"
-      
+
       echo ""
       warning "NOTE: Automatic polling for pairing codes is NOT RECOMMENDED for hobby use"
       warning "It can lead to rate limiting from WhatsApp."
@@ -459,7 +474,7 @@ if [ ! -f ".env" ]; then
       if [[ $REPLY =~ ^[Yy]$ ]]; then
         read -p "Polling interval (minutes, minimum 5, default 10): " INTERVAL
         INTERVAL=${INTERVAL:-10}
-        
+
         if [[ "$OSTYPE" == "darwin"* ]]; then
           sed -i '' "s|WA_REMOTE_AUTH_POLLING_ENABLED=false|WA_REMOTE_AUTH_POLLING_ENABLED=true|g" .env
           sed -i '' "s|WA_REMOTE_AUTH_POLLING_INTERVAL_MINUTES=10|WA_REMOTE_AUTH_POLLING_INTERVAL_MINUTES=$INTERVAL|g" .env
@@ -473,7 +488,7 @@ if [ ! -f ".env" ]; then
       fi
     fi
   fi
-  
+
   success "Environment configured (.env created)"
 else
   success "Environment already configured (.env exists)"
@@ -531,7 +546,7 @@ show_service_url() {
   local service=$1
   local container_port=$2
   local description=$3
-  
+
   local host_port=$(docker compose port "$service" "$container_port" 2>/dev/null | cut -d: -f2)
   if [ -n "$host_port" ]; then
     echo "   $description: http://localhost:${host_port}"
@@ -597,10 +612,7 @@ echo ""
     "clean": "npm run clean --workspaces && rm -rf node_modules",
     "precommit": "./scripts/validate-types.sh"
   },
-  "workspaces": [
-    "packages/*",
-    "services/*"
-  ],
+  "workspaces": ["packages/*", "services/*"],
   "devDependencies": {
     "boxen": "^7.1.1",
     "chalk": "^5.3.0",
@@ -640,8 +652,6 @@ echo ""
     }
   }
 }
-
-
 ```
 
 # File: README.md
@@ -673,7 +683,7 @@ These features reduce external API calls by 30-40% while improving scan latency.
 
 > [!IMPORTANT]
 > **Required API Keys and Secrets**: Before running the application, you must configure API keys and generate secure secrets. The `.env` file does not contain any credentials by default.
-> 
+>
 > See [`docs/SECURITY_SETUP.md`](docs/SECURITY_SETUP.md) for detailed instructions on:
 > - Obtaining API keys from VirusTotal, Google Safe Browsing, WhoisXML, and urlscan.io
 > - Generating secure random secrets for authentication and encryption
@@ -1077,11 +1087,11 @@ PROMETHEUS_SCRAPE_INTERVAL=5s
 # File: services/control-plane/src/database.ts
 
 ```typescript
-import * as fs from 'fs';
-import * as path from 'path';
-import Database from 'better-sqlite3';
-import { Pool } from 'pg';
-import type { Logger } from 'pino';
+import * as fs from "fs";
+import * as path from "path";
+import Database from "better-sqlite3";
+import { Pool } from "pg";
+import type { Logger } from "pino";
 
 interface DatabaseConfig {
   dbPath?: string;
@@ -1100,7 +1110,8 @@ export class SQLiteConnection implements IDatabaseConnection {
   private logger: Logger | undefined;
 
   constructor(config: DatabaseConfig = {}) {
-    const dbPath = config.dbPath || process.env.SQLITE_DB_PATH || './storage/wbscanner.db';
+    const dbPath =
+      config.dbPath || process.env.SQLITE_DB_PATH || "./storage/wbscanner.db";
 
     // Ensure directory exists
     const dbDir = path.dirname(dbPath);
@@ -1112,13 +1123,13 @@ export class SQLiteConnection implements IDatabaseConnection {
     this.logger = config.logger;
 
     // Enable WAL mode for better concurrency
-    this.db.pragma('journal_mode = WAL');
-    this.db.pragma('synchronous = NORMAL');
-    this.db.pragma('cache_size = 64000');
-    this.db.pragma('foreign_keys = ON');
+    this.db.pragma("journal_mode = WAL");
+    this.db.pragma("synchronous = NORMAL");
+    this.db.pragma("cache_size = 64000");
+    this.db.pragma("foreign_keys = ON");
 
     if (this.logger) {
-      this.logger.info({ dbPath }, 'SQLite connection established');
+      this.logger.info({ dbPath }, "SQLite connection established");
     }
   }
 
@@ -1126,14 +1137,17 @@ export class SQLiteConnection implements IDatabaseConnection {
     return this.db;
   }
 
-  async query(sql: string, params: unknown[] = []): Promise<{ rows: unknown[] }> {
+  async query(
+    sql: string,
+    params: unknown[] = [],
+  ): Promise<{ rows: unknown[] }> {
     try {
       // Convert Postgres-style placeholders ($1, $2) to SQLite (?)
-      const sqliteSql = sql.replace(/\$\d+/g, '?');
+      const sqliteSql = sql.replace(/\$\d+/g, "?");
       const stmt = this.db.prepare(sqliteSql);
 
       // Handle SELECT queries
-      if (sql.trim().toLowerCase().startsWith('select')) {
+      if (sql.trim().toLowerCase().startsWith("select")) {
         const rows = stmt.all(...(params as unknown[]));
         return { rows };
       }
@@ -1141,11 +1155,19 @@ export class SQLiteConnection implements IDatabaseConnection {
       // Handle INSERT, UPDATE, DELETE queries
       const result = stmt.run(...(params as unknown[]));
       return {
-        rows: result.changes > 0 ? [{ affectedRows: result.changes, lastInsertRowid: result.lastInsertRowid }] : []
+        rows:
+          result.changes > 0
+            ? [
+                {
+                  affectedRows: result.changes,
+                  lastInsertRowid: result.lastInsertRowid,
+                },
+              ]
+            : [],
       };
     } catch (error) {
       if (this.logger) {
-        this.logger.error({ error, sql, params }, 'Database query failed');
+        this.logger.error({ error, sql, params }, "Database query failed");
       }
       throw error;
     }
@@ -1159,7 +1181,7 @@ export class SQLiteConnection implements IDatabaseConnection {
   close(): void {
     this.db.close();
     if (this.logger) {
-      this.logger.info('SQLite connection closed');
+      this.logger.info("SQLite connection closed");
     }
   }
 }
@@ -1174,14 +1196,14 @@ export class PostgresConnection implements IDatabaseConnection {
       connectionString: process.env.DATABASE_URL,
     });
 
-    this.pool.on('error', (err: Error) => {
+    this.pool.on("error", (err: Error) => {
       if (this.logger) {
-        this.logger.error({ err }, 'Unexpected error on idle client');
+        this.logger.error({ err }, "Unexpected error on idle client");
       }
     });
 
     if (this.logger) {
-      this.logger.info('Postgres connection pool established');
+      this.logger.info("Postgres connection pool established");
     }
   }
 
@@ -1189,17 +1211,20 @@ export class PostgresConnection implements IDatabaseConnection {
     return this.pool;
   }
 
-  async query(sql: string, params: unknown[] = []): Promise<{ rows: unknown[] }> {
+  async query(
+    sql: string,
+    params: unknown[] = [],
+  ): Promise<{ rows: unknown[] }> {
     try {
       // Convert SQLite-style placeholders (?) to Postgres ($1, $2)
       let paramIndex = 1;
       const pgSql = sql.replace(/\?/g, () => `$${paramIndex++}`);
-      
+
       const result = await this.pool.query(pgSql, params);
       return { rows: result.rows };
     } catch (error) {
       if (this.logger) {
-        this.logger.error({ error, sql, params }, 'Database query failed');
+        this.logger.error({ error, sql, params }, "Database query failed");
       }
       throw error;
     }
@@ -1212,7 +1237,7 @@ export class PostgresConnection implements IDatabaseConnection {
   close(): void {
     this.pool.end();
     if (this.logger) {
-      this.logger.info('Postgres connection pool closed');
+      this.logger.info("Postgres connection pool closed");
     }
   }
 }
@@ -1222,7 +1247,10 @@ let sharedConnection: IDatabaseConnection | null = null;
 
 export function getSharedConnection(logger?: Logger): IDatabaseConnection {
   if (!sharedConnection) {
-    if (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('postgres')) {
+    if (
+      process.env.DATABASE_URL &&
+      process.env.DATABASE_URL.startsWith("postgres")
+    ) {
       sharedConnection = new PostgresConnection({ logger });
     } else {
       sharedConnection = new SQLiteConnection({ logger });
@@ -1231,34 +1259,49 @@ export function getSharedConnection(logger?: Logger): IDatabaseConnection {
   return sharedConnection;
 }
 
-export function createConnection(config: DatabaseConfig = {}): IDatabaseConnection {
-  if (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('postgres')) {
+export function createConnection(
+  config: DatabaseConfig = {},
+): IDatabaseConnection {
+  if (
+    process.env.DATABASE_URL &&
+    process.env.DATABASE_URL.startsWith("postgres")
+  ) {
     return new PostgresConnection(config);
   }
   return new SQLiteConnection(config);
 }
-
 ```
 
 # File: services/control-plane/src/index.ts
 
 ```typescript
-import Fastify, { FastifyRequest, FastifyReply } from 'fastify';
-import fs from 'node:fs/promises';
-import { createReadStream } from 'node:fs';
-import path from 'node:path';
-import Redis from 'ioredis';
-import { Queue } from 'bullmq';
-import { register, metrics, config, logger, assertControlPlaneToken, normalizeUrl, urlHash, assertEssentialConfig } from '@wbscanner/shared';
-import { getSharedConnection } from './database.js';
+import Fastify, { FastifyRequest, FastifyReply } from "fastify";
+import fs from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import path from "node:path";
+import Redis from "ioredis";
+import { Queue } from "bullmq";
+import {
+  register,
+  metrics,
+  config,
+  logger,
+  assertControlPlaneToken,
+  normalizeUrl,
+  urlHash,
+  assertEssentialConfig,
+} from "@wbscanner/shared";
+import { getSharedConnection } from "./database.js";
 
-const artifactRoot = path.resolve(process.env.URLSCAN_ARTIFACT_DIR || 'storage/urlscan-artifacts');
+const artifactRoot = path.resolve(
+  process.env.URLSCAN_ARTIFACT_DIR || "storage/urlscan-artifacts",
+);
 
 let sharedRedis: Redis | null = null;
 let sharedQueue: Queue | null = null;
 
 function createRedisConnection(): Redis {
-  if (process.env.NODE_ENV === 'test') {
+  if (process.env.NODE_ENV === "test") {
     class InMemoryRedis {
       private store = new Map<string, string>();
       private ttlStore = new Map<string, number>();
@@ -1270,10 +1313,16 @@ function createRedisConnection(): Redis {
         return this.store.get(key) ?? null;
       }
 
-      async set(key: string, value: string, mode?: string, ttlArg?: number, nxArg?: string): Promise<'OK' | null> {
-        if (mode === 'EX') {
-          const ttlSeconds = typeof ttlArg === 'number' ? ttlArg : 0;
-          if (nxArg === 'NX' && this.store.has(key)) {
+      async set(
+        key: string,
+        value: string,
+        mode?: string,
+        ttlArg?: number,
+        nxArg?: string,
+      ): Promise<"OK" | null> {
+        if (mode === "EX") {
+          const ttlSeconds = typeof ttlArg === "number" ? ttlArg : 0;
+          if (nxArg === "NX" && this.store.has(key)) {
             return null;
           }
           this.store.set(key, value);
@@ -1282,11 +1331,11 @@ function createRedisConnection(): Redis {
           } else {
             this.ttlStore.delete(key);
           }
-          return 'OK';
+          return "OK";
         }
         this.store.set(key, value);
         this.ttlStore.delete(key);
-        return 'OK';
+        return "OK";
       }
 
       async del(key: string): Promise<number> {
@@ -1365,7 +1414,11 @@ function createRedisConnection(): Redis {
         this.listStore.set(key, trimmed);
       }
 
-      async lrange(key: string, start: number, stop: number): Promise<string[]> {
+      async lrange(
+        key: string,
+        start: number,
+        stop: number,
+      ): Promise<string[]> {
         const list = this.listStore.get(key) ?? [];
         const normalizedStop = stop < 0 ? list.length + stop : stop;
         return list.slice(start, normalizedStop + 1);
@@ -1395,17 +1448,23 @@ function getSharedRedis(): Redis {
 
 function getSharedQueue(): Queue {
   if (!sharedQueue) {
-    sharedQueue = new Queue(config.queues.scanRequest, { connection: getSharedRedis() });
+    sharedQueue = new Queue(config.queues.scanRequest, {
+      connection: getSharedRedis(),
+    });
   }
   return sharedQueue;
 }
 
 function createAuthHook(expectedToken: string) {
-  return function authHook(req: FastifyRequest, reply: FastifyReply, done: (err?: Error) => void) {
-    const hdr = req.headers['authorization'] || '';
-    const token = hdr.startsWith('Bearer ') ? hdr.slice(7) : hdr;
+  return function authHook(
+    req: FastifyRequest,
+    reply: FastifyReply,
+    done: (err?: Error) => void,
+  ) {
+    const hdr = req.headers["authorization"] || "";
+    const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : hdr;
     if (token !== expectedToken) {
-      reply.code(401).send({ error: 'unauthorized' });
+      reply.code(401).send({ error: "unauthorized" });
       return;
     }
     done();
@@ -1413,13 +1472,15 @@ function createAuthHook(expectedToken: string) {
 }
 
 export interface BuildOptions {
-  dbClient?: { query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }> };
+  dbClient?: {
+    query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
+  };
   redisClient?: Redis;
   queue?: Queue;
 }
 
 export async function buildServer(options: BuildOptions = {}) {
-  assertEssentialConfig('control-plane');
+  assertEssentialConfig("control-plane");
   const requiredToken = assertControlPlaneToken();
   const dbClient = options.dbClient ?? getSharedConnection();
   const ownsClient = !options.dbClient;
@@ -1428,15 +1489,27 @@ export async function buildServer(options: BuildOptions = {}) {
 
   const app = Fastify();
 
-  app.get('/healthz', async () => ({ ok: true }));
-  app.get('/metrics', async (_req, reply) => { reply.header('Content-Type', register.contentType); return register.metrics(); });
+  app.get("/healthz", async () => ({ ok: true }));
+  app.get("/metrics", async (_req, reply) => {
+    reply.header("Content-Type", register.contentType);
+    return register.metrics();
+  });
 
-  app.addHook('preHandler', createAuthHook(requiredToken));
+  app.addHook("preHandler", createAuthHook(requiredToken));
 
-  app.get('/status', async () => {
-    const { rows } = await dbClient.query('SELECT COUNT(*) AS scans, SUM(CASE WHEN verdict = ? THEN 1 ELSE 0 END) AS malicious FROM scans', ['malicious']);
-    const stats = rows[0] as { scans: number | string; malicious: number | string };
-    return { scans: Number(stats.scans), malicious: Number(stats.malicious || 0) };
+  app.get("/status", async () => {
+    const { rows } = await dbClient.query(
+      "SELECT COUNT(*) AS scans, SUM(CASE WHEN verdict = ? THEN 1 ELSE 0 END) AS malicious FROM scans",
+      ["malicious"],
+    );
+    const stats = rows[0] as {
+      scans: number | string;
+      malicious: number | string;
+    };
+    return {
+      scans: Number(stats.scans),
+      malicious: Number(stats.malicious || 0),
+    };
   });
 
   interface OverrideBody {
@@ -1449,40 +1522,59 @@ export async function buildServer(options: BuildOptions = {}) {
     expires_at?: string;
   }
 
-  app.post('/overrides', async (req, reply) => {
+  app.post("/overrides", async (req, reply) => {
     const body = req.body as OverrideBody;
-    await dbClient.query(`INSERT INTO overrides (url_hash, pattern, status, scope, scope_id, created_by, reason, expires_at)
-      VALUES (?,?,?,?,?,?,?,?)`, [body.url_hash || null, body.pattern || null, body.status, body.scope || 'global', body.scope_id || null, 'admin', body.reason || null, body.expires_at || null]);
+    await dbClient.query(
+      `INSERT INTO overrides (url_hash, pattern, status, scope, scope_id, created_by, reason, expires_at)
+      VALUES (?,?,?,?,?,?,?,?)`,
+      [
+        body.url_hash || null,
+        body.pattern || null,
+        body.status,
+        body.scope || "global",
+        body.scope_id || null,
+        "admin",
+        body.reason || null,
+        body.expires_at || null,
+      ],
+    );
     reply.code(201).send({ ok: true });
   });
 
-  app.get('/overrides', async () => {
-    const { rows } = await dbClient.query('SELECT * FROM overrides ORDER BY created_at DESC LIMIT 100');
+  app.get("/overrides", async () => {
+    const { rows } = await dbClient.query(
+      "SELECT * FROM overrides ORDER BY created_at DESC LIMIT 100",
+    );
     return rows;
   });
 
-  app.post('/groups/:chatId/mute', async (req, reply) => {
+  app.post("/groups/:chatId/mute", async (req, reply) => {
     const { chatId } = req.params as { chatId: string };
     const until = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-    await dbClient.query('UPDATE groups SET muted_until=? WHERE chat_id=?', [until, chatId]);
+    await dbClient.query("UPDATE groups SET muted_until=? WHERE chat_id=?", [
+      until,
+      chatId,
+    ]);
     reply.send({ ok: true, muted_until: until });
   });
 
-  app.post('/groups/:chatId/unmute', async (req, reply) => {
+  app.post("/groups/:chatId/unmute", async (req, reply) => {
     const { chatId } = req.params as { chatId: string };
-    await dbClient.query('UPDATE groups SET muted_until=NULL WHERE chat_id=?', [chatId]);
+    await dbClient.query("UPDATE groups SET muted_until=NULL WHERE chat_id=?", [
+      chatId,
+    ]);
     reply.send({ ok: true });
   });
 
-  app.post('/rescan', async (req, reply) => {
+  app.post("/rescan", async (req, reply) => {
     const { url } = req.body as { url?: string };
     if (!url) {
-      reply.code(400).send({ error: 'url_required' });
+      reply.code(400).send({ error: "url_required" });
       return;
     }
     const normalized = normalizeUrl(url);
     if (!normalized) {
-      reply.code(400).send({ error: 'invalid_url' });
+      reply.code(400).send({ error: "invalid_url" });
       return;
     }
     const hash = urlHash(normalized);
@@ -1499,10 +1591,12 @@ export async function buildServer(options: BuildOptions = {}) {
     await Promise.all(keys.map((key) => redisClient.del(key)));
 
     const { rows: messageRows } = await dbClient.query(
-      'SELECT chat_id, message_id FROM messages WHERE url_hash=? ORDER BY posted_at DESC LIMIT 1',
-      [hash]
+      "SELECT chat_id, message_id FROM messages WHERE url_hash=? ORDER BY posted_at DESC LIMIT 1",
+      [hash],
     );
-    const latestMessage = messageRows[0] as { chat_id?: string; message_id?: string } | undefined;
+    const latestMessage = messageRows[0] as
+      | { chat_id?: string; message_id?: string }
+      | undefined;
 
     const rescanJob = {
       url: normalized,
@@ -1514,32 +1608,36 @@ export async function buildServer(options: BuildOptions = {}) {
         : {}),
     };
 
-    const job = await queue.add('rescan', rescanJob, {
+    const job = await queue.add("rescan", rescanJob, {
       removeOnComplete: true,
       removeOnFail: 100,
       priority: 1,
     });
-    metrics.rescanRequests.labels('control-plane').inc();
+    metrics.rescanRequests.labels("control-plane").inc();
     reply.send({ ok: true, urlHash: hash, jobId: job.id });
   });
 
   function isWithinArtifactRoot(resolvedPath: string): boolean {
     const relative = path.relative(artifactRoot, resolvedPath);
     if (!relative) return true;
-    return !relative.startsWith('..') && !path.isAbsolute(relative);
+    return !relative.startsWith("..") && !path.isAbsolute(relative);
   }
 
-  app.get('/scans/:urlHash/urlscan-artifacts/:type', async (req, reply) => {
-    const { urlHash: hash, type } = req.params as { urlHash: string; type: string };
-    if (type !== 'screenshot' && type !== 'dom') {
-      reply.code(400).send({ error: 'invalid_artifact_type' });
+  app.get("/scans/:urlHash/urlscan-artifacts/:type", async (req, reply) => {
+    const { urlHash: hash, type } = req.params as {
+      urlHash: string;
+      type: string;
+    };
+    if (type !== "screenshot" && type !== "dom") {
+      reply.code(400).send({ error: "invalid_artifact_type" });
       return;
     }
 
-    const column = type === 'screenshot' ? 'urlscan_screenshot_path' : 'urlscan_dom_path';
+    const column =
+      type === "screenshot" ? "urlscan_screenshot_path" : "urlscan_dom_path";
     const { rows } = await dbClient.query(
       `SELECT ${column} FROM scans WHERE url_hash=? LIMIT 1`,
-      [hash]
+      [hash],
     );
     const record = rows[0] as Record<string, string> | undefined;
     const filePath = record?.[column];
@@ -1550,49 +1648,58 @@ export async function buildServer(options: BuildOptions = {}) {
 
     const resolvedPath = path.resolve(filePath);
     if (!isWithinArtifactRoot(resolvedPath)) {
-      reply.code(403).send({ error: 'access_denied' });
+      reply.code(403).send({ error: "access_denied" });
       return;
     }
 
-    if (type === 'screenshot') {
+    if (type === "screenshot") {
       try {
         await fs.access(resolvedPath);
       } catch (error: unknown) {
         const err = error as { code?: string };
-        if (err?.code === 'ENOENT') {
-          reply.code(404).send({ error: 'screenshot_not_found' });
+        if (err?.code === "ENOENT") {
+          reply.code(404).send({ error: "screenshot_not_found" });
         } else {
-          reply.code(500).send({ error: 'artifact_unavailable' });
+          reply.code(500).send({ error: "artifact_unavailable" });
         }
         return;
       }
       const stream = createReadStream(resolvedPath);
-      reply.header('Content-Type', 'image/png');
+      reply.header("Content-Type", "image/png");
       reply.send(stream);
       return;
     }
 
     try {
-      const html = await fs.readFile(resolvedPath, 'utf8');
-      reply.header('Content-Type', 'text/html; charset=utf-8');
+      const html = await fs.readFile(resolvedPath, "utf8");
+      reply.header("Content-Type", "text/html; charset=utf-8");
       reply.send(html);
     } catch (error: unknown) {
       const err = error as { code?: string };
-      if (err?.code === 'ENOENT') {
-        reply.code(404).send({ error: 'dom_not_found' });
+      if (err?.code === "ENOENT") {
+        reply.code(404).send({ error: "dom_not_found" });
       } else {
-        reply.code(500).send({ error: 'artifact_unavailable' });
+        reply.code(500).send({ error: "artifact_unavailable" });
       }
     }
   });
 
-  if (process.env.NODE_ENV !== 'test') {
-    setInterval(async () => {
-      try {
-        await dbClient.query("DELETE FROM scans WHERE last_seen_at < datetime('now', '-30 days')");
-        await dbClient.query("DELETE FROM messages WHERE posted_at < datetime('now', '-30 days')");
-      } catch (e) { logger.error(e, 'purge job failed'); }
-    }, 24 * 60 * 60 * 1000);
+  if (process.env.NODE_ENV !== "test") {
+    setInterval(
+      async () => {
+        try {
+          await dbClient.query(
+            "DELETE FROM scans WHERE last_seen_at < datetime('now', '-30 days')",
+          );
+          await dbClient.query(
+            "DELETE FROM messages WHERE posted_at < datetime('now', '-30 days')",
+          );
+        } catch (e) {
+          logger.error(e, "purge job failed");
+        }
+      },
+      24 * 60 * 60 * 1000,
+    );
   }
 
   return { app, dbClient, ownsClient };
@@ -1601,20 +1708,22 @@ export async function buildServer(options: BuildOptions = {}) {
 async function main() {
   assertControlPlaneToken();
   const { app } = await buildServer();
-  await app.listen({ host: '0.0.0.0', port: config.controlPlane.port });
+  await app.listen({ host: "0.0.0.0", port: config.controlPlane.port });
 }
 
-if (process.env.NODE_ENV !== 'test') {
-  main().catch(err => { logger.error(err, 'Fatal in control-plane'); process.exit(1); });
+if (process.env.NODE_ENV !== "test") {
+  main().catch((err) => {
+    logger.error(err, "Fatal in control-plane");
+    process.exit(1);
+  });
 }
-
 ```
 
 # File: services/scan-orchestrator/src/blocklists.ts
 
 ```typescript
-import { logger, metrics } from '@wbscanner/shared';
-import type { GsbThreatMatch, PhishtankLookupResult } from '@wbscanner/shared';
+import { logger, metrics } from "@wbscanner/shared";
+import type { GsbThreatMatch, PhishtankLookupResult } from "@wbscanner/shared";
 
 export interface GsbFetchResult {
   matches: GsbThreatMatch[];
@@ -1714,11 +1823,17 @@ export async function checkBlocklistsWithRedundancy({
       gsbFromCache: gsbResult.fromCache,
     };
     if (!gsbHit) {
-      logger.info(logContext, 'GSB clean -> running Phishtank redundancy check');
+      logger.info(
+        logContext,
+        "GSB clean -> running Phishtank redundancy check",
+      );
     } else {
       logger.info(
-        { ...logContext, gsbError: gsbResult.error ? gsbResult.error.message : undefined },
-        'GSB fallback -> running Phishtank redundancy check'
+        {
+          ...logContext,
+          gsbError: gsbResult.error ? gsbResult.error.message : undefined,
+        },
+        "GSB fallback -> running Phishtank redundancy check",
       );
     }
 
@@ -1728,33 +1843,40 @@ export async function checkBlocklistsWithRedundancy({
     phishtankError = phishResponse.error ?? null;
 
     if (phishResponse.result?.inDatabase) {
-      metrics.phishtankSecondaryHits.labels(phishResponse.result.verified ? 'true' : 'false').inc();
+      metrics.phishtankSecondaryHits
+        .labels(phishResponse.result.verified ? "true" : "false")
+        .inc();
     }
   } else if (gsbHit) {
     logger.info(
       { urlHash: hash, url: finalUrl, gsbMatches: gsbMatches.length },
-      'GSB found threats -> skipping Phishtank redundancy check'
+      "GSB found threats -> skipping Phishtank redundancy check",
     );
   } else if (!phishtankEnabled) {
     logger.info(
       { urlHash: hash, url: finalUrl },
-      'Phishtank disabled -> skipping redundancy check for clean GSB result'
+      "Phishtank disabled -> skipping redundancy check for clean GSB result",
     );
   }
 
-  return { gsbMatches, gsbResult, phishtankResult, phishtankNeeded, phishtankError };
+  return {
+    gsbMatches,
+    gsbResult,
+    phishtankResult,
+    phishtankNeeded,
+    phishtankError,
+  };
 }
-
 ```
 
 # File: services/scan-orchestrator/src/database.ts
 
 ```typescript
-import * as fs from 'fs';
-import * as path from 'path';
-import Database from 'better-sqlite3';
-import { Pool } from 'pg';
-import type { Logger } from 'pino';
+import * as fs from "fs";
+import * as path from "path";
+import Database from "better-sqlite3";
+import { Pool } from "pg";
+import type { Logger } from "pino";
 
 interface DatabaseConfig {
   dbPath?: string;
@@ -1773,7 +1895,8 @@ export class SQLiteConnection implements IDatabaseConnection {
   private logger: Logger | undefined;
 
   constructor(config: DatabaseConfig = {}) {
-    const dbPath = config.dbPath || process.env.SQLITE_DB_PATH || './storage/wbscanner.db';
+    const dbPath =
+      config.dbPath || process.env.SQLITE_DB_PATH || "./storage/wbscanner.db";
 
     // Ensure directory exists
     const dbDir = path.dirname(dbPath);
@@ -1785,13 +1908,13 @@ export class SQLiteConnection implements IDatabaseConnection {
     this.logger = config.logger;
 
     // Enable WAL mode for better concurrency
-    this.db.pragma('journal_mode = WAL');
-    this.db.pragma('synchronous = NORMAL');
-    this.db.pragma('cache_size = 64000');
-    this.db.pragma('foreign_keys = ON');
+    this.db.pragma("journal_mode = WAL");
+    this.db.pragma("synchronous = NORMAL");
+    this.db.pragma("cache_size = 64000");
+    this.db.pragma("foreign_keys = ON");
 
     if (this.logger) {
-      this.logger.info({ dbPath }, 'SQLite connection established');
+      this.logger.info({ dbPath }, "SQLite connection established");
     }
   }
 
@@ -1799,14 +1922,17 @@ export class SQLiteConnection implements IDatabaseConnection {
     return this.db;
   }
 
-  async query(sql: string, params: unknown[] = []): Promise<{ rows: unknown[] }> {
+  async query(
+    sql: string,
+    params: unknown[] = [],
+  ): Promise<{ rows: unknown[] }> {
     try {
       // Convert Postgres-style placeholders ($1, $2) to SQLite (?)
-      const sqliteSql = sql.replace(/\$\d+/g, '?');
+      const sqliteSql = sql.replace(/\$\d+/g, "?");
       const stmt = this.db.prepare(sqliteSql);
 
       // Handle SELECT queries
-      if (sql.trim().toLowerCase().startsWith('select')) {
+      if (sql.trim().toLowerCase().startsWith("select")) {
         const rows = stmt.all(...(params as unknown[]));
         return { rows };
       }
@@ -1814,11 +1940,19 @@ export class SQLiteConnection implements IDatabaseConnection {
       // Handle INSERT, UPDATE, DELETE queries
       const result = stmt.run(...(params as unknown[]));
       return {
-        rows: result.changes > 0 ? [{ affectedRows: result.changes, lastInsertRowid: result.lastInsertRowid }] : []
+        rows:
+          result.changes > 0
+            ? [
+                {
+                  affectedRows: result.changes,
+                  lastInsertRowid: result.lastInsertRowid,
+                },
+              ]
+            : [],
       };
     } catch (error) {
       if (this.logger) {
-        this.logger.error({ error, sql, params }, 'Database query failed');
+        this.logger.error({ error, sql, params }, "Database query failed");
       }
       throw error;
     }
@@ -1832,7 +1966,7 @@ export class SQLiteConnection implements IDatabaseConnection {
   close(): void {
     this.db.close();
     if (this.logger) {
-      this.logger.info('SQLite connection closed');
+      this.logger.info("SQLite connection closed");
     }
   }
 }
@@ -1847,14 +1981,14 @@ export class PostgresConnection implements IDatabaseConnection {
       connectionString: process.env.DATABASE_URL,
     });
 
-    this.pool.on('error', (err: Error) => {
+    this.pool.on("error", (err: Error) => {
       if (this.logger) {
-        this.logger.error({ err }, 'Unexpected error on idle client');
+        this.logger.error({ err }, "Unexpected error on idle client");
       }
     });
 
     if (this.logger) {
-      this.logger.info('Postgres connection pool established');
+      this.logger.info("Postgres connection pool established");
     }
   }
 
@@ -1862,17 +1996,20 @@ export class PostgresConnection implements IDatabaseConnection {
     return this.pool;
   }
 
-  async query(sql: string, params: unknown[] = []): Promise<{ rows: unknown[] }> {
+  async query(
+    sql: string,
+    params: unknown[] = [],
+  ): Promise<{ rows: unknown[] }> {
     try {
       // Convert SQLite-style placeholders (?) to Postgres ($1, $2)
       let paramIndex = 1;
       const pgSql = sql.replace(/\?/g, () => `$${paramIndex++}`);
-      
+
       const result = await this.pool.query(pgSql, params);
       return { rows: result.rows };
     } catch (error) {
       if (this.logger) {
-        this.logger.error({ error, sql, params }, 'Database query failed');
+        this.logger.error({ error, sql, params }, "Database query failed");
       }
       throw error;
     }
@@ -1886,26 +2023,26 @@ export class PostgresConnection implements IDatabaseConnection {
     // For now, we'll execute `fn` directly, but warn that it might not be atomic
     // if it uses `this.query` which uses the pool directly.
     // A proper implementation would require `fn` to accept a query runner.
-    
+
     // However, since the existing code uses `dbClient.getDatabase().transaction(...)` for SQLite,
     // we need to adapt the calling code to be agnostic or handle it here.
     // The calling code in index.ts does:
     // const transaction = dbClient.getDatabase().transaction(() => { ... });
     // transaction();
-    
+
     // This implies `getDatabase()` returns the raw driver instance.
     // For Postgres, we can't easily return a synchronous transaction function like better-sqlite3.
-    
+
     // We will need to refactor the calling code to use `dbClient.transaction(async () => ...)`
     // instead of accessing `getDatabase()` directly for transactions.
-    
+
     return await fn();
   }
 
   close(): void {
     this.pool.end();
     if (this.logger) {
-      this.logger.info('Postgres connection pool closed');
+      this.logger.info("Postgres connection pool closed");
     }
   }
 }
@@ -1915,7 +2052,10 @@ let sharedConnection: IDatabaseConnection | null = null;
 
 export function getSharedConnection(logger?: Logger): IDatabaseConnection {
   if (!sharedConnection) {
-    if (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('postgres')) {
+    if (
+      process.env.DATABASE_URL &&
+      process.env.DATABASE_URL.startsWith("postgres")
+    ) {
       sharedConnection = new PostgresConnection({ logger });
     } else {
       sharedConnection = new SQLiteConnection({ logger });
@@ -1924,13 +2064,17 @@ export function getSharedConnection(logger?: Logger): IDatabaseConnection {
   return sharedConnection;
 }
 
-export function createConnection(config: DatabaseConfig = {}): IDatabaseConnection {
-  if (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('postgres')) {
+export function createConnection(
+  config: DatabaseConfig = {},
+): IDatabaseConnection {
+  if (
+    process.env.DATABASE_URL &&
+    process.env.DATABASE_URL.startsWith("postgres")
+  ) {
     return new PostgresConnection(config);
   }
   return new SQLiteConnection(config);
 }
-
 ```
 
 # File: services/scan-orchestrator/src/enhanced-security.ts
@@ -1949,41 +2093,41 @@ import {
   type AdvancedHeuristicsResult,
   type LocalThreatResult,
   type HTTPFingerprint,
-} from '@wbscanner/shared';
-import { Counter, Histogram } from 'prom-client';
-import { register } from '@wbscanner/shared';
-import type Redis from 'ioredis';
+} from "@wbscanner/shared";
+import { Counter, Histogram } from "prom-client";
+import { register } from "@wbscanner/shared";
+import type Redis from "ioredis";
 
 const enhancedSecurityScoreHistogram = new Histogram({
-  name: 'enhanced_security_score',
-  help: 'Enhanced security score distribution',
+  name: "enhanced_security_score",
+  help: "Enhanced security score distribution",
   buckets: [0.5, 1.0, 1.5, 2.0, 2.5, 3.0],
   registers: [register],
 });
 
 const tier1BlocksTotal = new Counter({
-  name: 'tier1_blocks_total',
-  help: 'Total number of scans blocked by Tier 1 checks',
+  name: "tier1_blocks_total",
+  help: "Total number of scans blocked by Tier 1 checks",
   registers: [register],
 });
 
 const apiCallsAvoidedTotal = new Counter({
-  name: 'api_calls_avoided_total',
-  help: 'Total number of external API calls avoided due to enhanced security',
+  name: "api_calls_avoided_total",
+  help: "Total number of external API calls avoided due to enhanced security",
   registers: [register],
 });
 
 const enhancedSecurityLatencySeconds = new Histogram({
-  name: 'enhanced_security_latency_seconds',
-  help: 'Enhanced security check latency in seconds',
-  labelNames: ['tier'],
+  name: "enhanced_security_latency_seconds",
+  help: "Enhanced security check latency in seconds",
+  labelNames: ["tier"],
   buckets: [0.1, 0.25, 0.5, 1, 2, 5],
   registers: [register],
 });
 
 export interface EnhancedSecurityResult {
-  verdict?: 'malicious' | 'suspicious' | null;
-  confidence?: 'high' | 'medium' | 'low';
+  verdict?: "malicious" | "suspicious" | null;
+  confidence?: "high" | "medium" | "low";
   skipExternalAPIs: boolean;
   score: number;
   reasons: string[];
@@ -2009,18 +2153,24 @@ export class EnhancedSecurityAnalyzer {
   }
 
   async start(): Promise<void> {
-    if (config.enhancedSecurity.enabled && config.enhancedSecurity.localThreatDb.enabled) {
+    if (
+      config.enhancedSecurity.enabled &&
+      config.enhancedSecurity.localThreatDb.enabled
+    ) {
       await this.localThreatDb.start();
-      logger.info('Enhanced security analyzer started');
+      logger.info("Enhanced security analyzer started");
     }
   }
 
   async stop(): Promise<void> {
     await this.localThreatDb.stop();
-    logger.info('Enhanced security analyzer stopped');
+    logger.info("Enhanced security analyzer stopped");
   }
 
-  async analyze(finalUrl: string, hash: string): Promise<EnhancedSecurityResult> {
+  async analyze(
+    finalUrl: string,
+    hash: string,
+  ): Promise<EnhancedSecurityResult> {
     if (!config.enhancedSecurity.enabled) {
       return {
         skipExternalAPIs: false,
@@ -2039,11 +2189,11 @@ export class EnhancedSecurityAnalyzer {
         advancedHeuristics(finalUrl),
         config.enhancedSecurity.dnsbl.enabled
           ? dnsIntelligence(parsed.hostname, {
-            dnsblEnabled: true,
-            dnsblTimeoutMs: config.enhancedSecurity.dnsbl.timeoutMs,
-            dnssecEnabled: true,
-            fastFluxEnabled: true,
-          })
+              dnsblEnabled: true,
+              dnsblTimeoutMs: config.enhancedSecurity.dnsbl.timeoutMs,
+              dnssecEnabled: true,
+              fastFluxEnabled: true,
+            })
           : Promise.resolve({ score: 0, reasons: [], dnsblResults: [] }),
         config.enhancedSecurity.localThreatDb.enabled
           ? this.localThreatDb.check(finalUrl, hash)
@@ -2051,16 +2201,34 @@ export class EnhancedSecurityAnalyzer {
       ]);
 
       const tier1Duration = (Date.now() - tier1Start) / 1000;
-      enhancedSecurityLatencySeconds.labels('tier1').observe(tier1Duration);
+      enhancedSecurityLatencySeconds.labels("tier1").observe(tier1Duration);
 
       const heuristicsData =
-        heuristics.status === 'fulfilled' ? heuristics.value : { score: 0, reasons: [], entropy: 0, subdomainAnalysis: { count: 0, maxDepth: 0, hasNumericSubdomains: false, suspicionScore: 0 }, suspiciousPatterns: [] };
+        heuristics.status === "fulfilled"
+          ? heuristics.value
+          : {
+              score: 0,
+              reasons: [],
+              entropy: 0,
+              subdomainAnalysis: {
+                count: 0,
+                maxDepth: 0,
+                hasNumericSubdomains: false,
+                suspicionScore: 0,
+              },
+              suspiciousPatterns: [],
+            };
       const dnsIntelData =
-        dnsIntel.status === 'fulfilled' ? dnsIntel.value : { score: 0, reasons: [], dnsblResults: [] };
+        dnsIntel.status === "fulfilled"
+          ? dnsIntel.value
+          : { score: 0, reasons: [], dnsblResults: [] };
       const localThreatsData =
-        localThreats.status === 'fulfilled' ? localThreats.value : { score: 0, reasons: [] };
+        localThreats.status === "fulfilled"
+          ? localThreats.value
+          : { score: 0, reasons: [] };
 
-      const tier1Score = heuristicsData.score + dnsIntelData.score + localThreatsData.score;
+      const tier1Score =
+        heuristicsData.score + dnsIntelData.score + localThreatsData.score;
       const tier1Reasons = [
         ...heuristicsData.reasons,
         ...dnsIntelData.reasons,
@@ -2074,12 +2242,12 @@ export class EnhancedSecurityAnalyzer {
 
         logger.info(
           { url: finalUrl, score: tier1Score, reasons: tier1Reasons },
-          'Tier 1 high-confidence threat detected'
+          "Tier 1 high-confidence threat detected",
         );
 
         return {
-          verdict: 'malicious',
-          confidence: 'high',
+          verdict: "malicious",
+          confidence: "high",
           skipExternalAPIs: true,
           score: tier1Score,
           reasons: tier1Reasons,
@@ -2093,73 +2261,81 @@ export class EnhancedSecurityAnalyzer {
 
       const tier2Start = Date.now();
       const [certIntel, httpFingerprint] = await Promise.allSettled([
-        config.enhancedSecurity.certIntel.enabled && parsed.protocol === 'https:'
+        config.enhancedSecurity.certIntel.enabled &&
+        parsed.protocol === "https:"
           ? certificateIntelligence(parsed.hostname, {
-            timeoutMs: config.enhancedSecurity.certIntel.timeoutMs,
-            ctCheckEnabled: config.enhancedSecurity.certIntel.ctCheckEnabled,
-          })
+              timeoutMs: config.enhancedSecurity.certIntel.timeoutMs,
+              ctCheckEnabled: config.enhancedSecurity.certIntel.ctCheckEnabled,
+            })
           : Promise.resolve({
-            isValid: true,
-            isSelfSigned: false,
-            issuer: 'unknown',
-            age: 0,
-            expiryDays: 0,
-            sanCount: 0,
-            chainValid: true,
-            ctLogPresent: true,
-            suspicionScore: 0,
-            reasons: [],
-          }),
+              isValid: true,
+              isSelfSigned: false,
+              issuer: "unknown",
+              age: 0,
+              expiryDays: 0,
+              sanCount: 0,
+              chainValid: true,
+              ctLogPresent: true,
+              suspicionScore: 0,
+              reasons: [],
+            }),
         config.enhancedSecurity.httpFingerprint.enabled
           ? httpFingerprinting(finalUrl, {
-            timeoutMs: config.enhancedSecurity.httpFingerprint.timeoutMs,
-            enableSSRFGuard: true,
-          })
+              timeoutMs: config.enhancedSecurity.httpFingerprint.timeoutMs,
+              enableSSRFGuard: true,
+            })
           : Promise.resolve({
-            statusCode: 0,
-            securityHeaders: {
-              hsts: false,
-              csp: false,
-              xFrameOptions: false,
-              xContentTypeOptions: false,
-            },
-            suspiciousRedirects: false,
-            suspicionScore: 0,
-            reasons: [],
-          }),
+              statusCode: 0,
+              securityHeaders: {
+                hsts: false,
+                csp: false,
+                xFrameOptions: false,
+                xContentTypeOptions: false,
+              },
+              suspiciousRedirects: false,
+              suspicionScore: 0,
+              reasons: [],
+            }),
       ]);
 
       const tier2Duration = (Date.now() - tier2Start) / 1000;
-      enhancedSecurityLatencySeconds.labels('tier2').observe(tier2Duration);
+      enhancedSecurityLatencySeconds.labels("tier2").observe(tier2Duration);
 
       const certIntelData =
-        certIntel.status === 'fulfilled' ? certIntel.value : {
-          isValid: true,
-          isSelfSigned: false,
-          issuer: 'unknown',
-          age: 0,
-          expiryDays: 0,
-          sanCount: 0,
-          chainValid: true,
-          ctLogPresent: true,
-          suspicionScore: 0,
-          reasons: [],
-        };
+        certIntel.status === "fulfilled"
+          ? certIntel.value
+          : {
+              isValid: true,
+              isSelfSigned: false,
+              issuer: "unknown",
+              age: 0,
+              expiryDays: 0,
+              sanCount: 0,
+              chainValid: true,
+              ctLogPresent: true,
+              suspicionScore: 0,
+              reasons: [],
+            };
       const httpFingerprintData =
-        httpFingerprint.status === 'fulfilled' ? httpFingerprint.value : {
-          statusCode: 0,
-          securityHeaders: {
-            hsts: false,
-            csp: false,
-            xFrameOptions: false,
-            xContentTypeOptions: false,
-          },
-          suspiciousRedirects: false,
-          suspicionScore: 0,
-          reasons: [],
-        };
+        httpFingerprint.status === "fulfilled"
+          ? httpFingerprint.value
+          : {
+              statusCode: 0,
+              securityHeaders: {
+                hsts: false,
+                csp: false,
+                xFrameOptions: false,
+                xContentTypeOptions: false,
+              },
+              suspiciousRedirects: false,
+              suspicionScore: 0,
+              reasons: [],
+            };
 
-      const tier2Score = tier1Score + certIntelData.suspicionScore + httpFingerprintData.suspicionScore;
+      const tier2Score =
+        tier1Score +
+        certIntelData.suspicionScore +
+        httpFingerprintData.suspicionScore;
       const tier2Reasons = [
         ...tier1Reasons,
         ...certIntelData.reasons,
@@ -2171,12 +2347,12 @@ export class EnhancedSecurityAnalyzer {
       if (tier2Score > 1.5) {
         logger.info(
           { url: finalUrl, score: tier2Score, reasons: tier2Reasons },
-          'Tier 2 suspicious indicators detected'
+          "Tier 2 suspicious indicators detected",
         );
 
         return {
-          verdict: 'suspicious',
-          confidence: 'medium',
+          verdict: "suspicious",
+          confidence: "medium",
           skipExternalAPIs: false,
           score: tier2Score,
           reasons: tier2Reasons,
@@ -2194,8 +2370,14 @@ export class EnhancedSecurityAnalyzer {
 
       const totalDuration = (Date.now() - startTime) / 1000;
       logger.debug(
-        { url: finalUrl, score: tier2Score, tier1Duration, tier2Duration, totalDuration },
-        'Enhanced security analysis completed'
+        {
+          url: finalUrl,
+          score: tier2Score,
+          tier1Duration,
+          tier2Duration,
+          totalDuration,
+        },
+        "Enhanced security analysis completed",
       );
 
       return {
@@ -2214,7 +2396,10 @@ export class EnhancedSecurityAnalyzer {
       };
     } catch (err: unknown) {
       const error = err as Error;
-      logger.error({ error: error.message, url: finalUrl }, 'Enhanced security analysis failed');
+      logger.error(
+        { error: error.message, url: finalUrl },
+        "Enhanced security analysis failed",
+      );
 
       return {
         skipExternalAPIs: false,
@@ -2226,10 +2411,13 @@ export class EnhancedSecurityAnalyzer {
 
   async recordVerdict(
     url: string,
-    verdict: 'benign' | 'suspicious' | 'malicious',
-    confidence: number
+    verdict: "benign" | "suspicious" | "malicious",
+    confidence: number,
   ): Promise<void> {
-    if (config.enhancedSecurity.enabled && config.enhancedSecurity.localThreatDb.enabled) {
+    if (
+      config.enhancedSecurity.enabled &&
+      config.enhancedSecurity.localThreatDb.enabled
+    ) {
       await this.localThreatDb.recordVerdict(url, verdict, confidence);
     }
   }
@@ -2238,50 +2426,63 @@ export class EnhancedSecurityAnalyzer {
     openphishCount: number;
     collaborativeCount: number;
   }> {
-    if (config.enhancedSecurity.enabled && config.enhancedSecurity.localThreatDb.enabled) {
+    if (
+      config.enhancedSecurity.enabled &&
+      config.enhancedSecurity.localThreatDb.enabled
+    ) {
       return await this.localThreatDb.getStats();
     }
     return { openphishCount: 0, collaborativeCount: 0 };
   }
 
   async updateFeeds(): Promise<void> {
-    if (config.enhancedSecurity.enabled && config.enhancedSecurity.localThreatDb.enabled) {
+    if (
+      config.enhancedSecurity.enabled &&
+      config.enhancedSecurity.localThreatDb.enabled
+    ) {
       await this.localThreatDb.updateOpenPhishFeed();
-      logger.info('Threat feeds updated manually');
+      logger.info("Threat feeds updated manually");
     }
   }
 }
-
 ```
 
 # File: services/scan-orchestrator/src/urlscan-artifacts.ts
 
 ```typescript
-import fs from 'node:fs/promises';
-import { createWriteStream } from 'node:fs';
-import path from 'node:path';
-import { pipeline } from 'node:stream/promises';
-import { fetch, Response } from 'undici';
-import { config, logger, metrics } from '@wbscanner/shared';
+import fs from "node:fs/promises";
+import { createWriteStream } from "node:fs";
+import path from "node:path";
+import { pipeline } from "node:stream/promises";
+import { fetch, Response } from "undici";
+import { config, logger, metrics } from "@wbscanner/shared";
 
 export interface ArtifactPaths {
   screenshotPath: string | null;
   domPath: string | null;
 }
 
-type ArtifactType = 'screenshot' | 'dom';
+type ArtifactType = "screenshot" | "dom";
 
-const ARTIFACT_DIR = process.env.URLSCAN_ARTIFACT_DIR || path.resolve('storage/urlscan-artifacts');
+const ARTIFACT_DIR =
+  process.env.URLSCAN_ARTIFACT_DIR || path.resolve("storage/urlscan-artifacts");
 
 async function ensureDirectory(): Promise<void> {
   await fs.mkdir(ARTIFACT_DIR, { recursive: true });
 }
 
-function recordDownloadFailure(artifactType: ArtifactType, reason: string): void {
+function recordDownloadFailure(
+  artifactType: ArtifactType,
+  reason: string,
+): void {
   metrics.artifactDownloadFailures.labels(artifactType, reason).inc();
 }
 
-async function downloadToFile(artifactType: ArtifactType, url: string, targetPath: string): Promise<boolean> {
+async function downloadToFile(
+  artifactType: ArtifactType,
+  url: string,
+  targetPath: string,
+): Promise<boolean> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10_000);
@@ -2292,29 +2493,48 @@ async function downloadToFile(artifactType: ArtifactType, url: string, targetPat
       clearTimeout(timeout);
     }
     if (!response?.ok || !response.body) {
-      recordDownloadFailure(artifactType, `http:${response?.status ?? 'unknown'}`);
+      recordDownloadFailure(
+        artifactType,
+        `http:${response?.status ?? "unknown"}`,
+      );
       return false;
     }
     await ensureDirectory();
     await pipeline(response.body, createWriteStream(targetPath));
     return true;
   } catch (error) {
-    recordDownloadFailure(artifactType, `network:${error instanceof Error ? error.name : 'unknown'}`);
-    logger.warn({ url, error, artifactType }, 'Failed to download urlscan artifact');
+    recordDownloadFailure(
+      artifactType,
+      `network:${error instanceof Error ? error.name : "unknown"}`,
+    );
+    logger.warn(
+      { url, error, artifactType },
+      "Failed to download urlscan artifact",
+    );
     return false;
   }
 }
 
-export async function downloadUrlscanArtifacts(scanId: string, urlHash: string): Promise<ArtifactPaths> {
+export async function downloadUrlscanArtifacts(
+  scanId: string,
+  urlHash: string,
+): Promise<ArtifactPaths> {
   const screenshotPath = path.join(ARTIFACT_DIR, `${urlHash}_${scanId}.png`);
   const domPath = path.join(ARTIFACT_DIR, `${urlHash}_${scanId}.html`);
-  const baseUrl = (config.urlscan.baseUrl || 'https://urlscan.io').replace(/\/+$/, '');
+  const baseUrl = (config.urlscan.baseUrl || "https://urlscan.io").replace(
+    /\/+$/,
+    "",
+  );
   const screenshotUrl = `${baseUrl}/screenshots/${scanId}.png`;
   const domUrl = `${baseUrl}/dom/${scanId}/`;
 
-  const screenshotSaved = await downloadToFile('screenshot', screenshotUrl, screenshotPath);
+  const screenshotSaved = await downloadToFile(
+    "screenshot",
+    screenshotUrl,
+    screenshotPath,
+  );
   if (!screenshotSaved) {
-    logger.warn({ scanId, urlHash }, 'Screenshot download failed');
+    logger.warn({ scanId, urlHash }, "Screenshot download failed");
   }
 
   let domSaved = false;
@@ -2330,15 +2550,21 @@ export async function downloadUrlscanArtifacts(scanId: string, urlHash: string):
     if (response?.ok) {
       const html = await response.text();
       await ensureDirectory();
-      await fs.writeFile(domPath, html, 'utf8');
+      await fs.writeFile(domPath, html, "utf8");
       domSaved = true;
     } else {
-      recordDownloadFailure('dom', `http:${response?.status ?? 'unknown'}`);
-      logger.warn({ scanId, urlHash, status: response?.status }, 'DOM download failed');
+      recordDownloadFailure("dom", `http:${response?.status ?? "unknown"}`);
+      logger.warn(
+        { scanId, urlHash, status: response?.status },
+        "DOM download failed",
+      );
     }
   } catch (error) {
-    recordDownloadFailure('dom', `network:${error instanceof Error ? error.name : 'unknown'}`);
-    logger.warn({ scanId, urlHash, error }, 'Failed to download urlscan DOM');
+    recordDownloadFailure(
+      "dom",
+      `network:${error instanceof Error ? error.name : "unknown"}`,
+    );
+    logger.warn({ scanId, urlHash, error }, "Failed to download urlscan DOM");
   }
 
   return {
@@ -2346,15 +2572,14 @@ export async function downloadUrlscanArtifacts(scanId: string, urlHash: string):
     domPath: domSaved ? domPath : null,
   };
 }
-
 ```
 
 # File: services/scan-orchestrator/src/index-original.ts
 
 ```typescript
-import Fastify from 'fastify';
-import Redis from 'ioredis';
-import { Queue, Worker } from 'bullmq';
+import Fastify from "fastify";
+import Redis from "ioredis";
+import { Queue, Worker } from "bullmq";
 import {
   config,
   logger,
@@ -2390,20 +2615,26 @@ import {
   QuotaExceededError,
   detectHomoglyphs,
   assertEssentialConfig,
-} from '@wbscanner/shared';
-import { EnhancedSecurityAnalyzer } from './enhanced-security';
+} from "@wbscanner/shared";
+import { EnhancedSecurityAnalyzer } from "./enhanced-security";
 import {
   checkBlocklistsWithRedundancy,
   shouldQueryPhishtank,
   type GsbFetchResult,
   type PhishtankFetchResult,
-} from './blocklists';
-import type { GsbThreatMatch, UrlhausLookupResult, PhishtankLookupResult, VirusTotalAnalysis, UrlscanSubmissionResponse } from '@wbscanner/shared';
-import { downloadUrlscanArtifacts } from './urlscan-artifacts';
-import { getSharedConnection } from './database.js';
+} from "./blocklists";
+import type {
+  GsbThreatMatch,
+  UrlhausLookupResult,
+  PhishtankLookupResult,
+  VirusTotalAnalysis,
+  UrlscanSubmissionResponse,
+} from "@wbscanner/shared";
+import { downloadUrlscanArtifacts } from "./urlscan-artifacts";
+import { getSharedConnection } from "./database.js";
 
-const TEST_REDIS_KEY = '__WBSCANNER_TEST_REDIS__';
-const TEST_QUEUE_FACTORY_KEY = '__WBSCANNER_TEST_QUEUE_FACTORY__';
+const TEST_REDIS_KEY = "__WBSCANNER_TEST_REDIS__";
+const TEST_QUEUE_FACTORY_KEY = "__WBSCANNER_TEST_QUEUE_FACTORY__";
 
 class InMemoryRedis {
   private store = new Map<string, string>();
@@ -2416,10 +2647,16 @@ class InMemoryRedis {
     return this.store.get(key) ?? null;
   }
 
-  async set(key: string, value: string, mode?: string, ttlArg?: number, nxArg?: string): Promise<'OK' | null> {
-    if (mode === 'EX') {
-      const ttlSeconds = typeof ttlArg === 'number' ? ttlArg : 0;
-      if (nxArg === 'NX' && this.store.has(key)) {
+  async set(
+    key: string,
+    value: string,
+    mode?: string,
+    ttlArg?: number,
+    nxArg?: string,
+  ): Promise<"OK" | null> {
+    if (mode === "EX") {
+      const ttlSeconds = typeof ttlArg === "number" ? ttlArg : 0;
+      if (nxArg === "NX" && this.store.has(key)) {
         return null;
       }
       this.store.set(key, value);
@@ -2428,11 +2665,11 @@ class InMemoryRedis {
       } else {
         this.ttlStore.delete(key);
       }
-      return 'OK';
+      return "OK";
     }
     this.store.set(key, value);
     this.ttlStore.delete(key);
-    return 'OK';
+    return "OK";
   }
 
   async del(key: string): Promise<number> {
@@ -2527,7 +2764,7 @@ class InMemoryRedis {
 }
 
 class InMemoryQueue {
-  constructor(private readonly name: string) { }
+  constructor(private readonly name: string) {}
   async add(jobName: string, data: unknown) {
     return { id: `${this.name}:${jobName}:${Date.now()}`, data };
   }
@@ -2537,44 +2774,61 @@ class InMemoryQueue {
   async getWaitingCount() {
     return 0;
   }
-  on(): void { }
+  on(): void {}
   async close(): Promise<void> {
     return Promise.resolve();
   }
 }
 
 function createRedisConnection(): Redis {
-  if (typeof globalThis !== 'undefined' && (globalThis as unknown as Record<string, unknown>)[TEST_REDIS_KEY]) {
-    return (globalThis as unknown as Record<string, unknown>)[TEST_REDIS_KEY] as Redis;
+  if (
+    typeof globalThis !== "undefined" &&
+    (globalThis as unknown as Record<string, unknown>)[TEST_REDIS_KEY]
+  ) {
+    return (globalThis as unknown as Record<string, unknown>)[
+      TEST_REDIS_KEY
+    ] as Redis;
   }
-  if (process.env.NODE_ENV === 'test') {
+  if (process.env.NODE_ENV === "test") {
     return new InMemoryRedis() as unknown as Redis;
   }
   return new Redis(config.redisUrl, { maxRetriesPerRequest: null });
 }
 
 const redis = createRedisConnection();
-const scanRequestQueue = createQueue(config.queues.scanRequest, { connection: redis });
-const scanVerdictQueue = createQueue(config.queues.scanVerdict, { connection: redis });
+const scanRequestQueue = createQueue(config.queues.scanRequest, {
+  connection: redis,
+});
+const scanVerdictQueue = createQueue(config.queues.scanVerdict, {
+  connection: redis,
+});
 const urlscanQueue = createQueue(config.queues.urlscan, { connection: redis });
 
 function createQueue(name: string, options: { connection: Redis }): Queue {
-  if (typeof globalThis !== 'undefined') {
-    const factory = (globalThis as unknown as Record<string, unknown>)[TEST_QUEUE_FACTORY_KEY];
-    if (typeof factory === 'function') {
+  if (typeof globalThis !== "undefined") {
+    const factory = (globalThis as unknown as Record<string, unknown>)[
+      TEST_QUEUE_FACTORY_KEY
+    ];
+    if (typeof factory === "function") {
       return factory(name, options) as Queue;
     }
   }
-  if (process.env.NODE_ENV === 'test') {
+  if (process.env.NODE_ENV === "test") {
     return new InMemoryQueue(name) as unknown as Queue;
   }
   return new Queue(name, options);
 }
 
 const queueMetricsInterval = setInterval(() => {
-  refreshQueueMetrics(scanRequestQueue, config.queues.scanRequest).catch(() => undefined);
-  refreshQueueMetrics(scanVerdictQueue, config.queues.scanVerdict).catch(() => undefined);
-  refreshQueueMetrics(urlscanQueue, config.queues.urlscan).catch(() => undefined);
+  refreshQueueMetrics(scanRequestQueue, config.queues.scanRequest).catch(
+    () => undefined,
+  );
+  refreshQueueMetrics(scanVerdictQueue, config.queues.scanVerdict).catch(
+    () => undefined,
+  );
+  refreshQueueMetrics(urlscanQueue, config.queues.urlscan).catch(
+    () => undefined,
+  );
 }, 10_000);
 queueMetricsInterval.unref();
 
@@ -2587,20 +2841,20 @@ const ANALYSIS_TTLS = {
   whois: 7 * 24 * 60 * 60,
 };
 
-const URLSCAN_UUID_PREFIX = 'urlscan:uuid:';
-const URLSCAN_QUEUED_PREFIX = 'urlscan:queued:';
-const URLSCAN_SUBMITTED_PREFIX = 'urlscan:submitted:';
-const URLSCAN_RESULT_PREFIX = 'urlscan:result:';
-const SHORTENER_CACHE_PREFIX = 'url:shortener:';
+const URLSCAN_UUID_PREFIX = "urlscan:uuid:";
+const URLSCAN_QUEUED_PREFIX = "urlscan:queued:";
+const URLSCAN_SUBMITTED_PREFIX = "urlscan:submitted:";
+const URLSCAN_RESULT_PREFIX = "urlscan:result:";
+const SHORTENER_CACHE_PREFIX = "url:shortener:";
 
 const CACHE_LABELS = {
-  gsb: 'gsb_analysis',
-  phishtank: 'phishtank_analysis',
-  vt: 'virustotal_analysis',
-  urlhaus: 'urlhaus_analysis',
-  shortener: 'shortener_resolution',
-  whois: 'whois_analysis',
-  verdict: 'scan_result',
+  gsb: "gsb_analysis",
+  phishtank: "phishtank_analysis",
+  vt: "virustotal_analysis",
+  urlhaus: "urlhaus_analysis",
+  shortener: "shortener_resolution",
+  whois: "whois_analysis",
+  verdict: "scan_result",
 } as const;
 
 const CIRCUIT_DEFAULTS = {
@@ -2611,99 +2865,99 @@ const CIRCUIT_DEFAULTS = {
 } as const;
 
 const CIRCUIT_LABELS = {
-  gsb: 'google_safe_browsing',
-  phishtank: 'phishtank',
-  urlhaus: 'urlhaus',
-  vt: 'virustotal',
-  urlscan: 'urlscan',
-  whoisxml: 'whoisxml',
-  whodat: 'whodat',
+  gsb: "google_safe_browsing",
+  phishtank: "phishtank",
+  urlhaus: "urlhaus",
+  vt: "virustotal",
+  urlscan: "urlscan",
+  whoisxml: "whoisxml",
+  whodat: "whodat",
 } as const;
 
 const cacheRatios = new Map<string, { hits: number; misses: number }>();
 const circuitOpenSince = new Map<string, number>();
 
-const VERDICT_REASON_OTHER_LABEL = 'other';
+const VERDICT_REASON_OTHER_LABEL = "other";
 
 function normalizeVerdictReason(reason: string): string {
-  if (reason === 'Manually allowed') {
-    return 'manual_allow';
+  if (reason === "Manually allowed") {
+    return "manual_allow";
   }
-  if (reason === 'Manually blocked') {
-    return 'manual_deny';
+  if (reason === "Manually blocked") {
+    return "manual_deny";
   }
-  if (reason.startsWith('Google Safe Browsing')) {
-    if (reason.includes('MALWARE')) {
-      return 'gsb_malware';
+  if (reason.startsWith("Google Safe Browsing")) {
+    if (reason.includes("MALWARE")) {
+      return "gsb_malware";
     }
-    if (reason.includes('SOCIAL_ENGINEERING')) {
-      return 'gsb_social_engineering';
+    if (reason.includes("SOCIAL_ENGINEERING")) {
+      return "gsb_social_engineering";
     }
-    return 'gsb_threat';
+    return "gsb_threat";
   }
-  if (reason === 'Verified phishing (Phishtank)') {
-    return 'phishtank_verified';
+  if (reason === "Verified phishing (Phishtank)") {
+    return "phishtank_verified";
   }
-  if (reason === 'Known malware distribution (URLhaus)') {
-    return 'urlhaus_listed';
+  if (reason === "Known malware distribution (URLhaus)") {
+    return "urlhaus_listed";
   }
-  if (reason.includes('VT engine')) {
-    return 'vt_malicious';
+  if (reason.includes("VT engine")) {
+    return "vt_malicious";
   }
-  if (reason.startsWith('Domain registered')) {
-    if (reason.includes('<7')) {
-      return 'domain_age_lt7';
+  if (reason.startsWith("Domain registered")) {
+    if (reason.includes("<7")) {
+      return "domain_age_lt7";
     }
-    if (reason.includes('<14')) {
-      return 'domain_age_lt14';
+    if (reason.includes("<14")) {
+      return "domain_age_lt14";
     }
-    if (reason.includes('<30')) {
-      return 'domain_age_lt30';
+    if (reason.includes("<30")) {
+      return "domain_age_lt30";
     }
-    return 'domain_age';
+    return "domain_age";
   }
-  if (reason.startsWith('High-risk homoglyph attack detected')) {
-    return 'homoglyph_high';
+  if (reason.startsWith("High-risk homoglyph attack detected")) {
+    return "homoglyph_high";
   }
   if (
-    reason.startsWith('Suspicious characters detected') ||
-    reason === 'Suspicious homoglyph characters detected'
+    reason.startsWith("Suspicious characters detected") ||
+    reason === "Suspicious homoglyph characters detected"
   ) {
-    return 'homoglyph_medium';
+    return "homoglyph_medium";
   }
-  if (reason === 'Punycode/IDN domain detected') {
-    return 'homoglyph_low';
+  if (reason === "Punycode/IDN domain detected") {
+    return "homoglyph_low";
   }
-  if (reason === 'URL uses IP address') {
-    return 'ip_literal';
+  if (reason === "URL uses IP address") {
+    return "ip_literal";
   }
-  if (reason === 'Suspicious TLD') {
-    return 'suspicious_tld';
+  if (reason === "Suspicious TLD") {
+    return "suspicious_tld";
   }
-  if (reason.startsWith('Multiple redirects')) {
-    return 'multiple_redirects';
+  if (reason.startsWith("Multiple redirects")) {
+    return "multiple_redirects";
   }
-  if (reason === 'Uncommon port') {
-    return 'uncommon_port';
+  if (reason === "Uncommon port") {
+    return "uncommon_port";
   }
-  if (reason.startsWith('Long URL')) {
-    return 'long_url';
+  if (reason.startsWith("Long URL")) {
+    return "long_url";
   }
-  if (reason === 'Executable file extension') {
-    return 'executable_extension';
+  if (reason === "Executable file extension") {
+    return "executable_extension";
   }
-  if (reason === 'Shortened URL expanded') {
-    return 'shortener_expanded';
+  if (reason === "Shortened URL expanded") {
+    return "shortener_expanded";
   }
-  if (reason === 'Redirect leads to mismatched domain/brand') {
-    return 'redirect_mismatch';
+  if (reason === "Redirect leads to mismatched domain/brand") {
+    return "redirect_mismatch";
   }
   return VERDICT_REASON_OTHER_LABEL;
 }
 
-function recordCacheOutcome(cacheType: string, outcome: 'hit' | 'miss'): void {
+function recordCacheOutcome(cacheType: string, outcome: "hit" | "miss"): void {
   const state = cacheRatios.get(cacheType) ?? { hits: 0, misses: 0 };
-  if (outcome === 'hit') {
+  if (outcome === "hit") {
     state.hits += 1;
   } else {
     state.misses += 1;
@@ -2716,7 +2970,12 @@ function recordCacheOutcome(cacheType: string, outcome: 'hit' | 'miss'): void {
 }
 
 async function refreshQueueMetrics(queue: Queue, name: string): Promise<void> {
-  const counts = await queue.getJobCounts('waiting', 'active', 'delayed', 'failed');
+  const counts = await queue.getJobCounts(
+    "waiting",
+    "active",
+    "delayed",
+    "failed",
+  );
   queueDepthGauge.labels(name).set(counts.waiting ?? 0);
   metrics.queueActive.labels(name).set(counts.active ?? 0);
   metrics.queueDelayed.labels(name).set(counts.delayed ?? 0);
@@ -2729,19 +2988,23 @@ function makeCircuit(name: string) {
     name,
     onStateChange: (state, from) => {
       circuitStates.labels(name).set(state);
-      circuitBreakerTransitionCounter.labels(name, String(from ?? ''), String(state)).inc();
+      circuitBreakerTransitionCounter
+        .labels(name, String(from ?? ""), String(state))
+        .inc();
       const now = Date.now();
       if (state === CircuitState.OPEN) {
         circuitOpenSince.set(name, now);
       } else if (from === CircuitState.OPEN) {
         const openedAt = circuitOpenSince.get(name);
         if (openedAt) {
-          circuitBreakerOpenDuration.labels(name).observe((now - openedAt) / 1000);
+          circuitBreakerOpenDuration
+            .labels(name)
+            .observe((now - openedAt) / 1000);
           circuitOpenSince.delete(name);
         }
       }
-      logger.debug({ name, from, to: state }, 'Circuit state change');
-    }
+      logger.debug({ name, from, to: state }, "Circuit state change");
+    },
   });
   circuitStates.labels(name).set(CircuitState.CLOSED);
   return breaker;
@@ -2756,57 +3019,77 @@ const whoisCircuit = makeCircuit(CIRCUIT_LABELS.whoisxml);
 const whodatCircuit = makeCircuit(CIRCUIT_LABELS.whodat);
 
 function recordLatency(service: string, ms?: number) {
-  if (typeof ms === 'number' && ms >= 0) {
+  if (typeof ms === "number" && ms >= 0) {
     externalLatency.labels(service).observe(ms / 1000);
   }
 }
 
 function classifyError(err: unknown): string {
-  const rawCode = (err as { code?: string | number; statusCode?: string | number })?.code ?? (err as { statusCode?: string | number })?.statusCode;
-  if (rawCode === 'UND_ERR_HEADERS_TIMEOUT' || rawCode === 'UND_ERR_CONNECT_TIMEOUT') return 'timeout';
-  const codeNum = typeof rawCode === 'string' ? Number(rawCode) : rawCode;
-  if (codeNum === 429) return 'rate_limited';
-  if (codeNum === 408) return 'timeout';
-  if (typeof codeNum === 'number' && codeNum >= 500) return 'server_error';
-  if (typeof codeNum === 'number' && codeNum >= 400) return 'client_error';
-  const message = (err as Error)?.message || '';
-  if (message.includes('Circuit') && message.includes('open')) return 'circuit_open';
-  return 'unknown';
+  const rawCode =
+    (err as { code?: string | number; statusCode?: string | number })?.code ??
+    (err as { statusCode?: string | number })?.statusCode;
+  if (
+    rawCode === "UND_ERR_HEADERS_TIMEOUT" ||
+    rawCode === "UND_ERR_CONNECT_TIMEOUT"
+  )
+    return "timeout";
+  const codeNum = typeof rawCode === "string" ? Number(rawCode) : rawCode;
+  if (codeNum === 429) return "rate_limited";
+  if (codeNum === 408) return "timeout";
+  if (typeof codeNum === "number" && codeNum >= 500) return "server_error";
+  if (typeof codeNum === "number" && codeNum >= 400) return "client_error";
+  const message = (err as Error)?.message || "";
+  if (message.includes("Circuit") && message.includes("open"))
+    return "circuit_open";
+  return "unknown";
 }
 
 function recordError(service: string, err: unknown) {
   const reason = classifyError(err);
-  if (reason === 'circuit_open') {
+  if (reason === "circuit_open") {
     circuitBreakerRejections.labels(service).inc();
   }
   externalErrors.labels(service, reason).inc();
 }
 
 function shouldRetry(err: unknown): boolean {
-  const rawCode = (err as { code?: string | number; statusCode?: string | number })?.code ?? (err as { statusCode?: string | number })?.statusCode;
-  if (rawCode === 'UND_ERR_HEADERS_TIMEOUT' || rawCode === 'UND_ERR_CONNECT_TIMEOUT') return true;
-  const codeNum = typeof rawCode === 'string' ? Number(rawCode) : rawCode;
+  const rawCode =
+    (err as { code?: string | number; statusCode?: string | number })?.code ??
+    (err as { statusCode?: string | number })?.statusCode;
+  if (
+    rawCode === "UND_ERR_HEADERS_TIMEOUT" ||
+    rawCode === "UND_ERR_CONNECT_TIMEOUT"
+  )
+    return true;
+  const codeNum = typeof rawCode === "string" ? Number(rawCode) : rawCode;
   if (codeNum === 429) return false;
   if (codeNum === 408) return true;
-  if (typeof codeNum === 'number' && codeNum >= 500) return true;
+  if (typeof codeNum === "number" && codeNum >= 500) return true;
   return !codeNum;
 }
 
-async function getJsonCache<T>(cacheType: string, key: string, ttlSeconds: number): Promise<T | null> {
+async function getJsonCache<T>(
+  cacheType: string,
+  key: string,
+  ttlSeconds: number,
+): Promise<T | null> {
   const stop = metrics.cacheLookupDuration.labels(cacheType).startTimer();
   const raw = await redis.get(key);
   stop();
   if (!raw) {
-    recordCacheOutcome(cacheType, 'miss');
+    recordCacheOutcome(cacheType, "miss");
     metrics.cacheEntryTtl.labels(cacheType).set(0);
     return null;
   }
-  recordCacheOutcome(cacheType, 'hit');
+  recordCacheOutcome(cacheType, "hit");
   metrics.cacheEntryBytes.labels(cacheType).set(Buffer.byteLength(raw));
   const ttlRemaining = await redis.ttl(key);
   if (ttlRemaining >= 0) {
     metrics.cacheEntryTtl.labels(cacheType).set(ttlRemaining);
-    if (ttlSeconds > 0 && ttlRemaining < Math.max(1, Math.floor(ttlSeconds * 0.2))) {
+    if (
+      ttlSeconds > 0 &&
+      ttlRemaining < Math.max(1, Math.floor(ttlSeconds * 0.2))
+    ) {
       metrics.cacheStaleTotal.labels(cacheType).inc();
     }
   }
@@ -2818,10 +3101,15 @@ async function getJsonCache<T>(cacheType: string, key: string, ttlSeconds: numbe
   }
 }
 
-async function setJsonCache(cacheType: string, key: string, value: unknown, ttlSeconds: number): Promise<void> {
+async function setJsonCache(
+  cacheType: string,
+  key: string,
+  value: unknown,
+  ttlSeconds: number,
+): Promise<void> {
   const payload = JSON.stringify(value);
   const stop = metrics.cacheWriteDuration.labels(cacheType).startTimer();
-  await redis.set(key, payload, 'EX', ttlSeconds);
+  await redis.set(key, payload, "EX", ttlSeconds);
   stop();
   metrics.cacheRefreshTotal.labels(cacheType).inc();
   metrics.cacheEntryBytes.labels(cacheType).set(Buffer.byteLength(payload));
@@ -2834,16 +3122,19 @@ type UrlhausResult = UrlhausLookupResult;
 type PhishtankResult = PhishtankLookupResult;
 
 type ArtifactCandidate = {
-  type: 'screenshot' | 'dom';
+  type: "screenshot" | "dom";
   url: string;
 };
 
-function normalizeUrlscanArtifactCandidate(candidate: unknown, baseUrl: string): { url?: string; invalid: boolean } {
-  if (typeof candidate !== 'string') return { invalid: false };
+function normalizeUrlscanArtifactCandidate(
+  candidate: unknown,
+  baseUrl: string,
+): { url?: string; invalid: boolean } {
+  if (typeof candidate !== "string") return { invalid: false };
   const trimmed = candidate.trim();
   if (!trimmed) return { invalid: false };
 
-  const sanitizedBase = baseUrl.replace(/\/+$/, '');
+  const sanitizedBase = baseUrl.replace(/\/+$/, "");
   let trustedHostname: string;
   try {
     trustedHostname = new URL(sanitizedBase).hostname.toLowerCase();
@@ -2853,7 +3144,7 @@ function normalizeUrlscanArtifactCandidate(candidate: unknown, baseUrl: string):
 
   const rawUrl = /^https?:\/\//i.test(trimmed)
     ? trimmed
-    : `${sanitizedBase}/${trimmed.replace(/^\/+/, '')}`;
+    : `${sanitizedBase}/${trimmed.replace(/^\/+/, "")}`;
 
   const normalized = normalizeUrl(rawUrl);
   if (!normalized) {
@@ -2863,7 +3154,8 @@ function normalizeUrlscanArtifactCandidate(candidate: unknown, baseUrl: string):
   const parsed = new URL(normalized);
   const candidateHostname = parsed.hostname.toLowerCase();
   const hostAllowed =
-    candidateHostname === trustedHostname || candidateHostname.endsWith(`.${trustedHostname}`);
+    candidateHostname === trustedHostname ||
+    candidateHostname.endsWith(`.${trustedHostname}`);
 
   if (!hostAllowed) {
     return { invalid: true };
@@ -2872,13 +3164,22 @@ function normalizeUrlscanArtifactCandidate(candidate: unknown, baseUrl: string):
   return { url: parsed.toString(), invalid: false };
 }
 
-function normaliseArtifactUrl(candidate: unknown, baseUrl: string): string | undefined {
+function normaliseArtifactUrl(
+  candidate: unknown,
+  baseUrl: string,
+): string | undefined {
   const result = normalizeUrlscanArtifactCandidate(candidate, baseUrl);
   return result.url;
 }
 
-function extractUrlscanArtifactCandidates(uuid: string, payload: unknown): ArtifactCandidate[] {
-  const baseUrl = (config.urlscan.baseUrl || 'https://urlscan.io').replace(/\/+$/, '');
+function extractUrlscanArtifactCandidates(
+  uuid: string,
+  payload: unknown,
+): ArtifactCandidate[] {
+  const baseUrl = (config.urlscan.baseUrl || "https://urlscan.io").replace(
+    /\/+$/,
+    "",
+  );
   const candidates: ArtifactCandidate[] = [];
   const seen = new Set<string>();
 
@@ -2900,7 +3201,7 @@ function extractUrlscanArtifactCandidates(uuid: string, payload: unknown): Artif
     const resolved = normaliseArtifactUrl(source, baseUrl);
     if (resolved && !seen.has(`screenshot:${resolved}`)) {
       seen.add(`screenshot:${resolved}`);
-      candidates.push({ type: 'screenshot', url: resolved });
+      candidates.push({ type: "screenshot", url: resolved });
     }
   }
 
@@ -2914,20 +3215,27 @@ function extractUrlscanArtifactCandidates(uuid: string, payload: unknown): Artif
     const resolved = normaliseArtifactUrl(source, baseUrl);
     if (resolved && !seen.has(`dom:${resolved}`)) {
       seen.add(`dom:${resolved}`);
-      candidates.push({ type: 'dom', url: resolved });
+      candidates.push({ type: "dom", url: resolved });
     }
   }
 
   return candidates;
 }
 
-async function fetchGsbAnalysis(finalUrl: string, hash: string): Promise<GsbFetchResult> {
+async function fetchGsbAnalysis(
+  finalUrl: string,
+  hash: string,
+): Promise<GsbFetchResult> {
   if (!config.gsb.enabled) {
-    logger.warn({ url: finalUrl }, 'Google Safe Browsing disabled by config');
+    logger.warn({ url: finalUrl }, "Google Safe Browsing disabled by config");
     return { matches: [], fromCache: true, durationMs: 0, error: null };
   }
   const cacheKey = `url:analysis:${hash}:gsb`;
-  const cached = await getJsonCache<GsbMatch[]>(CACHE_LABELS.gsb, cacheKey, ANALYSIS_TTLS.gsb);
+  const cached = await getJsonCache<GsbMatch[]>(
+    CACHE_LABELS.gsb,
+    cacheKey,
+    ANALYSIS_TTLS.gsb,
+  );
   if (cached) {
     return { matches: cached, fromCache: true, durationMs: 0, error: null };
   }
@@ -2938,10 +3246,15 @@ async function fetchGsbAnalysis(finalUrl: string, hash: string): Promise<GsbFetc
         baseDelayMs: 1000,
         factor: 2,
         retryable: shouldRetry,
-      })
+      }),
     );
     recordLatency(CIRCUIT_LABELS.gsb, result.latencyMs);
-    await setJsonCache(CACHE_LABELS.gsb, cacheKey, result.matches, ANALYSIS_TTLS.gsb);
+    await setJsonCache(
+      CACHE_LABELS.gsb,
+      cacheKey,
+      result.matches,
+      ANALYSIS_TTLS.gsb,
+    );
     return {
       matches: result.matches,
       fromCache: false,
@@ -2950,17 +3263,29 @@ async function fetchGsbAnalysis(finalUrl: string, hash: string): Promise<GsbFetc
     };
   } catch (err) {
     recordError(CIRCUIT_LABELS.gsb, err);
-    logger.warn({ err, url: finalUrl }, 'Google Safe Browsing lookup failed');
-    return { matches: [], fromCache: false, durationMs: 0, error: err as Error };
+    logger.warn({ err, url: finalUrl }, "Google Safe Browsing lookup failed");
+    return {
+      matches: [],
+      fromCache: false,
+      durationMs: 0,
+      error: err as Error,
+    };
   }
 }
 
-async function fetchPhishtank(finalUrl: string, hash: string): Promise<PhishtankFetchResult> {
+async function fetchPhishtank(
+  finalUrl: string,
+  hash: string,
+): Promise<PhishtankFetchResult> {
   if (!config.phishtank.enabled) {
     return { result: null, fromCache: true, error: null };
   }
   const cacheKey = `url:analysis:${hash}:phishtank`;
-  const cached = await getJsonCache<PhishtankResult>(CACHE_LABELS.phishtank, cacheKey, ANALYSIS_TTLS.phishtank);
+  const cached = await getJsonCache<PhishtankResult>(
+    CACHE_LABELS.phishtank,
+    cacheKey,
+    ANALYSIS_TTLS.phishtank,
+  );
   if (cached) {
     return { result: cached, fromCache: true, error: null };
   }
@@ -2971,14 +3296,19 @@ async function fetchPhishtank(finalUrl: string, hash: string): Promise<Phishtank
         baseDelayMs: 1000,
         factor: 2,
         retryable: shouldRetry,
-      })
+      }),
     );
     recordLatency(CIRCUIT_LABELS.phishtank, result.latencyMs);
-    await setJsonCache(CACHE_LABELS.phishtank, cacheKey, result, ANALYSIS_TTLS.phishtank);
+    await setJsonCache(
+      CACHE_LABELS.phishtank,
+      cacheKey,
+      result,
+      ANALYSIS_TTLS.phishtank,
+    );
     return { result, fromCache: false, error: null };
   } catch (err) {
     recordError(CIRCUIT_LABELS.phishtank, err);
-    logger.warn({ err, url: finalUrl }, 'Phishtank lookup failed');
+    logger.warn({ err, url: finalUrl }, "Phishtank lookup failed");
     return { result: null, fromCache: false, error: err as Error };
   }
 }
@@ -2990,15 +3320,33 @@ interface VirusTotalFetchResult {
   error: Error | null;
 }
 
-async function fetchVirusTotal(finalUrl: string, hash: string): Promise<VirusTotalFetchResult> {
+async function fetchVirusTotal(
+  finalUrl: string,
+  hash: string,
+): Promise<VirusTotalFetchResult> {
   if (!config.vt.enabled || !config.vt.apiKey) {
-    if (!config.vt.enabled) logger.warn({ url: finalUrl }, 'VirusTotal disabled by config');
-    return { stats: undefined, fromCache: true, quotaExceeded: false, error: null };
+    if (!config.vt.enabled)
+      logger.warn({ url: finalUrl }, "VirusTotal disabled by config");
+    return {
+      stats: undefined,
+      fromCache: true,
+      quotaExceeded: false,
+      error: null,
+    };
   }
   const cacheKey = `url:analysis:${hash}:vt`;
-  const cached = await getJsonCache<VtStats>(CACHE_LABELS.vt, cacheKey, ANALYSIS_TTLS.vt);
+  const cached = await getJsonCache<VtStats>(
+    CACHE_LABELS.vt,
+    cacheKey,
+    ANALYSIS_TTLS.vt,
+  );
   if (cached) {
-    return { stats: cached, fromCache: true, quotaExceeded: false, error: null };
+    return {
+      stats: cached,
+      fromCache: true,
+      quotaExceeded: false,
+      error: null,
+    };
   }
   try {
     const analysis = await vtCircuit.execute(() =>
@@ -3007,7 +3355,7 @@ async function fetchVirusTotal(finalUrl: string, hash: string): Promise<VirusTot
         baseDelayMs: 1000,
         factor: 2,
         retryable: shouldRetry,
-      })
+      }),
     );
     recordLatency(CIRCUIT_LABELS.vt, analysis.latencyMs);
     const stats = vtVerdictStats(analysis as VirusTotalAnalysis);
@@ -3017,11 +3365,20 @@ async function fetchVirusTotal(finalUrl: string, hash: string): Promise<VirusTot
     return { stats, fromCache: false, quotaExceeded: false, error: null };
   } catch (err) {
     recordError(CIRCUIT_LABELS.vt, err);
-    const quotaExceeded = err instanceof QuotaExceededError || ((err as { code?: string | number; statusCode?: string | number })?.code ?? (err as { statusCode?: string | number })?.statusCode) === 429;
+    const quotaExceeded =
+      err instanceof QuotaExceededError ||
+      ((err as { code?: string | number; statusCode?: string | number })
+        ?.code ?? (err as { statusCode?: string | number })?.statusCode) ===
+        429;
     if (!quotaExceeded) {
-      logger.warn({ err, url: finalUrl }, 'VirusTotal lookup failed');
+      logger.warn({ err, url: finalUrl }, "VirusTotal lookup failed");
     }
-    return { stats: undefined, fromCache: false, quotaExceeded, error: err as Error };
+    return {
+      stats: undefined,
+      fromCache: false,
+      quotaExceeded,
+      error: err as Error,
+    };
   }
 }
 
@@ -3031,12 +3388,19 @@ interface UrlhausFetchResult {
   error: Error | null;
 }
 
-async function fetchUrlhaus(finalUrl: string, hash: string): Promise<UrlhausFetchResult> {
+async function fetchUrlhaus(
+  finalUrl: string,
+  hash: string,
+): Promise<UrlhausFetchResult> {
   if (!config.urlhaus.enabled) {
     return { result: null, fromCache: true, error: null };
   }
   const cacheKey = `url:analysis:${hash}:urlhaus`;
-  const cached = await getJsonCache<UrlhausResult>(CACHE_LABELS.urlhaus, cacheKey, ANALYSIS_TTLS.urlhaus);
+  const cached = await getJsonCache<UrlhausResult>(
+    CACHE_LABELS.urlhaus,
+    cacheKey,
+    ANALYSIS_TTLS.urlhaus,
+  );
   if (cached) {
     return { result: cached, fromCache: true, error: null };
   }
@@ -3047,14 +3411,19 @@ async function fetchUrlhaus(finalUrl: string, hash: string): Promise<UrlhausFetc
         baseDelayMs: 1000,
         factor: 2,
         retryable: shouldRetry,
-      })
+      }),
     );
     recordLatency(CIRCUIT_LABELS.urlhaus, result.latencyMs);
-    await setJsonCache(CACHE_LABELS.urlhaus, cacheKey, result, ANALYSIS_TTLS.urlhaus);
+    await setJsonCache(
+      CACHE_LABELS.urlhaus,
+      cacheKey,
+      result,
+      ANALYSIS_TTLS.urlhaus,
+    );
     return { result, fromCache: false, error: null };
   } catch (err) {
     recordError(CIRCUIT_LABELS.urlhaus, err);
-    logger.warn({ err, url: finalUrl }, 'URLhaus lookup failed');
+    logger.warn({ err, url: finalUrl }, "URLhaus lookup failed");
     return { result: null, fromCache: false, error: err as Error };
   }
 }
@@ -3066,14 +3435,21 @@ interface ShortenerCacheEntry {
   wasShortened: boolean;
 }
 
-async function resolveShortenerWithCache(url: string, hash: string): Promise<ShortenerCacheEntry | null> {
+async function resolveShortenerWithCache(
+  url: string,
+  hash: string,
+): Promise<ShortenerCacheEntry | null> {
   const cacheKey = `${SHORTENER_CACHE_PREFIX}${hash}`;
-  const cached = await getJsonCache<ShortenerCacheEntry>(CACHE_LABELS.shortener, cacheKey, config.shortener.cacheTtlSeconds);
+  const cached = await getJsonCache<ShortenerCacheEntry>(
+    CACHE_LABELS.shortener,
+    cacheKey,
+    config.shortener.cacheTtlSeconds,
+  );
   if (cached) return cached;
   try {
     const start = Date.now();
     const resolved = await resolveShortener(url);
-    recordLatency('shortener', Date.now() - start);
+    recordLatency("shortener", Date.now() - start);
     if (resolved.wasShortened) {
       const payload: ShortenerCacheEntry = {
         finalUrl: resolved.finalUrl,
@@ -3081,31 +3457,42 @@ async function resolveShortenerWithCache(url: string, hash: string): Promise<Sho
         chain: resolved.chain,
         wasShortened: true,
       };
-      await setJsonCache(CACHE_LABELS.shortener, cacheKey, payload, config.shortener.cacheTtlSeconds);
+      await setJsonCache(
+        CACHE_LABELS.shortener,
+        cacheKey,
+        payload,
+        config.shortener.cacheTtlSeconds,
+      );
       return payload;
     }
     return null;
   } catch (err) {
-    recordError('shortener', err);
-    logger.warn({ err, url }, 'Shortener resolution failed');
+    recordError("shortener", err);
+    logger.warn({ err, url }, "Shortener resolution failed");
     return null;
   }
 }
 
 interface DomainIntelResult {
   ageDays?: number;
-  source: 'rdap' | 'whoisxml' | 'whodat' | 'none';
+  source: "rdap" | "whoisxml" | "whodat" | "none";
   registrar?: string;
 }
 
-async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainIntelResult> {
+async function fetchDomainIntel(
+  hostname: string,
+  hash: string,
+): Promise<DomainIntelResult> {
   if (config.rdap.enabled) {
-    const rdapAge = await domainAgeDaysFromRdap(hostname, config.rdap.timeoutMs).catch(() => undefined);
+    const rdapAge = await domainAgeDaysFromRdap(
+      hostname,
+      config.rdap.timeoutMs,
+    ).catch(() => undefined);
     if (rdapAge !== undefined) {
-      return { ageDays: rdapAge, source: 'rdap' };
+      return { ageDays: rdapAge, source: "rdap" };
     }
   } else {
-    logger.warn({ hostname }, 'RDAP disabled by config');
+    logger.warn({ hostname }, "RDAP disabled by config");
   }
 
   // Try who-dat first if enabled (self-hosted, no quota limits)
@@ -3114,10 +3501,14 @@ async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainI
     const cached = await getJsonCache<{ ageDays?: number; registrar?: string }>(
       CACHE_LABELS.whois,
       cacheKey,
-      ANALYSIS_TTLS.whois
+      ANALYSIS_TTLS.whois,
     );
     if (cached) {
-      return { ageDays: cached.ageDays, registrar: cached.registrar, source: 'whodat' };
+      return {
+        ageDays: cached.ageDays,
+        registrar: cached.registrar,
+        source: "whodat",
+      };
     }
     try {
       const start = Date.now();
@@ -3127,32 +3518,48 @@ async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainI
           baseDelayMs: 1000,
           factor: 2,
           retryable: shouldRetry,
-        })
+        }),
       );
       recordLatency(CIRCUIT_LABELS.whodat, Date.now() - start);
-      const record = (response as { record?: { estimatedDomainAgeDays?: number; registrarName?: string } })?.record;
+      const record = (
+        response as {
+          record?: { estimatedDomainAgeDays?: number; registrarName?: string };
+        }
+      )?.record;
       const ageDays = record?.estimatedDomainAgeDays;
       const registrar = record?.registrarName;
-      await setJsonCache(CACHE_LABELS.whois, cacheKey, { ageDays, registrar }, ANALYSIS_TTLS.whois);
-      return { ageDays, registrar, source: 'whodat' };
+      await setJsonCache(
+        CACHE_LABELS.whois,
+        cacheKey,
+        { ageDays, registrar },
+        ANALYSIS_TTLS.whois,
+      );
+      return { ageDays, registrar, source: "whodat" };
     } catch (err) {
       recordError(CIRCUIT_LABELS.whodat, err);
-      logger.warn({ err, hostname }, 'Who-dat lookup failed, falling back to WhoisXML if available');
+      logger.warn(
+        { err, hostname },
+        "Who-dat lookup failed, falling back to WhoisXML if available",
+      );
     }
   }
 
   // Fallback to WhoisXML if who-dat failed or is disabled
   if (!config.whoisxml?.enabled || !config.whoisxml.apiKey) {
-    return { ageDays: undefined, source: 'none' };
+    return { ageDays: undefined, source: "none" };
   }
   const cacheKey = `url:analysis:${hash}:whois`;
   const cached = await getJsonCache<{ ageDays?: number; registrar?: string }>(
     CACHE_LABELS.whois,
     cacheKey,
-    ANALYSIS_TTLS.whois
+    ANALYSIS_TTLS.whois,
   );
   if (cached) {
-    return { ageDays: cached.ageDays, registrar: cached.registrar, source: 'whoisxml' };
+    return {
+      ageDays: cached.ageDays,
+      registrar: cached.registrar,
+      source: "whoisxml",
+    };
   }
   try {
     const start = Date.now();
@@ -3162,27 +3569,45 @@ async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainI
         baseDelayMs: 1000,
         factor: 2,
         retryable: shouldRetry,
-      })
+      }),
     );
     recordLatency(CIRCUIT_LABELS.whoisxml, Date.now() - start);
-    const record = (response as { record?: { estimatedDomainAgeDays?: number; registrarName?: string } })?.record;
+    const record = (
+      response as {
+        record?: { estimatedDomainAgeDays?: number; registrarName?: string };
+      }
+    )?.record;
     const ageDays = record?.estimatedDomainAgeDays;
     const registrar = record?.registrarName;
-    await setJsonCache(CACHE_LABELS.whois, cacheKey, { ageDays, registrar }, ANALYSIS_TTLS.whois);
-    return { ageDays, registrar, source: 'whoisxml' };
+    await setJsonCache(
+      CACHE_LABELS.whois,
+      cacheKey,
+      { ageDays, registrar },
+      ANALYSIS_TTLS.whois,
+    );
+    return { ageDays, registrar, source: "whoisxml" };
   } catch (err) {
     recordError(CIRCUIT_LABELS.whoisxml, err);
     if (err instanceof QuotaExceededError) {
-      logger.warn({ hostname }, 'WhoisXML quota exhausted, disabling for remainder of month');
+      logger.warn(
+        { hostname },
+        "WhoisXML quota exhausted, disabling for remainder of month",
+      );
       disableWhoisXmlForMonth();
     } else {
-      logger.warn({ err, hostname }, 'WhoisXML lookup failed');
+      logger.warn({ err, hostname }, "WhoisXML lookup failed");
     }
-    return { ageDays: undefined, source: 'none' };
+    return { ageDays: undefined, source: "none" };
   }
 }
 
-async function loadManualOverride(dbClient: { query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }> }, urlHash: string, hostname: string): Promise<'allow' | 'deny' | null> {
+async function loadManualOverride(
+  dbClient: {
+    query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
+  },
+  urlHash: string,
+  hostname: string,
+): Promise<"allow" | "deny" | null> {
   try {
     const { rows } = await dbClient.query(
       `SELECT status FROM overrides
@@ -3190,20 +3615,25 @@ async function loadManualOverride(dbClient: { query: (sql: string, params?: unkn
            AND (expires_at IS NULL OR expires_at > datetime('now'))
          ORDER BY created_at DESC
          LIMIT 1`,
-      [urlHash, hostname]
+      [urlHash, hostname],
     );
     const record = rows[0] as { status?: string } | undefined;
     const status = record?.status;
-    return status === 'allow' || status === 'deny' ? status : null;
+    return status === "allow" || status === "deny" ? status : null;
   } catch (err) {
-    logger.warn({ err, urlHash, hostname }, 'Failed to load manual override');
+    logger.warn({ err, urlHash, hostname }, "Failed to load manual override");
     return null;
   }
 }
 
 interface UrlscanCallbackBody {
   uuid?: string;
-  task?: { uuid?: string; url?: string; screenshotURL?: string; domURL?: string };
+  task?: {
+    uuid?: string;
+    url?: string;
+    screenshotURL?: string;
+    domURL?: string;
+  };
   visual?: { data?: { screenshotURL?: string } };
   screenshotURL?: string;
   domURL?: string;
@@ -3211,14 +3641,14 @@ interface UrlscanCallbackBody {
 }
 
 async function main() {
-  assertEssentialConfig('scan-orchestrator');
+  assertEssentialConfig("scan-orchestrator");
 
   // Validate Redis connectivity before starting
   try {
     await redis.ping();
-    logger.info('Redis connectivity validated');
+    logger.info("Redis connectivity validated");
   } catch (err) {
-    logger.error({ err }, 'Redis connectivity check failed during startup');
+    logger.error({ err }, "Redis connectivity check failed during startup");
     // Don't throw, let healthcheck handle it so container doesn't crash loop immediately
     // throw new Error('Redis is required but unreachable');
   }
@@ -3229,45 +3659,57 @@ async function main() {
   await enhancedSecurity.start();
 
   const app = Fastify();
-  app.get('/healthz', async (_req, reply) => {
+  app.get("/healthz", async (_req, reply) => {
     try {
       // Check Redis connectivity
       await redis.ping();
-      return { ok: true, redis: 'connected' };
+      return { ok: true, redis: "connected" };
     } catch (err) {
-      logger.warn({ err }, 'Health check failed - Redis connectivity issue');
+      logger.warn({ err }, "Health check failed - Redis connectivity issue");
       reply.code(503);
-      return { ok: false, redis: 'disconnected', error: 'Redis unreachable' };
+      return { ok: false, redis: "disconnected", error: "Redis unreachable" };
     }
   });
-  app.get('/metrics', async (_req, reply) => {
-    reply.header('Content-Type', register.contentType);
+  app.get("/metrics", async (_req, reply) => {
+    reply.header("Content-Type", register.contentType);
     return register.metrics();
   });
 
-  app.post('/urlscan/callback', async (req, reply) => {
+  app.post("/urlscan/callback", async (req, reply) => {
     if (!config.urlscan.enabled) {
-      reply.code(503).send({ ok: false, error: 'urlscan disabled' });
+      reply.code(503).send({ ok: false, error: "urlscan disabled" });
       return;
     }
     const secret = config.urlscan.callbackSecret;
-    const headers = req.headers as Record<string, string | string[] | undefined>;
-    const rawHeaderToken = headers['x-urlscan-secret'] ?? headers['x-urlscan-token'];
-    const headerToken = Array.isArray(rawHeaderToken) ? rawHeaderToken[0] : rawHeaderToken;
-    const queryTokenRaw = (req.query as Record<string, string | string[] | undefined> | undefined)?.token;
-    const queryToken = Array.isArray(queryTokenRaw) ? queryTokenRaw[0] : queryTokenRaw;
+    const headers = req.headers as Record<
+      string,
+      string | string[] | undefined
+    >;
+    const rawHeaderToken =
+      headers["x-urlscan-secret"] ?? headers["x-urlscan-token"];
+    const headerToken = Array.isArray(rawHeaderToken)
+      ? rawHeaderToken[0]
+      : rawHeaderToken;
+    const queryTokenRaw = (
+      req.query as Record<string, string | string[] | undefined> | undefined
+    )?.token;
+    const queryToken = Array.isArray(queryTokenRaw)
+      ? queryTokenRaw[0]
+      : queryTokenRaw;
 
     if (!secret || (headerToken !== secret && queryToken !== secret)) {
-      reply.code(401).send({ ok: false, error: 'unauthorized' });
+      reply.code(401).send({ ok: false, error: "unauthorized" });
       return;
     }
     const body = req.body as UrlscanCallbackBody;
     const uuid = body?.uuid || body?.task?.uuid;
     if (!uuid) {
-      reply.code(400).send({ ok: false, error: 'missing uuid' });
+      reply.code(400).send({ ok: false, error: "missing uuid" });
       return;
     }
-    const urlscanBaseUrl = (config.urlscan.baseUrl || 'https://urlscan.io').replace(/\/+$/, '');
+    const urlscanBaseUrl = (
+      config.urlscan.baseUrl || "https://urlscan.io"
+    ).replace(/\/+$/, "");
     const artifactSources = [
       body?.screenshotURL,
       body?.task?.screenshotURL,
@@ -3277,10 +3719,16 @@ async function main() {
     ];
 
     for (const source of artifactSources) {
-      const validation = normalizeUrlscanArtifactCandidate(source, urlscanBaseUrl);
+      const validation = normalizeUrlscanArtifactCandidate(
+        source,
+        urlscanBaseUrl,
+      );
       if (validation.invalid) {
-        logger.warn({ uuid, source }, 'urlscan callback rejected due to artifact host validation');
-        reply.code(400).send({ ok: false, error: 'invalid artifact url' });
+        logger.warn(
+          { uuid, source },
+          "urlscan callback rejected due to artifact host validation",
+        );
+        reply.code(400).send({ ok: false, error: "invalid artifact url" });
         return;
       }
     }
@@ -3295,7 +3743,7 @@ async function main() {
       }
     }
     if (!urlHashValue) {
-      logger.warn({ uuid }, 'urlscan callback without known url hash');
+      logger.warn({ uuid }, "urlscan callback without known url hash");
       reply.code(202).send({ ok: true });
       return;
     }
@@ -3303,19 +3751,23 @@ async function main() {
     await redis.set(
       `${URLSCAN_RESULT_PREFIX}${urlHashValue}`,
       JSON.stringify(body),
-      'EX',
-      config.urlscan.resultTtlSeconds
+      "EX",
+      config.urlscan.resultTtlSeconds,
     );
 
-    let artifacts: { screenshotPath: string | null; domPath: string | null } | null = null;
+    let artifacts: {
+      screenshotPath: string | null;
+      domPath: string | null;
+    } | null = null;
     try {
       artifacts = await downloadUrlscanArtifacts(uuid, urlHashValue);
     } catch (err) {
-      logger.warn({ err, uuid }, 'failed to download urlscan artifacts');
+      logger.warn({ err, uuid }, "failed to download urlscan artifacts");
     }
 
-    await dbClient.query(
-      `UPDATE scans
+    await dbClient
+      .query(
+        `UPDATE scans
          SET urlscan_status=?,
              urlscan_completed_at=datetime('now'),
              urlscan_result=?,
@@ -3326,186 +3778,254 @@ async function main() {
                ELSE urlscan_artifact_stored_at
              END
        WHERE url_hash=?`,
-      ['completed', JSON.stringify(body), artifacts?.screenshotPath ?? null, artifacts?.domPath ?? null, artifacts?.screenshotPath ?? null, artifacts?.domPath ?? null, urlHashValue]
-    ).catch((err: Error) => {
-      logger.error({ err }, 'failed to persist urlscan callback');
-    });
+        [
+          "completed",
+          JSON.stringify(body),
+          artifacts?.screenshotPath ?? null,
+          artifacts?.domPath ?? null,
+          artifacts?.screenshotPath ?? null,
+          artifacts?.domPath ?? null,
+          urlHashValue,
+        ],
+      )
+      .catch((err: Error) => {
+        logger.error({ err }, "failed to persist urlscan callback");
+      });
 
     reply.send({ ok: true });
   });
 
-  new Worker(config.queues.scanRequest, async (job) => {
-    const queueName = config.queues.scanRequest;
-    const started = Date.now();
-    const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
-    metrics.queueJobWait.labels(queueName).observe(waitSeconds);
-    const { chatId, messageId, url, timestamp, rescan } = job.data as {
-      chatId?: string;
-      messageId?: string;
-      url: string;
-      timestamp?: number;
-      rescan?: boolean;
-    };
-    const ingestionTimestamp = typeof timestamp === 'number' ? timestamp : job.timestamp ?? started;
-    const hasChatContext = typeof chatId === 'string' && typeof messageId === 'string';
-    try {
-      const norm = normalizeUrl(url);
-      if (!norm) {
-        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
-        metrics.queueCompleted.labels(queueName).inc();
-        if (job.attemptsMade > 0) {
-          metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
+  new Worker(
+    config.queues.scanRequest,
+    async (job) => {
+      const queueName = config.queues.scanRequest;
+      const started = Date.now();
+      const waitSeconds = Math.max(
+        0,
+        (started - (job.timestamp ?? started)) / 1000,
+      );
+      metrics.queueJobWait.labels(queueName).observe(waitSeconds);
+      const { chatId, messageId, url, timestamp, rescan } = job.data as {
+        chatId?: string;
+        messageId?: string;
+        url: string;
+        timestamp?: number;
+        rescan?: boolean;
+      };
+      const ingestionTimestamp =
+        typeof timestamp === "number" ? timestamp : (job.timestamp ?? started);
+      const hasChatContext =
+        typeof chatId === "string" && typeof messageId === "string";
+      try {
+        const norm = normalizeUrl(url);
+        if (!norm) {
+          metrics.queueProcessingDuration
+            .labels(queueName)
+            .observe((Date.now() - started) / 1000);
+          metrics.queueCompleted.labels(queueName).inc();
+          if (job.attemptsMade > 0) {
+            metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
+          }
+          return;
         }
-        return;
-      }
-      const h = urlHash(norm);
-      const cacheKey = `scan:${h}`;
+        const h = urlHash(norm);
+        const cacheKey = `scan:${h}`;
 
-      interface CachedVerdict {
-        verdict: string;
-        score: number;
-        reasons: string[];
-        cacheTtl?: number;
-        decidedAt?: number;
-        [key: string]: unknown;
-      }
-
-      let cachedVerdict: CachedVerdict | null = null;
-      let cachedTtl = -1;
-      const cacheStop = metrics.cacheLookupDuration.labels(CACHE_LABELS.verdict).startTimer();
-      const cachedRaw = await redis.get(cacheKey);
-      cacheStop();
-      if (cachedRaw) {
-        recordCacheOutcome(CACHE_LABELS.verdict, 'hit');
-        metrics.cacheHit.inc();
-        metrics.cacheEntryBytes.labels(CACHE_LABELS.verdict).set(Buffer.byteLength(cachedRaw));
-        cachedTtl = await redis.ttl(cacheKey);
-        if (cachedTtl >= 0) {
-          metrics.cacheEntryTtl.labels(CACHE_LABELS.verdict).set(cachedTtl);
-        }
-        try {
-          cachedVerdict = JSON.parse(cachedRaw) as CachedVerdict;
-        } catch {
-          metrics.cacheStaleTotal.labels(CACHE_LABELS.verdict).inc();
-        }
-        if (
-          cachedVerdict &&
-          typeof cachedVerdict.cacheTtl === 'number' &&
-          cachedTtl >= 0 &&
-          cachedTtl < Math.max(1, Math.floor(cachedVerdict.cacheTtl * 0.2))
-        ) {
-          metrics.cacheStaleTotal.labels(CACHE_LABELS.verdict).inc();
-        }
-      } else {
-        recordCacheOutcome(CACHE_LABELS.verdict, 'miss');
-        metrics.cacheMiss.inc();
-        metrics.cacheEntryTtl.labels(CACHE_LABELS.verdict).set(0);
-      }
-
-      if (cachedVerdict) {
-        const verdictLatencySeconds = Math.max(0, (Date.now() - ingestionTimestamp) / 1000);
-        metrics.verdictLatency.observe(verdictLatencySeconds);
-        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
-        metrics.queueCompleted.labels(queueName).inc();
-        if (job.attemptsMade > 0) {
-          metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
+        interface CachedVerdict {
+          verdict: string;
+          score: number;
+          reasons: string[];
+          cacheTtl?: number;
+          decidedAt?: number;
+          [key: string]: unknown;
         }
 
-        if (hasChatContext) {
-          const resolvedMessageId = messageId ?? '';
-          await scanVerdictQueue.add(
-            'verdict',
-            {
-              chatId,
-              messageId: resolvedMessageId,
-              ...cachedVerdict,
-              decidedAt: cachedVerdict.decidedAt ?? Date.now(),
-            },
-            { removeOnComplete: true }
-          );
+        let cachedVerdict: CachedVerdict | null = null;
+        let cachedTtl = -1;
+        const cacheStop = metrics.cacheLookupDuration
+          .labels(CACHE_LABELS.verdict)
+          .startTimer();
+        const cachedRaw = await redis.get(cacheKey);
+        cacheStop();
+        if (cachedRaw) {
+          recordCacheOutcome(CACHE_LABELS.verdict, "hit");
+          metrics.cacheHit.inc();
+          metrics.cacheEntryBytes
+            .labels(CACHE_LABELS.verdict)
+            .set(Buffer.byteLength(cachedRaw));
+          cachedTtl = await redis.ttl(cacheKey);
+          if (cachedTtl >= 0) {
+            metrics.cacheEntryTtl.labels(CACHE_LABELS.verdict).set(cachedTtl);
+          }
+          try {
+            cachedVerdict = JSON.parse(cachedRaw) as CachedVerdict;
+          } catch {
+            metrics.cacheStaleTotal.labels(CACHE_LABELS.verdict).inc();
+          }
+          if (
+            cachedVerdict &&
+            typeof cachedVerdict.cacheTtl === "number" &&
+            cachedTtl >= 0 &&
+            cachedTtl < Math.max(1, Math.floor(cachedVerdict.cacheTtl * 0.2))
+          ) {
+            metrics.cacheStaleTotal.labels(CACHE_LABELS.verdict).inc();
+          }
         } else {
-          logger.info({ url: norm, jobId: job.id, rescan: Boolean(rescan) }, 'Skipping verdict dispatch without chat context');
+          recordCacheOutcome(CACHE_LABELS.verdict, "miss");
+          metrics.cacheMiss.inc();
+          metrics.cacheEntryTtl.labels(CACHE_LABELS.verdict).set(0);
         }
-        return;
-      }
 
-      const shortenerInfo = await resolveShortenerWithCache(norm, h);
-      const preExpansionUrl = shortenerInfo?.finalUrl ?? norm;
-      const exp = await expandUrl(preExpansionUrl, config.orchestrator.expansion);
-      const finalUrl = exp.finalUrl;
-      const finalUrlObj = new URL(finalUrl);
-      const redirectChain = [...(shortenerInfo?.chain ?? []), ...exp.chain.filter((item: string) => !(shortenerInfo?.chain ?? []).includes(item))];
-      const heurSignals = extraHeuristics(finalUrlObj);
-      const wasShortened = Boolean(shortenerInfo?.wasShortened);
-      const finalUrlMismatch = wasShortened && new URL(norm).hostname !== finalUrlObj.hostname;
+        if (cachedVerdict) {
+          const verdictLatencySeconds = Math.max(
+            0,
+            (Date.now() - ingestionTimestamp) / 1000,
+          );
+          metrics.verdictLatency.observe(verdictLatencySeconds);
+          metrics.queueProcessingDuration
+            .labels(queueName)
+            .observe((Date.now() - started) / 1000);
+          metrics.queueCompleted.labels(queueName).inc();
+          if (job.attemptsMade > 0) {
+            metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
+          }
 
-      const homoglyphResult = detectHomoglyphs(finalUrlObj.hostname);
-      if (homoglyphResult.detected) {
-        metrics.homoglyphDetections.labels(homoglyphResult.riskLevel).inc();
-        logger.info({ hostname: finalUrlObj.hostname, risk: homoglyphResult.riskLevel, confusables: homoglyphResult.confusableChars }, 'Homoglyph detection');
-      }
+          if (hasChatContext) {
+            const resolvedMessageId = messageId ?? "";
+            await scanVerdictQueue.add(
+              "verdict",
+              {
+                chatId,
+                messageId: resolvedMessageId,
+                ...cachedVerdict,
+                decidedAt: cachedVerdict.decidedAt ?? Date.now(),
+              },
+              { removeOnComplete: true },
+            );
+          } else {
+            logger.info(
+              { url: norm, jobId: job.id, rescan: Boolean(rescan) },
+              "Skipping verdict dispatch without chat context",
+            );
+          }
+          return;
+        }
 
-      const enhancedSecurityResult = await enhancedSecurity.analyze(finalUrl, h);
+        const shortenerInfo = await resolveShortenerWithCache(norm, h);
+        const preExpansionUrl = shortenerInfo?.finalUrl ?? norm;
+        const exp = await expandUrl(
+          preExpansionUrl,
+          config.orchestrator.expansion,
+        );
+        const finalUrl = exp.finalUrl;
+        const finalUrlObj = new URL(finalUrl);
+        const redirectChain = [
+          ...(shortenerInfo?.chain ?? []),
+          ...exp.chain.filter(
+            (item: string) => !(shortenerInfo?.chain ?? []).includes(item),
+          ),
+        ];
+        const heurSignals = extraHeuristics(finalUrlObj);
+        const wasShortened = Boolean(shortenerInfo?.wasShortened);
+        const finalUrlMismatch =
+          wasShortened && new URL(norm).hostname !== finalUrlObj.hostname;
 
-      if (enhancedSecurityResult.verdict === 'malicious' && enhancedSecurityResult.confidence === 'high' && enhancedSecurityResult.skipExternalAPIs) {
-        logger.info({ url: finalUrl, score: enhancedSecurityResult.score, reasons: enhancedSecurityResult.reasons }, 'Tier 1 high-confidence threat detected, skipping external APIs');
+        const homoglyphResult = detectHomoglyphs(finalUrlObj.hostname);
+        if (homoglyphResult.detected) {
+          metrics.homoglyphDetections.labels(homoglyphResult.riskLevel).inc();
+          logger.info(
+            {
+              hostname: finalUrlObj.hostname,
+              risk: homoglyphResult.riskLevel,
+              confusables: homoglyphResult.confusableChars,
+            },
+            "Homoglyph detection",
+          );
+        }
 
-        const signals = {
-          gsbThreatTypes: [],
-          phishtankVerified: false,
-          urlhausListed: false,
-          vtMalicious: undefined,
-          vtSuspicious: undefined,
-          vtHarmless: undefined,
-          domainAgeDays: undefined,
-          redirectCount: redirectChain.length,
-          wasShortened,
-          finalUrlMismatch,
-          manualOverride: null,
-          homoglyph: homoglyphResult,
-          ...heurSignals,
-          enhancedSecurityScore: enhancedSecurityResult.score,
-          enhancedSecurityReasons: enhancedSecurityResult.reasons,
-        };
-
-        const verdictResult = scoreFromSignals(signals);
-        const verdict = 'malicious';
-        const { score, reasons } = verdictResult;
-        const enhancedReasons = [...reasons, ...enhancedSecurityResult.reasons];
-
-        const cacheTtl = config.orchestrator.cacheTtl.malicious;
-        const verdictPayload = {
-          url: norm,
+        const enhancedSecurityResult = await enhancedSecurity.analyze(
           finalUrl,
-          verdict,
-          score,
-          reasons: enhancedReasons,
-          cacheTtl,
-          redirectChain,
-          wasShortened,
-          finalUrlMismatch,
-          homoglyph: homoglyphResult,
-          enhancedSecurity: {
-            tier1Score: enhancedSecurityResult.score,
-            confidence: enhancedSecurityResult.confidence,
-          },
-          decidedAt: Date.now(),
-        };
+          h,
+        );
 
-        await setJsonCache(CACHE_LABELS.verdict, cacheKey, verdictPayload, cacheTtl);
+        if (
+          enhancedSecurityResult.verdict === "malicious" &&
+          enhancedSecurityResult.confidence === "high" &&
+          enhancedSecurityResult.skipExternalAPIs
+        ) {
+          logger.info(
+            {
+              url: finalUrl,
+              score: enhancedSecurityResult.score,
+              reasons: enhancedSecurityResult.reasons,
+            },
+            "Tier 1 high-confidence threat detected, skipping external APIs",
+          );
 
-        try {
-          await dbClient.transaction(async () => {
-            // Insert or update scan record
-            // Note: Using INSERT OR REPLACE is SQLite specific. For Postgres compatibility we should use ON CONFLICT or separate logic.
-            // However, since we are abstracting, we'll stick to standard SQL or handle it in the query method if needed.
-            // But here we are using raw SQL.
-            // For now, let's assume the query method handles parameter conversion.
-            // Using CURRENT_TIMESTAMP for SQL standard compatibility (SQLite and Postgres)
-            // Original approach used datetime('now') which is SQLite-specific
-            // CURRENT_TIMESTAMP works for both SQLite and Postgres
+          const signals = {
+            gsbThreatTypes: [],
+            phishtankVerified: false,
+            urlhausListed: false,
+            vtMalicious: undefined,
+            vtSuspicious: undefined,
+            vtHarmless: undefined,
+            domainAgeDays: undefined,
+            redirectCount: redirectChain.length,
+            wasShortened,
+            finalUrlMismatch,
+            manualOverride: null,
+            homoglyph: homoglyphResult,
+            ...heurSignals,
+            enhancedSecurityScore: enhancedSecurityResult.score,
+            enhancedSecurityReasons: enhancedSecurityResult.reasons,
+          };
 
-            const standardSql = `
+          const verdictResult = scoreFromSignals(signals);
+          const verdict = "malicious";
+          const { score, reasons } = verdictResult;
+          const enhancedReasons = [
+            ...reasons,
+            ...enhancedSecurityResult.reasons,
+          ];
+
+          const cacheTtl = config.orchestrator.cacheTtl.malicious;
+          const verdictPayload = {
+            url: norm,
+            finalUrl,
+            verdict,
+            score,
+            reasons: enhancedReasons,
+            cacheTtl,
+            redirectChain,
+            wasShortened,
+            finalUrlMismatch,
+            homoglyph: homoglyphResult,
+            enhancedSecurity: {
+              tier1Score: enhancedSecurityResult.score,
+              confidence: enhancedSecurityResult.confidence,
+            },
+            decidedAt: Date.now(),
+          };
+
+          await setJsonCache(
+            CACHE_LABELS.verdict,
+            cacheKey,
+            verdictPayload,
+            cacheTtl,
+          );
+
+          try {
+            await dbClient.transaction(async () => {
+              // Insert or update scan record
+              // Note: Using INSERT OR REPLACE is SQLite specific. For Postgres compatibility we should use ON CONFLICT or separate logic.
+              // However, since we are abstracting, we'll stick to standard SQL or handle it in the query method if needed.
+              // But here we are using raw SQL.
+              // For now, let's assume the query method handles parameter conversion.
+              // Using CURRENT_TIMESTAMP for SQL standard compatibility (SQLite and Postgres)
+              // Original approach used datetime('now') which is SQLite-specific
+              // CURRENT_TIMESTAMP works for both SQLite and Postgres
+
+              const standardSql = `
               INSERT INTO scans (url_hash, url, final_url, verdict, score, reasons, cache_ttl, redirect_chain, was_shortened, final_url_mismatch, homoglyph_detected, homoglyph_risk_level, first_seen_at, last_seen_at)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
               ON CONFLICT(url_hash) DO UPDATE SET
@@ -3523,305 +4043,374 @@ async function main() {
                 last_seen_at=CURRENT_TIMESTAMP
             `;
 
-            await dbClient.query(standardSql, [
-              h, norm, finalUrl, verdict, score, JSON.stringify(enhancedReasons), cacheTtl, JSON.stringify(redirectChain), wasShortened, finalUrlMismatch, homoglyphResult.detected, homoglyphResult.riskLevel
-            ]);
-          });
-        } catch (err) {
-          logger.error({ err, url: norm }, 'failed to persist enhanced security verdict');
+              await dbClient.query(standardSql, [
+                h,
+                norm,
+                finalUrl,
+                verdict,
+                score,
+                JSON.stringify(enhancedReasons),
+                cacheTtl,
+                JSON.stringify(redirectChain),
+                wasShortened,
+                finalUrlMismatch,
+                homoglyphResult.detected,
+                homoglyphResult.riskLevel,
+              ]);
+            });
+          } catch (err) {
+            logger.error(
+              { err, url: norm },
+              "failed to persist enhanced security verdict",
+            );
+          }
+
+          metrics.verdictScore.observe(score);
+          for (const reason of enhancedReasons) {
+            metrics.verdictReasons.labels(normalizeVerdictReason(reason)).inc();
+          }
+
+          const verdictLatencySeconds = Math.max(
+            0,
+            (Date.now() - ingestionTimestamp) / 1000,
+          );
+          metrics.verdictLatency.observe(verdictLatencySeconds);
+          metrics.queueProcessingDuration
+            .labels(queueName)
+            .observe((Date.now() - started) / 1000);
+          metrics.queueCompleted.labels(queueName).inc();
+
+          if (hasChatContext) {
+            await scanVerdictQueue.add(
+              "verdict",
+              {
+                chatId,
+                messageId,
+                ...verdictPayload,
+              },
+              { removeOnComplete: true },
+            );
+          }
+
+          await enhancedSecurity.recordVerdict(
+            finalUrl,
+            "malicious",
+            enhancedSecurityResult.score / 3.0,
+          );
+          return;
         }
+
+        const [blocklistResult, domainIntel, manualOverride] =
+          await Promise.all([
+            checkBlocklistsWithRedundancy({
+              finalUrl,
+              hash: h,
+              fallbackLatencyMs: config.gsb.fallbackLatencyMs,
+              gsbApiKeyPresent: Boolean(config.gsb.apiKey),
+              phishtankEnabled: config.phishtank.enabled,
+              fetchGsbAnalysis,
+              fetchPhishtank,
+            }),
+            fetchDomainIntel(finalUrlObj.hostname, h),
+            loadManualOverride(dbClient, h, finalUrlObj.hostname),
+          ]);
+
+        if (manualOverride) {
+          metrics.manualOverrideApplied.labels(manualOverride).inc();
+        }
+
+        const domainAgeDays = domainIntel.ageDays;
+        const gsbMatches = blocklistResult.gsbMatches;
+        const gsbHit = gsbMatches.length > 0;
+        if (gsbHit) metrics.gsbHits.inc();
+
+        const phishtankResult = blocklistResult.phishtankResult;
+        const phishtankHit = Boolean(phishtankResult?.verified);
+
+        let vtStats: VtStats | undefined;
+        let vtQuotaExceeded = false;
+        let vtError: Error | null = null;
+        if (!gsbHit && !phishtankHit) {
+          const vtResponse = await fetchVirusTotal(finalUrl, h);
+          vtStats = vtResponse.stats;
+          vtQuotaExceeded = vtResponse.quotaExceeded;
+          vtError = vtResponse.error;
+          if (!vtResponse.fromCache && !vtResponse.error) {
+            metrics.vtSubmissions.inc();
+          }
+        }
+
+        let urlhausResult: UrlhausResult | null = null;
+        let urlhausError: Error | null = null;
+        let urlhausConsulted = false;
+        const shouldQueryUrlhaus =
+          !gsbHit &&
+          (!config.vt.apiKey ||
+            vtQuotaExceeded ||
+            vtError !== null ||
+            !vtStats);
+        if (shouldQueryUrlhaus) {
+          urlhausConsulted = true;
+          const urlhausResponse = await fetchUrlhaus(finalUrl, h);
+          urlhausResult = urlhausResponse.result;
+          urlhausError = urlhausResponse.error;
+        }
+
+        const summarizeReason = (input?: string | null) => {
+          if (!input) return "unavailable";
+          const trimmed = input.trim();
+          if (trimmed.length === 0) return "unavailable";
+          return trimmed.length > 80 ? `${trimmed.slice(0, 77)}...` : trimmed;
+        };
+
+        type ProviderState = {
+          key: string;
+          name: string;
+          consulted: boolean;
+          available: boolean;
+          reason?: string;
+        };
+
+        const providerStates: ProviderState[] = [
+          {
+            key: "gsb",
+            name: "Google Safe Browsing",
+            consulted: true,
+            available: !blocklistResult.gsbResult.error,
+            reason: blocklistResult.gsbResult.error
+              ? summarizeReason(blocklistResult.gsbResult.error.message)
+              : undefined,
+          },
+        ];
+
+        if (blocklistResult.phishtankNeeded) {
+          providerStates.push({
+            key: "phishtank",
+            name: "Phishtank",
+            consulted: true,
+            available: !blocklistResult.phishtankError,
+            reason: blocklistResult.phishtankError
+              ? summarizeReason(blocklistResult.phishtankError.message)
+              : undefined,
+          });
+        }
+
+        const vtConsulted =
+          !gsbHit && !phishtankHit && Boolean(config.vt.apiKey);
+        if (vtConsulted) {
+          let vtReason: string | undefined;
+          if (!vtStats) {
+            vtReason = vtQuotaExceeded
+              ? "quota_exhausted"
+              : summarizeReason(vtError?.message ?? null);
+          }
+          providerStates.push({
+            key: "virustotal",
+            name: "VirusTotal",
+            consulted: true,
+            available: Boolean(vtStats) || (!vtError && !vtQuotaExceeded),
+            reason: vtStats ? undefined : vtReason,
+          });
+        }
+
+        if (urlhausConsulted) {
+          providerStates.push({
+            key: "urlhaus",
+            name: "URLhaus",
+            consulted: true,
+            available: !urlhausError,
+            reason: urlhausError
+              ? summarizeReason(urlhausError.message)
+              : undefined,
+          });
+        }
+
+        const consultedProviders = providerStates.filter(
+          (state) => state.consulted,
+        );
+        const availableProviders = consultedProviders.filter(
+          (state) => state.available,
+        );
+        const degradedProviders = consultedProviders.filter(
+          (state) => !state.available,
+        );
+        const degradedMode =
+          consultedProviders.length > 0 && availableProviders.length === 0
+            ? {
+                providers: degradedProviders.map((state) => ({
+                  name: state.name,
+                  reason: state.reason ?? "unavailable",
+                })),
+              }
+            : undefined;
+
+        if (degradedMode) {
+          metrics.degradedModeEvents.inc();
+          metrics.externalScannersDegraded.set(1);
+          logger.warn(
+            { url: finalUrl, urlHash: h, providers: degradedMode.providers },
+            "Operating in degraded mode with no external providers available",
+          );
+        } else {
+          metrics.externalScannersDegraded.set(0);
+        }
+
+        const heuristicsOnly = degradedMode !== undefined;
+        const signals = {
+          gsbThreatTypes: gsbMatches.map((m: GsbThreatMatch) => m.threatType),
+          phishtankVerified: Boolean(phishtankResult?.verified),
+          urlhausListed: Boolean(urlhausResult?.listed),
+          vtMalicious: vtStats?.malicious,
+          vtSuspicious: vtStats?.suspicious,
+          vtHarmless: vtStats?.harmless,
+          domainAgeDays,
+          redirectCount: redirectChain.length,
+          wasShortened,
+          finalUrlMismatch,
+          manualOverride,
+          homoglyph: homoglyphResult,
+          ...heurSignals,
+          enhancedSecurityScore: enhancedSecurityResult.score,
+          enhancedSecurityReasons: enhancedSecurityResult.reasons,
+          heuristicsOnly,
+        };
+        const verdictResult = scoreFromSignals(signals);
+        const verdict = verdictResult.level;
+        let { score, reasons } = verdictResult;
+
+        if (enhancedSecurityResult.reasons.length > 0) {
+          reasons = [...reasons, ...enhancedSecurityResult.reasons];
+        }
+        const baselineVerdict = scoreFromSignals({
+          ...signals,
+          manualOverride: null,
+        }).level;
 
         metrics.verdictScore.observe(score);
-        for (const reason of enhancedReasons) {
+        for (const reason of reasons) {
           metrics.verdictReasons.labels(normalizeVerdictReason(reason)).inc();
         }
-
-        const verdictLatencySeconds = Math.max(0, (Date.now() - ingestionTimestamp) / 1000);
-        metrics.verdictLatency.observe(verdictLatencySeconds);
-        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
-        metrics.queueCompleted.labels(queueName).inc();
-
-        if (hasChatContext) {
-          await scanVerdictQueue.add('verdict', {
-            chatId,
-            messageId,
-            ...verdictPayload,
-          }, { removeOnComplete: true });
+        if (baselineVerdict !== verdict) {
+          metrics.verdictEscalations.labels(baselineVerdict, verdict).inc();
+        }
+        if (gsbMatches.length > 0) {
+          metrics.verdictSignals.labels("gsb_match").inc(gsbMatches.length);
+        }
+        if (phishtankHit) {
+          metrics.verdictSignals.labels("phishtank_verified").inc();
+        }
+        if (urlhausResult?.listed) {
+          metrics.verdictSignals.labels("urlhaus_listed").inc();
+        }
+        if ((vtStats?.malicious ?? 0) > 0) {
+          metrics.verdictSignals
+            .labels("vt_malicious")
+            .inc(vtStats?.malicious ?? 0);
+        }
+        if ((vtStats?.suspicious ?? 0) > 0) {
+          metrics.verdictSignals
+            .labels("vt_suspicious")
+            .inc(vtStats?.suspicious ?? 0);
+        }
+        if (wasShortened) {
+          metrics.verdictSignals.labels("shortener").inc();
+        }
+        if (finalUrlMismatch) {
+          metrics.verdictSignals.labels("redirect_mismatch").inc();
+        }
+        if (redirectChain.length > 0) {
+          metrics.verdictSignals
+            .labels("redirect_chain")
+            .inc(redirectChain.length);
+        }
+        if (homoglyphResult.detected) {
+          metrics.verdictSignals
+            .labels(`homoglyph_${homoglyphResult.riskLevel}`)
+            .inc();
+        }
+        if (typeof domainAgeDays === "number") {
+          metrics.verdictSignals.labels("domain_age").inc();
+        }
+        if (signals.manualOverride) {
+          metrics.verdictSignals
+            .labels(`override_${signals.manualOverride}`)
+            .inc();
         }
 
-        await enhancedSecurity.recordVerdict(finalUrl, 'malicious', enhancedSecurityResult.score / 3.0);
-        return;
-      }
+        const blocklistHit =
+          gsbHit || phishtankHit || Boolean(urlhausResult?.listed);
 
-      const [blocklistResult, domainIntel, manualOverride] = await Promise.all([
-        checkBlocklistsWithRedundancy({
-          finalUrl,
-          hash: h,
-          fallbackLatencyMs: config.gsb.fallbackLatencyMs,
-          gsbApiKeyPresent: Boolean(config.gsb.apiKey),
-          phishtankEnabled: config.phishtank.enabled,
-          fetchGsbAnalysis,
-          fetchPhishtank,
-        }),
-        fetchDomainIntel(finalUrlObj.hostname, h),
-        loadManualOverride(dbClient, h, finalUrlObj.hostname),
-      ]);
-
-      if (manualOverride) {
-        metrics.manualOverrideApplied.labels(manualOverride).inc();
-      }
-
-      const domainAgeDays = domainIntel.ageDays;
-      const gsbMatches = blocklistResult.gsbMatches;
-      const gsbHit = gsbMatches.length > 0;
-      if (gsbHit) metrics.gsbHits.inc();
-
-      const phishtankResult = blocklistResult.phishtankResult;
-      const phishtankHit = Boolean(phishtankResult?.verified);
-
-      let vtStats: VtStats | undefined;
-      let vtQuotaExceeded = false;
-      let vtError: Error | null = null;
-      if (!gsbHit && !phishtankHit) {
-        const vtResponse = await fetchVirusTotal(finalUrl, h);
-        vtStats = vtResponse.stats;
-        vtQuotaExceeded = vtResponse.quotaExceeded;
-        vtError = vtResponse.error;
-        if (!vtResponse.fromCache && !vtResponse.error) {
-          metrics.vtSubmissions.inc();
-        }
-      }
-
-      let urlhausResult: UrlhausResult | null = null;
-      let urlhausError: Error | null = null;
-      let urlhausConsulted = false;
-      const shouldQueryUrlhaus =
-        !gsbHit && (
-          !config.vt.apiKey ||
-          vtQuotaExceeded ||
-          vtError !== null ||
-          !vtStats
-        );
-      if (shouldQueryUrlhaus) {
-        urlhausConsulted = true;
-        const urlhausResponse = await fetchUrlhaus(finalUrl, h);
-        urlhausResult = urlhausResponse.result;
-        urlhausError = urlhausResponse.error;
-      }
-
-      const summarizeReason = (input?: string | null) => {
-        if (!input) return 'unavailable';
-        const trimmed = input.trim();
-        if (trimmed.length === 0) return 'unavailable';
-        return trimmed.length > 80 ? `${trimmed.slice(0, 77)}...` : trimmed;
-      };
-
-      type ProviderState = {
-        key: string;
-        name: string;
-        consulted: boolean;
-        available: boolean;
-        reason?: string;
-      };
-
-      const providerStates: ProviderState[] = [
-        {
-          key: 'gsb',
-          name: 'Google Safe Browsing',
-          consulted: true,
-          available: !blocklistResult.gsbResult.error,
-          reason: blocklistResult.gsbResult.error ? summarizeReason(blocklistResult.gsbResult.error.message) : undefined,
-        },
-      ];
-
-      if (blocklistResult.phishtankNeeded) {
-        providerStates.push({
-          key: 'phishtank',
-          name: 'Phishtank',
-          consulted: true,
-          available: !blocklistResult.phishtankError,
-          reason: blocklistResult.phishtankError ? summarizeReason(blocklistResult.phishtankError.message) : undefined,
-        });
-      }
-
-      const vtConsulted = !gsbHit && !phishtankHit && Boolean(config.vt.apiKey);
-      if (vtConsulted) {
-        let vtReason: string | undefined;
-        if (!vtStats) {
-          vtReason = vtQuotaExceeded ? 'quota_exhausted' : summarizeReason(vtError?.message ?? null);
-        }
-        providerStates.push({
-          key: 'virustotal',
-          name: 'VirusTotal',
-          consulted: true,
-          available: Boolean(vtStats) || (!vtError && !vtQuotaExceeded),
-          reason: vtStats ? undefined : vtReason,
-        });
-      }
-
-      if (urlhausConsulted) {
-        providerStates.push({
-          key: 'urlhaus',
-          name: 'URLhaus',
-          consulted: true,
-          available: !urlhausError,
-          reason: urlhausError ? summarizeReason(urlhausError.message) : undefined,
-        });
-      }
-
-      const consultedProviders = providerStates.filter((state) => state.consulted);
-      const availableProviders = consultedProviders.filter((state) => state.available);
-      const degradedProviders = consultedProviders.filter((state) => !state.available);
-      const degradedMode = consultedProviders.length > 0 && availableProviders.length === 0
-        ? {
-          providers: degradedProviders.map((state) => ({
-            name: state.name,
-            reason: state.reason ?? 'unavailable',
-          })),
-        }
-        : undefined;
-
-      if (degradedMode) {
-        metrics.degradedModeEvents.inc();
-        metrics.externalScannersDegraded.set(1);
-        logger.warn({ url: finalUrl, urlHash: h, providers: degradedMode.providers }, 'Operating in degraded mode with no external providers available');
-      } else {
-        metrics.externalScannersDegraded.set(0);
-      }
-
-      const heuristicsOnly = degradedMode !== undefined;
-      const signals = {
-        gsbThreatTypes: gsbMatches.map((m: GsbThreatMatch) => m.threatType),
-        phishtankVerified: Boolean(phishtankResult?.verified),
-        urlhausListed: Boolean(urlhausResult?.listed),
-        vtMalicious: vtStats?.malicious,
-        vtSuspicious: vtStats?.suspicious,
-        vtHarmless: vtStats?.harmless,
-        domainAgeDays,
-        redirectCount: redirectChain.length,
-        wasShortened,
-        finalUrlMismatch,
-        manualOverride,
-        homoglyph: homoglyphResult,
-        ...heurSignals,
-        enhancedSecurityScore: enhancedSecurityResult.score,
-        enhancedSecurityReasons: enhancedSecurityResult.reasons,
-        heuristicsOnly,
-      };
-      const verdictResult = scoreFromSignals(signals);
-      const verdict = verdictResult.level;
-      let { score, reasons } = verdictResult;
-
-      if (enhancedSecurityResult.reasons.length > 0) {
-        reasons = [...reasons, ...enhancedSecurityResult.reasons];
-      }
-      const baselineVerdict = scoreFromSignals({ ...signals, manualOverride: null }).level;
-
-      metrics.verdictScore.observe(score);
-      for (const reason of reasons) {
-        metrics.verdictReasons.labels(normalizeVerdictReason(reason)).inc();
-      }
-      if (baselineVerdict !== verdict) {
-        metrics.verdictEscalations.labels(baselineVerdict, verdict).inc();
-      }
-      if (gsbMatches.length > 0) {
-        metrics.verdictSignals.labels('gsb_match').inc(gsbMatches.length);
-      }
-      if (phishtankHit) {
-        metrics.verdictSignals.labels('phishtank_verified').inc();
-      }
-      if (urlhausResult?.listed) {
-        metrics.verdictSignals.labels('urlhaus_listed').inc();
-      }
-      if ((vtStats?.malicious ?? 0) > 0) {
-        metrics.verdictSignals.labels('vt_malicious').inc(vtStats?.malicious ?? 0);
-      }
-      if ((vtStats?.suspicious ?? 0) > 0) {
-        metrics.verdictSignals.labels('vt_suspicious').inc(vtStats?.suspicious ?? 0);
-      }
-      if (wasShortened) {
-        metrics.verdictSignals.labels('shortener').inc();
-      }
-      if (finalUrlMismatch) {
-        metrics.verdictSignals.labels('redirect_mismatch').inc();
-      }
-      if (redirectChain.length > 0) {
-        metrics.verdictSignals.labels('redirect_chain').inc(redirectChain.length);
-      }
-      if (homoglyphResult.detected) {
-        metrics.verdictSignals.labels(`homoglyph_${homoglyphResult.riskLevel}`).inc();
-      }
-      if (typeof domainAgeDays === 'number') {
-        metrics.verdictSignals.labels('domain_age').inc();
-      }
-      if (signals.manualOverride) {
-        metrics.verdictSignals.labels(`override_${signals.manualOverride}`).inc();
-      }
-
-      const blocklistHit = gsbHit || phishtankHit || Boolean(urlhausResult?.listed);
-
-      let enqueuedUrlscan = false;
-      if (config.urlscan.enabled && config.urlscan.apiKey && verdict === 'suspicious') {
-        const queued = await redis.set(
-          `${URLSCAN_QUEUED_PREFIX}${h}`,
-          '1',
-          'EX',
-          config.urlscan.uuidTtlSeconds,
-          'NX'
-        );
-        if (queued) {
-          enqueuedUrlscan = true;
-          await urlscanQueue.add(
-            'submit',
-            {
-              url: finalUrl,
-              urlHash: h,
-            },
-            {
-              removeOnComplete: true,
-              removeOnFail: 500,
-              attempts: 1,
-            }
+        let enqueuedUrlscan = false;
+        if (
+          config.urlscan.enabled &&
+          config.urlscan.apiKey &&
+          verdict === "suspicious"
+        ) {
+          const queued = await redis.set(
+            `${URLSCAN_QUEUED_PREFIX}${h}`,
+            "1",
+            "EX",
+            config.urlscan.uuidTtlSeconds,
+            "NX",
           );
+          if (queued) {
+            enqueuedUrlscan = true;
+            await urlscanQueue.add(
+              "submit",
+              {
+                url: finalUrl,
+                urlHash: h,
+              },
+              {
+                removeOnComplete: true,
+                removeOnFail: 500,
+                attempts: 1,
+              },
+            );
+          }
         }
-      }
 
-      const ttlByLevel = config.orchestrator.cacheTtl as Record<string, number>;
-      const ttl = ttlByLevel[verdict] ?? verdictResult.cacheTtl ?? 3600;
+        const ttlByLevel = config.orchestrator.cacheTtl as Record<
+          string,
+          number
+        >;
+        const ttl = ttlByLevel[verdict] ?? verdictResult.cacheTtl ?? 3600;
 
-      metrics.verdictCacheTtl.observe(ttl);
+        metrics.verdictCacheTtl.observe(ttl);
 
-      const decidedAt = Date.now();
-      const res = {
-        messageId,
-        chatId,
-        url: finalUrl,
-        normalizedUrl: finalUrl,
-        urlHash: h,
-        verdict,
-        score,
-        reasons,
-        gsb: { matches: gsbMatches },
-        phishtank: phishtankResult,
-        urlhaus: urlhausResult,
-        vt: vtStats,
-        urlscan: enqueuedUrlscan ? { status: 'queued' } : undefined,
-        whois: domainIntel,
-        domainAgeDays,
-        redirectChain,
-        ttlLevel: verdict,
-        cacheTtl: ttl,
-        shortener: shortenerInfo ? { provider: shortenerInfo.provider, chain: shortenerInfo.chain } : undefined,
-        finalUrlMismatch,
-        decidedAt,
-        degradedMode,
-      };
-      await setJsonCache(CACHE_LABELS.verdict, cacheKey, res, ttl);
+        const decidedAt = Date.now();
+        const res = {
+          messageId,
+          chatId,
+          url: finalUrl,
+          normalizedUrl: finalUrl,
+          urlHash: h,
+          verdict,
+          score,
+          reasons,
+          gsb: { matches: gsbMatches },
+          phishtank: phishtankResult,
+          urlhaus: urlhausResult,
+          vt: vtStats,
+          urlscan: enqueuedUrlscan ? { status: "queued" } : undefined,
+          whois: domainIntel,
+          domainAgeDays,
+          redirectChain,
+          ttlLevel: verdict,
+          cacheTtl: ttl,
+          shortener: shortenerInfo
+            ? { provider: shortenerInfo.provider, chain: shortenerInfo.chain }
+            : undefined,
+          finalUrlMismatch,
+          decidedAt,
+          degradedMode,
+        };
+        await setJsonCache(CACHE_LABELS.verdict, cacheKey, res, ttl);
 
-      try {
-        await dbClient.transaction(async () => {
-          // Insert or update scan record
-          const scanSql = `
+        try {
+          await dbClient.transaction(async () => {
+            // Insert or update scan record
+            const scanSql = `
             INSERT INTO scans (
               url_hash, normalized_url, verdict, score, reasons, vt_stats,
               gsafebrowsing_hit, domain_age_days, redirect_chain_summary, cache_ttl,
@@ -3846,143 +4435,212 @@ async function main() {
               last_seen_at=CURRENT_TIMESTAMP
           `;
 
-          await dbClient.query(scanSql, [
-            h, finalUrl, verdict, score, JSON.stringify(reasons), JSON.stringify(vtStats || {}),
-            blocklistHit, domainAgeDays ?? null, JSON.stringify(redirectChain), ttl,
-            'wa', enqueuedUrlscan ? 'queued' : null,
-            domainIntel.source === 'none' ? null : domainIntel.source,
-            domainIntel.registrar ?? null, shortenerInfo?.provider ?? null
-          ]);
+            await dbClient.query(scanSql, [
+              h,
+              finalUrl,
+              verdict,
+              score,
+              JSON.stringify(reasons),
+              JSON.stringify(vtStats || {}),
+              blocklistHit,
+              domainAgeDays ?? null,
+              JSON.stringify(redirectChain),
+              ttl,
+              "wa",
+              enqueuedUrlscan ? "queued" : null,
+              domainIntel.source === "none" ? null : domainIntel.source,
+              domainIntel.registrar ?? null,
+              shortenerInfo?.provider ?? null,
+            ]);
 
-          if (enqueuedUrlscan) {
-            await dbClient.query('UPDATE scans SET urlscan_status=? WHERE url_hash=?', ['queued', h]);
-          }
+            if (enqueuedUrlscan) {
+              await dbClient.query(
+                "UPDATE scans SET urlscan_status=? WHERE url_hash=?",
+                ["queued", h],
+              );
+            }
 
-          if (chatId && messageId) {
-            const messageSql = `
+            if (chatId && messageId) {
+              const messageSql = `
               INSERT INTO messages (chat_id, message_id, url_hash, verdict, posted_at)
               VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
               ON CONFLICT(chat_id, message_id) DO NOTHING
             `;
-            await dbClient.query(messageSql, [chatId, messageId, h, verdict]);
-          }
-        });
-      } catch (err) {
-        logger.warn({ err, chatId, messageId }, 'failed to persist message metadata for scan');
-      }
-
-      if (chatId && messageId) {
-        await scanVerdictQueue.add('verdict', { ...res, chatId, messageId }, { removeOnComplete: true });
-      } else {
-        logger.info({ url: finalUrl, jobId: job.id, rescan: Boolean(rescan) }, 'Completed scan without chat context; skipping messaging flow');
-      }
-
-      await enhancedSecurity.recordVerdict(
-        finalUrl,
-        verdict === 'malicious' ? 'malicious' : verdict === 'suspicious' ? 'suspicious' : 'benign',
-        score / 15.0
-      ).catch((err) => {
-        logger.warn({ err, url: finalUrl }, 'failed to record verdict for collaborative learning');
-      });
-
-      metrics.verdictCounter.labels(verdict).inc();
-      const totalProcessingSeconds = (Date.now() - started) / 1000;
-      metrics.verdictLatency.observe(Math.max(0, (Date.now() - ingestionTimestamp) / 1000));
-      metrics.scanLatency.observe(totalProcessingSeconds);
-      metrics.queueProcessingDuration.labels(queueName).observe(totalProcessingSeconds);
-      metrics.queueCompleted.labels(queueName).inc();
-      if (job.attemptsMade > 0) {
-        metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
-      }
-    } catch (e) {
-      metrics.queueFailures.labels(queueName).inc();
-      metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
-      logger.error(e, 'scan worker error');
-    } finally {
-      await refreshQueueMetrics(scanRequestQueue, queueName).catch(() => undefined);
-    }
-  }, { connection: redis, concurrency: config.orchestrator.concurrency });
-
-  if (config.urlscan.enabled && config.urlscan.apiKey) {
-    new Worker(config.queues.urlscan, async (job) => {
-      const queueName = config.queues.urlscan;
-      const started = Date.now();
-      const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
-      metrics.queueJobWait.labels(queueName).observe(waitSeconds);
-      const { url, urlHash: urlHashValue } = job.data as { url: string; urlHash: string };
-      try {
-        const submission: UrlscanSubmissionResponse = await urlscanCircuit.execute(() =>
-          withRetry(
-            () =>
-              submitUrlscan(url, {
-                callbackUrl: config.urlscan.callbackUrl || undefined,
-                visibility: config.urlscan.visibility,
-                tags: config.urlscan.tags,
-              }),
-            {
-              retries: 2,
-              baseDelayMs: 1000,
-              factor: 2,
-              retryable: shouldRetry,
+              await dbClient.query(messageSql, [chatId, messageId, h, verdict]);
             }
-          )
-        );
-        recordLatency(CIRCUIT_LABELS.urlscan, submission.latencyMs);
-        if (submission.uuid) {
-          await redis.set(
-            `${URLSCAN_UUID_PREFIX}${submission.uuid}`,
-            urlHashValue,
-            'EX',
-            config.urlscan.uuidTtlSeconds
-          );
-          await redis.set(
-            `${URLSCAN_SUBMITTED_PREFIX}${urlHashValue}`,
-            submission.uuid,
-            'EX',
-            config.urlscan.uuidTtlSeconds
-          );
-          await dbClient.query(
-            `UPDATE scans SET urlscan_uuid=?, urlscan_status=?, urlscan_submitted_at=datetime('now'), urlscan_result_url=? WHERE url_hash=?`,
-            [submission.uuid, 'submitted', submission.result ?? null, urlHashValue]
+          });
+        } catch (err) {
+          logger.warn(
+            { err, chatId, messageId },
+            "failed to persist message metadata for scan",
           );
         }
-        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
+
+        if (chatId && messageId) {
+          await scanVerdictQueue.add(
+            "verdict",
+            { ...res, chatId, messageId },
+            { removeOnComplete: true },
+          );
+        } else {
+          logger.info(
+            { url: finalUrl, jobId: job.id, rescan: Boolean(rescan) },
+            "Completed scan without chat context; skipping messaging flow",
+          );
+        }
+
+        await enhancedSecurity
+          .recordVerdict(
+            finalUrl,
+            verdict === "malicious"
+              ? "malicious"
+              : verdict === "suspicious"
+                ? "suspicious"
+                : "benign",
+            score / 15.0,
+          )
+          .catch((err) => {
+            logger.warn(
+              { err, url: finalUrl },
+              "failed to record verdict for collaborative learning",
+            );
+          });
+
+        metrics.verdictCounter.labels(verdict).inc();
+        const totalProcessingSeconds = (Date.now() - started) / 1000;
+        metrics.verdictLatency.observe(
+          Math.max(0, (Date.now() - ingestionTimestamp) / 1000),
+        );
+        metrics.scanLatency.observe(totalProcessingSeconds);
+        metrics.queueProcessingDuration
+          .labels(queueName)
+          .observe(totalProcessingSeconds);
         metrics.queueCompleted.labels(queueName).inc();
         if (job.attemptsMade > 0) {
           metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
         }
-      } catch (err) {
-        recordError(CIRCUIT_LABELS.urlscan, err);
-        logger.error({ err, url }, 'urlscan submission failed');
-        await dbClient.query(
-          `UPDATE scans SET urlscan_status=?, urlscan_completed_at=datetime('now') WHERE url_hash=?`,
-          ['failed', urlHashValue]
-        ).catch(() => undefined);
+      } catch (e) {
         metrics.queueFailures.labels(queueName).inc();
-        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
-        throw err;
+        metrics.queueProcessingDuration
+          .labels(queueName)
+          .observe((Date.now() - started) / 1000);
+        logger.error(e, "scan worker error");
       } finally {
-        await refreshQueueMetrics(urlscanQueue, queueName).catch(() => undefined);
+        await refreshQueueMetrics(scanRequestQueue, queueName).catch(
+          () => undefined,
+        );
       }
-    }, { connection: redis, concurrency: config.urlscan.concurrency });
+    },
+    { connection: redis, concurrency: config.orchestrator.concurrency },
+  );
+
+  if (config.urlscan.enabled && config.urlscan.apiKey) {
+    new Worker(
+      config.queues.urlscan,
+      async (job) => {
+        const queueName = config.queues.urlscan;
+        const started = Date.now();
+        const waitSeconds = Math.max(
+          0,
+          (started - (job.timestamp ?? started)) / 1000,
+        );
+        metrics.queueJobWait.labels(queueName).observe(waitSeconds);
+        const { url, urlHash: urlHashValue } = job.data as {
+          url: string;
+          urlHash: string;
+        };
+        try {
+          const submission: UrlscanSubmissionResponse =
+            await urlscanCircuit.execute(() =>
+              withRetry(
+                () =>
+                  submitUrlscan(url, {
+                    callbackUrl: config.urlscan.callbackUrl || undefined,
+                    visibility: config.urlscan.visibility,
+                    tags: config.urlscan.tags,
+                  }),
+                {
+                  retries: 2,
+                  baseDelayMs: 1000,
+                  factor: 2,
+                  retryable: shouldRetry,
+                },
+              ),
+            );
+          recordLatency(CIRCUIT_LABELS.urlscan, submission.latencyMs);
+          if (submission.uuid) {
+            await redis.set(
+              `${URLSCAN_UUID_PREFIX}${submission.uuid}`,
+              urlHashValue,
+              "EX",
+              config.urlscan.uuidTtlSeconds,
+            );
+            await redis.set(
+              `${URLSCAN_SUBMITTED_PREFIX}${urlHashValue}`,
+              submission.uuid,
+              "EX",
+              config.urlscan.uuidTtlSeconds,
+            );
+            await dbClient.query(
+              `UPDATE scans SET urlscan_uuid=?, urlscan_status=?, urlscan_submitted_at=datetime('now'), urlscan_result_url=? WHERE url_hash=?`,
+              [
+                submission.uuid,
+                "submitted",
+                submission.result ?? null,
+                urlHashValue,
+              ],
+            );
+          }
+          metrics.queueProcessingDuration
+            .labels(queueName)
+            .observe((Date.now() - started) / 1000);
+          metrics.queueCompleted.labels(queueName).inc();
+          if (job.attemptsMade > 0) {
+            metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
+          }
+        } catch (err) {
+          recordError(CIRCUIT_LABELS.urlscan, err);
+          logger.error({ err, url }, "urlscan submission failed");
+          await dbClient
+            .query(
+              `UPDATE scans SET urlscan_status=?, urlscan_completed_at=datetime('now') WHERE url_hash=?`,
+              ["failed", urlHashValue],
+            )
+            .catch(() => undefined);
+          metrics.queueFailures.labels(queueName).inc();
+          metrics.queueProcessingDuration
+            .labels(queueName)
+            .observe((Date.now() - started) / 1000);
+          throw err;
+        } finally {
+          await refreshQueueMetrics(urlscanQueue, queueName).catch(
+            () => undefined,
+          );
+        }
+      },
+      { connection: redis, concurrency: config.urlscan.concurrency },
+    );
   }
 
-  await app.listen({ host: '0.0.0.0', port: 3001 });
+  await app.listen({ host: "0.0.0.0", port: 3001 });
 
   const shutdown = async () => {
-    logger.info('Shutting down scan orchestrator...');
+    logger.info("Shutting down scan orchestrator...");
     await enhancedSecurity.stop();
     await app.close();
     await redis.quit();
     process.exit(0);
   };
 
-  process.on('SIGTERM', shutdown);
-  process.on('SIGINT', shutdown);
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
 }
 
-if (process.env.NODE_ENV !== 'test') {
-  main().catch(err => { logger.error(err, 'Fatal in orchestrator'); process.exit(1); });
+if (process.env.NODE_ENV !== "test") {
+  main().catch((err) => {
+    logger.error(err, "Fatal in orchestrator");
+    process.exit(1);
+  });
 }
 
 export const __testables = {
@@ -3997,15 +4655,14 @@ export const __testables = {
   extractUrlscanArtifactCandidates,
   normalizeUrlscanArtifactCandidate,
 };
-
 ```
 
 # File: services/scan-orchestrator/src/index.ts
 
 ```typescript
-import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
-import Redis from 'ioredis';
-import { Queue, Worker } from 'bullmq';
+import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
+import Redis from "ioredis";
+import { Queue, Worker } from "bullmq";
 import {
   config,
   logger,
@@ -4041,20 +4698,27 @@ import {
   QuotaExceededError,
   detectHomoglyphs,
   assertEssentialConfig,
-} from '@wbscanner/shared';
-import { EnhancedSecurityAnalyzer } from './enhanced-security';
+} from "@wbscanner/shared";
+import { EnhancedSecurityAnalyzer } from "./enhanced-security";
 import {
   checkBlocklistsWithRedundancy,
   shouldQueryPhishtank,
   type GsbFetchResult,
   type PhishtankFetchResult,
-} from './blocklists';
-import type { GsbThreatMatch, UrlhausLookupResult, PhishtankLookupResult, VirusTotalAnalysis, UrlscanSubmissionResponse, HomoglyphResult } from '@wbscanner/shared';
-import { downloadUrlscanArtifacts } from './urlscan-artifacts';
-import { getSharedConnection, type IDatabaseConnection } from './database';
+} from "./blocklists";
+import type {
+  GsbThreatMatch,
+  UrlhausLookupResult,
+  PhishtankLookupResult,
+  VirusTotalAnalysis,
+  UrlscanSubmissionResponse,
+  HomoglyphResult,
+} from "@wbscanner/shared";
+import { downloadUrlscanArtifacts } from "./urlscan-artifacts";
+import { getSharedConnection, type IDatabaseConnection } from "./database";
 
-const TEST_REDIS_KEY = '__WBSCANNER_TEST_REDIS__';
-const TEST_QUEUE_FACTORY_KEY = '__WBSCANNER_TEST_QUEUE_FACTORY__';
+const TEST_REDIS_KEY = "__WBSCANNER_TEST_REDIS__";
+const TEST_QUEUE_FACTORY_KEY = "__WBSCANNER_TEST_QUEUE_FACTORY__";
 
 class InMemoryRedis {
   private store = new Map<string, string>();
@@ -4067,10 +4731,16 @@ class InMemoryRedis {
     return this.store.get(key) ?? null;
   }
 
-  async set(key: string, value: string, mode?: string, ttlArg?: number, nxArg?: string): Promise<'OK' | null> {
-    if (mode === 'EX') {
-      const ttlSeconds = typeof ttlArg === 'number' ? ttlArg : 0;
-      if (nxArg === 'NX' && this.store.has(key)) {
+  async set(
+    key: string,
+    value: string,
+    mode?: string,
+    ttlArg?: number,
+    nxArg?: string,
+  ): Promise<"OK" | null> {
+    if (mode === "EX") {
+      const ttlSeconds = typeof ttlArg === "number" ? ttlArg : 0;
+      if (nxArg === "NX" && this.store.has(key)) {
         return null;
       }
       this.store.set(key, value);
@@ -4079,11 +4749,11 @@ class InMemoryRedis {
       } else {
         this.ttlStore.delete(key);
       }
-      return 'OK';
+      return "OK";
     }
     this.store.set(key, value);
     this.ttlStore.delete(key);
-    return 'OK';
+    return "OK";
   }
 
   async del(key: string): Promise<number> {
@@ -4178,7 +4848,7 @@ class InMemoryRedis {
 }
 
 class InMemoryQueue {
-  constructor(private readonly name: string) { }
+  constructor(private readonly name: string) {}
   async add(jobName: string, data: unknown) {
     return { id: `${this.name}:${jobName}:${Date.now()}`, data };
   }
@@ -4198,37 +4868,54 @@ class InMemoryQueue {
 }
 
 function createRedisConnection(): Redis {
-  if (typeof globalThis !== 'undefined' && (globalThis as unknown as Record<string, unknown>)[TEST_REDIS_KEY]) {
-    return (globalThis as unknown as Record<string, unknown>)[TEST_REDIS_KEY] as Redis;
+  if (
+    typeof globalThis !== "undefined" &&
+    (globalThis as unknown as Record<string, unknown>)[TEST_REDIS_KEY]
+  ) {
+    return (globalThis as unknown as Record<string, unknown>)[
+      TEST_REDIS_KEY
+    ] as Redis;
   }
-  if (process.env.NODE_ENV === 'test') {
+  if (process.env.NODE_ENV === "test") {
     return new InMemoryRedis() as unknown as Redis;
   }
   return new Redis(config.redisUrl, { maxRetriesPerRequest: null });
 }
 
 const redis = createRedisConnection();
-const scanRequestQueue = createQueue(config.queues.scanRequest, { connection: redis });
-const scanVerdictQueue = createQueue(config.queues.scanVerdict, { connection: redis });
+const scanRequestQueue = createQueue(config.queues.scanRequest, {
+  connection: redis,
+});
+const scanVerdictQueue = createQueue(config.queues.scanVerdict, {
+  connection: redis,
+});
 const urlscanQueue = createQueue(config.queues.urlscan, { connection: redis });
 
 function createQueue(name: string, options: { connection: Redis }): Queue {
-  if (typeof globalThis !== 'undefined') {
-    const factory = (globalThis as unknown as Record<string, unknown>)[TEST_QUEUE_FACTORY_KEY];
-    if (typeof factory === 'function') {
+  if (typeof globalThis !== "undefined") {
+    const factory = (globalThis as unknown as Record<string, unknown>)[
+      TEST_QUEUE_FACTORY_KEY
+    ];
+    if (typeof factory === "function") {
       return factory(name, options) as Queue;
     }
   }
-  if (process.env.NODE_ENV === 'test') {
+  if (process.env.NODE_ENV === "test") {
     return new InMemoryQueue(name) as unknown as Queue;
   }
   return new Queue(name, options);
 }
 
 const queueMetricsInterval = setInterval(() => {
-  refreshQueueMetrics(scanRequestQueue, config.queues.scanRequest).catch(() => undefined);
-  refreshQueueMetrics(scanVerdictQueue, config.queues.scanVerdict).catch(() => undefined);
-  refreshQueueMetrics(urlscanQueue, config.queues.urlscan).catch(() => undefined);
+  refreshQueueMetrics(scanRequestQueue, config.queues.scanRequest).catch(
+    () => undefined,
+  );
+  refreshQueueMetrics(scanVerdictQueue, config.queues.scanVerdict).catch(
+    () => undefined,
+  );
+  refreshQueueMetrics(urlscanQueue, config.queues.urlscan).catch(
+    () => undefined,
+  );
 }, 10_000);
 queueMetricsInterval.unref();
 
@@ -4241,20 +4928,20 @@ const ANALYSIS_TTLS = {
   whois: 7 * 24 * 60 * 60,
 };
 
-const URLSCAN_UUID_PREFIX = 'urlscan:uuid:';
-const URLSCAN_QUEUED_PREFIX = 'urlscan:queued:';
-const URLSCAN_SUBMITTED_PREFIX = 'urlscan:submitted:';
-const URLSCAN_RESULT_PREFIX = 'urlscan:result:';
-const SHORTENER_CACHE_PREFIX = 'url:shortener:';
+const URLSCAN_UUID_PREFIX = "urlscan:uuid:";
+const URLSCAN_QUEUED_PREFIX = "urlscan:queued:";
+const URLSCAN_SUBMITTED_PREFIX = "urlscan:submitted:";
+const URLSCAN_RESULT_PREFIX = "urlscan:result:";
+const SHORTENER_CACHE_PREFIX = "url:shortener:";
 
 const CACHE_LABELS = {
-  gsb: 'gsb_analysis',
-  phishtank: 'phishtank_analysis',
-  vt: 'virustotal_analysis',
-  urlhaus: 'urlhaus_analysis',
-  shortener: 'shortener_resolution',
-  whois: 'whois_analysis',
-  verdict: 'scan_result',
+  gsb: "gsb_analysis",
+  phishtank: "phishtank_analysis",
+  vt: "virustotal_analysis",
+  urlhaus: "urlhaus_analysis",
+  shortener: "shortener_resolution",
+  whois: "whois_analysis",
+  verdict: "scan_result",
 } as const;
 
 const CIRCUIT_DEFAULTS = {
@@ -4265,70 +4952,76 @@ const CIRCUIT_DEFAULTS = {
 } as const;
 
 const CIRCUIT_LABELS = {
-  gsb: 'google_safe_browsing',
-  phishtank: 'phishtank',
-  urlhaus: 'urlhaus',
-  vt: 'virustotal',
-  urlscan: 'urlscan',
-  whoisxml: 'whoisxml',
-  whodat: 'whodat',
+  gsb: "google_safe_browsing",
+  phishtank: "phishtank",
+  urlhaus: "urlhaus",
+  vt: "virustotal",
+  urlscan: "urlscan",
+  whoisxml: "whoisxml",
+  whodat: "whodat",
 } as const;
 
 const cacheRatios = new Map<string, { hits: number; misses: number }>();
 const circuitOpenSince = new Map<string, number>();
 
-const VERDICT_REASON_OTHER_LABEL = 'other';
+const VERDICT_REASON_OTHER_LABEL = "other";
 
 // Refactored normalizeVerdictReason function (complexity 28 -> 15)
 function normalizeVerdictReason(reason: string): string {
   // Manual overrides
-  if (reason === 'Manually allowed') return 'manual_allow';
-  if (reason === 'Manually blocked') return 'manual_deny';
+  if (reason === "Manually allowed") return "manual_allow";
+  if (reason === "Manually blocked") return "manual_deny";
 
   // Google Safe Browsing threats
-  if (reason.startsWith('Google Safe Browsing')) {
-    if (reason.includes('MALWARE')) return 'gsb_malware';
-    if (reason.includes('SOCIAL_ENGINEERING')) return 'gsb_social_engineering';
-    return 'gsb_threat';
+  if (reason.startsWith("Google Safe Browsing")) {
+    if (reason.includes("MALWARE")) return "gsb_malware";
+    if (reason.includes("SOCIAL_ENGINEERING")) return "gsb_social_engineering";
+    return "gsb_threat";
   }
 
   // Blocklist threats
-  if (reason === 'Verified phishing (Phishtank)') return 'phishtank_verified';
-  if (reason === 'Known malware distribution (URLhaus)') return 'urlhaus_listed';
+  if (reason === "Verified phishing (Phishtank)") return "phishtank_verified";
+  if (reason === "Known malware distribution (URLhaus)")
+    return "urlhaus_listed";
 
   // VirusTotal threats
-  if (reason.includes('VT engine')) return 'vt_malicious';
+  if (reason.includes("VT engine")) return "vt_malicious";
 
   // Domain age threats
-  if (reason.startsWith('Domain registered')) {
-    if (reason.includes('<7')) return 'domain_age_lt7';
-    if (reason.includes('<14')) return 'domain_age_lt14';
-    if (reason.includes('<30')) return 'domain_age_lt30';
-    return 'domain_age';
+  if (reason.startsWith("Domain registered")) {
+    if (reason.includes("<7")) return "domain_age_lt7";
+    if (reason.includes("<14")) return "domain_age_lt14";
+    if (reason.includes("<30")) return "domain_age_lt30";
+    return "domain_age";
   }
 
   // Homoglyph threats
-  if (reason.startsWith('High-risk homoglyph attack detected')) return 'homoglyph_high';
-  if (reason.startsWith('Suspicious characters detected') ||
-    reason === 'Suspicious homoglyph characters detected') return 'homoglyph_medium';
-  if (reason === 'Punycode/IDN domain detected') return 'homoglyph_low';
+  if (reason.startsWith("High-risk homoglyph attack detected"))
+    return "homoglyph_high";
+  if (
+    reason.startsWith("Suspicious characters detected") ||
+    reason === "Suspicious homoglyph characters detected"
+  )
+    return "homoglyph_medium";
+  if (reason === "Punycode/IDN domain detected") return "homoglyph_low";
 
   // URL structure threats
-  if (reason === 'URL uses IP address') return 'ip_literal';
-  if (reason === 'Suspicious TLD') return 'suspicious_tld';
-  if (reason.startsWith('Multiple redirects')) return 'multiple_redirects';
-  if (reason === 'Uncommon port') return 'uncommon_port';
-  if (reason.startsWith('Long URL')) return 'long_url';
-  if (reason === 'Executable file extension') return 'executable_extension';
-  if (reason === 'Shortened URL expanded') return 'shortener_expanded';
-  if (reason === 'Redirect leads to mismatched domain/brand') return 'redirect_mismatch';
+  if (reason === "URL uses IP address") return "ip_literal";
+  if (reason === "Suspicious TLD") return "suspicious_tld";
+  if (reason.startsWith("Multiple redirects")) return "multiple_redirects";
+  if (reason === "Uncommon port") return "uncommon_port";
+  if (reason.startsWith("Long URL")) return "long_url";
+  if (reason === "Executable file extension") return "executable_extension";
+  if (reason === "Shortened URL expanded") return "shortener_expanded";
+  if (reason === "Redirect leads to mismatched domain/brand")
+    return "redirect_mismatch";
 
   return VERDICT_REASON_OTHER_LABEL;
 }
 
-function recordCacheOutcome(cacheType: string, outcome: 'hit' | 'miss'): void {
+function recordCacheOutcome(cacheType: string, outcome: "hit" | "miss"): void {
   const state = cacheRatios.get(cacheType) ?? { hits: 0, misses: 0 };
-  if (outcome === 'hit') {
+  if (outcome === "hit") {
     state.hits += 1;
   } else {
     state.misses += 1;
@@ -4341,7 +5034,12 @@ function recordCacheOutcome(cacheType: string, outcome: 'hit' | 'miss'): void {
 }
 
 async function refreshQueueMetrics(queue: Queue, name: string): Promise<void> {
-  const counts = await queue.getJobCounts('waiting', 'active', 'delayed', 'failed');
+  const counts = await queue.getJobCounts(
+    "waiting",
+    "active",
+    "delayed",
+    "failed",
+  );
   queueDepthGauge.labels(name).set(counts.waiting ?? 0);
   metrics.queueActive.labels(name).set(counts.active ?? 0);
   metrics.queueDelayed.labels(name).set(counts.delayed ?? 0);
@@ -4354,19 +5052,23 @@ function makeCircuit(name: string) {
     name,
     onStateChange: (state, from) => {
       circuitStates.labels(name).set(state);
-      circuitBreakerTransitionCounter.labels(name, String(from ?? ''), String(state)).inc();
+      circuitBreakerTransitionCounter
+        .labels(name, String(from ?? ""), String(state))
+        .inc();
       const now = Date.now();
       if (state === CircuitState.OPEN) {
         circuitOpenSince.set(name, now);
       } else if (from === CircuitState.OPEN) {
         const openedAt = circuitOpenSince.get(name);
         if (openedAt) {
-          circuitBreakerOpenDuration.labels(name).observe((now - openedAt) / 1000);
+          circuitBreakerOpenDuration
+            .labels(name)
+            .observe((now - openedAt) / 1000);
           circuitOpenSince.delete(name);
         }
       }
-      logger.debug({ name, from, to: state }, 'Circuit state change');
-    }
+      logger.debug({ name, from, to: state }, "Circuit state change");
+    },
   });
   circuitStates.labels(name).set(CircuitState.CLOSED);
   return breaker;
@@ -4381,57 +5083,77 @@ const whoisCircuit = makeCircuit(CIRCUIT_LABELS.whoisxml);
 const whodatCircuit = makeCircuit(CIRCUIT_LABELS.whodat);
 
 function recordLatency(service: string, ms?: number) {
-  if (typeof ms === 'number' && ms >= 0) {
+  if (typeof ms === "number" && ms >= 0) {
     externalLatency.labels(service).observe(ms / 1000);
   }
 }
 
 function classifyError(err: unknown): string {
-  const rawCode = (err as { code?: string | number; statusCode?: string | number })?.code ?? (err as { statusCode?: string | number })?.statusCode;
-  if (rawCode === 'UND_ERR_HEADERS_TIMEOUT' || rawCode === 'UND_ERR_CONNECT_TIMEOUT') return 'timeout';
-  const codeNum = typeof rawCode === 'string' ? Number(rawCode) : rawCode;
-  if (codeNum === 429) return 'rate_limited';
-  if (codeNum === 408) return 'timeout';
-  if (typeof codeNum === 'number' && codeNum >= 500) return 'server_error';
-  if (typeof codeNum === 'number' && codeNum >= 400) return 'client_error';
-  const message = (err as Error)?.message || '';
-  if (message.includes('Circuit') && message.includes('open')) return 'circuit_open';
-  return 'unknown';
+  const rawCode =
+    (err as { code?: string | number; statusCode?: string | number })?.code ??
+    (err as { statusCode?: string | number })?.statusCode;
+  if (
+    rawCode === "UND_ERR_HEADERS_TIMEOUT" ||
+    rawCode === "UND_ERR_CONNECT_TIMEOUT"
+  )
+    return "timeout";
+  const codeNum = typeof rawCode === "string" ? Number(rawCode) : rawCode;
+  if (codeNum === 429) return "rate_limited";
+  if (codeNum === 408) return "timeout";
+  if (typeof codeNum === "number" && codeNum >= 500) return "server_error";
+  if (typeof codeNum === "number" && codeNum >= 400) return "client_error";
+  const message = (err as Error)?.message || "";
+  if (message.includes("Circuit") && message.includes("open"))
+    return "circuit_open";
+  return "unknown";
 }
 
 function recordError(service: string, err: unknown) {
   const reason = classifyError(err);
-  if (reason === 'circuit_open') {
+  if (reason === "circuit_open") {
     circuitBreakerRejections.labels(service).inc();
   }
   externalErrors.labels(service, reason).inc();
 }
 
 function shouldRetry(err: unknown): boolean {
-  const rawCode = (err as { code?: string | number; statusCode?: string | number })?.code ?? (err as { statusCode?: string | number })?.statusCode;
-  if (rawCode === 'UND_ERR_HEADERS_TIMEOUT' || rawCode === 'UND_ERR_CONNECT_TIMEOUT') return true;
-  const codeNum = typeof rawCode === 'string' ? Number(rawCode) : rawCode;
+  const rawCode =
+    (err as { code?: string | number; statusCode?: string | number })?.code ??
+    (err as { statusCode?: string | number })?.statusCode;
+  if (
+    rawCode === "UND_ERR_HEADERS_TIMEOUT" ||
+    rawCode === "UND_ERR_CONNECT_TIMEOUT"
+  )
+    return true;
+  const codeNum = typeof rawCode === "string" ? Number(rawCode) : rawCode;
   if (codeNum === 429) return false;
   if (codeNum === 408) return true;
-  if (typeof codeNum === 'number' && codeNum >= 500) return true;
+  if (typeof codeNum === "number" && codeNum >= 500) return true;
   return !codeNum;
 }
 
-async function getJsonCache<T>(cacheType: string, key: string, ttlSeconds: number): Promise<T | null> {
+async function getJsonCache<T>(
+  cacheType: string,
+  key: string,
+  ttlSeconds: number,
+): Promise<T | null> {
   const stop = metrics.cacheLookupDuration.labels(cacheType).startTimer();
   const raw = await redis.get(key);
   stop();
   if (!raw) {
-    recordCacheOutcome(cacheType, 'miss');
+    recordCacheOutcome(cacheType, "miss");
     metrics.cacheEntryTtl.labels(cacheType).set(0);
     return null;
   }
-  recordCacheOutcome(cacheType, 'hit');
+  recordCacheOutcome(cacheType, "hit");
   metrics.cacheEntryBytes.labels(cacheType).set(Buffer.byteLength(raw));
   const ttlRemaining = await redis.ttl(key);
   if (ttlRemaining >= 0) {
     metrics.cacheEntryTtl.labels(cacheType).set(ttlRemaining);
-    if (ttlSeconds > 0 && ttlRemaining < Math.max(1, Math.floor(ttlSeconds * 0.2))) {
+    if (
+      ttlSeconds > 0 &&
+      ttlRemaining < Math.max(1, Math.floor(ttlSeconds * 0.2))
+    ) {
       metrics.cacheStaleTotal.labels(cacheType).inc();
     }
   }
@@ -4443,10 +5165,15 @@ async function getJsonCache<T>(cacheType: string, key: string, ttlSeconds: numbe
   }
 }
 
-async function setJsonCache(cacheType: string, key: string, value: unknown, ttlSeconds: number): Promise<void> {
+async function setJsonCache(
+  cacheType: string,
+  key: string,
+  value: unknown,
+  ttlSeconds: number,
+): Promise<void> {
   const payload = JSON.stringify(value);
   const stop = metrics.cacheWriteDuration.labels(cacheType).startTimer();
-  await redis.set(key, payload, 'EX', ttlSeconds);
+  await redis.set(key, payload, "EX", ttlSeconds);
   stop();
   metrics.cacheRefreshTotal.labels(cacheType).inc();
   metrics.cacheEntryBytes.labels(cacheType).set(Buffer.byteLength(payload));
@@ -4459,16 +5186,19 @@ type UrlhausResult = UrlhausLookupResult;
 type PhishtankResult = PhishtankLookupResult;
 
 type ArtifactCandidate = {
-  type: 'screenshot' | 'dom';
+  type: "screenshot" | "dom";
   url: string;
 };
 
-function normalizeUrlscanArtifactCandidate(candidate: unknown, baseUrl: string): { url?: string; invalid: boolean } {
-  if (typeof candidate !== 'string') return { invalid: false };
+function normalizeUrlscanArtifactCandidate(
+  candidate: unknown,
+  baseUrl: string,
+): { url?: string; invalid: boolean } {
+  if (typeof candidate !== "string") return { invalid: false };
   const trimmed = candidate.trim();
   if (!trimmed) return { invalid: false };
 
-  const sanitizedBase = baseUrl.replace(/\/+$/, '');
+  const sanitizedBase = baseUrl.replace(/\/+$/, "");
   let trustedHostname: string;
   try {
     trustedHostname = new URL(sanitizedBase).hostname.toLowerCase();
@@ -4478,7 +5208,7 @@ function normalizeUrlscanArtifactCandidate(candidate: unknown, baseUrl: string):
 
   const rawUrl = /^https?:\/\//i.test(trimmed)
     ? trimmed
-    : `${sanitizedBase}/${trimmed.replace(/^\/+/, '')}`;
+    : `${sanitizedBase}/${trimmed.replace(/^\/+/, "")}`;
 
   const normalized = normalizeUrl(rawUrl);
   if (!normalized) {
@@ -4488,7 +5218,8 @@ function normalizeUrlscanArtifactCandidate(candidate: unknown, baseUrl: string):
   const parsed = new URL(normalized);
   const candidateHostname = parsed.hostname.toLowerCase();
   const hostAllowed =
-    candidateHostname === trustedHostname || candidateHostname.endsWith(`.${trustedHostname}`);
+    candidateHostname === trustedHostname ||
+    candidateHostname.endsWith(`.${trustedHostname}`);
 
   if (!hostAllowed) {
     return { invalid: true };
@@ -4497,13 +5228,22 @@ function normalizeUrlscanArtifactCandidate(candidate: unknown, baseUrl: string):
   return { url: parsed.toString(), invalid: false };
 }
 
-function normaliseArtifactUrl(candidate: unknown, baseUrl: string): string | undefined {
+function normaliseArtifactUrl(
+  candidate: unknown,
+  baseUrl: string,
+): string | undefined {
   const result = normalizeUrlscanArtifactCandidate(candidate, baseUrl);
   return result.url;
 }
 
-function extractUrlscanArtifactCandidates(uuid: string, payload: unknown): ArtifactCandidate[] {
-  const baseUrl = (config.urlscan.baseUrl || 'https://urlscan.io').replace(/\/+$/, '');
+function extractUrlscanArtifactCandidates(
+  uuid: string,
+  payload: unknown,
+): ArtifactCandidate[] {
+  const baseUrl = (config.urlscan.baseUrl || "https://urlscan.io").replace(
+    /\/+$/,
+    "",
+  );
   const candidates: ArtifactCandidate[] = [];
   const seen = new Set<string>();
 
@@ -4525,7 +5265,7 @@ function extractUrlscanArtifactCandidates(uuid: string, payload: unknown): Artif
     const resolved = normaliseArtifactUrl(source, baseUrl);
     if (resolved && !seen.has(`screenshot:${resolved}`)) {
       seen.add(`screenshot:${resolved}`);
-      candidates.push({ type: 'screenshot', url: resolved });
+      candidates.push({ type: "screenshot", url: resolved });
     }
   }
 
@@ -4539,20 +5279,27 @@ function extractUrlscanArtifactCandidates(uuid: string, payload: unknown): Artif
     const resolved = normaliseArtifactUrl(source, baseUrl);
     if (resolved && !seen.has(`dom:${resolved}`)) {
       seen.add(`dom:${resolved}`);
-      candidates.push({ type: 'dom', url: resolved });
+      candidates.push({ type: "dom", url: resolved });
     }
   }
 
   return candidates;
 }
 
-async function fetchGsbAnalysis(finalUrl: string, hash: string): Promise<GsbFetchResult> {
+async function fetchGsbAnalysis(
+  finalUrl: string,
+  hash: string,
+): Promise<GsbFetchResult> {
   if (!config.gsb.enabled) {
-    logger.warn({ url: finalUrl }, 'Google Safe Browsing disabled by config');
+    logger.warn({ url: finalUrl }, "Google Safe Browsing disabled by config");
     return { matches: [], fromCache: true, durationMs: 0, error: null };
   }
   const cacheKey = `url:analysis:${hash}:gsb`;
-  const cached = await getJsonCache<GsbMatch[]>(CACHE_LABELS.gsb, cacheKey, ANALYSIS_TTLS.gsb);
+  const cached = await getJsonCache<GsbMatch[]>(
+    CACHE_LABELS.gsb,
+    cacheKey,
+    ANALYSIS_TTLS.gsb,
+  );
   if (cached) {
     return { matches: cached, fromCache: true, durationMs: 0, error: null };
   }
@@ -4563,10 +5310,15 @@ async function fetchGsbAnalysis(finalUrl: string, hash: string): Promise<GsbFetc
         baseDelayMs: 1000,
         factor: 2,
         retryable: shouldRetry,
-      })
+      }),
     );
     recordLatency(CIRCUIT_LABELS.gsb, result.latencyMs);
-    await setJsonCache(CACHE_LABELS.gsb, cacheKey, result.matches, ANALYSIS_TTLS.gsb);
+    await setJsonCache(
+      CACHE_LABELS.gsb,
+      cacheKey,
+      result.matches,
+      ANALYSIS_TTLS.gsb,
+    );
     return {
       matches: result.matches,
       fromCache: false,
@@ -4575,17 +5327,29 @@ async function fetchGsbAnalysis(finalUrl: string, hash: string): Promise<GsbFetc
     };
   } catch (err) {
     recordError(CIRCUIT_LABELS.gsb, err);
-    logger.warn({ err, url: finalUrl }, 'Google Safe Browsing lookup failed');
-    return { matches: [], fromCache: false, durationMs: 0, error: err as Error };
+    logger.warn({ err, url: finalUrl }, "Google Safe Browsing lookup failed");
+    return {
+      matches: [],
+      fromCache: false,
+      durationMs: 0,
+      error: err as Error,
+    };
   }
 }
 
-async function fetchPhishtank(finalUrl: string, hash: string): Promise<PhishtankFetchResult> {
+async function fetchPhishtank(
+  finalUrl: string,
+  hash: string,
+): Promise<PhishtankFetchResult> {
   if (!config.phishtank.enabled) {
     return { result: null, fromCache: true, error: null };
   }
   const cacheKey = `url:analysis:${hash}:phishtank`;
-  const cached = await getJsonCache<PhishtankResult>(CACHE_LABELS.phishtank, cacheKey, ANALYSIS_TTLS.phishtank);
+  const cached = await getJsonCache<PhishtankResult>(
+    CACHE_LABELS.phishtank,
+    cacheKey,
+    ANALYSIS_TTLS.phishtank,
+  );
   if (cached) {
     return { result: cached, fromCache: true, error: null };
   }
@@ -4596,14 +5360,19 @@ async function fetchPhishtank(finalUrl: string, hash: string): Promise<Phishtank
         baseDelayMs: 1000,
         factor: 2,
         retryable: shouldRetry,
-      })
+      }),
     );
     recordLatency(CIRCUIT_LABELS.phishtank, result.latencyMs);
-    await setJsonCache(CACHE_LABELS.phishtank, cacheKey, result, ANALYSIS_TTLS.phishtank);
+    await setJsonCache(
+      CACHE_LABELS.phishtank,
+      cacheKey,
+      result,
+      ANALYSIS_TTLS.phishtank,
+    );
     return { result, fromCache: false, error: null };
   } catch (err) {
     recordError(CIRCUIT_LABELS.phishtank, err);
-    logger.warn({ err, url: finalUrl }, 'Phishtank lookup failed');
+    logger.warn({ err, url: finalUrl }, "Phishtank lookup failed");
     return { result: null, fromCache: false, error: err as Error };
   }
 }
@@ -4615,15 +5384,33 @@ interface VirusTotalFetchResult {
   error: Error | null;
 }
 
-async function fetchVirusTotal(finalUrl: string, hash: string): Promise<VirusTotalFetchResult> {
+async function fetchVirusTotal(
+  finalUrl: string,
+  hash: string,
+): Promise<VirusTotalFetchResult> {
   if (!config.vt.enabled || !config.vt.apiKey) {
-    if (!config.vt.enabled) logger.warn({ url: finalUrl }, 'VirusTotal disabled by config');
-    return { stats: undefined, fromCache: true, quotaExceeded: false, error: null };
+    if (!config.vt.enabled)
+      logger.warn({ url: finalUrl }, "VirusTotal disabled by config");
+    return {
+      stats: undefined,
+      fromCache: true,
+      quotaExceeded: false,
+      error: null,
+    };
   }
   const cacheKey = `url:analysis:${hash}:vt`;
-  const cached = await getJsonCache<VtStats>(CACHE_LABELS.vt, cacheKey, ANALYSIS_TTLS.vt);
+  const cached = await getJsonCache<VtStats>(
+    CACHE_LABELS.vt,
+    cacheKey,
+    ANALYSIS_TTLS.vt,
+  );
   if (cached) {
-    return { stats: cached, fromCache: true, quotaExceeded: false, error: null };
+    return {
+      stats: cached,
+      fromCache: true,
+      quotaExceeded: false,
+      error: null,
+    };
   }
   try {
     const analysis = await vtCircuit.execute(() =>
@@ -4632,7 +5419,7 @@ async function fetchVirusTotal(finalUrl: string, hash: string): Promise<VirusTot
         baseDelayMs: 1000,
         factor: 2,
         retryable: shouldRetry,
-      })
+      }),
     );
     recordLatency(CIRCUIT_LABELS.vt, analysis.latencyMs);
     const stats = vtVerdictStats(analysis as VirusTotalAnalysis);
@@ -4642,11 +5429,20 @@ async function fetchVirusTotal(finalUrl: string, hash: string): Promise<VirusTot
     return { stats, fromCache: false, quotaExceeded: false, error: null };
   } catch (err) {
     recordError(CIRCUIT_LABELS.vt, err);
-    const quotaExceeded = err instanceof QuotaExceededError || ((err as { code?: string | number; statusCode?: string | number })?.code ?? (err as { statusCode?: string | number })?.statusCode) === 429;
+    const quotaExceeded =
+      err instanceof QuotaExceededError ||
+      ((err as { code?: string | number; statusCode?: string | number })
+        ?.code ?? (err as { statusCode?: string | number })?.statusCode) ===
+        429;
     if (!quotaExceeded) {
-      logger.warn({ err, url: finalUrl }, 'VirusTotal lookup failed');
+      logger.warn({ err, url: finalUrl }, "VirusTotal lookup failed");
     }
-    return { stats: undefined, fromCache: false, quotaExceeded, error: err as Error };
+    return {
+      stats: undefined,
+      fromCache: false,
+      quotaExceeded,
+      error: err as Error,
+    };
   }
 }
 
@@ -4656,12 +5452,19 @@ interface UrlhausFetchResult {
   error: Error | null;
 }
 
-async function fetchUrlhaus(finalUrl: string, hash: string): Promise<UrlhausFetchResult> {
+async function fetchUrlhaus(
+  finalUrl: string,
+  hash: string,
+): Promise<UrlhausFetchResult> {
   if (!config.urlhaus.enabled) {
     return { result: null, fromCache: true, error: null };
   }
   const cacheKey = `url:analysis:${hash}:urlhaus`;
-  const cached = await getJsonCache<UrlhausResult>(CACHE_LABELS.urlhaus, cacheKey, ANALYSIS_TTLS.urlhaus);
+  const cached = await getJsonCache<UrlhausResult>(
+    CACHE_LABELS.urlhaus,
+    cacheKey,
+    ANALYSIS_TTLS.urlhaus,
+  );
   if (cached) {
     return { result: cached, fromCache: true, error: null };
   }
@@ -4672,14 +5475,19 @@ async function fetchUrlhaus(finalUrl: string, hash: string): Promise<UrlhausFetc
         baseDelayMs: 1000,
         factor: 2,
         retryable: shouldRetry,
-      })
+      }),
     );
     recordLatency(CIRCUIT_LABELS.urlhaus, result.latencyMs);
-    await setJsonCache(CACHE_LABELS.urlhaus, cacheKey, result, ANALYSIS_TTLS.urlhaus);
+    await setJsonCache(
+      CACHE_LABELS.urlhaus,
+      cacheKey,
+      result,
+      ANALYSIS_TTLS.urlhaus,
+    );
     return { result, fromCache: false, error: null };
   } catch (err) {
     recordError(CIRCUIT_LABELS.urlhaus, err);
-    logger.warn({ err, url: finalUrl }, 'URLhaus lookup failed');
+    logger.warn({ err, url: finalUrl }, "URLhaus lookup failed");
     return { result: null, fromCache: false, error: err as Error };
   }
 }
@@ -4691,14 +5499,21 @@ interface ShortenerCacheEntry {
   wasShortened: boolean;
 }
 
-async function resolveShortenerWithCache(url: string, hash: string): Promise<ShortenerCacheEntry | null> {
+async function resolveShortenerWithCache(
+  url: string,
+  hash: string,
+): Promise<ShortenerCacheEntry | null> {
   const cacheKey = `${SHORTENER_CACHE_PREFIX}${hash}`;
-  const cached = await getJsonCache<ShortenerCacheEntry>(CACHE_LABELS.shortener, cacheKey, config.shortener.cacheTtlSeconds);
+  const cached = await getJsonCache<ShortenerCacheEntry>(
+    CACHE_LABELS.shortener,
+    cacheKey,
+    config.shortener.cacheTtlSeconds,
+  );
   if (cached) return cached;
   try {
     const start = Date.now();
     const resolved = await resolveShortener(url);
-    recordLatency('shortener', Date.now() - start);
+    recordLatency("shortener", Date.now() - start);
     if (resolved.wasShortened) {
       const payload: ShortenerCacheEntry = {
         finalUrl: resolved.finalUrl,
@@ -4706,31 +5521,42 @@ async function resolveShortenerWithCache(url: string, hash: string): Promise<Sho
         chain: resolved.chain,
         wasShortened: true,
       };
-      await setJsonCache(CACHE_LABELS.shortener, cacheKey, payload, config.shortener.cacheTtlSeconds);
+      await setJsonCache(
+        CACHE_LABELS.shortener,
+        cacheKey,
+        payload,
+        config.shortener.cacheTtlSeconds,
+      );
       return payload;
     }
     return null;
   } catch (err) {
-    recordError('shortener', err);
-    logger.warn({ err, url }, 'Shortener resolution failed');
+    recordError("shortener", err);
+    logger.warn({ err, url }, "Shortener resolution failed");
     return null;
   }
 }
 
 interface DomainIntelResult {
   ageDays?: number;
-  source: 'rdap' | 'whoisxml' | 'whodat' | 'none';
+  source: "rdap" | "whoisxml" | "whodat" | "none";
   registrar?: string;
 }
 
-async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainIntelResult> {
+async function fetchDomainIntel(
+  hostname: string,
+  hash: string,
+): Promise<DomainIntelResult> {
   if (config.rdap.enabled) {
-    const rdapAge = await domainAgeDaysFromRdap(hostname, config.rdap.timeoutMs).catch(() => undefined);
+    const rdapAge = await domainAgeDaysFromRdap(
+      hostname,
+      config.rdap.timeoutMs,
+    ).catch(() => undefined);
     if (rdapAge !== undefined) {
-      return { ageDays: rdapAge, source: 'rdap' };
+      return { ageDays: rdapAge, source: "rdap" };
     }
   } else {
-    logger.warn({ hostname }, 'RDAP disabled by config');
+    logger.warn({ hostname }, "RDAP disabled by config");
   }
 
   // Try who-dat first if enabled (self-hosted, no quota limits)
@@ -4739,10 +5565,14 @@ async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainI
     const cached = await getJsonCache<{ ageDays?: number; registrar?: string }>(
       CACHE_LABELS.whois,
       cacheKey,
-      ANALYSIS_TTLS.whois
+      ANALYSIS_TTLS.whois,
     );
     if (cached) {
-      return { ageDays: cached.ageDays, registrar: cached.registrar, source: 'whodat' };
+      return {
+        ageDays: cached.ageDays,
+        registrar: cached.registrar,
+        source: "whodat",
+      };
     }
     try {
       const start = Date.now();
@@ -4752,32 +5582,48 @@ async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainI
           baseDelayMs: 1000,
           factor: 2,
           retryable: shouldRetry,
-        })
+        }),
       );
       recordLatency(CIRCUIT_LABELS.whodat, Date.now() - start);
-      const record = (response as { record?: { estimatedDomainAgeDays?: number; registrarName?: string } })?.record;
+      const record = (
+        response as {
+          record?: { estimatedDomainAgeDays?: number; registrarName?: string };
+        }
+      )?.record;
       const ageDays = record?.estimatedDomainAgeDays;
       const registrar = record?.registrarName;
-      await setJsonCache(CACHE_LABELS.whois, cacheKey, { ageDays, registrar }, ANALYSIS_TTLS.whois);
-      return { ageDays, registrar, source: 'whodat' };
+      await setJsonCache(
+        CACHE_LABELS.whois,
+        cacheKey,
+        { ageDays, registrar },
+        ANALYSIS_TTLS.whois,
+      );
+      return { ageDays, registrar, source: "whodat" };
     } catch (err) {
       recordError(CIRCUIT_LABELS.whodat, err);
-      logger.warn({ err, hostname }, 'Who-dat lookup failed, falling back to WhoisXML if available');
+      logger.warn(
+        { err, hostname },
+        "Who-dat lookup failed, falling back to WhoisXML if available",
+      );
     }
   }
 
   // Fallback to WhoisXML if who-dat failed or is disabled
   if (!config.whoisxml?.enabled || !config.whoisxml.apiKey) {
-    return { ageDays: undefined, source: 'none' };
+    return { ageDays: undefined, source: "none" };
   }
   const cacheKey = `url:analysis:${hash}:whois`;
   const cached = await getJsonCache<{ ageDays?: number; registrar?: string }>(
     CACHE_LABELS.whois,
     cacheKey,
-    ANALYSIS_TTLS.whois
+    ANALYSIS_TTLS.whois,
   );
   if (cached) {
-    return { ageDays: cached.ageDays, registrar: cached.registrar, source: 'whoisxml' };
+    return {
+      ageDays: cached.ageDays,
+      registrar: cached.registrar,
+      source: "whoisxml",
+    };
   }
   try {
     const start = Date.now();
@@ -4787,27 +5633,45 @@ async function fetchDomainIntel(hostname: string, hash: string): Promise<DomainI
         baseDelayMs: 1000,
         factor: 2,
         retryable: shouldRetry,
-      })
+      }),
     );
     recordLatency(CIRCUIT_LABELS.whoisxml, Date.now() - start);
-    const record = (response as { record?: { estimatedDomainAgeDays?: number; registrarName?: string } })?.record;
+    const record = (
+      response as {
+        record?: { estimatedDomainAgeDays?: number; registrarName?: string };
+      }
+    )?.record;
     const ageDays = record?.estimatedDomainAgeDays;
     const registrar = record?.registrarName;
-    await setJsonCache(CACHE_LABELS.whois, cacheKey, { ageDays, registrar }, ANALYSIS_TTLS.whois);
-    return { ageDays, registrar, source: 'whoisxml' };
+    await setJsonCache(
+      CACHE_LABELS.whois,
+      cacheKey,
+      { ageDays, registrar },
+      ANALYSIS_TTLS.whois,
+    );
+    return { ageDays, registrar, source: "whoisxml" };
   } catch (err) {
     recordError(CIRCUIT_LABELS.whoisxml, err);
     if (err instanceof QuotaExceededError) {
-      logger.warn({ hostname }, 'WhoisXML quota exhausted, disabling for remainder of month');
+      logger.warn(
+        { hostname },
+        "WhoisXML quota exhausted, disabling for remainder of month",
+      );
       disableWhoisXmlForMonth();
     } else {
-      logger.warn({ err, hostname }, 'WhoisXML lookup failed');
+      logger.warn({ err, hostname }, "WhoisXML lookup failed");
     }
-    return { ageDays: undefined, source: 'none' };
+    return { ageDays: undefined, source: "none" };
   }
 }
 
-async function loadManualOverride(dbClient: { query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }> }, urlHash: string, hostname: string): Promise<'allow' | 'deny' | null> {
+async function loadManualOverride(
+  dbClient: {
+    query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
+  },
+  urlHash: string,
+  hostname: string,
+): Promise<"allow" | "deny" | null> {
   try {
     const { rows } = await dbClient.query(
       `SELECT status FROM overrides
@@ -4815,13 +5679,13 @@ async function loadManualOverride(dbClient: { query: (sql: string, params?: unkn
            AND (expires_at IS NULL OR expires_at > datetime('now'))
          ORDER BY created_at DESC
          LIMIT 1`,
-      [urlHash, hostname]
+      [urlHash, hostname],
     );
     const record = rows[0] as { status?: string } | undefined;
     const status = record?.status;
-    return status === 'allow' || status === 'deny' ? status : null;
+    return status === "allow" || status === "deny" ? status : null;
   } catch (err) {
-    logger.warn({ err, urlHash, hostname }, 'Failed to load manual override');
+    logger.warn({ err, urlHash, hostname }, "Failed to load manual override");
     return null;
   }
 }
@@ -4837,17 +5701,23 @@ interface CachedVerdict {
   [key: string]: unknown;
 }
 
-async function getCachedVerdict(cacheKey: string): Promise<CachedVerdict | null> {
+async function getCachedVerdict(
+  cacheKey: string,
+): Promise<CachedVerdict | null> {
   let cachedVerdict: CachedVerdict | null = null;
   let cachedTtl = -1;
-  const cacheStop = metrics.cacheLookupDuration.labels(CACHE_LABELS.verdict).startTimer();
+  const cacheStop = metrics.cacheLookupDuration
+    .labels(CACHE_LABELS.verdict)
+    .startTimer();
   const cachedRaw = await redis.get(cacheKey);
   cacheStop();
 
   if (cachedRaw) {
-    recordCacheOutcome(CACHE_LABELS.verdict, 'hit');
+    recordCacheOutcome(CACHE_LABELS.verdict, "hit");
     metrics.cacheHit.inc();
-    metrics.cacheEntryBytes.labels(CACHE_LABELS.verdict).set(Buffer.byteLength(cachedRaw));
+    metrics.cacheEntryBytes
+      .labels(CACHE_LABELS.verdict)
+      .set(Buffer.byteLength(cachedRaw));
     cachedTtl = await redis.ttl(cacheKey);
     if (cachedTtl >= 0) {
       metrics.cacheEntryTtl.labels(CACHE_LABELS.verdict).set(cachedTtl);
@@ -4859,14 +5729,14 @@ async function getCachedVerdict(cacheKey: string): Promise<CachedVerdict | null>
     }
     if (
       cachedVerdict &&
-      typeof cachedVerdict.cacheTtl === 'number' &&
+      typeof cachedVerdict.cacheTtl === "number" &&
       cachedTtl >= 0 &&
       cachedTtl < Math.max(1, Math.floor(cachedVerdict.cacheTtl * 0.2))
     ) {
       metrics.cacheStaleTotal.labels(CACHE_LABELS.verdict).inc();
     }
   } else {
-    recordCacheOutcome(CACHE_LABELS.verdict, 'miss');
+    recordCacheOutcome(CACHE_LABELS.verdict, "miss");
     metrics.cacheMiss.inc();
     metrics.cacheEntryTtl.labels(CACHE_LABELS.verdict).set(0);
   }
@@ -4885,31 +5755,43 @@ async function handleCachedVerdict(
   attemptsMade: number,
   url: string,
   rescan: boolean | undefined,
-  jobId: string | undefined
+  jobId: string | undefined,
 ): Promise<void> {
-  const verdictLatencySeconds = Math.max(0, (Date.now() - ingestionTimestamp) / 1000);
+  const verdictLatencySeconds = Math.max(
+    0,
+    (Date.now() - ingestionTimestamp) / 1000,
+  );
   metrics.verdictLatency.observe(verdictLatencySeconds);
   recordQueueMetrics(queueName, started, attemptsMade);
 
   if (hasChatContext) {
-    const resolvedMessageId = messageId ?? '';
+    const resolvedMessageId = messageId ?? "";
     await scanVerdictQueue.add(
-      'verdict',
+      "verdict",
       {
         chatId,
         messageId: resolvedMessageId,
         ...cachedVerdict,
         decidedAt: cachedVerdict.decidedAt ?? Date.now(),
       },
-      { removeOnComplete: true }
+      { removeOnComplete: true },
     );
   } else {
-    logger.info({ url, jobId, rescan: Boolean(rescan) }, 'Skipping verdict dispatch without chat context');
+    logger.info(
+      { url, jobId, rescan: Boolean(rescan) },
+      "Skipping verdict dispatch without chat context",
+    );
   }
 }
 
-function recordQueueMetrics(queueName: string, started: number, attemptsMade: number): void {
-  metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
+function recordQueueMetrics(
+  queueName: string,
+  started: number,
+  attemptsMade: number,
+): void {
+  metrics.queueProcessingDuration
+    .labels(queueName)
+    .observe((Date.now() - started) / 1000);
   metrics.queueCompleted.labels(queueName).inc();
   if (attemptsMade > 0) {
     metrics.queueRetries.labels(queueName).inc(attemptsMade);
@@ -4923,7 +5805,12 @@ interface UrlAnalysisResult {
   heurSignals: Record<string, unknown>;
   wasShortened: boolean;
   finalUrlMismatch: boolean;
-  shortenerInfo: { finalUrl: string; provider: string; chain: string[]; wasShortened: boolean } | null;
+  shortenerInfo: {
+    finalUrl: string;
+    provider: string;
+    chain: string[];
+    wasShortened: boolean;
+  } | null;
 }
 
 async function analyzeUrl(norm: string, h: string): Promise<UrlAnalysisResult> {
@@ -4932,10 +5819,16 @@ async function analyzeUrl(norm: string, h: string): Promise<UrlAnalysisResult> {
   const exp = await expandUrl(preExpansionUrl, config.orchestrator.expansion);
   const finalUrl = exp.finalUrl;
   const finalUrlObj = new URL(finalUrl);
-  const redirectChain = [...(shortenerInfo?.chain ?? []), ...exp.chain.filter((item: string) => !(shortenerInfo?.chain ?? []).includes(item))];
+  const redirectChain = [
+    ...(shortenerInfo?.chain ?? []),
+    ...exp.chain.filter(
+      (item: string) => !(shortenerInfo?.chain ?? []).includes(item),
+    ),
+  ];
   const heurSignals = extraHeuristics(finalUrlObj);
   const wasShortened = Boolean(shortenerInfo?.wasShortened);
-  const finalUrlMismatch = wasShortened && new URL(norm).hostname !== finalUrlObj.hostname;
+  const finalUrlMismatch =
+    wasShortened && new URL(norm).hostname !== finalUrlObj.hostname;
 
   return {
     finalUrl,
@@ -4944,7 +5837,7 @@ async function analyzeUrl(norm: string, h: string): Promise<UrlAnalysisResult> {
     heurSignals,
     wasShortened,
     finalUrlMismatch,
-    shortenerInfo
+    shortenerInfo,
   };
 }
 
@@ -4957,7 +5850,13 @@ async function handleHighConfidenceThreat(
   finalUrlMismatch: boolean,
   homoglyphResult: HomoglyphResult,
   heurSignals: Record<string, unknown>,
-  enhancedSecurityResult: { verdict: string; confidence: string; score: number; reasons: string[]; skipExternalAPIs: boolean },
+  enhancedSecurityResult: {
+    verdict: string;
+    confidence: string;
+    score: number;
+    reasons: string[];
+    skipExternalAPIs: boolean;
+  },
   cacheKey: string,
   chatId: string | undefined,
   messageId: string | undefined,
@@ -4967,9 +5866,16 @@ async function handleHighConfidenceThreat(
   attemptsMade: number,
   ingestionTimestamp: number,
   dbClient: IDatabaseConnection,
-  enhancedSecurity: EnhancedSecurityAnalyzer
+  enhancedSecurity: EnhancedSecurityAnalyzer,
 ): Promise<void> {
-  logger.info({ url: finalUrl, score: enhancedSecurityResult.score, reasons: enhancedSecurityResult.reasons }, 'Tier 1 high-confidence threat detected, skipping external APIs');
+  logger.info(
+    {
+      url: finalUrl,
+      score: enhancedSecurityResult.score,
+      reasons: enhancedSecurityResult.reasons,
+    },
+    "Tier 1 high-confidence threat detected, skipping external APIs",
+  );
 
   // Create a proper HomoglyphResult object with all required properties
   const fullHomoglyphResult: HomoglyphResult = {
@@ -4980,7 +5886,7 @@ async function handleHighConfidenceThreat(
     mixedScript: false,
     unicodeHostname: finalUrl,
     normalizedDomain: finalUrl,
-    riskReasons: []
+    riskReasons: [],
   };
 
   const signals = {
@@ -5002,7 +5908,7 @@ async function handleHighConfidenceThreat(
   };
 
   const verdictResult = scoreFromSignals(signals);
-  const verdict = 'malicious';
+  const verdict = "malicious";
   const { score, reasons } = verdictResult;
   const enhancedReasons = [...reasons, ...enhancedSecurityResult.reasons];
 
@@ -5048,11 +5954,25 @@ async function handleHighConfidenceThreat(
       `;
 
       await dbClient.query(standardSql, [
-        h, norm, finalUrl, verdict, score, JSON.stringify(enhancedReasons), cacheTtl, JSON.stringify(redirectChain), wasShortened, finalUrlMismatch, homoglyphResult.detected, homoglyphResult.riskLevel
+        h,
+        norm,
+        finalUrl,
+        verdict,
+        score,
+        JSON.stringify(enhancedReasons),
+        cacheTtl,
+        JSON.stringify(redirectChain),
+        wasShortened,
+        finalUrlMismatch,
+        homoglyphResult.detected,
+        homoglyphResult.riskLevel,
       ]);
     });
   } catch (err) {
-    logger.error({ err, url: norm }, 'failed to persist enhanced security verdict');
+    logger.error(
+      { err, url: norm },
+      "failed to persist enhanced security verdict",
+    );
   }
 
   metrics.verdictScore.observe(score);
@@ -5060,19 +5980,30 @@ async function handleHighConfidenceThreat(
     metrics.verdictReasons.labels(normalizeVerdictReason(reason)).inc();
   }
 
-  const verdictLatencySeconds = Math.max(0, (Date.now() - ingestionTimestamp) / 1000);
+  const verdictLatencySeconds = Math.max(
+    0,
+    (Date.now() - ingestionTimestamp) / 1000,
+  );
   metrics.verdictLatency.observe(verdictLatencySeconds);
   recordQueueMetrics(queueName, started, attemptsMade);
 
   if (hasChatContext) {
-    await scanVerdictQueue.add('verdict', {
-      chatId,
-      messageId,
-      ...verdictPayload,
-    }, { removeOnComplete: true });
+    await scanVerdictQueue.add(
+      "verdict",
+      {
+        chatId,
+        messageId,
+        ...verdictPayload,
+      },
+      { removeOnComplete: true },
+    );
   }
 
-  await enhancedSecurity.recordVerdict(finalUrl, 'malicious', enhancedSecurityResult.score / 3.0);
+  await enhancedSecurity.recordVerdict(
+    finalUrl,
+    "malicious",
+    enhancedSecurityResult.score / 3.0,
+  );
 }
 
 interface ExternalCheckResults {
@@ -5085,10 +6016,10 @@ interface ExternalCheckResults {
   };
   domainIntel: {
     ageDays?: number;
-    source: 'rdap' | 'whoisxml' | 'whodat' | 'none';
+    source: "rdap" | "whoisxml" | "whodat" | "none";
     registrar?: string;
   };
-  manualOverride: 'allow' | 'deny' | null;
+  manualOverride: "allow" | "deny" | null;
   vtStats?: VtStats;
   vtQuotaExceeded: boolean;
   vtError: Error | null;
@@ -5097,7 +6028,12 @@ interface ExternalCheckResults {
   urlhausConsulted: boolean;
 }
 
-async function performExternalChecks(finalUrl: string, finalUrlObj: URL, h: string, dbClient: IDatabaseConnection): Promise<ExternalCheckResults> {
+async function performExternalChecks(
+  finalUrl: string,
+  finalUrlObj: URL,
+  h: string,
+  dbClient: IDatabaseConnection,
+): Promise<ExternalCheckResults> {
   const [blocklistResult, domainIntel, manualOverride] = await Promise.all([
     checkBlocklistsWithRedundancy({
       finalUrl,
@@ -5140,12 +6076,8 @@ async function performExternalChecks(finalUrl: string, finalUrlObj: URL, h: stri
   let urlhausError: Error | null = null;
   let urlhausConsulted = false;
   const shouldQueryUrlhaus =
-    !gsbHit && (
-      !config.vt.apiKey ||
-      vtQuotaExceeded ||
-      vtError !== null ||
-      !vtStats
-    );
+    !gsbHit &&
+    (!config.vt.apiKey || vtQuotaExceeded || vtError !== null || !vtStats);
   if (shouldQueryUrlhaus) {
     urlhausConsulted = true;
     const urlhausResponse = await fetchUrlhaus(finalUrl, h);
@@ -5162,7 +6094,7 @@ async function performExternalChecks(finalUrl: string, finalUrlObj: URL, h: stri
     vtError,
     urlhausResult,
     urlhausError,
-    urlhausConsulted
+    urlhausConsulted,
   };
 }
 
@@ -5188,38 +6120,42 @@ type ProviderState = {
 };
 
 function buildProviderStates(
-  blocklistResult: ExternalCheckResults['blocklistResult'],
+  blocklistResult: ExternalCheckResults["blocklistResult"],
   vtStats: VtStats | undefined,
   vtQuotaExceeded: boolean,
   vtError: Error | null,
   urlhausResult: UrlhausResult | null,
   urlhausError: Error | null,
-  urlhausConsulted: boolean
+  urlhausConsulted: boolean,
 ): ProviderState[] {
   const summarizeReason = (input?: string | null) => {
-    if (!input) return 'unavailable';
+    if (!input) return "unavailable";
     const trimmed = input.trim();
-    if (trimmed.length === 0) return 'unavailable';
+    if (trimmed.length === 0) return "unavailable";
     return trimmed.length > 80 ? `${trimmed.slice(0, 77)}...` : trimmed;
   };
 
   const providerStates: ProviderState[] = [
     {
-      key: 'gsb',
-      name: 'Google Safe Browsing',
+      key: "gsb",
+      name: "Google Safe Browsing",
       consulted: true,
       available: !blocklistResult.gsbResult.error,
-      reason: blocklistResult.gsbResult.error ? summarizeReason(blocklistResult.gsbResult.error.message) : undefined,
+      reason: blocklistResult.gsbResult.error
+        ? summarizeReason(blocklistResult.gsbResult.error.message)
+        : undefined,
     },
   ];
 
   if (blocklistResult.phishtankNeeded) {
     providerStates.push({
-      key: 'phishtank',
-      name: 'Phishtank',
+      key: "phishtank",
+      name: "Phishtank",
       consulted: true,
       available: !blocklistResult.phishtankError,
-      reason: blocklistResult.phishtankError ? summarizeReason(blocklistResult.phishtankError.message) : undefined,
+      reason: blocklistResult.phishtankError
+        ? summarizeReason(blocklistResult.phishtankError.message)
+        : undefined,
     });
   }
 
@@ -5230,11 +6166,13 @@ function buildProviderStates(
   if (vtConsulted) {
     let vtReason: string | undefined;
     if (!vtStats) {
-      vtReason = vtQuotaExceeded ? 'quota_exhausted' : summarizeReason(vtError?.message ?? null);
+      vtReason = vtQuotaExceeded
+        ? "quota_exhausted"
+        : summarizeReason(vtError?.message ?? null);
     }
     providerStates.push({
-      key: 'virustotal',
-      name: 'VirusTotal',
+      key: "virustotal",
+      name: "VirusTotal",
       consulted: true,
       available: Boolean(vtStats) || (!vtError && !vtQuotaExceeded),
       reason: vtStats ? undefined : vtReason,
@@ -5243,8 +6181,8 @@ function buildProviderStates(
 
   if (urlhausConsulted) {
     providerStates.push({
-      key: 'urlhaus',
-      name: 'URLhaus',
+      key: "urlhaus",
+      name: "URLhaus",
       consulted: true,
       available: !urlhausError,
       reason: urlhausError ? summarizeReason(urlhausError.message) : undefined,
@@ -5268,7 +6206,7 @@ function recordVerdictMetrics(
   redirectChain: string[],
   homoglyphResult: HomoglyphResult,
   domainAgeDays: number | undefined,
-  manualOverride: string | null
+  manualOverride: string | null,
 ): void {
   metrics.verdictScore.observe(score);
   for (const reason of reasons) {
@@ -5278,34 +6216,38 @@ function recordVerdictMetrics(
     metrics.verdictEscalations.labels(baselineVerdict, verdict).inc();
   }
   if (gsbMatches.length > 0) {
-    metrics.verdictSignals.labels('gsb_match').inc(gsbMatches.length);
+    metrics.verdictSignals.labels("gsb_match").inc(gsbMatches.length);
   }
   if (phishtankHit) {
-    metrics.verdictSignals.labels('phishtank_verified').inc();
+    metrics.verdictSignals.labels("phishtank_verified").inc();
   }
   if (urlhausResult?.listed) {
-    metrics.verdictSignals.labels('urlhaus_listed').inc();
+    metrics.verdictSignals.labels("urlhaus_listed").inc();
   }
   if ((vtStats?.malicious ?? 0) > 0) {
-    metrics.verdictSignals.labels('vt_malicious').inc(vtStats?.malicious ?? 0);
+    metrics.verdictSignals.labels("vt_malicious").inc(vtStats?.malicious ?? 0);
   }
   if ((vtStats?.suspicious ?? 0) > 0) {
-    metrics.verdictSignals.labels('vt_suspicious').inc(vtStats?.suspicious ?? 0);
+    metrics.verdictSignals
+      .labels("vt_suspicious")
+      .inc(vtStats?.suspicious ?? 0);
   }
   if (wasShortened) {
-    metrics.verdictSignals.labels('shortener').inc();
+    metrics.verdictSignals.labels("shortener").inc();
   }
   if (finalUrlMismatch) {
-    metrics.verdictSignals.labels('redirect_mismatch').inc();
+    metrics.verdictSignals.labels("redirect_mismatch").inc();
   }
   if (redirectChain.length > 0) {
-    metrics.verdictSignals.labels('redirect_chain').inc(redirectChain.length);
+    metrics.verdictSignals.labels("redirect_chain").inc(redirectChain.length);
   }
   if (homoglyphResult.detected) {
-    metrics.verdictSignals.labels(`homoglyph_${homoglyphResult.riskLevel}`).inc();
+    metrics.verdictSignals
+      .labels(`homoglyph_${homoglyphResult.riskLevel}`)
+      .inc();
   }
-  if (typeof domainAgeDays === 'number') {
-    metrics.verdictSignals.labels('domain_age').inc();
+  if (typeof domainAgeDays === "number") {
+    metrics.verdictSignals.labels("domain_age").inc();
   }
   if (manualOverride) {
     metrics.verdictSignals.labels(`override_${manualOverride}`).inc();
@@ -5321,10 +6263,31 @@ async function generateVerdict(
   finalUrlMismatch: boolean,
   homoglyphResult: HomoglyphResult,
   heurSignals: Record<string, unknown>,
-  enhancedSecurityResult: { verdict: string; confidence: string; score: number; reasons: string[]; skipExternalAPIs: boolean },
-  shortenerInfo: { finalUrl: string; provider: string; chain: string[]; wasShortened: boolean } | null
+  enhancedSecurityResult: {
+    verdict: string;
+    confidence: string;
+    score: number;
+    reasons: string[];
+    skipExternalAPIs: boolean;
+  },
+  shortenerInfo: {
+    finalUrl: string;
+    provider: string;
+    chain: string[];
+    wasShortened: boolean;
+  } | null,
 ): Promise<VerdictResult> {
-  const { blocklistResult, domainIntel, manualOverride, vtStats, vtQuotaExceeded, vtError, urlhausResult, urlhausError, urlhausConsulted } = externalResults;
+  const {
+    blocklistResult,
+    domainIntel,
+    manualOverride,
+    vtStats,
+    vtQuotaExceeded,
+    vtError,
+    urlhausResult,
+    urlhausError,
+    urlhausConsulted,
+  } = externalResults;
 
   const domainAgeDays = domainIntel.ageDays;
   const gsbMatches = blocklistResult.gsbMatches;
@@ -5338,25 +6301,33 @@ async function generateVerdict(
     vtError,
     urlhausResult,
     urlhausError,
-    urlhausConsulted
+    urlhausConsulted,
   );
 
   const consultedProviders = providerStates.filter((state) => state.consulted);
-  const availableProviders = consultedProviders.filter((state) => state.available);
-  const degradedProviders = consultedProviders.filter((state) => !state.available);
-  const degradedMode = consultedProviders.length > 0 && availableProviders.length === 0
-    ? {
-      providers: degradedProviders.map((state) => ({
-        name: state.name,
-        reason: state.reason ?? 'unavailable',
-      })),
-    }
-    : undefined;
+  const availableProviders = consultedProviders.filter(
+    (state) => state.available,
+  );
+  const degradedProviders = consultedProviders.filter(
+    (state) => !state.available,
+  );
+  const degradedMode =
+    consultedProviders.length > 0 && availableProviders.length === 0
+      ? {
+          providers: degradedProviders.map((state) => ({
+            name: state.name,
+            reason: state.reason ?? "unavailable",
+          })),
+        }
+      : undefined;
 
   if (degradedMode) {
     metrics.degradedModeEvents.inc();
     metrics.externalScannersDegraded.set(1);
-    logger.warn({ url: finalUrl, urlHash: h, providers: degradedMode.providers }, 'Operating in degraded mode with no external providers available');
+    logger.warn(
+      { url: finalUrl, urlHash: h, providers: degradedMode.providers },
+      "Operating in degraded mode with no external providers available",
+    );
   } else {
     metrics.externalScannersDegraded.set(0);
   }
@@ -5387,7 +6358,10 @@ async function generateVerdict(
   if (enhancedSecurityResult.reasons.length > 0) {
     reasons = [...reasons, ...enhancedSecurityResult.reasons];
   }
-  const baselineVerdict = scoreFromSignals({ ...signals, manualOverride: null }).level;
+  const baselineVerdict = scoreFromSignals({
+    ...signals,
+    manualOverride: null,
+  }).level;
 
   recordVerdictMetrics(
     score,
@@ -5403,24 +6377,29 @@ async function generateVerdict(
     redirectChain,
     homoglyphResult,
     domainAgeDays,
-    manualOverride
+    manualOverride,
   );
 
-  const blocklistHit = gsbMatches.length > 0 || phishtankHit || Boolean(urlhausResult?.listed);
+  const blocklistHit =
+    gsbMatches.length > 0 || phishtankHit || Boolean(urlhausResult?.listed);
 
   let enqueuedUrlscan = false;
-  if (config.urlscan.enabled && config.urlscan.apiKey && verdict === 'suspicious') {
+  if (
+    config.urlscan.enabled &&
+    config.urlscan.apiKey &&
+    verdict === "suspicious"
+  ) {
     const queued = await redis.set(
       `${URLSCAN_QUEUED_PREFIX}${h}`,
-      '1',
-      'EX',
+      "1",
+      "EX",
       config.urlscan.uuidTtlSeconds,
-      'NX'
+      "NX",
     );
     if (queued) {
       enqueuedUrlscan = true;
       await urlscanQueue.add(
-        'submit',
+        "submit",
         {
           url: finalUrl,
           urlHash: h,
@@ -5430,7 +6409,7 @@ async function generateVerdict(
           removeOnComplete: true,
           removeOnFail: 500,
           attempts: 1,
-        }
+        },
       );
     }
   }
@@ -5448,7 +6427,7 @@ async function generateVerdict(
     verdict,
     ttl,
     enqueuedUrlscan,
-    degradedMode
+    degradedMode,
   };
 }
 
@@ -5462,11 +6441,18 @@ async function storeAndDispatchResults(
   attemptsMade: number,
   ingestionTimestamp: number,
   finalUrl: string,
-  enhancedSecurityResult: { verdict: string; confidence: string; score: number; reasons: string[]; skipExternalAPIs: boolean },
+  enhancedSecurityResult: {
+    verdict: string;
+    confidence: string;
+    score: number;
+    reasons: string[];
+    skipExternalAPIs: boolean;
+  },
   dbClient: IDatabaseConnection,
-  enhancedSecurity: EnhancedSecurityAnalyzer
+  enhancedSecurity: EnhancedSecurityAnalyzer,
 ): Promise<void> {
-  const { verdict, score, reasons, ttl, enqueuedUrlscan, degradedMode } = verdictResult;
+  const { verdict, score, reasons, ttl, enqueuedUrlscan, degradedMode } =
+    verdictResult;
   const h = urlHash(finalUrl);
   const cacheKey = `scan:${h}`;
 
@@ -5483,8 +6469,8 @@ async function storeAndDispatchResults(
     phishtank: null, // Will be filled in by the caller
     urlhaus: null, // Will be filled in by the caller
     vt: undefined, // Will be filled in by the caller
-    urlscan: enqueuedUrlscan ? { status: 'queued' } : undefined,
-    whois: { source: 'none' }, // Will be filled in by the caller
+    urlscan: enqueuedUrlscan ? { status: "queued" } : undefined,
+    whois: { source: "none" }, // Will be filled in by the caller
     domainAgeDays: undefined, // Will be filled in by the caller
     redirectChain: [], // Will be filled in by the caller
     ttlLevel: verdict,
@@ -5525,14 +6511,28 @@ async function storeAndDispatchResults(
       `;
 
       await dbClient.query(scanSql, [
-        h, finalUrl, verdict, score, JSON.stringify(reasons), JSON.stringify({}),
-        false, null, JSON.stringify([]), ttl,
-        'wa', enqueuedUrlscan ? 'queued' : null,
-        null, null, null
+        h,
+        finalUrl,
+        verdict,
+        score,
+        JSON.stringify(reasons),
+        JSON.stringify({}),
+        false,
+        null,
+        JSON.stringify([]),
+        ttl,
+        "wa",
+        enqueuedUrlscan ? "queued" : null,
+        null,
+        null,
+        null,
       ]);
 
       if (enqueuedUrlscan) {
-        await dbClient.query('UPDATE scans SET urlscan_status=? WHERE url_hash=?', ['queued', h]);
+        await dbClient.query(
+          "UPDATE scans SET urlscan_status=? WHERE url_hash=?",
+          ["queued", h],
+        );
       }
 
       if (chatId && messageId) {
@@ -5545,33 +6545,59 @@ async function storeAndDispatchResults(
       }
     });
   } catch (err) {
-    logger.warn({ err, chatId, messageId }, 'failed to persist message metadata for scan');
+    logger.warn(
+      { err, chatId, messageId },
+      "failed to persist message metadata for scan",
+    );
   }
 
   if (chatId && messageId) {
-    await scanVerdictQueue.add('verdict', { ...res, chatId, messageId }, { removeOnComplete: true });
+    await scanVerdictQueue.add(
+      "verdict",
+      { ...res, chatId, messageId },
+      { removeOnComplete: true },
+    );
   } else {
-    logger.info({ url: finalUrl }, 'Completed scan without chat context; skipping messaging flow');
+    logger.info(
+      { url: finalUrl },
+      "Completed scan without chat context; skipping messaging flow",
+    );
   }
 
-  await enhancedSecurity.recordVerdict(
-    finalUrl,
-    verdict === 'malicious' ? 'malicious' : verdict === 'suspicious' ? 'suspicious' : 'benign',
-    score / 15.0
-  ).catch((err: Error) => {
-    logger.warn({ err, url: finalUrl }, 'failed to record verdict for collaborative learning');
-  });
+  await enhancedSecurity
+    .recordVerdict(
+      finalUrl,
+      verdict === "malicious"
+        ? "malicious"
+        : verdict === "suspicious"
+          ? "suspicious"
+          : "benign",
+      score / 15.0,
+    )
+    .catch((err: Error) => {
+      logger.warn(
+        { err, url: finalUrl },
+        "failed to record verdict for collaborative learning",
+      );
+    });
 
   metrics.verdictCounter.labels(verdict).inc();
   const totalProcessingSeconds = (Date.now() - started) / 1000;
-  metrics.verdictLatency.observe(Math.max(0, (Date.now() - ingestionTimestamp) / 1000));
+  metrics.verdictLatency.observe(
+    Math.max(0, (Date.now() - ingestionTimestamp) / 1000),
+  );
   metrics.scanLatency.observe(totalProcessingSeconds);
   recordQueueMetrics(queueName, started, attemptsMade);
 }
 
 interface UrlscanCallbackBody {
   uuid?: string;
-  task?: { uuid?: string; url?: string; screenshotURL?: string; domURL?: string };
+  task?: {
+    uuid?: string;
+    url?: string;
+    screenshotURL?: string;
+    domURL?: string;
+  };
   visual?: { data?: { screenshotURL?: string } };
   screenshotURL?: string;
   domURL?: string;
@@ -5579,32 +6605,45 @@ interface UrlscanCallbackBody {
 }
 
 // Refactored urlscan callback handler (complexity 17 -> 15)
-async function handleUrlscanCallback(req: FastifyRequest, reply: FastifyReply, dbClient: IDatabaseConnection): Promise<void> {
+async function handleUrlscanCallback(
+  req: FastifyRequest,
+  reply: FastifyReply,
+  dbClient: IDatabaseConnection,
+): Promise<void> {
   if (!config.urlscan.enabled) {
-    reply.code(503).send({ ok: false, error: 'urlscan disabled' });
+    reply.code(503).send({ ok: false, error: "urlscan disabled" });
     return;
   }
 
   const secret = config.urlscan.callbackSecret;
   const headers = req.headers as Record<string, string | string[] | undefined>;
-  const rawHeaderToken = headers['x-urlscan-secret'] ?? headers['x-urlscan-token'];
-  const headerToken = Array.isArray(rawHeaderToken) ? rawHeaderToken[0] : rawHeaderToken;
-  const queryTokenRaw = (req.query as Record<string, string | string[] | undefined> | undefined)?.token;
-  const queryToken = Array.isArray(queryTokenRaw) ? queryTokenRaw[0] : queryTokenRaw;
+  const rawHeaderToken =
+    headers["x-urlscan-secret"] ?? headers["x-urlscan-token"];
+  const headerToken = Array.isArray(rawHeaderToken)
+    ? rawHeaderToken[0]
+    : rawHeaderToken;
+  const queryTokenRaw = (
+    req.query as Record<string, string | string[] | undefined> | undefined
+  )?.token;
+  const queryToken = Array.isArray(queryTokenRaw)
+    ? queryTokenRaw[0]
+    : queryTokenRaw;
 
   if (!secret || (headerToken !== secret && queryToken !== secret)) {
-    reply.code(401).send({ ok: false, error: 'unauthorized' });
+    reply.code(401).send({ ok: false, error: "unauthorized" });
     return;
   }
 
   const body = req.body as UrlscanCallbackBody;
   const uuid = body?.uuid || body?.task?.uuid;
   if (!uuid) {
-    reply.code(400).send({ ok: false, error: 'missing uuid' });
+    reply.code(400).send({ ok: false, error: "missing uuid" });
     return;
   }
 
-  const urlscanBaseUrl = (config.urlscan.baseUrl || 'https://urlscan.io').replace(/\/+$/, '');
+  const urlscanBaseUrl = (
+    config.urlscan.baseUrl || "https://urlscan.io"
+  ).replace(/\/+$/, "");
   const artifactSources = [
     body?.screenshotURL,
     body?.task?.screenshotURL,
@@ -5614,10 +6653,16 @@ async function handleUrlscanCallback(req: FastifyRequest, reply: FastifyReply, d
   ];
 
   for (const source of artifactSources) {
-    const validation = normalizeUrlscanArtifactCandidate(source, urlscanBaseUrl);
+    const validation = normalizeUrlscanArtifactCandidate(
+      source,
+      urlscanBaseUrl,
+    );
     if (validation.invalid) {
-      logger.warn({ uuid, source }, 'urlscan callback rejected due to artifact host validation');
-      reply.code(400).send({ ok: false, error: 'invalid artifact url' });
+      logger.warn(
+        { uuid, source },
+        "urlscan callback rejected due to artifact host validation",
+      );
+      reply.code(400).send({ ok: false, error: "invalid artifact url" });
       return;
     }
   }
@@ -5633,7 +6678,7 @@ async function handleUrlscanCallback(req: FastifyRequest, reply: FastifyReply, d
     }
   }
   if (!urlHashValue) {
-    logger.warn({ uuid }, 'urlscan callback without known url hash');
+    logger.warn({ uuid }, "urlscan callback without known url hash");
     reply.code(202).send({ ok: true });
     return;
   }
@@ -5641,19 +6686,23 @@ async function handleUrlscanCallback(req: FastifyRequest, reply: FastifyReply, d
   await redis.set(
     `${URLSCAN_RESULT_PREFIX}${urlHashValue}`,
     JSON.stringify(body),
-    'EX',
-    config.urlscan.resultTtlSeconds
+    "EX",
+    config.urlscan.resultTtlSeconds,
   );
 
-  let artifacts: { screenshotPath: string | null; domPath: string | null } | null = null;
+  let artifacts: {
+    screenshotPath: string | null;
+    domPath: string | null;
+  } | null = null;
   try {
     artifacts = await downloadUrlscanArtifacts(uuid, urlHashValue);
   } catch (err) {
-    logger.warn({ err, uuid }, 'failed to download urlscan artifacts');
+    logger.warn({ err, uuid }, "failed to download urlscan artifacts");
   }
 
-  await dbClient.query(
-    `UPDATE scans
+  await dbClient
+    .query(
+      `UPDATE scans
        SET urlscan_status=?,
            urlscan_completed_at=datetime('now'),
            urlscan_result=?,
@@ -5664,23 +6713,32 @@ async function handleUrlscanCallback(req: FastifyRequest, reply: FastifyReply, d
              ELSE urlscan_artifact_stored_at
            END
      WHERE url_hash=?`,
-    ['completed', JSON.stringify(body), artifacts?.screenshotPath ?? null, artifacts?.domPath ?? null, artifacts?.screenshotPath ?? null, artifacts?.domPath ?? null, urlHashValue]
-  ).catch((err: Error) => {
-    logger.error({ err }, 'failed to persist urlscan callback');
-  });
+      [
+        "completed",
+        JSON.stringify(body),
+        artifacts?.screenshotPath ?? null,
+        artifacts?.domPath ?? null,
+        artifacts?.screenshotPath ?? null,
+        artifacts?.domPath ?? null,
+        urlHashValue,
+      ],
+    )
+    .catch((err: Error) => {
+      logger.error({ err }, "failed to persist urlscan callback");
+    });
 
   reply.send({ ok: true });
 }
 
 async function main() {
-  assertEssentialConfig('scan-orchestrator');
+  assertEssentialConfig("scan-orchestrator");
 
   // Validate Redis connectivity before starting
   try {
     await redis.ping();
-    logger.info('Redis connectivity validated');
+    logger.info("Redis connectivity validated");
   } catch (err) {
-    logger.error({ err }, 'Redis connectivity check failed during startup');
+    logger.error({ err }, "Redis connectivity check failed during startup");
     // Don't throw, let healthcheck handle it so container doesn't crash loop immediately
     // throw new Error('Redis is required but unreachable');
   }
@@ -5691,185 +6749,317 @@ async function main() {
   await enhancedSecurity.start();
 
   const app = Fastify();
-  app.get('/healthz', async (_req, reply) => {
+  app.get("/healthz", async (_req, reply) => {
     try {
       // Check Redis connectivity
       await redis.ping();
-      return { ok: true, redis: 'connected' };
+      return { ok: true, redis: "connected" };
     } catch (err) {
-      logger.warn({ err }, 'Health check failed - Redis connectivity issue');
+      logger.warn({ err }, "Health check failed - Redis connectivity issue");
       reply.code(503);
-      return { ok: false, redis: 'disconnected', error: 'Redis unreachable' };
+      return { ok: false, redis: "disconnected", error: "Redis unreachable" };
     }
   });
-  app.get('/metrics', async (_req, reply) => {
-    reply.header('Content-Type', register.contentType);
+  app.get("/metrics", async (_req, reply) => {
+    reply.header("Content-Type", register.contentType);
     return register.metrics();
   });
 
-  app.post('/urlscan/callback', (req, reply) => handleUrlscanCallback(req, reply, dbClient));
+  app.post("/urlscan/callback", (req, reply) =>
+    handleUrlscanCallback(req, reply, dbClient),
+  );
 
   // Refactored scan request worker (complexity 89 -> 15)
-  new Worker(config.queues.scanRequest, async (job) => {
-    const queueName = config.queues.scanRequest;
-    const started = Date.now();
-    const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
-    metrics.queueJobWait.labels(queueName).observe(waitSeconds);
-    const { chatId, messageId, url, timestamp, rescan } = job.data as {
-      chatId?: string;
-      messageId?: string;
-      url: string;
-      timestamp?: number;
-      rescan?: boolean;
-    };
-    const ingestionTimestamp = typeof timestamp === 'number' ? timestamp : job.timestamp ?? started;
-    const hasChatContext = typeof chatId === 'string' && typeof messageId === 'string';
+  new Worker(
+    config.queues.scanRequest,
+    async (job) => {
+      const queueName = config.queues.scanRequest;
+      const started = Date.now();
+      const waitSeconds = Math.max(
+        0,
+        (started - (job.timestamp ?? started)) / 1000,
+      );
+      metrics.queueJobWait.labels(queueName).observe(waitSeconds);
+      const { chatId, messageId, url, timestamp, rescan } = job.data as {
+        chatId?: string;
+        messageId?: string;
+        url: string;
+        timestamp?: number;
+        rescan?: boolean;
+      };
+      const ingestionTimestamp =
+        typeof timestamp === "number" ? timestamp : (job.timestamp ?? started);
+      const hasChatContext =
+        typeof chatId === "string" && typeof messageId === "string";
 
-    try {
-      const norm = normalizeUrl(url);
-      if (!norm) {
-        recordQueueMetrics(queueName, started, job.attemptsMade);
-        return;
-      }
+      try {
+        const norm = normalizeUrl(url);
+        if (!norm) {
+          recordQueueMetrics(queueName, started, job.attemptsMade);
+          return;
+        }
 
-      const h = urlHash(norm);
-      const cacheKey = `scan:${h}`;
+        const h = urlHash(norm);
+        const cacheKey = `scan:${h}`;
 
-      // Check for cached verdict
-      const cachedVerdict = await getCachedVerdict(cacheKey);
-      if (cachedVerdict) {
-        await handleCachedVerdict(cachedVerdict, chatId, messageId, hasChatContext, ingestionTimestamp, queueName, started, job.attemptsMade, norm, rescan, job.id);
-        return;
-      }
+        // Check for cached verdict
+        const cachedVerdict = await getCachedVerdict(cacheKey);
+        if (cachedVerdict) {
+          await handleCachedVerdict(
+            cachedVerdict,
+            chatId,
+            messageId,
+            hasChatContext,
+            ingestionTimestamp,
+            queueName,
+            started,
+            job.attemptsMade,
+            norm,
+            rescan,
+            job.id,
+          );
+          return;
+        }
 
-      // Process URL and gather signals
-      const urlAnalysis = await analyzeUrl(norm, h);
-      const { finalUrl, finalUrlObj, redirectChain, heurSignals, wasShortened, finalUrlMismatch, shortenerInfo } = urlAnalysis;
+        // Process URL and gather signals
+        const urlAnalysis = await analyzeUrl(norm, h);
+        const {
+          finalUrl,
+          finalUrlObj,
+          redirectChain,
+          heurSignals,
+          wasShortened,
+          finalUrlMismatch,
+          shortenerInfo,
+        } = urlAnalysis;
 
-      // Detect homoglyphs
-      const homoglyphResult = detectHomoglyphs(finalUrlObj.hostname);
-      if (homoglyphResult.detected) {
-        metrics.homoglyphDetections.labels(homoglyphResult.riskLevel).inc();
-        logger.info({ hostname: finalUrlObj.hostname, risk: homoglyphResult.riskLevel, confusables: homoglyphResult.confusableChars }, 'Homoglyph detection');
-      }
+        // Detect homoglyphs
+        const homoglyphResult = detectHomoglyphs(finalUrlObj.hostname);
+        if (homoglyphResult.detected) {
+          metrics.homoglyphDetections.labels(homoglyphResult.riskLevel).inc();
+          logger.info(
+            {
+              hostname: finalUrlObj.hostname,
+              risk: homoglyphResult.riskLevel,
+              confusables: homoglyphResult.confusableChars,
+            },
+            "Homoglyph detection",
+          );
+        }
 
-      // Enhanced security analysis
-      const enhancedSecurityResult = await enhancedSecurity.analyze(finalUrl, h);
-
-      // Handle high-confidence malicious URLs
-      if (enhancedSecurityResult.verdict === 'malicious' && enhancedSecurityResult.confidence === 'high' && enhancedSecurityResult.skipExternalAPIs) {
-        await handleHighConfidenceThreat(
-          norm, finalUrl, h, redirectChain, wasShortened, finalUrlMismatch,
-          homoglyphResult, heurSignals, { verdict: enhancedSecurityResult.verdict || "unknown", confidence: enhancedSecurityResult.confidence || "unknown", score: enhancedSecurityResult.score, reasons: enhancedSecurityResult.reasons, skipExternalAPIs: enhancedSecurityResult.skipExternalAPIs }, cacheKey,
-          chatId, messageId, hasChatContext, queueName, started, job.attemptsMade, ingestionTimestamp, dbClient, enhancedSecurity
+        // Enhanced security analysis
+        const enhancedSecurityResult = await enhancedSecurity.analyze(
+          finalUrl,
+          h,
         );
-        return;
+
+        // Handle high-confidence malicious URLs
+        if (
+          enhancedSecurityResult.verdict === "malicious" &&
+          enhancedSecurityResult.confidence === "high" &&
+          enhancedSecurityResult.skipExternalAPIs
+        ) {
+          await handleHighConfidenceThreat(
+            norm,
+            finalUrl,
+            h,
+            redirectChain,
+            wasShortened,
+            finalUrlMismatch,
+            homoglyphResult,
+            heurSignals,
+            {
+              verdict: enhancedSecurityResult.verdict || "unknown",
+              confidence: enhancedSecurityResult.confidence || "unknown",
+              score: enhancedSecurityResult.score,
+              reasons: enhancedSecurityResult.reasons,
+              skipExternalAPIs: enhancedSecurityResult.skipExternalAPIs,
+            },
+            cacheKey,
+            chatId,
+            messageId,
+            hasChatContext,
+            queueName,
+            started,
+            job.attemptsMade,
+            ingestionTimestamp,
+            dbClient,
+            enhancedSecurity,
+          );
+          return;
+        }
+
+        // External API checks
+        const externalResults = await performExternalChecks(
+          finalUrl,
+          finalUrlObj,
+          h,
+          dbClient,
+        );
+
+        // Generate verdict
+        const verdictResult = await generateVerdict(
+          externalResults,
+          finalUrl,
+          h,
+          redirectChain,
+          wasShortened,
+          finalUrlMismatch,
+          homoglyphResult,
+          heurSignals,
+          {
+            verdict: enhancedSecurityResult.verdict || "unknown",
+            confidence: enhancedSecurityResult.confidence || "unknown",
+            score: enhancedSecurityResult.score,
+            reasons: enhancedSecurityResult.reasons,
+            skipExternalAPIs: enhancedSecurityResult.skipExternalAPIs,
+          },
+          shortenerInfo,
+        );
+
+        // Store results and dispatch
+        await storeAndDispatchResults(
+          verdictResult,
+          chatId,
+          messageId,
+          hasChatContext,
+          queueName,
+          started,
+          job.attemptsMade,
+          ingestionTimestamp,
+          finalUrl,
+          {
+            verdict: enhancedSecurityResult.verdict || "unknown",
+            confidence: enhancedSecurityResult.confidence || "unknown",
+            score: enhancedSecurityResult.score,
+            reasons: enhancedSecurityResult.reasons,
+            skipExternalAPIs: enhancedSecurityResult.skipExternalAPIs,
+          },
+          dbClient,
+          enhancedSecurity,
+        );
+      } catch (e) {
+        metrics.queueFailures.labels(queueName).inc();
+        metrics.queueProcessingDuration
+          .labels(queueName)
+          .observe((Date.now() - started) / 1000);
+        logger.error(e, "scan worker error");
+      } finally {
+        await refreshQueueMetrics(scanRequestQueue, queueName).catch(
+          () => undefined,
+        );
       }
-
-      // External API checks
-      const externalResults = await performExternalChecks(finalUrl, finalUrlObj, h, dbClient);
-
-      // Generate verdict
-      const verdictResult = await generateVerdict(
-        externalResults, finalUrl, h, redirectChain, wasShortened, finalUrlMismatch,
-        homoglyphResult, heurSignals, { verdict: enhancedSecurityResult.verdict || "unknown", confidence: enhancedSecurityResult.confidence || "unknown", score: enhancedSecurityResult.score, reasons: enhancedSecurityResult.reasons, skipExternalAPIs: enhancedSecurityResult.skipExternalAPIs }, shortenerInfo
-      );
-
-      // Store results and dispatch
-      await storeAndDispatchResults(
-        verdictResult, chatId, messageId, hasChatContext, queueName, started,
-        job.attemptsMade, ingestionTimestamp, finalUrl, { verdict: enhancedSecurityResult.verdict || "unknown", confidence: enhancedSecurityResult.confidence || "unknown", score: enhancedSecurityResult.score, reasons: enhancedSecurityResult.reasons, skipExternalAPIs: enhancedSecurityResult.skipExternalAPIs }, dbClient, enhancedSecurity
-      );
-
-    } catch (e) {
-      metrics.queueFailures.labels(queueName).inc();
-      metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
-      logger.error(e, 'scan worker error');
-    } finally {
-      await refreshQueueMetrics(scanRequestQueue, queueName).catch(() => undefined);
-    }
-  }, { connection: redis, concurrency: config.orchestrator.concurrency });
+    },
+    { connection: redis, concurrency: config.orchestrator.concurrency },
+  );
 
   if (config.urlscan.enabled && config.urlscan.apiKey) {
-    new Worker(config.queues.urlscan, async (job) => {
-      const queueName = config.queues.urlscan;
-      const started = Date.now();
-      const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
-      metrics.queueJobWait.labels(queueName).observe(waitSeconds);
-      const { url, urlHash: urlHashValue } = job.data as { url: string; urlHash: string };
-      try {
-        const submission: UrlscanSubmissionResponse = await urlscanCircuit.execute(() =>
-          withRetry(
-            () =>
-              submitUrlscan(url, {
-                callbackUrl: config.urlscan.callbackUrl || undefined,
-                visibility: config.urlscan.visibility,
-                tags: config.urlscan.tags,
-              }),
-            {
-              retries: 2,
-              baseDelayMs: 1000,
-              factor: 2,
-              retryable: shouldRetry,
-            }
-          )
+    new Worker(
+      config.queues.urlscan,
+      async (job) => {
+        const queueName = config.queues.urlscan;
+        const started = Date.now();
+        const waitSeconds = Math.max(
+          0,
+          (started - (job.timestamp ?? started)) / 1000,
         );
-        recordLatency(CIRCUIT_LABELS.urlscan, submission.latencyMs);
-        if (submission.uuid) {
-          await redis.set(
-            `${URLSCAN_UUID_PREFIX}${submission.uuid}`,
-            urlHashValue,
-            'EX',
-            config.urlscan.uuidTtlSeconds
-          );
-          await redis.set(
-            `${URLSCAN_SUBMITTED_PREFIX}${urlHashValue}`,
-            submission.uuid,
-            'EX',
-            config.urlscan.uuidTtlSeconds
-          );
-          await dbClient.query(
-            `UPDATE scans SET urlscan_uuid=?, urlscan_status=?, urlscan_submitted_at=datetime('now'), urlscan_result_url=? WHERE url_hash=?`,
-            [submission.uuid, 'submitted', submission.result ?? null, urlHashValue]
+        metrics.queueJobWait.labels(queueName).observe(waitSeconds);
+        const { url, urlHash: urlHashValue } = job.data as {
+          url: string;
+          urlHash: string;
+        };
+        try {
+          const submission: UrlscanSubmissionResponse =
+            await urlscanCircuit.execute(() =>
+              withRetry(
+                () =>
+                  submitUrlscan(url, {
+                    callbackUrl: config.urlscan.callbackUrl || undefined,
+                    visibility: config.urlscan.visibility,
+                    tags: config.urlscan.tags,
+                  }),
+                {
+                  retries: 2,
+                  baseDelayMs: 1000,
+                  factor: 2,
+                  retryable: shouldRetry,
+                },
+              ),
+            );
+          recordLatency(CIRCUIT_LABELS.urlscan, submission.latencyMs);
+          if (submission.uuid) {
+            await redis.set(
+              `${URLSCAN_UUID_PREFIX}${submission.uuid}`,
+              urlHashValue,
+              "EX",
+              config.urlscan.uuidTtlSeconds,
+            );
+            await redis.set(
+              `${URLSCAN_SUBMITTED_PREFIX}${urlHashValue}`,
+              submission.uuid,
+              "EX",
+              config.urlscan.uuidTtlSeconds,
+            );
+            await dbClient.query(
+              `UPDATE scans SET urlscan_uuid=?, urlscan_status=?, urlscan_submitted_at=datetime('now'), urlscan_result_url=? WHERE url_hash=?`,
+              [
+                submission.uuid,
+                "submitted",
+                submission.result ?? null,
+                urlHashValue,
+              ],
+            );
+          }
+          metrics.queueProcessingDuration
+            .labels(queueName)
+            .observe((Date.now() - started) / 1000);
+          metrics.queueCompleted.labels(queueName).inc();
+          if (job.attemptsMade > 0) {
+            metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
+          }
+        } catch (err) {
+          recordError(CIRCUIT_LABELS.urlscan, err);
+          logger.error({ err, url }, "urlscan submission failed");
+          await dbClient
+            .query(
+              `UPDATE scans SET urlscan_status=?, urlscan_completed_at=datetime('now') WHERE url_hash=?`,
+              ["failed", urlHashValue],
+            )
+            .catch(() => undefined);
+          metrics.queueFailures.labels(queueName).inc();
+          metrics.queueProcessingDuration
+            .labels(queueName)
+            .observe((Date.now() - started) / 1000);
+          throw err;
+        } finally {
+          await refreshQueueMetrics(urlscanQueue, queueName).catch(
+            () => undefined,
           );
         }
-        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
-        metrics.queueCompleted.labels(queueName).inc();
-        if (job.attemptsMade > 0) {
-          metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
-        }
-      } catch (err) {
-        recordError(CIRCUIT_LABELS.urlscan, err);
-        logger.error({ err, url }, 'urlscan submission failed');
-        await dbClient.query(
-          `UPDATE scans SET urlscan_status=?, urlscan_completed_at=datetime('now') WHERE url_hash=?`,
-          ['failed', urlHashValue]
-        ).catch(() => undefined);
-        metrics.queueFailures.labels(queueName).inc();
-        metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
-        throw err;
-      } finally {
-        await refreshQueueMetrics(urlscanQueue, queueName).catch(() => undefined);
-      }
-    }, { connection: redis, concurrency: config.urlscan.concurrency });
+      },
+      { connection: redis, concurrency: config.urlscan.concurrency },
+    );
   }
 
-  await app.listen({ host: '0.0.0.0', port: 3001 });
+  await app.listen({ host: "0.0.0.0", port: 3001 });
 
   const shutdown = async () => {
-    logger.info('Shutting down scan orchestrator...');
+    logger.info("Shutting down scan orchestrator...");
     await enhancedSecurity.stop();
     await app.close();
     await redis.quit();
     process.exit(0);
   };
 
-  process.on('SIGTERM', shutdown);
-  process.on('SIGINT', shutdown);
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
 }
 
-if (process.env.NODE_ENV !== 'test') {
-  main().catch(err => { logger.error(err, 'Fatal in orchestrator'); process.exit(1); });
+if (process.env.NODE_ENV !== "test") {
+  main().catch((err) => {
+    logger.error(err, "Fatal in orchestrator");
+    process.exit(1);
+  });
 }
 
 export const __testables = {
@@ -5889,7 +7079,7 @@ export const __testables = {
 # File: services/wa-client/src/alerts.ts
 
 ```typescript
-import type { Logger } from 'pino';
+import type { Logger } from "pino";
 
 interface AuthFailureAlert {
   clientId: string;
@@ -5897,68 +7087,98 @@ interface AuthFailureAlert {
   lastMessage?: string;
 }
 
-export async function sendAuthFailureAlert(logger: Logger, payload: AuthFailureAlert): Promise<void> {
+export async function sendAuthFailureAlert(
+  logger: Logger,
+  payload: AuthFailureAlert,
+): Promise<void> {
   const webhook = process.env.WA_ALERT_WEBHOOK_URL;
-  const text = `wa-client auth failures for ${payload.clientId}: ${payload.count} consecutive errors. Last message: ${payload.lastMessage ?? 'n/a'}`;
+  const text = `wa-client auth failures for ${payload.clientId}: ${payload.count} consecutive errors. Last message: ${payload.lastMessage ?? "n/a"}`;
   if (!webhook) {
-    logger.warn({ payload }, 'WA_ALERT_WEBHOOK_URL not configured; skipping external auth-failure alert');
+    logger.warn(
+      { payload },
+      "WA_ALERT_WEBHOOK_URL not configured; skipping external auth-failure alert",
+    );
     return;
   }
   try {
     const response = await fetch(webhook, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text }),
     });
     if (!response.ok) {
       const body = await response.text();
-      logger.error({ status: response.status, body }, 'Failed to send auth failure alert');
+      logger.error(
+        { status: response.status, body },
+        "Failed to send auth failure alert",
+      );
     }
   } catch (err) {
-    logger.error({ err }, 'Error sending auth failure alert');
+    logger.error({ err }, "Error sending auth failure alert");
   }
 }
-
 ```
 
 # File: services/wa-client/src/groupGovernance.ts
 
 ```typescript
-import type Redis from 'ioredis';
+import type Redis from "ioredis";
 
-export type GroupConsentState = 'pending' | 'granted' | 'denied';
+export type GroupConsentState = "pending" | "granted" | "denied";
 
 const CONSENT_KEY = (chatId: string) => `wa:group:${chatId}:consent`;
 const AUTO_APPROVE_KEY = (chatId: string) => `wa:group:${chatId}:auto_approve`;
-const GOVERNANCE_COUNT_KEY = (chatId: string) => `wa:group:${chatId}:gov_actions`;
+const GOVERNANCE_COUNT_KEY = (chatId: string) =>
+  `wa:group:${chatId}:gov_actions`;
 const GOVERNANCE_AUDIT_KEY = (chatId: string) => `wa:group:${chatId}:gov_audit`;
-const INVITE_ROTATED_AT_KEY = (chatId: string) => `wa:group:${chatId}:invite_rotated_at`;
+const INVITE_ROTATED_AT_KEY = (chatId: string) =>
+  `wa:group:${chatId}:invite_rotated_at`;
 
 const GOVERNANCE_AUDIT_TTL_SECONDS = 60 * 60 * 24 * 7;
 const INVITE_ROTATION_TTL_SECONDS = 60 * 60 * 24;
 
-export async function getGroupConsent(redis: Redis, chatId: string): Promise<GroupConsentState | null> {
+export async function getGroupConsent(
+  redis: Redis,
+  chatId: string,
+): Promise<GroupConsentState | null> {
   const value = await redis.get(CONSENT_KEY(chatId));
   if (!value) return null;
-  if (value === 'granted' || value === 'denied' || value === 'pending') return value;
+  if (value === "granted" || value === "denied" || value === "pending")
+    return value;
   return null;
 }
 
-export async function setGroupConsent(redis: Redis, chatId: string, state: GroupConsentState): Promise<void> {
+export async function setGroupConsent(
+  redis: Redis,
+  chatId: string,
+  state: GroupConsentState,
+): Promise<void> {
   await redis.set(CONSENT_KEY(chatId), state);
 }
 
-export async function getAutoApprove(redis: Redis, chatId: string, fallback: boolean): Promise<boolean> {
+export async function getAutoApprove(
+  redis: Redis,
+  chatId: string,
+  fallback: boolean,
+): Promise<boolean> {
   const value = await redis.get(AUTO_APPROVE_KEY(chatId));
   if (value === null) return fallback;
-  return value === 'true';
+  return value === "true";
 }
 
-export async function setAutoApprove(redis: Redis, chatId: string, enabled: boolean): Promise<void> {
-  await redis.set(AUTO_APPROVE_KEY(chatId), enabled ? 'true' : 'false');
+export async function setAutoApprove(
+  redis: Redis,
+  chatId: string,
+  enabled: boolean,
+): Promise<void> {
+  await redis.set(AUTO_APPROVE_KEY(chatId), enabled ? "true" : "false");
 }
 
-export async function recordGovernanceAction(redis: Redis, chatId: string, ttlSeconds: number): Promise<number> {
+export async function recordGovernanceAction(
+  redis: Redis,
+  chatId: string,
+  ttlSeconds: number,
+): Promise<number> {
   const key = GOVERNANCE_COUNT_KEY(chatId);
   const count = await redis.incr(key);
   if (count === 1) {
@@ -5967,12 +7187,25 @@ export async function recordGovernanceAction(redis: Redis, chatId: string, ttlSe
   return count;
 }
 
-export async function getGovernanceActionCount(redis: Redis, chatId: string): Promise<number> {
+export async function getGovernanceActionCount(
+  redis: Redis,
+  chatId: string,
+): Promise<number> {
   const raw = await redis.get(GOVERNANCE_COUNT_KEY(chatId));
   return raw ? Number(raw) : 0;
 }
 
-export async function appendGovernanceLog(redis: Redis, chatId: string, entry: { action: string; actor?: string | null; targets?: string[]; detail?: string; reason?: string }): Promise<void> {
+export async function appendGovernanceLog(
+  redis: Redis,
+  chatId: string,
+  entry: {
+    action: string;
+    actor?: string | null;
+    targets?: string[];
+    detail?: string;
+    reason?: string;
+  },
+): Promise<void> {
   const payload = JSON.stringify({
     ...entry,
     action: entry.action,
@@ -5990,26 +7223,36 @@ export async function appendGovernanceLog(redis: Redis, chatId: string, entry: {
     .exec();
 }
 
-export async function recordInviteRotation(redis: Redis, chatId: string): Promise<void> {
-  await redis.set(INVITE_ROTATED_AT_KEY(chatId), Date.now().toString(), 'EX', INVITE_ROTATION_TTL_SECONDS);
+export async function recordInviteRotation(
+  redis: Redis,
+  chatId: string,
+): Promise<void> {
+  await redis.set(
+    INVITE_ROTATED_AT_KEY(chatId),
+    Date.now().toString(),
+    "EX",
+    INVITE_ROTATION_TTL_SECONDS,
+  );
 }
 
-export async function getLastInviteRotation(redis: Redis, chatId: string): Promise<number | null> {
+export async function getLastInviteRotation(
+  redis: Redis,
+  chatId: string,
+): Promise<number | null> {
   const raw = await redis.get(INVITE_ROTATED_AT_KEY(chatId));
   if (!raw) return null;
   const numeric = Number(raw);
   return Number.isFinite(numeric) ? numeric : null;
 }
-
 ```
 
 # File: services/wa-client/src/media.ts
 
 ```typescript
-import { existsSync } from 'node:fs';
-import path from 'node:path';
-import { MessageMedia } from 'whatsapp-web.js';
-import type { Logger } from 'pino';
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { MessageMedia } from "whatsapp-web.js";
+import type { Logger } from "pino";
 
 interface VerdictJobData {
   urlHash: string;
@@ -6030,7 +7273,7 @@ function resolveCandidatePaths(job: VerdictJobData): string[] {
     const pngPath = path.join(mediaDir, `${job.urlHash}.png`);
     const jpgPath = path.join(mediaDir, `${job.urlHash}.jpg`);
     const webpPath = path.join(mediaDir, `${job.urlHash}.webp`);
-    [pngPath, jpgPath, webpPath].forEach(p => candidates.add(p));
+    [pngPath, jpgPath, webpPath].forEach((p) => candidates.add(p));
   }
   return Array.from(candidates);
 }
@@ -6043,7 +7286,10 @@ async function loadVerdictMedia(file: string): Promise<MessageMedia> {
   );
 }
 
-export async function buildVerdictMedia(job: VerdictJobData, logger: Logger): Promise<{ media: MessageMedia; caption?: string } | null> {
+export async function buildVerdictMedia(
+  job: VerdictJobData,
+  logger: Logger,
+): Promise<{ media: MessageMedia; caption?: string } | null> {
   const files = resolveCandidatePaths(job);
   for (const file of files) {
     if (!existsSync(file)) continue;
@@ -6051,23 +7297,26 @@ export async function buildVerdictMedia(job: VerdictJobData, logger: Logger): Pr
       const media = await loadVerdictMedia(file);
       return { media };
     } catch (err) {
-      logger.warn({ err, file }, 'Failed to load verdict attachment');
+      logger.warn({ err, file }, "Failed to load verdict attachment");
     }
   }
   return null;
 }
-
 ```
 
 # File: services/wa-client/src/remoteAuthStore.ts
 
 ```typescript
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
-import type Redis from 'ioredis';
-import type { Logger } from 'pino';
-import type { EncryptionMaterials } from './crypto/dataKeyProvider';
-import { encryptPayload, decryptPayload, type EncryptedPayload } from './crypto/secureEnvelope';
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import type Redis from "ioredis";
+import type { Logger } from "pino";
+import type { EncryptionMaterials } from "./crypto/dataKeyProvider";
+import {
+  encryptPayload,
+  decryptPayload,
+  type EncryptedPayload,
+} from "./crypto/secureEnvelope";
 
 interface StoreOptions {
   redis: Redis;
@@ -6094,7 +7343,7 @@ export class RedisRemoteAuthStore {
   constructor(options: StoreOptions) {
     this.redis = options.redis;
     this.logger = options.logger;
-    this.prefix = options.prefix.replace(/:+$/, '');
+    this.prefix = options.prefix.replace(/:+$/, "");
     this.materials = options.materials;
     this.clientId = options.clientId;
   }
@@ -6110,7 +7359,10 @@ export class RedisRemoteAuthStore {
 
   async delete({ session }: { session: string }): Promise<void> {
     await this.redis.del(this.key(session));
-    this.logger.info({ session, clientId: this.clientId }, 'Deleted RemoteAuth session from Redis');
+    this.logger.info(
+      { session, clientId: this.clientId },
+      "Deleted RemoteAuth session from Redis",
+    );
   }
 
   async save({ session }: { session: string }): Promise<void> {
@@ -6124,10 +7376,19 @@ export class RedisRemoteAuthStore {
       version: payload.version,
     };
     await this.redis.set(this.key(session), JSON.stringify(record));
-    this.logger.info({ session, clientId: this.clientId }, 'Persisted RemoteAuth session snapshot to Redis');
+    this.logger.info(
+      { session, clientId: this.clientId },
+      "Persisted RemoteAuth session snapshot to Redis",
+    );
   }
 
-  async extract({ session, path: zipPath }: { session: string; path: string }): Promise<void> {
+  async extract({
+    session,
+    path: zipPath,
+  }: {
+    session: string;
+    path: string;
+  }): Promise<void> {
     const raw = await this.redis.get(this.key(session));
     if (!raw) {
       throw new Error(`RemoteAuth session ${session} not found in Redis`);
@@ -6136,27 +7397,33 @@ export class RedisRemoteAuthStore {
     try {
       record = JSON.parse(raw) as StorePayload;
     } catch (err) {
-      throw new Error(`Stored RemoteAuth payload is invalid JSON: ${(err as Error).message}`);
+      throw new Error(
+        `Stored RemoteAuth payload is invalid JSON: ${(err as Error).message}`,
+      );
     }
     const buffer = decryptPayload(record.payload, this.materials);
     await fs.writeFile(path.resolve(zipPath), buffer);
-    this.logger.info({ session, clientId: this.clientId }, 'Extracted RemoteAuth session snapshot from Redis');
+    this.logger.info(
+      { session, clientId: this.clientId },
+      "Extracted RemoteAuth session snapshot from Redis",
+    );
   }
 }
 
-export function createRemoteAuthStore(options: StoreOptions): RedisRemoteAuthStore {
+export function createRemoteAuthStore(
+  options: StoreOptions,
+): RedisRemoteAuthStore {
   return new RedisRemoteAuthStore(options);
 }
-
 ```
 
 # File: services/wa-client/src/waHealth.ts
 
 ```typescript
-import { Queue } from 'bullmq';
-import type Redis from 'ioredis';
-import type { Logger } from 'pino';
-import { metrics } from '@wbscanner/shared';
+import { Queue } from "bullmq";
+import type Redis from "ioredis";
+import type { Logger } from "pino";
+import { metrics } from "@wbscanner/shared";
 
 export interface WaHealthEvent {
   event: string;
@@ -6179,25 +7446,32 @@ export interface WaHealthContext {
 const AUTH_FAILURE_KEY = (clientId: string) => `wa:authfail:${clientId}`;
 const AUTH_ALERT_KEY = (clientId: string) => `wa:authfail:alerted:${clientId}`;
 
-export async function publishWaHealth(ctx: WaHealthContext, payload: WaHealthEvent): Promise<void> {
+export async function publishWaHealth(
+  ctx: WaHealthContext,
+  payload: WaHealthEvent,
+): Promise<void> {
   const now = Date.now();
-  const stateLabel = payload.state ?? 'unknown';
+  const stateLabel = payload.state ?? "unknown";
   metrics.waStateChanges.labels(payload.event, stateLabel).inc();
-  await ctx.queue.add(
-    'state-change',
-    {
-      ...payload,
-      clientId: ctx.clientId,
-      timestamp: now,
-    },
-    { removeOnComplete: true, removeOnFail: 50 }
-  ).catch((err) => {
-    ctx.logger.warn({ err, payload }, 'Failed to enqueue wa health event');
-  });
-  ctx.logger.info({ payload }, 'Published WhatsApp health event');
+  await ctx.queue
+    .add(
+      "state-change",
+      {
+        ...payload,
+        clientId: ctx.clientId,
+        timestamp: now,
+      },
+      { removeOnComplete: true, removeOnFail: 50 },
+    )
+    .catch((err) => {
+      ctx.logger.warn({ err, payload }, "Failed to enqueue wa health event");
+    });
+  ctx.logger.info({ payload }, "Published WhatsApp health event");
 }
 
-export async function incrementAuthFailure(ctx: WaHealthContext): Promise<{ count: number; alert: boolean }> {
+export async function incrementAuthFailure(
+  ctx: WaHealthContext,
+): Promise<{ count: number; alert: boolean }> {
   const key = AUTH_FAILURE_KEY(ctx.clientId);
   const count = await ctx.redis.incr(key);
   await ctx.redis.expire(key, ctx.failureWindowSeconds);
@@ -6206,7 +7480,7 @@ export async function incrementAuthFailure(ctx: WaHealthContext): Promise<{ coun
     const alertKey = AUTH_ALERT_KEY(ctx.clientId);
     const alreadyAlerted = await ctx.redis.exists(alertKey);
     if (!alreadyAlerted) {
-      await ctx.redis.set(alertKey, '1', 'EX', ctx.alertCooldownSeconds);
+      await ctx.redis.set(alertKey, "1", "EX", ctx.alertCooldownSeconds);
       return { count, alert: true };
     }
   }
@@ -6218,13 +7492,12 @@ export async function resetAuthFailures(ctx: WaHealthContext): Promise<void> {
   await ctx.redis.del(key);
   metrics.waConsecutiveAuthFailures.labels(ctx.clientId).set(0);
 }
-
 ```
 
 # File: services/wa-client/src/group-store.ts
 
 ```typescript
-import Redis from 'ioredis';
+import Redis from "ioredis";
 
 export interface GroupGovernanceEvent {
   chatId: string;
@@ -6239,8 +7512,13 @@ export interface GroupGovernanceEvent {
 export class GroupStore {
   private readonly maxEvents: number;
 
-  constructor(private readonly redis: Redis, private readonly ttlSeconds: number, options?: { maxEvents?: number }) {
-    this.maxEvents = options?.maxEvents && options.maxEvents > 0 ? options.maxEvents : 50;
+  constructor(
+    private readonly redis: Redis,
+    private readonly ttlSeconds: number,
+    options?: { maxEvents?: number },
+  ) {
+    this.maxEvents =
+      options?.maxEvents && options.maxEvents > 0 ? options.maxEvents : 50;
   }
 
   private key(chatId: string): string {
@@ -6260,7 +7538,10 @@ export class GroupStore {
     await this.redis.expire(key, this.ttlSeconds);
   }
 
-  async listRecentEvents(chatId: string, limit = 10): Promise<GroupGovernanceEvent[]> {
+  async listRecentEvents(
+    chatId: string,
+    limit = 10,
+  ): Promise<GroupGovernanceEvent[]> {
     if (limit <= 0) {
       return [];
     }
@@ -6281,15 +7562,19 @@ export class GroupStore {
     await this.redis.del(this.key(chatId));
   }
 }
-
 ```
 
 # File: services/wa-client/src/message-store.ts
 
 ```typescript
-import Redis from 'ioredis';
+import Redis from "ioredis";
 
-export type VerdictStatus = 'pending' | 'sent' | 'retrying' | 'failed' | 'retracted';
+export type VerdictStatus =
+  | "pending"
+  | "sent"
+  | "retrying"
+  | "failed"
+  | "retracted";
 
 export interface VerdictAttemptPayload {
   chatId: string;
@@ -6340,7 +7625,7 @@ export interface MessageReactionRecord {
 }
 
 export interface MessageRevocationRecord {
-  scope: 'everyone' | 'me';
+  scope: "everyone" | "me";
   timestamp: number;
 }
 
@@ -6366,12 +7651,15 @@ export interface VerdictContext {
   urlHash: string;
 }
 
-const MESSAGE_KEY_PREFIX = 'wa:message:';
-const VERDICT_MAP_PREFIX = 'wa:verdict:message:';
-const PENDING_ACK_SET_KEY = 'wa:verdict:pending_ack';
+const MESSAGE_KEY_PREFIX = "wa:message:";
+const VERDICT_MAP_PREFIX = "wa:verdict:message:";
+const PENDING_ACK_SET_KEY = "wa:verdict:pending_ack";
 
 export class MessageStore {
-  constructor(private readonly redis: Redis, private readonly ttlSeconds: number) {}
+  constructor(
+    private readonly redis: Redis,
+    private readonly ttlSeconds: number,
+  ) {}
 
   private messageKey(chatId: string, messageId: string): string {
     return `${MESSAGE_KEY_PREFIX}${chatId}:${messageId}`;
@@ -6382,7 +7670,11 @@ export class MessageStore {
   }
 
   private serializeContext(context: VerdictContext): string {
-    return JSON.stringify({ chatId: context.chatId, messageId: context.messageId, urlHash: context.urlHash });
+    return JSON.stringify({
+      chatId: context.chatId,
+      messageId: context.messageId,
+      urlHash: context.urlHash,
+    });
   }
 
   private async loadRecord(key: string): Promise<MessageRecord | null> {
@@ -6403,10 +7695,13 @@ export class MessageStore {
   }
 
   private async saveRecord(key: string, record: MessageRecord): Promise<void> {
-    await this.redis.set(key, JSON.stringify(record), 'EX', this.ttlSeconds);
+    await this.redis.set(key, JSON.stringify(record), "EX", this.ttlSeconds);
   }
 
-  async getRecord(chatId: string, messageId: string): Promise<MessageRecord | null> {
+  async getRecord(
+    chatId: string,
+    messageId: string,
+  ): Promise<MessageRecord | null> {
     return this.loadRecord(this.messageKey(chatId, messageId));
   }
 
@@ -6479,7 +7774,11 @@ export class MessageStore {
     return record;
   }
 
-  async appendEdit(chatId: string, messageId: string, edit: MessageEditRecord): Promise<MessageRecord | null> {
+  async appendEdit(
+    chatId: string,
+    messageId: string,
+    edit: MessageEditRecord,
+  ): Promise<MessageRecord | null> {
     const key = this.messageKey(chatId, messageId);
     const record = await this.loadRecord(key);
     if (!record) {
@@ -6496,7 +7795,12 @@ export class MessageStore {
     return record;
   }
 
-  async recordRevocation(chatId: string, messageId: string, scope: 'everyone' | 'me', timestamp: number): Promise<MessageRecord | null> {
+  async recordRevocation(
+    chatId: string,
+    messageId: string,
+    scope: "everyone" | "me",
+    timestamp: number,
+  ): Promise<MessageRecord | null> {
     const key = this.messageKey(chatId, messageId);
     const record = await this.loadRecord(key);
     if (!record) {
@@ -6504,13 +7808,19 @@ export class MessageStore {
     }
     record.revocations.push({ scope, timestamp });
     if (record.revocations.length > 10) {
-      record.revocations = record.revocations.slice(record.revocations.length - 10);
+      record.revocations = record.revocations.slice(
+        record.revocations.length - 10,
+      );
     }
     await this.saveRecord(key, record);
     return record;
   }
 
-  async recordReaction(chatId: string, messageId: string, reaction: MessageReactionRecord): Promise<MessageRecord | null> {
+  async recordReaction(
+    chatId: string,
+    messageId: string,
+    reaction: MessageReactionRecord,
+  ): Promise<MessageRecord | null> {
     const key = this.messageKey(chatId, messageId);
     const record = await this.loadRecord(key);
     if (!record) {
@@ -6524,7 +7834,9 @@ export class MessageStore {
     return record;
   }
 
-  async registerVerdictAttempt(payload: VerdictAttemptPayload): Promise<VerdictRecord | null> {
+  async registerVerdictAttempt(
+    payload: VerdictAttemptPayload,
+  ): Promise<VerdictRecord | null> {
     const key = this.messageKey(payload.chatId, payload.messageId);
     const record = await this.ensureRecord({
       chatId: payload.chatId,
@@ -6540,7 +7852,7 @@ export class MessageStore {
       verdict: payload.verdict,
       reasons: payload.reasons,
       decidedAt: payload.decidedAt,
-      status: 'sent',
+      status: "sent",
       attemptCount: nextAttemptCount,
       lastAttemptAt: now,
       verdictMessageId: payload.verdictMessageId ?? existing?.verdictMessageId,
@@ -6550,7 +7862,8 @@ export class MessageStore {
       attachments: payload.attachments ?? existing?.attachments,
       redirectChain: payload.redirectChain ?? existing?.redirectChain,
       shortener: payload.shortener ?? existing?.shortener ?? null,
-      degradedProviders: payload.degradedProviders ?? existing?.degradedProviders ?? null,
+      degradedProviders:
+        payload.degradedProviders ?? existing?.degradedProviders ?? null,
     };
     if (payload.ack !== undefined) {
       verdictRecord.ackHistory.push({ ack: payload.ack ?? null, at: now });
@@ -6593,7 +7906,9 @@ export class MessageStore {
           contexts.push(parsed);
         }
       } catch {
-        await this.redis.zrem(PENDING_ACK_SET_KEY, entry).catch(() => undefined);
+        await this.redis
+          .zrem(PENDING_ACK_SET_KEY, entry)
+          .catch(() => undefined);
       }
     }
     return contexts;
@@ -6602,7 +7917,7 @@ export class MessageStore {
   async updateVerdictAck(
     context: VerdictContext,
     ack: number | null,
-    timestamp: number
+    timestamp: number,
   ): Promise<{ verdict: VerdictRecord; previousAck: number | null } | null> {
     const key = this.messageKey(context.chatId, context.messageId);
     const record = await this.loadRecord(key);
@@ -6621,14 +7936,19 @@ export class MessageStore {
     }
     verdict.ackHistory.push({ ack, at: timestamp });
     if (verdict.ackHistory.length > 20) {
-      verdict.ackHistory = verdict.ackHistory.slice(verdict.ackHistory.length - 20);
+      verdict.ackHistory = verdict.ackHistory.slice(
+        verdict.ackHistory.length - 20,
+      );
     }
     record.verdicts[context.urlHash] = verdict;
     await this.saveRecord(key, record);
     return { verdict, previousAck: prevAck };
   }
 
-  async markVerdictStatus(context: VerdictContext, status: VerdictStatus): Promise<VerdictRecord | null> {
+  async markVerdictStatus(
+    context: VerdictContext,
+    status: VerdictStatus,
+  ): Promise<VerdictRecord | null> {
     const key = this.messageKey(context.chatId, context.messageId);
     const record = await this.loadRecord(key);
     if (!record) {
@@ -6639,7 +7959,7 @@ export class MessageStore {
       return null;
     }
     verdict.status = status;
-    if (status === 'failed') {
+    if (status === "failed") {
       verdict.lastAttemptAt = Date.now();
     }
     record.verdicts[context.urlHash] = verdict;
@@ -6647,7 +7967,9 @@ export class MessageStore {
     return verdict;
   }
 
-  async getVerdictRecord(context: VerdictContext): Promise<VerdictRecord | null> {
+  async getVerdictRecord(
+    context: VerdictContext,
+  ): Promise<VerdictRecord | null> {
     const key = this.messageKey(context.chatId, context.messageId);
     const record = await this.loadRecord(key);
     if (!record) {
@@ -6656,7 +7978,10 @@ export class MessageStore {
     return record.verdicts[context.urlHash] ?? null;
   }
 
-  async setVerdictMessageId(context: VerdictContext, verdictMessageId: string): Promise<VerdictRecord | null> {
+  async setVerdictMessageId(
+    context: VerdictContext,
+    verdictMessageId: string,
+  ): Promise<VerdictRecord | null> {
     const key = this.messageKey(context.chatId, context.messageId);
     const record = await this.loadRecord(key);
     if (!record) {
@@ -6673,11 +7998,21 @@ export class MessageStore {
     return verdict;
   }
 
-  async setVerdictMapping(verdictMessageId: string, context: VerdictContext): Promise<void> {
-    await this.redis.set(this.verdictMappingKey(verdictMessageId), JSON.stringify(context), 'EX', this.ttlSeconds);
+  async setVerdictMapping(
+    verdictMessageId: string,
+    context: VerdictContext,
+  ): Promise<void> {
+    await this.redis.set(
+      this.verdictMappingKey(verdictMessageId),
+      JSON.stringify(context),
+      "EX",
+      this.ttlSeconds,
+    );
   }
 
-  async getVerdictMapping(verdictMessageId: string): Promise<VerdictContext | null> {
+  async getVerdictMapping(
+    verdictMessageId: string,
+  ): Promise<VerdictContext | null> {
     const raw = await this.redis.get(this.verdictMappingKey(verdictMessageId));
     if (!raw) {
       return null;
@@ -6690,7 +8025,6 @@ export class MessageStore {
     }
   }
 }
-
 ```
 
 # File: services/wa-client/src/pairingOrchestrator.ts
@@ -6699,7 +8033,7 @@ export class MessageStore {
 type TimeoutHandle = NodeJS.Timeout;
 
 export interface PairingErrorInfo {
-  type: 'rate_limit' | 'network' | 'other';
+  type: "rate_limit" | "network" | "other";
   retryAfter: number;
   message: string;
   rawError: unknown;
@@ -6723,9 +8057,21 @@ export interface PairingOrchestratorOptions {
   manualOnly?: boolean;
   requestCode: () => Promise<string>;
   onSuccess?: (code: string, attempt: number) => void;
-  onError?: (err: unknown, attempt: number, nextDelayMs: number, meta: { rateLimited: boolean; holdUntil?: number }, errorInfo?: PairingErrorInfo) => void;
+  onError?: (
+    err: unknown,
+    attempt: number,
+    nextDelayMs: number,
+    meta: { rateLimited: boolean; holdUntil?: number },
+    errorInfo?: PairingErrorInfo,
+  ) => void;
   onFallback?: (err: unknown, attempt: number) => void;
-  onForcedRetry?: (err: unknown, attempt: number, nextDelayMs: number, meta: { rateLimited: boolean; holdUntil?: number }, errorInfo?: PairingErrorInfo) => void;
+  onForcedRetry?: (
+    err: unknown,
+    attempt: number,
+    nextDelayMs: number,
+    meta: { rateLimited: boolean; holdUntil?: number },
+    errorInfo?: PairingErrorInfo,
+  ) => void;
   scheduler?: (fn: () => void, delay: number) => TimeoutHandle;
   clearer?: (handle: TimeoutHandle) => void;
   storage?: {
@@ -6743,9 +8089,21 @@ export class PairingOrchestrator {
   private readonly manualOnly: boolean;
   private readonly requestCode: () => Promise<string>;
   private readonly onSuccess?: (code: string, attempt: number) => void;
-  private readonly onError?: (err: unknown, attempt: number, nextDelayMs: number, meta: { rateLimited: boolean; holdUntil?: number }, errorInfo?: PairingErrorInfo) => void;
+  private readonly onError?: (
+    err: unknown,
+    attempt: number,
+    nextDelayMs: number,
+    meta: { rateLimited: boolean; holdUntil?: number },
+    errorInfo?: PairingErrorInfo,
+  ) => void;
   private readonly onFallback?: (err: unknown, attempt: number) => void;
-  private readonly onForcedRetry?: (err: unknown, attempt: number, nextDelayMs: number, meta: { rateLimited: boolean; holdUntil?: number }, errorInfo?: PairingErrorInfo) => void;
+  private readonly onForcedRetry?: (
+    err: unknown,
+    attempt: number,
+    nextDelayMs: number,
+    meta: { rateLimited: boolean; holdUntil?: number },
+    errorInfo?: PairingErrorInfo,
+  ) => void;
   private readonly scheduler: (fn: () => void, delay: number) => TimeoutHandle;
   private readonly clearer: (handle: TimeoutHandle) => void;
   private readonly storage?: {
@@ -6768,15 +8126,21 @@ export class PairingOrchestrator {
     this.maxAttempts = options.maxAttempts;
     this.baseRetryDelayMs = options.baseRetryDelayMs;
     this.rateLimitDelayMs = options.rateLimitDelayMs;
-    const configuredMaxRateDelay = options.maxRateLimitDelayMs ?? Math.max(options.rateLimitDelayMs * 10, 15 * 60 * 1000);
-    this.maxRateLimitDelayMs = Math.max(options.rateLimitDelayMs, configuredMaxRateDelay);
+    const configuredMaxRateDelay =
+      options.maxRateLimitDelayMs ??
+      Math.max(options.rateLimitDelayMs * 10, 15 * 60 * 1000);
+    this.maxRateLimitDelayMs = Math.max(
+      options.rateLimitDelayMs,
+      configuredMaxRateDelay,
+    );
     this.manualOnly = options.manualOnly ?? false;
     this.requestCode = options.requestCode;
     this.onSuccess = options.onSuccess;
     this.onError = options.onError;
     this.onFallback = options.onFallback;
     this.onForcedRetry = options.onForcedRetry;
-    this.scheduler = options.scheduler ?? ((fn, delay) => setTimeout(fn, delay));
+    this.scheduler =
+      options.scheduler ?? ((fn, delay) => setTimeout(fn, delay));
     this.clearer = options.clearer ?? ((handle) => clearTimeout(handle));
     this.storage = options.storage;
   }
@@ -6813,7 +8177,7 @@ export class PairingOrchestrator {
       } else {
         // If no restriction, we could clear it, but the interface is simple set/get
         // Maybe set to 0 or past
-        await this.storage.set('0');
+        await this.storage.set("0");
       }
     } catch {
       // ignore storage errors
@@ -6865,7 +8229,11 @@ export class PairingOrchestrator {
    */
   getStatus(): PairingStatus {
     const cooldown = this.getRemainingCooldown();
-    const canRequest = this.enabled && !this.sessionActive && !this.codeDelivered && cooldown === 0;
+    const canRequest =
+      this.enabled &&
+      !this.sessionActive &&
+      !this.codeDelivered &&
+      cooldown === 0;
 
     return {
       canRequest,
@@ -6941,9 +8309,21 @@ export class PairingOrchestrator {
 
         const holdUntil = rateLimited ? Date.now() + delay : undefined;
         const errorInfo = this.createErrorInfo(err, rateLimited, delay);
-        this.onError?.(err, attempt, delay, { rateLimited, holdUntil }, errorInfo);
+        this.onError?.(
+          err,
+          attempt,
+          delay,
+          { rateLimited, holdUntil },
+          errorInfo,
+        );
         if (this.forcePhonePairing && attempt >= this.maxAttempts) {
-          this.onForcedRetry?.(err, attempt, delay, { rateLimited, holdUntil }, errorInfo);
+          this.onForcedRetry?.(
+            err,
+            attempt,
+            delay,
+            { rateLimited, holdUntil },
+            errorInfo,
+          );
           this.attempts = 0;
           if (!this.manualOnly && this.canSchedule()) {
             this.schedule(delay);
@@ -6962,9 +8342,12 @@ export class PairingOrchestrator {
       }
     };
 
-    this.timer = this.scheduler(() => {
-      void run();
-    }, Math.max(0, delayMs));
+    this.timer = this.scheduler(
+      () => {
+        void run();
+      },
+      Math.max(0, delayMs),
+    );
   }
 
   cancel(): void {
@@ -6978,42 +8361,62 @@ export class PairingOrchestrator {
     void this.saveState();
   }
 
-  private classifyError(err: unknown, attempt: number): { rateLimited: boolean; delay: number } {
+  private classifyError(
+    err: unknown,
+    attempt: number,
+  ): { rateLimited: boolean; delay: number } {
     const message = this.extractMessage(err);
-    const rateLimited = message.includes('rate-overlimit') || message.includes('"code":429') || message.includes('429');
+    const rateLimited =
+      message.includes("rate-overlimit") ||
+      message.includes('"code":429') ||
+      message.includes("429");
     if (rateLimited) {
       const exponent = Math.min(Math.max(0, attempt - 1), 5);
       const multiplier = Math.pow(2, exponent);
-      const delay = Math.min(this.rateLimitDelayMs * multiplier, this.maxRateLimitDelayMs);
+      const delay = Math.min(
+        this.rateLimitDelayMs * multiplier,
+        this.maxRateLimitDelayMs,
+      );
       return { rateLimited, delay };
     }
     const backoffExponent = Math.min(Math.max(0, attempt - 1), 3);
-    const delay = Math.min(this.baseRetryDelayMs * Math.max(1, Math.pow(2, backoffExponent)), this.rateLimitDelayMs);
+    const delay = Math.min(
+      this.baseRetryDelayMs * Math.max(1, Math.pow(2, backoffExponent)),
+      this.rateLimitDelayMs,
+    );
     return { rateLimited, delay };
   }
 
   private extractMessage(err: unknown): string {
     if (err instanceof Error) {
-      return err.message ?? '';
+      return err.message ?? "";
     }
-    if (typeof err === 'string') {
+    if (typeof err === "string") {
       return err;
     }
     try {
       return JSON.stringify(err);
     } catch {
-      return '';
+      return "";
     }
   }
 
-  private createErrorInfo(err: unknown, rateLimited: boolean, retryAfter: number): PairingErrorInfo {
+  private createErrorInfo(
+    err: unknown,
+    rateLimited: boolean,
+    retryAfter: number,
+  ): PairingErrorInfo {
     const message = this.extractMessage(err);
-    let type: 'rate_limit' | 'network' | 'other' = 'other';
+    let type: "rate_limit" | "network" | "other" = "other";
 
     if (rateLimited) {
-      type = 'rate_limit';
-    } else if (message.includes('network') || message.includes('timeout') || message.includes('ECONNREFUSED')) {
-      type = 'network';
+      type = "rate_limit";
+    } else if (
+      message.includes("network") ||
+      message.includes("timeout") ||
+      message.includes("ECONNREFUSED")
+    ) {
+      type = "network";
     }
 
     return {
@@ -7024,25 +8427,24 @@ export class PairingOrchestrator {
     };
   }
 }
-
 ```
 
 # File: services/wa-client/src/limiters.ts
 
 ```typescript
-import type Redis from 'ioredis';
-import { RateLimiterRedis } from 'rate-limiter-flexible';
+import type Redis from "ioredis";
+import { RateLimiterRedis } from "rate-limiter-flexible";
 
-export const GLOBAL_TOKEN_BUCKET_ID = 'wa-global-rate';
+export const GLOBAL_TOKEN_BUCKET_ID = "wa-global-rate";
 
 export function createGlobalTokenBucket(
   redis: Redis,
   tokensPerHour: number,
-  keyPrefix = 'wa_global_rate'
+  keyPrefix = "wa_global_rate",
 ) {
   const points = Math.max(1, tokensPerHour);
 
-  if (process.env.NODE_ENV === 'test') {
+  if (process.env.NODE_ENV === "test") {
     return new InMemoryRateLimiter(points, 3600, keyPrefix);
   }
 
@@ -7055,25 +8457,34 @@ export function createGlobalTokenBucket(
 }
 
 class InMemoryRateLimiter {
-  private readonly buckets = new Map<string, { remaining: number; resetAt: number }>();
+  private readonly buckets = new Map<
+    string,
+    { remaining: number; resetAt: number }
+  >();
 
   constructor(
     private readonly points: number,
     private readonly durationSeconds: number,
     private readonly keyPrefix: string,
-  ) { }
+  ) {}
 
   async consume(key: string) {
     const bucketKey = `${this.keyPrefix}:${key}`;
     const now = Date.now();
     let bucket = this.buckets.get(bucketKey);
     if (!bucket || bucket.resetAt <= now) {
-      bucket = { remaining: this.points, resetAt: now + this.durationSeconds * 1000 };
+      bucket = {
+        remaining: this.points,
+        resetAt: now + this.durationSeconds * 1000,
+      };
       this.buckets.set(bucketKey, bucket);
     }
 
     if (bucket.remaining <= 0) {
-      const err = new Error('Rate limit exceeded') as Error & { remainingPoints?: number; msBeforeNext?: number };
+      const err = new Error("Rate limit exceeded") as Error & {
+        remainingPoints?: number;
+        msBeforeNext?: number;
+      };
       err.remainingPoints = bucket.remaining;
       err.msBeforeNext = Math.max(0, bucket.resetAt - now);
       throw err;
@@ -7086,16 +8497,15 @@ class InMemoryRateLimiter {
     };
   }
 }
-
 ```
 
 # File: services/wa-client/src/verdictTracker.ts
 
 ```typescript
-import type Redis from 'ioredis';
-import type { Message } from 'whatsapp-web.js';
-import type { Logger } from 'pino';
-import { config, metrics } from '@wbscanner/shared';
+import type Redis from "ioredis";
+import type { Message } from "whatsapp-web.js";
+import type { Logger } from "pino";
+import { config, metrics } from "@wbscanner/shared";
 
 export interface PendingVerdictRecord {
   verdictMessageId: string;
@@ -7119,8 +8529,20 @@ function resolveTimeoutMs(): number {
   return config.wa.verdictAckTimeoutSeconds * 1000;
 }
 
-export async function storePendingVerdict(redis: Redis, record: PendingVerdictRecord, resendFn: (record: PendingVerdictRecord) => Promise<PendingVerdictRecord | null>, logger: Logger): Promise<void> {
-  await redis.set(pendingKey(record.verdictMessageId), JSON.stringify(record), 'EX', Math.ceil(resolveTimeoutMs() / 1000) * 5);
+export async function storePendingVerdict(
+  redis: Redis,
+  record: PendingVerdictRecord,
+  resendFn: (
+    record: PendingVerdictRecord,
+  ) => Promise<PendingVerdictRecord | null>,
+  logger: Logger,
+): Promise<void> {
+  await redis.set(
+    pendingKey(record.verdictMessageId),
+    JSON.stringify(record),
+    "EX",
+    Math.ceil(resolveTimeoutMs() / 1000) * 5,
+  );
   scheduleTimeout(redis, record.verdictMessageId, resendFn, logger);
 }
 
@@ -7132,17 +8554,27 @@ function stopTimer(verdictMessageId: string) {
   }
 }
 
-async function discardPendingVerdict(redis: Redis, verdictMessageId: string): Promise<void> {
+async function discardPendingVerdict(
+  redis: Redis,
+  verdictMessageId: string,
+): Promise<void> {
   await redis.del(pendingKey(verdictMessageId));
   stopTimer(verdictMessageId);
 }
 
-export async function clearPendingVerdict(redis: Redis, verdictMessageId: string, outcome: 'success' | 'failed'): Promise<void> {
+export async function clearPendingVerdict(
+  redis: Redis,
+  verdictMessageId: string,
+  outcome: "success" | "failed",
+): Promise<void> {
   await discardPendingVerdict(redis, verdictMessageId);
   metrics.waVerdictDelivery.labels(outcome).inc();
 }
 
-export async function loadPendingVerdict(redis: Redis, verdictMessageId: string): Promise<PendingVerdictRecord | null> {
+export async function loadPendingVerdict(
+  redis: Redis,
+  verdictMessageId: string,
+): Promise<PendingVerdictRecord | null> {
   const raw = await redis.get(pendingKey(verdictMessageId));
   if (!raw) return null;
   try {
@@ -7152,7 +8584,14 @@ export async function loadPendingVerdict(redis: Redis, verdictMessageId: string)
   }
 }
 
-function scheduleTimeout(redis: Redis, verdictMessageId: string, resendFn: (record: PendingVerdictRecord) => Promise<PendingVerdictRecord | null>, logger: Logger) {
+function scheduleTimeout(
+  redis: Redis,
+  verdictMessageId: string,
+  resendFn: (
+    record: PendingVerdictRecord,
+  ) => Promise<PendingVerdictRecord | null>,
+  logger: Logger,
+) {
   if (pendingTimers.has(verdictMessageId)) {
     clearTimeout(pendingTimers.get(verdictMessageId)!);
   }
@@ -7161,48 +8600,83 @@ function scheduleTimeout(redis: Redis, verdictMessageId: string, resendFn: (reco
     const record = await loadPendingVerdict(redis, verdictMessageId);
     if (!record) return;
     if (record.retries >= config.wa.verdictAckMaxRetries) {
-      await clearPendingVerdict(redis, verdictMessageId, 'failed');
-      logger.warn({ verdictMessageId, chatId: record.chatId, retries: record.retries }, 'Verdict delivery failed after max retries');
+      await clearPendingVerdict(redis, verdictMessageId, "failed");
+      logger.warn(
+        { verdictMessageId, chatId: record.chatId, retries: record.retries },
+        "Verdict delivery failed after max retries",
+      );
       return;
     }
-    metrics.waVerdictDeliveryRetries.labels('timeout').inc();
-    logger.warn({ verdictMessageId, chatId: record.chatId, retries: record.retries }, 'Verdict ack timeout, retrying delivery');
+    metrics.waVerdictDeliveryRetries.labels("timeout").inc();
+    logger.warn(
+      { verdictMessageId, chatId: record.chatId, retries: record.retries },
+      "Verdict ack timeout, retrying delivery",
+    );
     const updated = await resendFn({ ...record, retries: record.retries + 1 });
     if (updated) {
       await discardPendingVerdict(redis, verdictMessageId);
-      await redis.set(pendingKey(updated.verdictMessageId), JSON.stringify(updated), 'EX', Math.ceil(resolveTimeoutMs() / 1000) * 5);
+      await redis.set(
+        pendingKey(updated.verdictMessageId),
+        JSON.stringify(updated),
+        "EX",
+        Math.ceil(resolveTimeoutMs() / 1000) * 5,
+      );
       scheduleTimeout(redis, updated.verdictMessageId, resendFn, logger);
     } else {
-      await clearPendingVerdict(redis, verdictMessageId, 'failed');
+      await clearPendingVerdict(redis, verdictMessageId, "failed");
     }
   }, resolveTimeoutMs());
   pendingTimers.set(verdictMessageId, timeout);
 }
 
-export async function restorePendingVerdicts(redis: Redis, resendFn: (record: PendingVerdictRecord) => Promise<PendingVerdictRecord | null>, logger: Logger): Promise<void> {
-  let cursor = '0';
+export async function restorePendingVerdicts(
+  redis: Redis,
+  resendFn: (
+    record: PendingVerdictRecord,
+  ) => Promise<PendingVerdictRecord | null>,
+  logger: Logger,
+): Promise<void> {
+  let cursor = "0";
   do {
-
-    const [nextCursor, keys] = await redis.scan(cursor, 'MATCH', 'wa:verdict:pending:*', 'COUNT', 25) as unknown as [string, string[]];
+    const [nextCursor, keys] = (await redis.scan(
+      cursor,
+      "MATCH",
+      "wa:verdict:pending:*",
+      "COUNT",
+      25,
+    )) as unknown as [string, string[]];
     cursor = nextCursor;
     for (const key of keys) {
-      const verdictId = key.split(':').pop();
+      const verdictId = key.split(":").pop();
       if (!verdictId) continue;
       scheduleTimeout(redis, verdictId, resendFn, logger);
     }
-  } while (cursor !== '0');
+  } while (cursor !== "0");
 }
 
-export async function deletePendingForMessage(redis: Redis, message: Message): Promise<void> {
-  await clearPendingVerdict(redis, message.id._serialized, 'failed');
+export async function deletePendingForMessage(
+  redis: Redis,
+  message: Message,
+): Promise<void> {
+  await clearPendingVerdict(redis, message.id._serialized, "failed");
 }
 
-export async function triggerVerdictRetry(redis: Redis, verdictMessageId: string, resendFn: (record: PendingVerdictRecord) => Promise<PendingVerdictRecord | null>, logger: Logger): Promise<void> {
+export async function triggerVerdictRetry(
+  redis: Redis,
+  verdictMessageId: string,
+  resendFn: (
+    record: PendingVerdictRecord,
+  ) => Promise<PendingVerdictRecord | null>,
+  logger: Logger,
+): Promise<void> {
   const record = await loadPendingVerdict(redis, verdictMessageId);
   if (!record) return;
   if (record.retries >= config.wa.verdictAckMaxRetries) {
-    await clearPendingVerdict(redis, verdictMessageId, 'failed');
-    logger.warn({ verdictMessageId, chatId: record.chatId }, 'Skipped verdict retry due to max retries');
+    await clearPendingVerdict(redis, verdictMessageId, "failed");
+    logger.warn(
+      { verdictMessageId, chatId: record.chatId },
+      "Skipped verdict retry due to max retries",
+    );
     return;
   }
   const next = await resendFn({ ...record, retries: record.retries + 1 });
@@ -7211,24 +8685,36 @@ export async function triggerVerdictRetry(redis: Redis, verdictMessageId: string
     await redis.del(pendingKey(verdictMessageId));
     await storePendingVerdict(redis, next, resendFn, logger);
   } else {
-    await clearPendingVerdict(redis, verdictMessageId, 'failed');
+    await clearPendingVerdict(redis, verdictMessageId, "failed");
   }
 }
-
 ```
 
 # File: services/wa-client/src/index.ts
 
 ```typescript
-import Fastify, { type FastifyRequest, type FastifyReply } from 'fastify';
-import { Client, LocalAuth, RemoteAuth, Message, GroupChat, GroupNotification, MessageMedia, Reaction, MessageAck, Call, Contact, GroupParticipant } from 'whatsapp-web.js';
-import type { ClientOptions } from 'whatsapp-web.js';
-import QRCode from 'qrcode-terminal';
-import { Queue, Worker, JobsOptions } from 'bullmq';
-import { createHash } from 'node:crypto';
-import Redis from 'ioredis';
-import path from 'node:path';
-import { readFileSync } from 'node:fs';
+import Fastify, { type FastifyRequest, type FastifyReply } from "fastify";
+import {
+  Client,
+  LocalAuth,
+  RemoteAuth,
+  Message,
+  GroupChat,
+  GroupNotification,
+  MessageMedia,
+  Reaction,
+  MessageAck,
+  Call,
+  Contact,
+  GroupParticipant,
+} from "whatsapp-web.js";
+import type { ClientOptions } from "whatsapp-web.js";
+import QRCode from "qrcode-terminal";
+import { Queue, Worker, JobsOptions } from "bullmq";
+import { createHash } from "node:crypto";
+import Redis from "ioredis";
+import path from "node:path";
+import { readFileSync } from "node:fs";
 import {
   config,
   logger,
@@ -7241,24 +8727,31 @@ import {
   assertEssentialConfig,
   waSessionStatusGauge,
   isPrivateHostname,
-} from '@wbscanner/shared';
-import { RateLimiterRedis } from 'rate-limiter-flexible';
-import { createGlobalTokenBucket, GLOBAL_TOKEN_BUCKET_ID } from './limiters';
-import { MessageStore, VerdictContext } from './message-store';
-import { GroupStore } from './group-store';
-import { loadEncryptionMaterials } from './crypto/dataKeyProvider';
-import { createRemoteAuthStore } from './remoteAuthStore';
-import type { RedisRemoteAuthStore } from './remoteAuthStore';
-import { resetRemoteSessionArtifacts, ensureRemoteSessionDirectories } from './session/cleanup';
-import { describeSession, isSessionReady, type SessionSnapshot } from './session/guards';
-import { enrichEvaluationError } from './session/errors';
-import { safeGetGroupChatById } from './utils/chatLookup';
-import { handleSelfMessageRevoke } from './handlers/selfRevoke';
-import { PairingOrchestrator } from './pairingOrchestrator';
-import { SessionManager } from './session/sessionManager';
+} from "@wbscanner/shared";
+import { RateLimiterRedis } from "rate-limiter-flexible";
+import { createGlobalTokenBucket, GLOBAL_TOKEN_BUCKET_ID } from "./limiters";
+import { MessageStore, VerdictContext } from "./message-store";
+import { GroupStore } from "./group-store";
+import { loadEncryptionMaterials } from "./crypto/dataKeyProvider";
+import { createRemoteAuthStore } from "./remoteAuthStore";
+import type { RedisRemoteAuthStore } from "./remoteAuthStore";
+import {
+  resetRemoteSessionArtifacts,
+  ensureRemoteSessionDirectories,
+} from "./session/cleanup";
+import {
+  describeSession,
+  isSessionReady,
+  type SessionSnapshot,
+} from "./session/guards";
+import { enrichEvaluationError } from "./session/errors";
+import { safeGetGroupChatById } from "./utils/chatLookup";
+import { handleSelfMessageRevoke } from "./handlers/selfRevoke";
+import { PairingOrchestrator } from "./pairingOrchestrator";
+import { SessionManager } from "./session/sessionManager";
 
 function createRedisConnection(): Redis {
-  if (process.env.NODE_ENV === 'test') {
+  if (process.env.NODE_ENV === "test") {
     class InMemoryRedis {
       private store = new Map<string, string>();
       private ttlStore = new Map<string, number>();
@@ -7270,10 +8763,16 @@ function createRedisConnection(): Redis {
         return this.store.get(key) ?? null;
       }
 
-      async set(key: string, value: string, mode?: string, ttlArg?: number, nxArg?: string): Promise<'OK' | null> {
-        if (mode === 'EX') {
-          const ttlSeconds = typeof ttlArg === 'number' ? ttlArg : 0;
-          if (nxArg === 'NX' && this.store.has(key)) {
+      async set(
+        key: string,
+        value: string,
+        mode?: string,
+        ttlArg?: number,
+        nxArg?: string,
+      ): Promise<"OK" | null> {
+        if (mode === "EX") {
+          const ttlSeconds = typeof ttlArg === "number" ? ttlArg : 0;
+          if (nxArg === "NX" && this.store.has(key)) {
             return null;
           }
           this.store.set(key, value);
@@ -7282,11 +8781,11 @@ function createRedisConnection(): Redis {
           } else {
             this.ttlStore.delete(key);
           }
-          return 'OK';
+          return "OK";
         }
         this.store.set(key, value);
         this.ttlStore.delete(key);
-        return 'OK';
+        return "OK";
       }
 
       async del(key: string): Promise<number> {
@@ -7365,7 +8864,11 @@ function createRedisConnection(): Redis {
         this.listStore.set(key, trimmed);
       }
 
-      async lrange(key: string, start: number, stop: number): Promise<string[]> {
+      async lrange(
+        key: string,
+        start: number,
+        stop: number,
+      ): Promise<string[]> {
         const list = this.listStore.get(key) ?? [];
         const normalizedStop = stop < 0 ? list.length + stop : stop;
         return list.slice(start, normalizedStop + 1);
@@ -7386,7 +8889,9 @@ function createRedisConnection(): Redis {
 }
 
 const redis = createRedisConnection();
-const scanRequestQueue = new Queue(config.queues.scanRequest, { connection: redis });
+const scanRequestQueue = new Queue(config.queues.scanRequest, {
+  connection: redis,
+});
 const sessionManager = new SessionManager(redis, logger);
 
 const pairingCodeCacheKey = (phone: string) => `wa:pairing:code:${phone}`;
@@ -7396,33 +8901,55 @@ async function cachePairingCode(phone: string, code: string): Promise<void> {
   try {
     const payload = JSON.stringify({ code, storedAt: Date.now() });
     const ttlSeconds = Math.max(1, Math.ceil(PHONE_PAIRING_CODE_TTL_MS / 1000));
-    await redis.set(pairingCodeCacheKey(phone), payload, 'EX', ttlSeconds);
+    await redis.set(pairingCodeCacheKey(phone), payload, "EX", ttlSeconds);
   } catch (err) {
-    logger.warn({ err, phoneNumber: maskPhone(phone) }, 'Failed to cache pairing code.');
+    logger.warn(
+      { err, phoneNumber: maskPhone(phone) },
+      "Failed to cache pairing code.",
+    );
   }
 }
 
-async function getCachedPairingCode(phone: string): Promise<{ code: string; storedAt: number } | null> {
+async function getCachedPairingCode(
+  phone: string,
+): Promise<{ code: string; storedAt: number } | null> {
   try {
     const raw = await redis.get(pairingCodeCacheKey(phone));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { code?: unknown; storedAt?: unknown };
-    if (typeof parsed.code === 'string' && typeof parsed.storedAt === 'number') {
+    if (
+      typeof parsed.code === "string" &&
+      typeof parsed.storedAt === "number"
+    ) {
       return { code: parsed.code, storedAt: parsed.storedAt };
     }
     return null;
   } catch (err) {
-    logger.warn({ err, phoneNumber: maskPhone(phone) }, 'Failed to read cached pairing code.');
+    logger.warn(
+      { err, phoneNumber: maskPhone(phone) },
+      "Failed to read cached pairing code.",
+    );
     return null;
   }
 }
 
-async function recordPairingAttempt(phone: string, timestamp: number): Promise<void> {
+async function recordPairingAttempt(
+  phone: string,
+  timestamp: number,
+): Promise<void> {
   try {
     const ttlSeconds = 600;
-    await redis.set(pairingAttemptKey(phone), String(timestamp), 'EX', ttlSeconds);
+    await redis.set(
+      pairingAttemptKey(phone),
+      String(timestamp),
+      "EX",
+      ttlSeconds,
+    );
   } catch (err) {
-    logger.warn({ err, phoneNumber: maskPhone(phone) }, 'Failed to record pairing attempt.');
+    logger.warn(
+      { err, phoneNumber: maskPhone(phone) },
+      "Failed to record pairing attempt.",
+    );
   }
 }
 
@@ -7433,33 +8960,40 @@ async function getLastPairingAttempt(phone: string): Promise<number | null> {
     const parsed = Number(raw);
     return Number.isFinite(parsed) ? parsed : null;
   } catch (err) {
-    logger.warn({ err, phoneNumber: maskPhone(phone) }, 'Failed to read last pairing attempt.');
+    logger.warn(
+      { err, phoneNumber: maskPhone(phone) },
+      "Failed to read last pairing attempt.",
+    );
     return null;
   }
 }
 
-const globalLimiter = createGlobalTokenBucket(redis, config.wa.globalRatePerHour, config.wa.globalTokenBucketKey);
+const globalLimiter = createGlobalTokenBucket(
+  redis,
+  config.wa.globalRatePerHour,
+  config.wa.globalTokenBucketKey,
+);
 const groupLimiter = new RateLimiterRedis({
   storeClient: redis,
-  keyPrefix: 'group_cooldown',
+  keyPrefix: "group_cooldown",
   points: 1,
-  duration: config.wa.perGroupCooldownSeconds
+  duration: config.wa.perGroupCooldownSeconds,
 });
 const groupHourlyLimiter = new RateLimiterRedis({
   storeClient: redis,
-  keyPrefix: 'group_hour',
+  keyPrefix: "group_hour",
   points: config.wa.perGroupHourlyLimit,
   duration: 3600,
 });
 const governanceLimiter = new RateLimiterRedis({
   storeClient: redis,
-  keyPrefix: 'group_governance',
+  keyPrefix: "group_governance",
   points: Math.max(1, config.wa.governanceInterventionsPerHour),
   duration: 3600,
 });
 const membershipGroupLimiter = new RateLimiterRedis({
   storeClient: redis,
-  keyPrefix: 'group_membership_auto',
+  keyPrefix: "group_membership_auto",
   points: Math.max(1, config.wa.membershipAutoApprovePerHour),
   duration: 3600,
 });
@@ -7475,12 +9009,19 @@ interface AuthResolution {
   remote?: RemoteAuthContext;
 }
 
-async function resolveAuthStrategy(redisInstance: Redis): Promise<AuthResolution> {
-  if (config.wa.authStrategy === 'remote') {
-    if (config.wa.remoteAuth.store !== 'redis') {
-      throw new Error(`Unsupported RemoteAuth store "${config.wa.remoteAuth.store}". Only Redis is supported.`);
+async function resolveAuthStrategy(
+  redisInstance: Redis,
+): Promise<AuthResolution> {
+  if (config.wa.authStrategy === "remote") {
+    if (config.wa.remoteAuth.store !== "redis") {
+      throw new Error(
+        `Unsupported RemoteAuth store "${config.wa.remoteAuth.store}". Only Redis is supported.`,
+      );
     }
-    const materials = await loadEncryptionMaterials(config.wa.remoteAuth, logger);
+    const materials = await loadEncryptionMaterials(
+      config.wa.remoteAuth,
+      logger,
+    );
     const store = createRemoteAuthStore({
       redis: redisInstance,
       logger,
@@ -7488,33 +9029,50 @@ async function resolveAuthStrategy(redisInstance: Redis): Promise<AuthResolution
       materials,
       clientId: config.wa.remoteAuth.clientId,
     });
-    const sessionName = config.wa.remoteAuth.clientId ? `RemoteAuth-${config.wa.remoteAuth.clientId}` : 'RemoteAuth';
+    const sessionName = config.wa.remoteAuth.clientId
+      ? `RemoteAuth-${config.wa.remoteAuth.clientId}`
+      : "RemoteAuth";
     let sessionExists = await store.sessionExists({ session: sessionName });
     if (sessionExists && config.wa.remoteAuth.forceNewSession) {
-      logger.info({ clientId: config.wa.remoteAuth.clientId }, 'Force-new-session enabled; backing up and removing stored RemoteAuth session');
+      logger.info(
+        { clientId: config.wa.remoteAuth.clientId },
+        "Force-new-session enabled; backing up and removing stored RemoteAuth session",
+      );
 
       // Soft delete: Rename the key instead of deleting it
       const backupKey = `${store.key(sessionName)}:backup:${Date.now()}`;
       try {
         await redisInstance.rename(store.key(sessionName), backupKey);
-        logger.info({ backupKey }, 'Previous session backed up.');
+        logger.info({ backupKey }, "Previous session backed up.");
       } catch (err) {
-        logger.warn({ err }, 'Failed to backup session during force-new-session reset; proceeding with deletion.');
+        logger.warn(
+          { err },
+          "Failed to backup session during force-new-session reset; proceeding with deletion.",
+        );
         await resetRemoteSessionArtifacts({
           store,
           sessionName,
-          dataPath: config.wa.remoteAuth.dataPath || './data/remote-session',
+          dataPath: config.wa.remoteAuth.dataPath || "./data/remote-session",
           logger,
         });
       }
 
       sessionExists = false;
-      process.env.WA_REMOTE_AUTH_FORCE_NEW_SESSION = 'false';
+      process.env.WA_REMOTE_AUTH_FORCE_NEW_SESSION = "false";
       config.wa.remoteAuth.forceNewSession = false;
-      logger.info({ clientId: config.wa.remoteAuth.clientId }, 'Force-new-session flag cleared after cleanup.');
+      logger.info(
+        { clientId: config.wa.remoteAuth.clientId },
+        "Force-new-session flag cleared after cleanup.",
+      );
     }
-    await ensureRemoteSessionDirectories(config.wa.remoteAuth.dataPath || './data/remote-session', logger);
-    logger.info({ clientId: config.wa.remoteAuth.clientId, sessionExists }, 'Initialising RemoteAuth strategy');
+    await ensureRemoteSessionDirectories(
+      config.wa.remoteAuth.dataPath || "./data/remote-session",
+      logger,
+    );
+    logger.info(
+      { clientId: config.wa.remoteAuth.clientId, sessionExists },
+      "Initialising RemoteAuth strategy",
+    );
     const strategy = new RemoteAuth({
       clientId: config.wa.remoteAuth.clientId,
       dataPath: config.wa.remoteAuth.dataPath,
@@ -7530,34 +9088,48 @@ async function resolveAuthStrategy(redisInstance: Redis): Promise<AuthResolution
       },
     };
   }
-  logger.info('Initialising LocalAuth strategy');
-  return { strategy: new LocalAuth({ dataPath: './data/session' }) };
+  logger.info("Initialising LocalAuth strategy");
+  return { strategy: new LocalAuth({ dataPath: "./data/session" }) };
 }
 const membershipGlobalLimiter = new RateLimiterRedis({
   storeClient: redis,
-  keyPrefix: 'membership_global',
+  keyPrefix: "membership_global",
   points: Math.max(1, config.wa.membershipGlobalHourlyLimit),
   duration: 3600,
 });
-const messageStore = new MessageStore(redis, config.wa.messageLineageTtlSeconds);
+const messageStore = new MessageStore(
+  redis,
+  config.wa.messageLineageTtlSeconds,
+);
 const groupStore = new GroupStore(redis, config.wa.messageLineageTtlSeconds);
 
-const processedKey = (chatId: string, messageId: string, urlH: string) => `processed:${chatId}:${messageId}:${urlH}`;
+const processedKey = (chatId: string, messageId: string, urlH: string) =>
+  `processed:${chatId}:${messageId}:${urlH}`;
 
 const consentStatusKey = (chatId: string) => `wa:consent:status:${chatId}`;
-const consentPendingSetKey = 'wa:consent:pending';
-const membershipPendingKey = (chatId: string) => `wa:membership:pending:${chatId}`;
+const consentPendingSetKey = "wa:consent:pending";
+const membershipPendingKey = (chatId: string) =>
+  `wa:membership:pending:${chatId}`;
 const VERDICT_ACK_TARGET = 2;
 const maskPhone = (phone?: string): string => {
-  if (!phone) return '';
+  if (!phone) return "";
   if (phone.length <= 4) return phone;
   return `****${phone.slice(-4)}`;
 };
 const DEFAULT_PAIRING_CODE_TIMEOUT_MS = 120000;
-const FORCE_PHONE_PAIRING = config.wa.remoteAuth.disableQrFallback || config.wa.remoteAuth.autoPair;
-const CONFIGURED_MAX_PAIRING_RETRIES = Math.max(1, config.wa.remoteAuth.maxPairingRetries ?? 5);
-const MAX_PAIRING_CODE_RETRIES = FORCE_PHONE_PAIRING ? Number.MAX_SAFE_INTEGER : CONFIGURED_MAX_PAIRING_RETRIES;
-const PAIRING_RETRY_DELAY_MS = Math.max(1000, config.wa.remoteAuth.pairingRetryDelayMs ?? 15000);
+const FORCE_PHONE_PAIRING =
+  config.wa.remoteAuth.disableQrFallback || config.wa.remoteAuth.autoPair;
+const CONFIGURED_MAX_PAIRING_RETRIES = Math.max(
+  1,
+  config.wa.remoteAuth.maxPairingRetries ?? 5,
+);
+const MAX_PAIRING_CODE_RETRIES = FORCE_PHONE_PAIRING
+  ? Number.MAX_SAFE_INTEGER
+  : CONFIGURED_MAX_PAIRING_RETRIES;
+const PAIRING_RETRY_DELAY_MS = Math.max(
+  1000,
+  config.wa.remoteAuth.pairingRetryDelayMs ?? 15000,
+);
 const PHONE_PAIRING_CODE_TTL_MS = 160000;
 
 interface PairingCodeWindow {
@@ -7572,22 +9144,31 @@ interface PairingCodeWindow {
 interface PairingCodeUtils {
   setPairingType?: (mode: string) => void;
   initializeAltDeviceLinking?: () => Promise<void>;
-  startAltLinkingFlow?: (phoneNumber: string, showNotification: boolean) => Promise<string>;
+  startAltLinkingFlow?: (
+    phoneNumber: string,
+    showNotification: boolean,
+  ) => Promise<string>;
 }
 
 type PageHandle = {
   evaluate: (
-    pageFn: (phoneNumber: string, showNotification: boolean, intervalMs: number) => Promise<unknown>,
+    pageFn: (
+      phoneNumber: string,
+      showNotification: boolean,
+      intervalMs: number,
+    ) => Promise<unknown>,
     phoneNumber: string | undefined,
     showNotification: boolean,
-    intervalMs: number
+    intervalMs: number,
   ) => Promise<unknown>;
 };
 
 const ackWatchers = new Map<string, NodeJS.Timeout>();
 let currentWaState: string | null = null;
 let botWid: string | null = null;
-let pairingOrchestrator: import('./pairingOrchestrator').PairingOrchestrator | null = null;
+let pairingOrchestrator:
+  | import("./pairingOrchestrator").PairingOrchestrator
+  | null = null;
 let remotePhone: string | undefined = undefined;
 
 function snapshotSession(): SessionSnapshot {
@@ -7595,12 +9176,16 @@ function snapshotSession(): SessionSnapshot {
 }
 
 function hydrateParticipantList(chat: GroupChat): Promise<GroupParticipant[]> {
-  const maybeParticipants = (chat as unknown as { participants?: GroupParticipant[] }).participants;
+  const maybeParticipants = (
+    chat as unknown as { participants?: GroupParticipant[] }
+  ).participants;
   if (maybeParticipants && maybeParticipants.length > 0) {
     return Promise.resolve(maybeParticipants);
   }
-  const fetchParticipants = (chat as unknown as { fetchParticipants?: () => Promise<GroupParticipant[]> }).fetchParticipants;
-  if (typeof fetchParticipants === 'function') {
+  const fetchParticipants = (
+    chat as unknown as { fetchParticipants?: () => Promise<GroupParticipant[]> }
+  ).fetchParticipants;
+  if (typeof fetchParticipants === "function") {
     return fetchParticipants().catch(() => maybeParticipants ?? []);
   }
   return Promise.resolve(maybeParticipants ?? []);
@@ -7608,12 +9193,12 @@ function hydrateParticipantList(chat: GroupChat): Promise<GroupParticipant[]> {
 
 function expandWidVariants(id: string | undefined): string[] {
   if (!id) return [];
-  if (!id.includes('@')) return [id];
-  const [user, domain] = id.split('@');
-  if (domain === 'c.us') {
+  if (!id.includes("@")) return [id];
+  const [user, domain] = id.split("@");
+  if (domain === "c.us") {
     return [id, `${user}@lid`];
   }
-  if (domain === 'lid') {
+  if (domain === "lid") {
     return [id, `${user}@c.us`];
   }
   return [id];
@@ -7625,13 +9210,13 @@ function contextKey(context: VerdictContext): string {
 
 function loadConsentTemplate(): string {
   const candidates = [
-    path.resolve(process.cwd(), 'docs/CONSENT.md'),
-    path.resolve(__dirname, '../../docs/CONSENT.md'),
-    path.resolve(__dirname, '../../../docs/CONSENT.md'),
+    path.resolve(process.cwd(), "docs/CONSENT.md"),
+    path.resolve(__dirname, "../../docs/CONSENT.md"),
+    path.resolve(__dirname, "../../../docs/CONSENT.md"),
   ];
   for (const candidate of candidates) {
     try {
-      const raw = readFileSync(candidate, 'utf8');
+      const raw = readFileSync(candidate, "utf8");
       if (raw.trim().length > 0) {
         return raw.trim();
       }
@@ -7640,12 +9225,12 @@ function loadConsentTemplate(): string {
     }
   }
   return [
-    'Hello! This group uses automated link scanning for safety.',
-    'Links shared here are checked against security sources and verdicts are posted in reply.',
-    'We store only normalized links, chat ID, message ID, and a hashed sender identifier for 30 days.',
-    'Admins can opt out at any time with !scanner mute.',
-    'By continuing to use this group you consent to automated link scanning. Thank you!'
-  ].join('\n');
+    "Hello! This group uses automated link scanning for safety.",
+    "Links shared here are checked against security sources and verdicts are posted in reply.",
+    "We store only normalized links, chat ID, message ID, and a hashed sender identifier for 30 days.",
+    "Admins can opt out at any time with !scanner mute.",
+    "By continuing to use this group you consent to automated link scanning. Thank you!",
+  ].join("\n");
 }
 
 const consentTemplate = loadConsentTemplate();
@@ -7655,21 +9240,31 @@ async function refreshConsentGauge(): Promise<void> {
     const pending = await redis.scard(consentPendingSetKey);
     metrics.waConsentGauge.set(pending);
   } catch (err) {
-    logger.warn({ err }, 'Failed to refresh consent gauge');
+    logger.warn({ err }, "Failed to refresh consent gauge");
   }
 }
 
 async function markConsentPending(chatId: string): Promise<void> {
-  await redis.set(consentStatusKey(chatId), 'pending', 'EX', config.wa.messageLineageTtlSeconds);
+  await redis.set(
+    consentStatusKey(chatId),
+    "pending",
+    "EX",
+    config.wa.messageLineageTtlSeconds,
+  );
   await redis.sadd(consentPendingSetKey, chatId);
-  metrics.waGovernanceActions.labels('consent_pending').inc();
+  metrics.waGovernanceActions.labels("consent_pending").inc();
   await refreshConsentGauge();
 }
 
 async function markConsentGranted(chatId: string): Promise<void> {
-  await redis.set(consentStatusKey(chatId), 'granted', 'EX', config.wa.messageLineageTtlSeconds);
+  await redis.set(
+    consentStatusKey(chatId),
+    "granted",
+    "EX",
+    config.wa.messageLineageTtlSeconds,
+  );
   await redis.srem(consentPendingSetKey, chatId);
-  metrics.waGovernanceActions.labels('consent_granted').inc();
+  metrics.waGovernanceActions.labels("consent_granted").inc();
   await refreshConsentGauge();
 }
 
@@ -7679,19 +9274,32 @@ async function clearConsentState(chatId: string): Promise<void> {
   await refreshConsentGauge();
 }
 
-async function getConsentStatus(chatId: string): Promise<'pending' | 'granted' | null> {
+async function getConsentStatus(
+  chatId: string,
+): Promise<"pending" | "granted" | null> {
   const status = await redis.get(consentStatusKey(chatId));
-  if (status === 'pending' || status === 'granted') {
+  if (status === "pending" || status === "granted") {
     return status;
   }
   return null;
 }
 
-async function addPendingMembership(chatId: string, requesterId: string, timestamp: number): Promise<void> {
-  await redis.hset(membershipPendingKey(chatId), requesterId, String(timestamp));
+async function addPendingMembership(
+  chatId: string,
+  requesterId: string,
+  timestamp: number,
+): Promise<void> {
+  await redis.hset(
+    membershipPendingKey(chatId),
+    requesterId,
+    String(timestamp),
+  );
 }
 
-async function removePendingMembership(chatId: string, requesterId: string): Promise<void> {
+async function removePendingMembership(
+  chatId: string,
+  requesterId: string,
+): Promise<void> {
   await redis.hdel(membershipPendingKey(chatId), requesterId);
 }
 
@@ -7713,12 +9321,17 @@ interface VerdictJobData {
   degradedMode?: { providers: Array<{ name: string; reason: string }> } | null;
 }
 
-async function collectVerdictMedia(job: VerdictJobData): Promise<Array<{ media: MessageMedia; type: 'screenshot' | 'ioc' }>> {
+async function collectVerdictMedia(
+  job: VerdictJobData,
+): Promise<Array<{ media: MessageMedia; type: "screenshot" | "ioc" }>> {
   if (!config.features.attachMediaToVerdicts) {
     return [];
   }
 
-  const attachments: Array<{ media: MessageMedia; type: 'screenshot' | 'ioc' }> = [];
+  const attachments: Array<{
+    media: MessageMedia;
+    type: "screenshot" | "ioc";
+  }> = [];
 
   // Collect screenshot attachment
   const screenshotAttachment = await collectScreenshotAttachment(job);
@@ -7735,39 +9348,57 @@ async function collectVerdictMedia(job: VerdictJobData): Promise<Array<{ media: 
   return attachments;
 }
 
-async function collectScreenshotAttachment(job: VerdictJobData): Promise<{ media: MessageMedia; type: 'screenshot' } | null> {
+async function collectScreenshotAttachment(
+  job: VerdictJobData,
+): Promise<{ media: MessageMedia; type: "screenshot" } | null> {
   const base = resolveControlPlaneBase();
   const token = assertControlPlaneToken();
 
   try {
-    const resp = await fetch(`${base}/scans/${job.urlHash}/urlscan-artifacts/screenshot`, {
-      headers: { authorization: `Bearer ${token}` },
-    });
+    const resp = await fetch(
+      `${base}/scans/${job.urlHash}/urlscan-artifacts/screenshot`,
+      {
+        headers: { authorization: `Bearer ${token}` },
+      },
+    );
     if (resp.ok) {
       const buffer = Buffer.from(await resp.arrayBuffer());
       if (buffer.length > 0) {
-        const media = new MessageMedia('image/png', buffer.toString('base64'), `screenshot-${job.urlHash.slice(0, 8)}.png`);
-        return { media, type: 'screenshot' };
+        const media = new MessageMedia(
+          "image/png",
+          buffer.toString("base64"),
+          `screenshot-${job.urlHash.slice(0, 8)}.png`,
+        );
+        return { media, type: "screenshot" };
       }
     }
   } catch (err) {
-    logger.warn({ err, urlHash: job.urlHash }, 'Failed to fetch screenshot attachment');
+    logger.warn(
+      { err, urlHash: job.urlHash },
+      "Failed to fetch screenshot attachment",
+    );
   }
 
   return null;
 }
 
-function createIocAttachment(job: VerdictJobData): { media: MessageMedia; type: 'ioc' } | null {
+function createIocAttachment(
+  job: VerdictJobData,
+): { media: MessageMedia; type: "ioc" } | null {
   const lines = buildIocTextLines(job);
-  const textPayload = lines.join('\n');
+  const textPayload = lines.join("\n");
 
   if (textPayload.trim().length === 0) {
     return null;
   }
 
-  const data = Buffer.from(textPayload, 'utf8').toString('base64');
-  const media = new MessageMedia('text/plain', data, `scan-${job.urlHash.slice(0, 8)}.txt`);
-  return { media, type: 'ioc' };
+  const data = Buffer.from(textPayload, "utf8").toString("base64");
+  const media = new MessageMedia(
+    "text/plain",
+    data,
+    `scan-${job.urlHash.slice(0, 8)}.txt`,
+  );
+  return { media, type: "ioc" };
 }
 
 function buildIocTextLines(job: VerdictJobData): string[] {
@@ -7776,21 +9407,21 @@ function buildIocTextLines(job: VerdictJobData): string[] {
   lines.push(`Verdict: ${job.verdict}`);
 
   if (job.reasons.length > 0) {
-    lines.push('Reasons:');
+    lines.push("Reasons:");
     for (const reason of job.reasons) {
       lines.push(`- ${reason}`);
     }
   }
 
   if (job.redirectChain && job.redirectChain.length > 0) {
-    lines.push('Redirect chain:');
+    lines.push("Redirect chain:");
     for (const hop of job.redirectChain) {
       lines.push(`- ${hop}`);
     }
   }
 
   if (job.shortener?.chain && job.shortener.chain.length > 0) {
-    lines.push(`Shortener expansion (${job.shortener.provider ?? 'unknown'}):`);
+    lines.push(`Shortener expansion (${job.shortener.provider ?? "unknown"}):`);
     for (const hop of job.shortener.chain) {
       lines.push(`- ${hop}`);
     }
@@ -7803,32 +9434,40 @@ async function deliverVerdictMessage(
   client: Client,
   job: VerdictJobData,
   context: VerdictContext,
-  isRetry = false
+  isRetry = false,
 ): Promise<boolean> {
   let targetMessage: Message | null = null;
   try {
     targetMessage = await client.getMessageById(job.messageId);
   } catch (err) {
-    logger.warn({ err, messageId: job.messageId }, 'Failed to hydrate original message by id');
+    logger.warn(
+      { err, messageId: job.messageId },
+      "Failed to hydrate original message by id",
+    );
   }
 
   const snapshot = snapshotSession();
   if (!isSessionReady(snapshot)) {
-    logger.debug({ job, session: describeSession(snapshot) }, 'Skipping verdict delivery because session is not ready');
+    logger.debug(
+      { job, session: describeSession(snapshot) },
+      "Skipping verdict delivery because session is not ready",
+    );
     return false;
   }
 
   let chat: GroupChat | null = null;
   try {
     if (targetMessage) {
-      chat = await targetMessage.getChat().catch((err) => {
+      chat = (await targetMessage.getChat().catch((err) => {
         throw enrichEvaluationError(err, {
-          operation: 'deliverVerdictMessage:getChat',
-          chatId: (targetMessage.id as unknown as { remote?: string })?.remote ?? job.chatId,
+          operation: "deliverVerdictMessage:getChat",
+          chatId:
+            (targetMessage.id as unknown as { remote?: string })?.remote ??
+            job.chatId,
           messageId: targetMessage.id?._serialized,
           snapshot,
         });
-      }) as GroupChat;
+      })) as GroupChat;
     } else {
       chat = await safeGetGroupChatById({
         client,
@@ -7838,7 +9477,10 @@ async function deliverVerdictMessage(
       });
     }
   } catch (err) {
-    logger.warn({ err, chatId: job.chatId }, 'Unable to load chat for verdict delivery');
+    logger.warn(
+      { err, chatId: job.chatId },
+      "Unable to load chat for verdict delivery",
+    );
     return false;
   }
 
@@ -7848,25 +9490,35 @@ async function deliverVerdictMessage(
 
   if (!isRetry && job.degradedMode?.providers?.length) {
     const lines = [
-      '⚠️ Scanner degraded: external intelligence providers are unavailable.',
-      ...job.degradedMode.providers.map((provider) => `- ${provider.name}: ${provider.reason}`),
-      'Verdicts rely on cached data and heuristics until providers recover.',
+      "⚠️ Scanner degraded: external intelligence providers are unavailable.",
+      ...job.degradedMode.providers.map(
+        (provider) => `- ${provider.name}: ${provider.reason}`,
+      ),
+      "Verdicts rely on cached data and heuristics until providers recover.",
     ];
-    const message = lines.join('\n');
+    const message = lines.join("\n");
     try {
       await chat.sendMessage(message);
-      metrics.waGroupEvents.labels('scanner_degraded').inc();
+      metrics.waGroupEvents.labels("scanner_degraded").inc();
     } catch (err) {
-      logger.warn({ err, chatId: job.chatId }, 'Failed to send degraded mode notification');
+      logger.warn(
+        { err, chatId: job.chatId },
+        "Failed to send degraded mode notification",
+      );
     }
-    await groupStore.recordEvent({
-      chatId: job.chatId,
-      type: 'scanner_degraded',
-      timestamp: Date.now(),
-      details: JSON.stringify(job.degradedMode.providers),
-    }).catch((err) => {
-      logger.warn({ err, chatId: job.chatId }, 'Failed to record degraded mode event');
-    });
+    await groupStore
+      .recordEvent({
+        chatId: job.chatId,
+        type: "scanner_degraded",
+        timestamp: Date.now(),
+        details: JSON.stringify(job.degradedMode.providers),
+      })
+      .catch((err) => {
+        logger.warn(
+          { err, chatId: job.chatId },
+          "Failed to record degraded mode event",
+        );
+      });
   }
 
   const verdictText = formatGroupVerdict(job.verdict, job.reasons, job.url);
@@ -7876,25 +9528,36 @@ async function deliverVerdictMessage(
       reply = await targetMessage.reply(verdictText);
     } else {
       try {
-        reply = await chat.sendMessage(verdictText, { quotedMessageId: job.messageId });
+        reply = await chat.sendMessage(verdictText, {
+          quotedMessageId: job.messageId,
+        });
       } catch (err) {
-        logger.warn({ err, chatId: job.chatId, messageId: job.messageId }, 'Failed to quote verdict message, retrying without quote');
+        logger.warn(
+          { err, chatId: job.chatId, messageId: job.messageId },
+          "Failed to quote verdict message, retrying without quote",
+        );
         reply = await chat.sendMessage(verdictText);
       }
     }
   } catch (err) {
     metrics.waVerdictFailures.inc();
-    logger.warn({ err, chatId: job.chatId, messageId: job.messageId }, 'Failed to send verdict message');
-    await messageStore.markVerdictStatus(context, 'failed');
+    logger.warn(
+      { err, chatId: job.chatId, messageId: job.messageId },
+      "Failed to send verdict message",
+    );
+    await messageStore.markVerdictStatus(context, "failed");
     return false;
   }
 
-  const ack = typeof reply?.ack === 'number' ? reply?.ack : null;
+  const ack = typeof reply?.ack === "number" ? reply?.ack : null;
   const attachments = await collectVerdictMedia(job);
-  const attachmentMeta = attachments.length > 0 ? {
-    screenshot: attachments.some((item) => item.type === 'screenshot'),
-    ioc: attachments.some((item) => item.type === 'ioc'),
-  } : undefined;
+  const attachmentMeta =
+    attachments.length > 0
+      ? {
+          screenshot: attachments.some((item) => item.type === "screenshot"),
+          ioc: attachments.some((item) => item.type === "ioc"),
+        }
+      : undefined;
 
   await messageStore.registerVerdictAttempt({
     chatId: job.chatId,
@@ -7912,9 +9575,9 @@ async function deliverVerdictMessage(
     degradedProviders: job.degradedMode?.providers ?? null,
   });
 
-  if (job.verdict === 'malicious' && targetMessage) {
-    targetMessage.react('⚠️').catch((err) => {
-      logger.warn({ err }, 'Failed to add reaction to malicious message');
+  if (job.verdict === "malicious" && targetMessage) {
+    targetMessage.react("⚠️").catch((err) => {
+      logger.warn({ err }, "Failed to add reaction to malicious message");
     });
   }
 
@@ -7922,28 +9585,36 @@ async function deliverVerdictMessage(
     try {
       if (targetMessage) {
         await targetMessage.reply(attachment.media, undefined, {
-          sendMediaAsDocument: attachment.type === 'ioc',
+          sendMediaAsDocument: attachment.type === "ioc",
         });
       } else {
         await chat.sendMessage(attachment.media, {
-          sendMediaAsDocument: attachment.type === 'ioc',
+          sendMediaAsDocument: attachment.type === "ioc",
         });
       }
       metrics.waVerdictAttachmentsSent.labels(attachment.type).inc();
     } catch (err) {
-      logger.warn({ err, type: attachment.type }, 'Failed to send verdict attachment');
+      logger.warn(
+        { err, type: attachment.type },
+        "Failed to send verdict attachment",
+      );
     }
   }
 
   metrics.waVerdictsSent.inc();
 
   if (reply?.id?._serialized) {
-    const retryFn = async () => { await deliverVerdictMessage(client, job, context, true); };
+    const retryFn = async () => {
+      await deliverVerdictMessage(client, job, context, true);
+    };
     await scheduleAckWatch(context, retryFn);
   }
 
   if (isRetry) {
-    logger.info({ job, verdictMessageId: reply?.id?._serialized }, 'Retried verdict delivery');
+    logger.info(
+      { job, verdictMessageId: reply?.id?._serialized },
+      "Retried verdict delivery",
+    );
   }
   return true;
 }
@@ -7958,11 +9629,14 @@ async function clearAckWatchForContext(context: VerdictContext): Promise<void> {
   try {
     await messageStore.removePendingAckContext(context);
   } catch (err) {
-    logger.warn({ err, context }, 'Failed to clear ack context from store');
+    logger.warn({ err, context }, "Failed to clear ack context from store");
   }
 }
 
-async function scheduleAckWatch(context: VerdictContext, retry: () => Promise<void>): Promise<void> {
+async function scheduleAckWatch(
+  context: VerdictContext,
+  retry: () => Promise<void>,
+): Promise<void> {
   const key = contextKey(context);
   const timeoutSeconds = Math.max(5, config.wa.verdictAckTimeoutSeconds);
   await clearAckWatchForContext(context);
@@ -7971,34 +9645,40 @@ async function scheduleAckWatch(context: VerdictContext, retry: () => Promise<vo
     try {
       const verdict = await messageStore.getVerdictRecord(context);
       if (!verdict) {
-        await messageStore.removePendingAckContext(context).catch(() => undefined);
+        await messageStore
+          .removePendingAckContext(context)
+          .catch(() => undefined);
         return;
       }
       const currentAck = verdict.ack ?? 0;
       if (currentAck >= VERDICT_ACK_TARGET) {
-        await messageStore.removePendingAckContext(context).catch(() => undefined);
+        await messageStore
+          .removePendingAckContext(context)
+          .catch(() => undefined);
         return;
       }
-      metrics.waVerdictAckTimeouts.labels('timeout').inc();
+      metrics.waVerdictAckTimeouts.labels("timeout").inc();
       if (verdict.attemptCount >= config.wa.verdictMaxRetries) {
-        await messageStore.markVerdictStatus(context, 'failed');
-        metrics.waVerdictRetryAttempts.labels('failed').inc();
-        logger.warn({ context }, 'Max verdict retry attempts reached');
-        await messageStore.removePendingAckContext(context).catch(() => undefined);
+        await messageStore.markVerdictStatus(context, "failed");
+        metrics.waVerdictRetryAttempts.labels("failed").inc();
+        logger.warn({ context }, "Max verdict retry attempts reached");
+        await messageStore
+          .removePendingAckContext(context)
+          .catch(() => undefined);
         return;
       }
-      await messageStore.markVerdictStatus(context, 'retrying');
-      metrics.waVerdictRetryAttempts.labels('retry').inc();
+      await messageStore.markVerdictStatus(context, "retrying");
+      metrics.waVerdictRetryAttempts.labels("retry").inc();
       await retry();
     } catch (err) {
-      logger.error({ err, context }, 'Ack timeout handler failed');
+      logger.error({ err, context }, "Ack timeout handler failed");
     }
   }, timeoutSeconds * 1000);
   ackWatchers.set(key, handle);
   try {
     await messageStore.addPendingAckContext(context);
   } catch (err) {
-    logger.warn({ err, context }, 'Failed to persist pending ack context');
+    logger.warn({ err, context }, "Failed to persist pending ack context");
   }
 }
 
@@ -8007,7 +9687,10 @@ async function rehydrateAckWatchers(client: Client): Promise<void> {
     const contexts = await messageStore.listPendingAckContexts(100);
     for (const context of contexts) {
       try {
-        const record = await messageStore.getRecord(context.chatId, context.messageId);
+        const record = await messageStore.getRecord(
+          context.chatId,
+          context.messageId,
+        );
         if (!record) {
           await messageStore.removePendingAckContext(context);
           continue;
@@ -8018,7 +9701,11 @@ async function rehydrateAckWatchers(client: Client): Promise<void> {
           continue;
         }
         const ackValue = verdict.ack ?? 0;
-        if (ackValue >= VERDICT_ACK_TARGET || verdict.status === 'retracted' || verdict.status === 'failed') {
+        if (
+          ackValue >= VERDICT_ACK_TARGET ||
+          verdict.status === "retracted" ||
+          verdict.status === "failed"
+        ) {
           await messageStore.removePendingAckContext(context);
           continue;
         }
@@ -8037,19 +9724,22 @@ async function rehydrateAckWatchers(client: Client): Promise<void> {
           await deliverVerdictMessage(client, job, context, true);
         });
       } catch (err) {
-        logger.warn({ err, context }, 'Failed to rehydrate ack watcher for context');
+        logger.warn(
+          { err, context },
+          "Failed to rehydrate ack watcher for context",
+        );
       }
     }
   } catch (err) {
-    logger.warn({ err }, 'Failed to list pending ack contexts for rehydration');
+    logger.warn({ err }, "Failed to list pending ack contexts for rehydration");
   }
 }
 
-const SAFE_CONTROL_PLANE_DEFAULT = 'http://control-plane:8080';
+const SAFE_CONTROL_PLANE_DEFAULT = "http://control-plane:8080";
 
 function sanitizeLogValue(value: string | undefined): string | undefined {
   if (!value) return value;
-  return value.replace(/[\r\n\t]+/g, ' ').slice(0, 256);
+  return value.replace(/[\r\n\t]+/g, " ").slice(0, 256);
 }
 
 function updateSessionStateGauge(state: string): void {
@@ -8061,7 +9751,9 @@ function updateSessionStateGauge(state: string): void {
 }
 
 function resolveControlPlaneBase(): string {
-  const candidate = (process.env.CONTROL_PLANE_BASE || SAFE_CONTROL_PLANE_DEFAULT).trim();
+  const candidate = (
+    process.env.CONTROL_PLANE_BASE || SAFE_CONTROL_PLANE_DEFAULT
+  ).trim();
 
   try {
     const parsed = new URL(candidate);
@@ -8073,14 +9765,14 @@ function resolveControlPlaneBase(): string {
 }
 
 function validateUrlProtocol(parsed: URL): void {
-  if (!['http:', 'https:'].includes(parsed.protocol)) {
-    throw new Error('invalid protocol');
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    throw new Error("invalid protocol");
   }
 }
 
 function normalizeUrlString(parsed: URL): string {
-  parsed.hash = '';
-  return parsed.toString().replace(/\/+$/, '');
+  parsed.hash = "";
+  return parsed.toString().replace(/\/+$/, "");
 }
 
 async function isUrlAllowedForScanning(normalized: string): Promise<boolean> {
@@ -8100,7 +9792,10 @@ async function isUrlAllowedForScanning(normalized: string): Promise<boolean> {
     return false;
   }
 }
-async function initializeWhatsAppWithRetry(client: Client, maxAttempts = 5): Promise<void> {
+async function initializeWhatsAppWithRetry(
+  client: Client,
+  maxAttempts = 5,
+): Promise<void> {
   let attempt = 0;
   const baseDelay = 2000; // 2 seconds
   const maxDelay = 30000; // 30 seconds
@@ -8108,28 +9803,34 @@ async function initializeWhatsAppWithRetry(client: Client, maxAttempts = 5): Pro
   while (attempt < maxAttempts) {
     attempt++;
     try {
-      logger.info({ attempt, maxAttempts }, 'Initializing WhatsApp client...');
+      logger.info({ attempt, maxAttempts }, "Initializing WhatsApp client...");
       await client.initialize();
-      logger.info({ attempt }, 'WhatsApp client initialized successfully');
+      logger.info({ attempt }, "WhatsApp client initialized successfully");
       return;
     } catch (err) {
-      const isRetryable = err instanceof Error && (
-        err.message.includes('timeout') ||
-        err.message.includes('connection') ||
-        err.message.includes('network') ||
-        err.message.includes('ECONNREFUSED') ||
-        err.message.includes('ETIMEDOUT') ||
-        err.message.includes('ENOTFOUND') ||
-        err.message.includes('EAI_AGAIN')
-      );
+      const isRetryable =
+        err instanceof Error &&
+        (err.message.includes("timeout") ||
+          err.message.includes("connection") ||
+          err.message.includes("network") ||
+          err.message.includes("ECONNREFUSED") ||
+          err.message.includes("ETIMEDOUT") ||
+          err.message.includes("ENOTFOUND") ||
+          err.message.includes("EAI_AGAIN"));
 
       if (!isRetryable) {
-        logger.error({ err, attempt }, 'Non-retryable error during WhatsApp initialization');
+        logger.error(
+          { err, attempt },
+          "Non-retryable error during WhatsApp initialization",
+        );
         throw err;
       }
 
       if (attempt >= maxAttempts) {
-        logger.error({ err, attempt }, 'Max retry attempts reached for WhatsApp initialization');
+        logger.error(
+          { err, attempt },
+          "Max retry attempts reached for WhatsApp initialization",
+        );
         throw err;
       }
 
@@ -8137,63 +9838,68 @@ async function initializeWhatsAppWithRetry(client: Client, maxAttempts = 5): Pro
       const jitter = Math.random() * 1000; // Add up to 1 second jitter
       const totalDelay = delay + jitter;
 
-      logger.warn({
-        err,
-        attempt,
-        maxAttempts,
-        nextRetryIn: Math.round(totalDelay / 1000),
-        retryReason: 'network_or_timeout'
-      }, 'WhatsApp initialization failed, retrying with exponential backoff');
+      logger.warn(
+        {
+          err,
+          attempt,
+          maxAttempts,
+          nextRetryIn: Math.round(totalDelay / 1000),
+          retryReason: "network_or_timeout",
+        },
+        "WhatsApp initialization failed, retrying with exponential backoff",
+      );
 
-      metrics.waSessionReconnects.labels('init_retry').inc();
+      metrics.waSessionReconnects.labels("init_retry").inc();
 
-      await new Promise(resolve => setTimeout(resolve, totalDelay));
+      await new Promise((resolve) => setTimeout(resolve, totalDelay));
     }
   }
 }
 
 async function main() {
-  assertEssentialConfig('wa-client');
+  assertEssentialConfig("wa-client");
   assertControlPlaneToken();
 
   // Validate Redis connectivity before starting
   try {
     await redis.ping();
-    logger.info('Redis connectivity validated');
+    logger.info("Redis connectivity validated");
   } catch (err) {
-    logger.error({ err }, 'Redis connectivity check failed during startup');
+    logger.error({ err }, "Redis connectivity check failed during startup");
     // Don't throw, let healthcheck handle it so container doesn't crash loop immediately
     // throw new Error('Redis is required but unreachable');
   }
 
   const app = Fastify();
-  app.get('/healthz', async (_req: FastifyRequest, reply: FastifyReply) => {
+  app.get("/healthz", async (_req: FastifyRequest, reply: FastifyReply) => {
     try {
       // Check Redis connectivity
       await redis.ping();
-      return { ok: true, redis: 'connected' };
+      return { ok: true, redis: "connected" };
     } catch (err) {
-      logger.warn({ err }, 'Health check failed - Redis connectivity issue');
+      logger.warn({ err }, "Health check failed - Redis connectivity issue");
       reply.code(503);
-      return { ok: false, redis: 'disconnected', error: 'Redis unreachable' };
+      return { ok: false, redis: "disconnected", error: "Redis unreachable" };
     }
   });
-  app.get('/metrics', async (_req: FastifyRequest, reply: FastifyReply) => {
-    reply.header('Content-Type', register.contentType);
+  app.get("/metrics", async (_req: FastifyRequest, reply: FastifyReply) => {
+    reply.header("Content-Type", register.contentType);
     return register.metrics();
   });
 
-  app.post('/pair', async (_req: FastifyRequest, reply: FastifyReply) => {
+  app.post("/pair", async (_req: FastifyRequest, reply: FastifyReply) => {
     const numbers = remotePhoneNumbers;
     if (numbers.length === 0) {
-      return reply.code(400).send({ error: 'No phone numbers configured' });
+      return reply.code(400).send({ error: "No phone numbers configured" });
     }
 
     // Check rate limiting via orchestrator if available
     if (pairingOrchestrator) {
       const status = pairingOrchestrator.getStatus();
       if (status.rateLimited && status.nextAttemptIn > 0) {
-        return reply.code(429).send({ error: 'Rate limited', nextAttemptIn: status.nextAttemptIn });
+        return reply
+          .code(429)
+          .send({ error: "Rate limited", nextAttemptIn: status.nextAttemptIn });
       }
 
       // Reset auto-refresh counter so loop can resume if needed
@@ -8203,12 +9909,25 @@ async function main() {
     try {
       const result = await performParallelPairingCodeRequest(numbers);
       if (result) {
-        return { ok: true, code: result.code, phone: maskPhone(result.phone), message: 'Pairing code generated' };
+        return {
+          ok: true,
+          code: result.code,
+          phone: maskPhone(result.phone),
+          message: "Pairing code generated",
+        };
       }
-      return reply.code(500).send({ error: 'Failed to get pairing code from any configured number' });
+      return reply.code(500).send({
+        error: "Failed to get pairing code from any configured number",
+      });
     } catch (err) {
-      logger.error({ err, count: numbers.length }, 'Parallel pairing request failed');
-      return reply.code(500).send({ error: 'Pairing code request failed', details: err instanceof Error ? err.message : String(err) });
+      logger.error(
+        { err, count: numbers.length },
+        "Parallel pairing request failed",
+      );
+      return reply.code(500).send({
+        error: "Pairing code request failed",
+        details: err instanceof Error ? err.message : String(err),
+      });
     }
   });
 
@@ -8220,24 +9939,28 @@ async function main() {
       headless: config.wa.headless,
       args: config.wa.puppeteerArgs,
       // Additional launch options for resource optimization
-      handleSIGINT: false,          // Let Node.js handle signals
+      handleSIGINT: false, // Let Node.js handle signals
       handleSIGTERM: false,
       handleSIGHUP: false,
-      ignoreHTTPSErrors: true,      // Reduce SSL validation overhead
-      defaultViewport: {            // Set minimal viewport to reduce memory
+      ignoreHTTPSErrors: true, // Reduce SSL validation overhead
+      defaultViewport: {
+        // Set minimal viewport to reduce memory
         width: 1280,
         height: 720,
       },
       // Pipe instead of websocket for faster IPC (if available)
-      pipe: process.platform !== 'win32',
+      pipe: process.platform !== "win32",
     },
     authStrategy: authResolution.strategy,
   };
 
   // Initialize phone numbers for Remote Auth
-  const remotePhoneNumbers = config.wa.remoteAuth.phoneNumbers.length > 0
-    ? config.wa.remoteAuth.phoneNumbers
-    : (config.wa.remoteAuth.phoneNumber ? [config.wa.remoteAuth.phoneNumber] : []);
+  const remotePhoneNumbers =
+    config.wa.remoteAuth.phoneNumbers.length > 0
+      ? config.wa.remoteAuth.phoneNumbers
+      : config.wa.remoteAuth.phoneNumber
+        ? [config.wa.remoteAuth.phoneNumber]
+        : [];
 
   remotePhone = remotePhoneNumbers[0]; // Keep backwards compatibility for single phone variable
 
@@ -8246,30 +9969,36 @@ async function main() {
       {
         count: remotePhoneNumbers.length,
         numbers: remotePhoneNumbers.map(maskPhone),
-        pollingEnabled: config.wa.remoteAuth.pollingEnabled
+        pollingEnabled: config.wa.remoteAuth.pollingEnabled,
       },
-      'Remote Auth phone numbers configured'
+      "Remote Auth phone numbers configured",
     );
   }
 
   if (!config.wa.remoteAuth.autoPair) {
-    logger.info('RemoteAuth auto pairing disabled; a QR code will be displayed for first-time linking.');
+    logger.info(
+      "RemoteAuth auto pairing disabled; a QR code will be displayed for first-time linking.",
+    );
   }
   let remoteSessionActive = authResolution.remote?.sessionExists ?? false;
   const shouldRequestPhonePairing = Boolean(
     authResolution.remote &&
-    remotePhoneNumbers.length > 0 &&
-    !remoteSessionActive &&
-    config.wa.remoteAuth.autoPair
+      remotePhoneNumbers.length > 0 &&
+      !remoteSessionActive &&
+      config.wa.remoteAuth.autoPair,
   );
   if (shouldRequestPhonePairing && remotePhoneNumbers.length > 0) {
-    logger.info({ phoneNumbers: remotePhoneNumbers.map(maskPhone) }, 'Auto pairing enabled; open WhatsApp > Linked Devices on the target device before continuing.');
+    logger.info(
+      { phoneNumbers: remotePhoneNumbers.map(maskPhone) },
+      "Auto pairing enabled; open WhatsApp > Linked Devices on the target device before continuing.",
+    );
   }
 
   const client = new Client(clientOptions);
-  const pairingTimeoutMs = config.wa.remoteAuth.pairingDelayMs > 0
-    ? config.wa.remoteAuth.pairingDelayMs
-    : DEFAULT_PAIRING_CODE_TIMEOUT_MS;
+  const pairingTimeoutMs =
+    config.wa.remoteAuth.pairingDelayMs > 0
+      ? config.wa.remoteAuth.pairingDelayMs
+      : DEFAULT_PAIRING_CODE_TIMEOUT_MS;
   let allowQrOutput = !shouldRequestPhonePairing;
   let qrSuppressedLogged = false;
   let cachedQr: string | null = null;
@@ -8283,29 +10012,35 @@ async function main() {
   // Track the currently active phone number
   const getActivePairingPhone = async (): Promise<string | null> => {
     try {
-      return await redis.get('wa:pairing:active_phone');
+      return await redis.get("wa:pairing:active_phone");
     } catch (err) {
-      logger.warn({ err }, 'Failed to get active pairing phone');
+      logger.warn({ err }, "Failed to get active pairing phone");
       return null;
     }
   };
 
   const setActivePairingPhone = async (phone: string): Promise<void> => {
     try {
-      const ttlSeconds = Math.max(1, Math.ceil(PHONE_PAIRING_CODE_TTL_MS / 1000));
-      await redis.set('wa:pairing:active_phone', phone, 'EX', ttlSeconds);
+      const ttlSeconds = Math.max(
+        1,
+        Math.ceil(PHONE_PAIRING_CODE_TTL_MS / 1000),
+      );
+      await redis.set("wa:pairing:active_phone", phone, "EX", ttlSeconds);
     } catch (err) {
-      logger.warn({ err, phone: maskPhone(phone) }, 'Failed to set active pairing phone');
+      logger.warn(
+        { err, phone: maskPhone(phone) },
+        "Failed to set active pairing phone",
+      );
     }
   };
 
   // Perform parallel pairing code requests across multiple phone numbers
   // Returns the first successful code or null
   const performParallelPairingCodeRequest = async (
-    phoneNumbers: string[]
+    phoneNumbers: string[],
   ): Promise<{ code: string; phone: string } | null> => {
     if (phoneNumbers.length === 0) {
-      logger.warn('No phone numbers provided for parallel pairing request');
+      logger.warn("No phone numbers provided for parallel pairing request");
       return null;
     }
 
@@ -8317,7 +10052,7 @@ async function main() {
 
     logger.info(
       { count: phoneNumbers.length, numbers: phoneNumbers.map(maskPhone) },
-      'Attempting parallel pairing code requests'
+      "Attempting parallel pairing code requests",
     );
 
     // Create promises for each phone number
@@ -8325,12 +10060,18 @@ async function main() {
       try {
         const code = await performPairingCodeRequestForPhone(phone);
         if (code) {
-          logger.info({ phone: maskPhone(phone) }, 'Got pairing code from phone number');
+          logger.info(
+            { phone: maskPhone(phone) },
+            "Got pairing code from phone number",
+          );
           return { code, phone };
         }
         return null;
       } catch (err) {
-        logger.warn({ err, phone: maskPhone(phone) }, 'Failed to request code for phone');
+        logger.warn(
+          { err, phone: maskPhone(phone) },
+          "Failed to request code for phone",
+        );
         return null;
       }
     });
@@ -8340,9 +10081,12 @@ async function main() {
       ...promises,
       new Promise<null>((resolve) =>
         setTimeout(() => {
-          logger.warn({ timeout: config.wa.remoteAuth.parallelCheckTimeoutMs }, 'Parallel pairing request timed out');
+          logger.warn(
+            { timeout: config.wa.remoteAuth.parallelCheckTimeoutMs },
+            "Parallel pairing request timed out",
+          );
           resolve(null);
-        }, config.wa.remoteAuth.parallelCheckTimeoutMs)
+        }, config.wa.remoteAuth.parallelCheckTimeoutMs),
       ),
     ]);
 
@@ -8354,12 +10098,12 @@ async function main() {
       await cachePairingCode(result.phone, result.code);
       logger.info(
         { phone: maskPhone(result.phone), count: phoneNumbers.length },
-        'Parallel pairing request succeeded'
+        "Parallel pairing request succeeded",
       );
     } else {
       logger.warn(
         { count: phoneNumbers.length },
-        'All parallel pairing requests failed or timed out'
+        "All parallel pairing requests failed or timed out",
       );
     }
 
@@ -8367,10 +10111,12 @@ async function main() {
   };
 
   // Perform pairing code request for a specific phone number
-  const performPairingCodeRequestForPhone = async (phone: string): Promise<string | null> => {
+  const performPairingCodeRequestForPhone = async (
+    phone: string,
+  ): Promise<string | null> => {
     const pageHandle = getPageHandle(client);
     if (!pageHandle) {
-      throw new Error('Puppeteer page handle unavailable for pairing');
+      throw new Error("Puppeteer page handle unavailable for pairing");
     }
 
     // Record attempt for this specific phone
@@ -8378,13 +10124,20 @@ async function main() {
       lastPairingAttemptMs = Date.now();
       await recordPairingAttempt(phone, lastPairingAttemptMs);
     } catch (err) {
-      logger.warn({ err, phoneNumber: maskPhone(phone) }, 'Failed to record pairing attempt');
+      logger.warn(
+        { err, phoneNumber: maskPhone(phone) },
+        "Failed to record pairing attempt",
+      );
     }
 
     await addHumanBehaviorJitter();
 
     const interval = Math.max(60000, config.wa.remoteAuth.pairingDelayMs ?? 0);
-    const outcome = await executePairingCodeRequestForPhone(pageHandle, phone, interval);
+    const outcome = await executePairingCodeRequestForPhone(
+      pageHandle,
+      phone,
+      interval,
+    );
 
     return processPairingOutcome(outcome);
   };
@@ -8392,7 +10145,7 @@ async function main() {
   const performPairingCodeRequest = async (): Promise<string | null> => {
     const pageHandle = getPageHandle(client);
     if (!pageHandle) {
-      throw new Error('Puppeteer page handle unavailable for pairing');
+      throw new Error("Puppeteer page handle unavailable for pairing");
     }
 
     recordPairingAttemptIfNeeded();
@@ -8405,24 +10158,38 @@ async function main() {
   };
 
   function getPageHandle(client: Client): PageHandle | null {
-    const page = (client as unknown as { pupPage?: { evaluate?: (...args: unknown[]) => Promise<unknown> } }).pupPage;
-    if (!page || typeof page.evaluate !== 'function') {
+    const page = (
+      client as unknown as {
+        pupPage?: { evaluate?: (...args: unknown[]) => Promise<unknown> };
+      }
+    ).pupPage;
+    if (!page || typeof page.evaluate !== "function") {
       return null;
     }
 
-    const evaluateFn = page.evaluate.bind(page) as (...args: unknown[]) => Promise<unknown>;
+    const evaluateFn = page.evaluate.bind(page) as (
+      ...args: unknown[]
+    ) => Promise<unknown>;
 
     return {
       evaluate: (pageFn, phoneNumber, showNotification, intervalMs) =>
-        evaluateFn(pageFn as (...args: unknown[]) => unknown, phoneNumber, showNotification, intervalMs),
+        evaluateFn(
+          pageFn as (...args: unknown[]) => unknown,
+          phoneNumber,
+          showNotification,
+          intervalMs,
+        ),
     };
   }
 
   function recordPairingAttemptIfNeeded(): void {
     if (remotePhone) {
       lastPairingAttemptMs = Date.now();
-      recordPairingAttempt(remotePhone, lastPairingAttemptMs).catch(err => {
-        logger.warn({ err, phoneNumber: maskPhone(remotePhone!) }, 'Failed to record pairing attempt');
+      recordPairingAttempt(remotePhone, lastPairingAttemptMs).catch((err) => {
+        logger.warn(
+          { err, phoneNumber: maskPhone(remotePhone!) },
+          "Failed to record pairing attempt",
+        );
       });
     }
   }
@@ -8430,61 +10197,112 @@ async function main() {
   async function addHumanBehaviorJitter(): Promise<void> {
     // Add jitter to mimic human behavior (1-5 seconds)
     const jitter = Math.floor(Math.random() * 4000) + 1000;
-    await new Promise(resolve => setTimeout(resolve, jitter));
+    await new Promise((resolve) => setTimeout(resolve, jitter));
   }
 
-  async function executePairingCodeRequest(pageHandle: PageHandle, interval: number): Promise<unknown> {
-    return await pageHandle.evaluate(async (phoneNumber: string, showNotification: boolean, intervalMs: number) => {
-      const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-      const globalWindow = window as unknown as PairingCodeWindow;
+  async function executePairingCodeRequest(
+    pageHandle: PageHandle,
+    interval: number,
+  ): Promise<unknown> {
+    return await pageHandle.evaluate(
+      async (
+        phoneNumber: string,
+        showNotification: boolean,
+        intervalMs: number,
+      ) => {
+        const wait = (ms: number) =>
+          new Promise((resolve) => setTimeout(resolve, ms));
+        const globalWindow = window as unknown as PairingCodeWindow;
 
-      const utils = await waitForUtils(globalWindow, wait);
-      setupEventHandlers(globalWindow, intervalMs);
+        const utils = await waitForUtils(globalWindow, wait);
+        setupEventHandlers(globalWindow, intervalMs);
 
-      try {
-        const firstCode = await requestCode(utils, phoneNumber, showNotification, wait);
-        if (isValidCode(firstCode)) {
-          return { ok: true, code: firstCode };
+        try {
+          const firstCode = await requestCode(
+            utils,
+            phoneNumber,
+            showNotification,
+            wait,
+          );
+          if (isValidCode(firstCode)) {
+            return { ok: true, code: firstCode };
+          }
+          return {
+            ok: false,
+            reason: "empty_code",
+            state: globalWindow.AuthStore?.AppState?.state,
+          };
+        } catch (err: unknown) {
+          return formatErrorForResponse(err, globalWindow);
         }
-        return { ok: false, reason: 'empty_code', state: globalWindow.AuthStore?.AppState?.state };
-      } catch (err: unknown) {
-        return formatErrorForResponse(err, globalWindow);
-      }
-    }, remotePhone, true, interval);
+      },
+      remotePhone,
+      true,
+      interval,
+    );
   }
 
-  async function executePairingCodeRequestForPhone(pageHandle: PageHandle, phone: string, interval: number): Promise<unknown> {
-    return await pageHandle.evaluate(async (phoneNumber: string, showNotification: boolean, intervalMs: number) => {
-      const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-      const globalWindow = window as unknown as PairingCodeWindow;
+  async function executePairingCodeRequestForPhone(
+    pageHandle: PageHandle,
+    phone: string,
+    interval: number,
+  ): Promise<unknown> {
+    return await pageHandle.evaluate(
+      async (
+        phoneNumber: string,
+        showNotification: boolean,
+        intervalMs: number,
+      ) => {
+        const wait = (ms: number) =>
+          new Promise((resolve) => setTimeout(resolve, ms));
+        const globalWindow = window as unknown as PairingCodeWindow;
 
-      const utils = await waitForUtils(globalWindow, wait);
-      setupEventHandlers(globalWindow, intervalMs);
+        const utils = await waitForUtils(globalWindow, wait);
+        setupEventHandlers(globalWindow, intervalMs);
 
-      try {
-        const firstCode = await requestCode(utils, phoneNumber, showNotification, wait);
-        if (isValidCode(firstCode)) {
-          return { ok: true, code: firstCode };
+        try {
+          const firstCode = await requestCode(
+            utils,
+            phoneNumber,
+            showNotification,
+            wait,
+          );
+          if (isValidCode(firstCode)) {
+            return { ok: true, code: firstCode };
+          }
+          return {
+            ok: false,
+            reason: "empty_code",
+            state: globalWindow.AuthStore?.AppState?.state,
+          };
+        } catch (err: unknown) {
+          return formatErrorForResponse(err, globalWindow);
         }
-        return { ok: false, reason: 'empty_code', state: globalWindow.AuthStore?.AppState?.state };
-      } catch (err: unknown) {
-        return formatErrorForResponse(err, globalWindow);
-      }
-    }, phone, true, interval);
+      },
+      phone,
+      true,
+      interval,
+    );
   }
 
-  async function waitForUtils(globalWindow: PairingCodeWindow, wait: (ms: number) => Promise<unknown>): Promise<PairingCodeUtils> {
+  async function waitForUtils(
+    globalWindow: PairingCodeWindow,
+    wait: (ms: number) => Promise<unknown>,
+  ): Promise<PairingCodeUtils> {
     for (let i = 0; i < 20; i++) {
       if (globalWindow.AuthStore?.PairingCodeLinkUtils) {
         return globalWindow.AuthStore.PairingCodeLinkUtils as PairingCodeUtils;
       }
       await wait(500);
     }
-    throw new Error('AuthStore.PairingCodeLinkUtils not found after timeout');
+    throw new Error("AuthStore.PairingCodeLinkUtils not found after timeout");
   }
 
-  function setupEventHandlers(globalWindow: PairingCodeWindow, intervalMs: number): void {
-    if (typeof globalWindow.onCodeReceivedEvent !== 'function') {
+  function setupEventHandlers(
+    globalWindow: PairingCodeWindow,
+    intervalMs: number,
+  ): void {
+    if (typeof globalWindow.onCodeReceivedEvent !== "function") {
       globalWindow.onCodeReceivedEvent = (codeValue: string) => codeValue;
     }
 
@@ -8495,7 +10313,7 @@ async function main() {
     // Setup interval for refreshing code if needed
     globalWindow.codeInterval = setInterval(async () => {
       const state = globalWindow.AuthStore?.AppState?.state;
-      if (state !== 'UNPAIRED' && state !== 'UNPAIRED_IDLE') {
+      if (state !== "UNPAIRED" && state !== "UNPAIRED_IDLE") {
         clearInterval(globalWindow.codeInterval as number);
         return;
       }
@@ -8504,26 +10322,33 @@ async function main() {
     }, intervalMs);
   }
 
-  async function requestCode(utils: PairingCodeUtils, phoneNumber: string, showNotification: boolean, wait: (ms: number) => Promise<unknown>): Promise<string> {
+  async function requestCode(
+    utils: PairingCodeUtils,
+    phoneNumber: string,
+    showNotification: boolean,
+    wait: (ms: number) => Promise<unknown>,
+  ): Promise<string> {
     // Random small delay before interaction
     await wait(Math.random() * 500 + 200);
 
-    if (typeof utils.setPairingType === 'function') {
-      utils.setPairingType('ALT_DEVICE_LINKING');
+    if (typeof utils.setPairingType === "function") {
+      utils.setPairingType("ALT_DEVICE_LINKING");
     }
-    if (typeof utils.initializeAltDeviceLinking === 'function') {
+    if (typeof utils.initializeAltDeviceLinking === "function") {
       await utils.initializeAltDeviceLinking();
     }
 
-    if (typeof utils.startAltLinkingFlow !== 'function') {
-      throw new Error('startAltLinkingFlow function missing on PairingCodeLinkUtils');
+    if (typeof utils.startAltLinkingFlow !== "function") {
+      throw new Error(
+        "startAltLinkingFlow function missing on PairingCodeLinkUtils",
+      );
     }
 
     return utils.startAltLinkingFlow(phoneNumber, showNotification);
   }
 
   function isValidCode(code: unknown): code is string {
-    return typeof code === 'string' && code.length > 0;
+    return typeof code === "string" && code.length > 0;
   }
 
   interface PairingErrorPayload {
@@ -8536,20 +10361,26 @@ async function main() {
     rawError: unknown;
   }
 
-  function formatErrorForResponse(err: unknown, globalWindow: PairingCodeWindow): PairingErrorPayload {
+  function formatErrorForResponse(
+    err: unknown,
+    globalWindow: PairingCodeWindow,
+  ): PairingErrorPayload {
     const typedErr = err as { message?: string; stack?: string; name?: string };
     const raw =
-      typeof err === 'object' && err !== null
-        ? Object.assign({}, err, { message: typedErr?.message, stack: typedErr?.stack })
+      typeof err === "object" && err !== null
+        ? Object.assign({}, err, {
+            message: typedErr?.message,
+            stack: typedErr?.stack,
+          })
         : err;
 
     // Detect rate limit errors from WA internal exceptions if possible
-    const msg = typedErr?.message || '';
-    const isRateLimit = msg.includes('429') || msg.includes('rate-overlimit');
+    const msg = typedErr?.message || "";
+    const isRateLimit = msg.includes("429") || msg.includes("rate-overlimit");
 
     return {
       ok: false,
-      reason: msg || String(err ?? 'unknown'),
+      reason: msg || String(err ?? "unknown"),
       stack: typedErr?.stack,
       state: globalWindow.AuthStore?.AppState?.state,
       hasUtils: Boolean(globalWindow.AuthStore?.PairingCodeLinkUtils),
@@ -8559,19 +10390,30 @@ async function main() {
   }
 
   function processPairingOutcome(outcome: unknown): string | null {
-    if (outcome && typeof outcome === 'object' && 'ok' in outcome) {
-      const payload = outcome as { ok?: unknown; code?: unknown; reason?: unknown; isRateLimit?: boolean };
-      if (payload.ok === true && typeof payload.code === 'string' && payload.code.length > 0) {
+    if (outcome && typeof outcome === "object" && "ok" in outcome) {
+      const payload = outcome as {
+        ok?: unknown;
+        code?: unknown;
+        reason?: unknown;
+        isRateLimit?: boolean;
+      };
+      if (
+        payload.ok === true &&
+        typeof payload.code === "string" &&
+        payload.code.length > 0
+      ) {
         return payload.code;
       }
       // Propagate rate limit detection to the orchestrator
       if (payload.isRateLimit) {
-        throw new Error(`pairing_code_request_failed:rate-overlimit:${JSON.stringify(payload)}`);
+        throw new Error(
+          `pairing_code_request_failed:rate-overlimit:${JSON.stringify(payload)}`,
+        );
       }
       const errPayload = JSON.stringify(payload);
       throw new Error(`pairing_code_request_failed:${errPayload}`);
     }
-    return typeof outcome === 'string' ? outcome : null;
+    return typeof outcome === "string" ? outcome : null;
   }
 
   function cancelPairingCodeRefresh() {
@@ -8592,17 +10434,30 @@ async function main() {
 
       // Pause logic: Stop auto-refreshing after N attempts to avoid massive rate limits
       if (consecutiveAutoRefreshes >= MAX_CONSECUTIVE_AUTO_REFRESHES) {
-        logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing paused after multiple expired codes. Run "make pair" to generate a new one.');
+        logger.warn(
+          { phoneNumber: maskPhone(remotePhone) },
+          'Pairing paused after multiple expired codes. Run "make pair" to generate a new one.',
+        );
         if (config.wa.qrTerminal) {
-          process.stdout.write('\nPairing paused. Run "make pair" to generate a new code.\n');
+          process.stdout.write(
+            '\nPairing paused. Run "make pair" to generate a new code.\n',
+          );
         }
         return;
       }
 
       consecutiveAutoRefreshes++;
-      logger.info({ phoneNumber: maskPhone(remotePhone), attempt: consecutiveAutoRefreshes }, 'Previous pairing code expired. Requesting a new one...');
+      logger.info(
+        {
+          phoneNumber: maskPhone(remotePhone),
+          attempt: consecutiveAutoRefreshes,
+        },
+        "Previous pairing code expired. Requesting a new one...",
+      );
       if (config.wa.qrTerminal) {
-        process.stdout.write(`\nPrevious pairing code expired. Requesting a new one (Attempt ${consecutiveAutoRefreshes}/${MAX_CONSECUTIVE_AUTO_REFRESHES})...\n`);
+        process.stdout.write(
+          `\nPrevious pairing code expired. Requesting a new one (Attempt ${consecutiveAutoRefreshes}/${MAX_CONSECUTIVE_AUTO_REFRESHES})...\n`,
+        );
       }
       pairingCodeDelivered = false;
       pairingOrchestrator?.setCodeDelivered(false);
@@ -8633,71 +10488,97 @@ async function main() {
         set: async (val: string) => {
           if (!remotePhone) return;
           await redis.set(`wa:pairing:next_attempt:${remotePhone}`, val);
-        }
+        },
       },
       requestCode: async () => {
         const code = await performPairingCodeRequest();
-        if (!code || typeof code !== 'string') {
-          throw new Error('pairing_code_request_failed:empty');
+        if (!code || typeof code !== "string") {
+          throw new Error("pairing_code_request_failed:empty");
         }
         return code;
       },
       onSuccess: (code, attempt) => {
         if (remotePhone) {
-          cachePairingCode(remotePhone, code).catch(err => {
-            logger.warn({ err, phoneNumber: maskPhone(remotePhone!) }, 'Failed to cache pairing code');
+          cachePairingCode(remotePhone, code).catch((err) => {
+            logger.warn(
+              { err, phoneNumber: maskPhone(remotePhone!) },
+              "Failed to cache pairing code",
+            );
           });
           schedulePairingCodeRefresh(PHONE_PAIRING_CODE_TTL_MS);
         }
-        const msg = `\n╔${'═'.repeat(50)}╗\n║  WhatsApp Pairing Code: ${code.padEnd(24)} ║\n║  Phone: ${maskPhone(remotePhone).padEnd(37)} ║\n║  Valid for: ~2:40 minutes${' '.repeat(22)} ║\n╚${'═'.repeat(50)}╝\n`;
+        const msg = `\n╔${"═".repeat(50)}╗\n║  WhatsApp Pairing Code: ${code.padEnd(24)} ║\n║  Phone: ${maskPhone(remotePhone).padEnd(37)} ║\n║  Valid for: ~2:40 minutes${" ".repeat(22)} ║\n╚${"═".repeat(50)}╝\n`;
         process.stdout.write(msg);
-        logger.info({ phoneNumber: maskPhone(remotePhone), attempt, code }, 'Phone-number pairing code ready.');
+        logger.info(
+          { phoneNumber: maskPhone(remotePhone), attempt, code },
+          "Phone-number pairing code ready.",
+        );
       },
       onError: (err, attempt, nextDelayMs, meta, errorInfo) => {
         if (meta?.rateLimited && errorInfo) {
           const minutes = Math.ceil(nextDelayMs / 60000);
-          const nextTime = meta.holdUntil ? new Date(meta.holdUntil).toLocaleTimeString() : 'unknown';
-          process.stdout.write(`\n⚠️  WhatsApp rate limit detected. Next retry allowed in ${minutes} minute(s) at ${nextTime}.\n`);
+          const nextTime = meta.holdUntil
+            ? new Date(meta.holdUntil).toLocaleTimeString()
+            : "unknown";
+          process.stdout.write(
+            `\n⚠️  WhatsApp rate limit detected. Next retry allowed in ${minutes} minute(s) at ${nextTime}.\n`,
+          );
         }
 
         // Format error for cleaner logging
-        const formattedError = err instanceof Error
-          ? { name: err.name, message: err.message }
-          : errorInfo?.type === 'rate_limit'
-            ? { type: 'rate_limit', message: 'WhatsApp API rate limit (429)' }
-            : err;
+        const formattedError =
+          err instanceof Error
+            ? { name: err.name, message: err.message }
+            : errorInfo?.type === "rate_limit"
+              ? { type: "rate_limit", message: "WhatsApp API rate limit (429)" }
+              : err;
 
-        logger.warn({
-          error: formattedError,
-          phoneNumber: maskPhone(remotePhone),
-          attempt,
-          nextRetryMs: nextDelayMs,
-          nextRetryAt: meta?.holdUntil ? new Date(meta.holdUntil).toISOString() : undefined,
-          rateLimited: meta?.rateLimited ?? false,
-          errorType: errorInfo?.type,
-        }, 'Failed to request pairing code.');
+        logger.warn(
+          {
+            error: formattedError,
+            phoneNumber: maskPhone(remotePhone),
+            attempt,
+            nextRetryMs: nextDelayMs,
+            nextRetryAt: meta?.holdUntil
+              ? new Date(meta.holdUntil).toISOString()
+              : undefined,
+            rateLimited: meta?.rateLimited ?? false,
+            errorType: errorInfo?.type,
+          },
+          "Failed to request pairing code.",
+        );
       },
       onFallback: () => {
         orchestrator.setEnabled(false);
         cancelPairingCodeRefresh();
         allowQrOutput = true;
-        logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code retries exhausted; falling back to QR pairing.');
+        logger.warn(
+          { phoneNumber: maskPhone(remotePhone) },
+          "Pairing code retries exhausted; falling back to QR pairing.",
+        );
         replayCachedQr();
       },
       onForcedRetry: (err, attempt, nextDelayMs, meta, errorInfo) => {
         const minutes = Math.ceil(nextDelayMs / 60000);
         if (meta?.rateLimited) {
-          process.stdout.write(`\n⚠️  Rate limit continues. Waiting ${minutes} minute(s) before retry. Use !scanner pair-status to check.\n`);
+          process.stdout.write(
+            `\n⚠️  Rate limit continues. Waiting ${minutes} minute(s) before retry. Use !scanner pair-status to check.\n`,
+          );
         }
-        logger.warn({
-          err,
-          phoneNumber: maskPhone(remotePhone),
-          attempt,
-          nextRetryMs: nextDelayMs,
-          nextRetryAt: meta?.holdUntil ? new Date(meta.holdUntil).toISOString() : undefined,
-          rateLimited: meta?.rateLimited ?? false,
-          errorType: errorInfo?.type,
-        }, 'Pairing retries exhausted; QR fallback disabled.');
+        logger.warn(
+          {
+            err,
+            phoneNumber: maskPhone(remotePhone),
+            attempt,
+            nextRetryMs: nextDelayMs,
+            nextRetryAt: meta?.holdUntil
+              ? new Date(meta.holdUntil).toISOString()
+              : undefined,
+            rateLimited: meta?.rateLimited ?? false,
+            errorType: errorInfo?.type,
+          },
+          "Pairing retries exhausted; QR fallback disabled.",
+        );
       },
     });
     await orchestrator.init();
@@ -8710,9 +10591,15 @@ async function main() {
     pairingOrchestrator.setSessionActive(remoteSessionActive);
     pairingOrchestrator.setCodeDelivered(false);
     if (isFirstTimeSetup) {
-      logger.info({ phoneNumber: maskPhone(remotePhone) }, 'First-time setup detected: automatic pairing enabled for initial connection.');
+      logger.info(
+        { phoneNumber: maskPhone(remotePhone) },
+        "First-time setup detected: automatic pairing enabled for initial connection.",
+      );
     } else {
-      logger.info({ phoneNumber: maskPhone(remotePhone) }, 'Re-pairing mode: use !scanner pair command to request pairing codes manually.');
+      logger.info(
+        { phoneNumber: maskPhone(remotePhone) },
+        "Re-pairing mode: use !scanner pair command to request pairing codes manually.",
+      );
     }
   }
 
@@ -8739,7 +10626,7 @@ async function main() {
       getCachedPairingCode(remotePhone),
       getLastPairingAttempt(remotePhone),
     ]);
-    if (typeof recordedAttempt === 'number') {
+    if (typeof recordedAttempt === "number") {
       lastPairingAttemptMs = recordedAttempt;
     }
     if (cachedPairingCode) {
@@ -8751,9 +10638,18 @@ async function main() {
           pairingOrchestrator.setCodeDelivered(true);
         }
         schedulePairingCodeRefresh(remainingMs);
-        logger.info({ pairingCode: cachedPairingCode.code, phoneNumber: maskPhone(remotePhone), remainingMs }, 'Reusing cached phone-number pairing code still within validity window.');
+        logger.info(
+          {
+            pairingCode: cachedPairingCode.code,
+            phoneNumber: maskPhone(remotePhone),
+            remainingMs,
+          },
+          "Reusing cached phone-number pairing code still within validity window.",
+        );
         if (config.wa.qrTerminal) {
-          process.stdout.write(`\nWhatsApp pairing code for ${maskPhone(remotePhone)}: ${cachedPairingCode.code}\nOpen WhatsApp > Linked devices > Link with phone number and enter this code.\n`);
+          process.stdout.write(
+            `\nWhatsApp pairing code for ${maskPhone(remotePhone)}: ${cachedPairingCode.code}\nOpen WhatsApp > Linked devices > Link with phone number and enter this code.\n`,
+          );
         }
       }
     }
@@ -8766,20 +10662,32 @@ async function main() {
   };
 
   function startPairingFallbackTimer() {
-    if (pairingFallbackTimer || !pairingOrchestrator || !remotePhone || pairingCodeDelivered || remoteSessionActive) {
+    if (
+      pairingFallbackTimer ||
+      !pairingOrchestrator ||
+      !remotePhone ||
+      pairingCodeDelivered ||
+      remoteSessionActive
+    ) {
       return;
     }
     pairingFallbackTimer = setTimeout(() => {
       pairingFallbackTimer = null;
       if (!pairingCodeDelivered && !remoteSessionActive) {
-        metrics.waSessionReconnects.labels('pairing_code_timeout').inc();
+        metrics.waSessionReconnects.labels("pairing_code_timeout").inc();
         if (FORCE_PHONE_PAIRING) {
-          logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code not received within timeout; QR fallback disabled. Ensure WhatsApp is open to Linked Devices > Link with phone number.');
+          logger.warn(
+            { phoneNumber: maskPhone(remotePhone) },
+            "Pairing code not received within timeout; QR fallback disabled. Ensure WhatsApp is open to Linked Devices > Link with phone number.",
+          );
           requestPairingCodeWithRetry(Math.max(PAIRING_RETRY_DELAY_MS, 60000));
           startPairingFallbackTimer();
         } else {
           allowQrOutput = true;
-          logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code not received within timeout; enabling QR fallback.');
+          logger.warn(
+            { phoneNumber: maskPhone(remotePhone) },
+            "Pairing code not received within timeout; enabling QR fallback.",
+          );
           clearPairingRetry();
           if (!pairingOrchestrator) return;
           pairingOrchestrator.setEnabled(false);
@@ -8789,158 +10697,193 @@ async function main() {
     }, pairingTimeoutMs);
   }
 
-  const emitQr = (qr: string, source: 'live' | 'cached') => {
+  const emitQr = (qr: string, source: "live" | "cached") => {
     if (config.wa.qrTerminal) {
       QRCode.generate(qr, { small: false });
-      process.stdout.write('\nOpen WhatsApp > Linked Devices > Link a Device and scan the QR code above.\n');
+      process.stdout.write(
+        "\nOpen WhatsApp > Linked Devices > Link a Device and scan the QR code above.\n",
+      );
     }
     metrics.waQrCodesGenerated.inc();
-    logger.info({ source }, 'WhatsApp QR code ready for scanning');
+    logger.info({ source }, "WhatsApp QR code ready for scanning");
   };
 
   const replayCachedQr = () => {
     if (!cachedQr) {
-      logger.warn('QR fallback requested but no cached QR available; restart wa-client to render a new code.');
+      logger.warn(
+        "QR fallback requested but no cached QR available; restart wa-client to render a new code.",
+      );
       return;
     }
-    emitQr(cachedQr, 'cached');
+    emitQr(cachedQr, "cached");
   };
 
-  client.on('qr', async (qr: string) => {
+  client.on("qr", async (qr: string) => {
     cachedQr = qr;
 
     // Self-healing: If we receive a QR code but we expect a RemoteAuth session to be active,
     // it means the session is invalid. We should clear it and restart.
     if (FORCE_PHONE_PAIRING && remoteSessionActive) {
-      logger.warn('Received QR code while expecting active RemoteAuth session. Session is invalid/expired.');
-      await sessionManager.clearSession('QR received while RemoteAuth session expected');
-      logger.info('Exiting process to trigger restart and re-pairing...');
+      logger.warn(
+        "Received QR code while expecting active RemoteAuth session. Session is invalid/expired.",
+      );
+      await sessionManager.clearSession(
+        "QR received while RemoteAuth session expected",
+      );
+      logger.info("Exiting process to trigger restart and re-pairing...");
       process.exit(1);
     }
 
     if (!allowQrOutput) {
       if (!qrSuppressedLogged) {
         qrSuppressedLogged = true;
-        logger.info({ phoneNumber: maskPhone(remotePhone) }, 'QR code generated but suppressed while requesting phone-number pairing.');
+        logger.info(
+          { phoneNumber: maskPhone(remotePhone) },
+          "QR code generated but suppressed while requesting phone-number pairing.",
+        );
       }
       return;
     }
-    emitQr(qr, 'live');
+    emitQr(qr, "live");
   });
 
   if (authResolution.remote) {
-    client.on('remote_session_saved', () => {
+    client.on("remote_session_saved", () => {
       remoteSessionActive = true;
       consecutiveAutoRefreshes = 0;
       cancelPairingFallback();
       clearPairingRetry();
       pairingOrchestrator?.setSessionActive(true);
-      logger.info({ clientId: config.wa.remoteAuth.clientId }, 'RemoteAuth session synchronized');
+      logger.info(
+        { clientId: config.wa.remoteAuth.clientId },
+        "RemoteAuth session synchronized",
+      );
     });
     if (remotePhone) {
-      client.on('code', code => {
+      client.on("code", (code) => {
         pairingCodeDelivered = true;
         cancelPairingFallback();
         clearPairingRetry();
         pairingOrchestrator?.setCodeDelivered(true);
         if (remotePhone) {
-          cachePairingCode(remotePhone, code).catch(err => {
-            logger.warn({ err, phoneNumber: maskPhone(remotePhone!) }, 'Failed to cache pairing code');
+          cachePairingCode(remotePhone, code).catch((err) => {
+            logger.warn(
+              { err, phoneNumber: maskPhone(remotePhone!) },
+              "Failed to cache pairing code",
+            );
           });
         }
         schedulePairingCodeRefresh(PHONE_PAIRING_CODE_TTL_MS);
-        logger.info({ pairingCode: code, phoneNumber: maskPhone(remotePhone) }, 'Enter this pairing code in WhatsApp > Linked devices > Link with phone number.');
+        logger.info(
+          { pairingCode: code, phoneNumber: maskPhone(remotePhone) },
+          "Enter this pairing code in WhatsApp > Linked devices > Link with phone number.",
+        );
         if (config.wa.qrTerminal) {
-          process.stdout.write(`\nWhatsApp pairing code for ${maskPhone(remotePhone)}: ${code}\nOpen WhatsApp > Linked devices > Link with phone number and enter this code.\n`);
+          process.stdout.write(
+            `\nWhatsApp pairing code for ${maskPhone(remotePhone)}: ${code}\nOpen WhatsApp > Linked devices > Link with phone number and enter this code.\n`,
+          );
         }
       });
     }
     if (!remoteSessionActive) {
       if (!remotePhone) {
         allowQrOutput = true;
-        logger.warn('RemoteAuth session not found and WA_REMOTE_AUTH_PHONE_NUMBER is unset; falling back to QR pairing.');
+        logger.warn(
+          "RemoteAuth session not found and WA_REMOTE_AUTH_PHONE_NUMBER is unset; falling back to QR pairing.",
+        );
       } else {
-        logger.info({ clientId: config.wa.remoteAuth.clientId, phoneNumber: maskPhone(remotePhone) }, 'RemoteAuth session not found; awaiting phone-number pairing code from WhatsApp.');
+        logger.info(
+          {
+            clientId: config.wa.remoteAuth.clientId,
+            phoneNumber: maskPhone(remotePhone),
+          },
+          "RemoteAuth session not found; awaiting phone-number pairing code from WhatsApp.",
+        );
       }
     } else {
-      logger.info({ clientId: config.wa.remoteAuth.clientId }, 'RemoteAuth session found; reusing existing credentials.');
+      logger.info(
+        { clientId: config.wa.remoteAuth.clientId },
+        "RemoteAuth session found; reusing existing credentials.",
+      );
     }
   }
 
-  client.on('ready', async () => {
-    logger.info('WhatsApp client ready');
+  client.on("ready", async () => {
+    logger.info("WhatsApp client ready");
     cancelPairingFallback();
     clearPairingRetry();
-    waSessionStatusGauge.labels('ready').set(1);
-    waSessionStatusGauge.labels('disconnected').set(0);
-    metrics.waSessionReconnects.labels('ready').inc();
-    updateSessionStateGauge('ready');
+    waSessionStatusGauge.labels("ready").set(1);
+    waSessionStatusGauge.labels("disconnected").set(0);
+    metrics.waSessionReconnects.labels("ready").inc();
+    updateSessionStateGauge("ready");
     botWid = client.info?.wid?._serialized || null;
     try {
       await rehydrateAckWatchers(client);
     } catch (err) {
-      logger.warn({ err }, 'Failed to rehydrate ack watchers on ready');
+      logger.warn({ err }, "Failed to rehydrate ack watchers on ready");
     }
   });
-  client.on('auth_failure', async (m) => {
-    logger.error({ m }, 'Auth failure');
-    waSessionStatusGauge.labels('ready').set(0);
-    metrics.waSessionReconnects.labels('auth_failure').inc();
+  client.on("auth_failure", async (m) => {
+    logger.error({ m }, "Auth failure");
+    waSessionStatusGauge.labels("ready").set(0);
+    metrics.waSessionReconnects.labels("auth_failure").inc();
     botWid = null;
 
     // Self-healing: If auto-pair is enabled, clear the invalid session and restart
     if (config.wa.remoteAuth.autoPair) {
-      logger.warn('Auth failure detected with auto-pair enabled. Clearing session and restarting...');
-      await sessionManager.clearSession('Auth failure event received');
+      logger.warn(
+        "Auth failure detected with auto-pair enabled. Clearing session and restarting...",
+      );
+      await sessionManager.clearSession("Auth failure event received");
       process.exit(1);
     }
   });
-  client.on('change_state', (state) => {
-    const label = typeof state === 'string' ? state.toLowerCase() : 'unknown';
+  client.on("change_state", (state) => {
+    const label = typeof state === "string" ? state.toLowerCase() : "unknown";
     metrics.waSessionReconnects.labels(`state_${label}`).inc();
     updateSessionStateGauge(String(state));
-    logger.info({ state }, 'WhatsApp client state change');
+    logger.info({ state }, "WhatsApp client state change");
     // NOTE: Automatic pairing disabled. Use !scanner pair command to request pairing codes manually.
   });
-  client.on('disconnected', (r) => {
-    logger.warn({ r }, 'Disconnected');
+  client.on("disconnected", (r) => {
+    logger.warn({ r }, "Disconnected");
     cancelPairingFallback();
-    waSessionStatusGauge.labels('ready').set(0);
-    waSessionStatusGauge.labels('disconnected').set(1);
-    metrics.waSessionReconnects.labels('disconnected').inc();
-    updateSessionStateGauge('disconnected');
+    waSessionStatusGauge.labels("ready").set(0);
+    waSessionStatusGauge.labels("disconnected").set(1);
+    metrics.waSessionReconnects.labels("disconnected").inc();
+    updateSessionStateGauge("disconnected");
     botWid = null;
   });
-  client.on('incoming_call', async (call: Call) => {
-    metrics.waIncomingCalls.labels('received').inc();
+  client.on("incoming_call", async (call: Call) => {
+    metrics.waIncomingCalls.labels("received").inc();
     try {
       await call.reject();
-      metrics.waIncomingCalls.labels('rejected').inc();
+      metrics.waIncomingCalls.labels("rejected").inc();
     } catch (err) {
-      metrics.waIncomingCalls.labels('reject_error').inc();
-      logger.warn({ err }, 'Failed to reject incoming call');
+      metrics.waIncomingCalls.labels("reject_error").inc();
+      logger.warn({ err }, "Failed to reject incoming call");
     }
     try {
       await groupStore.recordEvent({
-        chatId: call.from || 'unknown',
-        type: 'incoming_call',
+        chatId: call.from || "unknown",
+        type: "incoming_call",
         timestamp: Date.now(),
         actorId: call.from,
         metadata: { isGroup: call.isGroup, isVideo: call.isVideo },
       });
     } catch (err) {
-      logger.warn({ err }, 'Failed to record incoming call event');
+      logger.warn({ err }, "Failed to record incoming call event");
     }
   });
 
-  client.on('message_create', async (msg: Message) => {
+  client.on("message_create", async (msg: Message) => {
     try {
       if (!msg.from) return;
       const chat = await msg.getChat();
-      const chatType = (chat as GroupChat).isGroup ? 'group' : 'direct';
+      const chatType = (chat as GroupChat).isGroup ? "group" : "direct";
       metrics.waMessagesReceived.labels(chatType).inc();
       // Admin commands
-      if ((msg.body || '').startsWith('!scanner')) {
+      if ((msg.body || "").startsWith("!scanner")) {
         await handleAdminCommand(client, msg, chat as GroupChat, redis);
         return;
       }
@@ -8948,8 +10891,9 @@ async function main() {
       const messageId = msg.id._serialized || msg.id.id;
       const sender = msg.author || msg.from;
       const senderHash = sha256(sender);
-      const timestampMs = typeof msg.timestamp === 'number' ? msg.timestamp * 1000 : Date.now();
-      const body = msg.body || '';
+      const timestampMs =
+        typeof msg.timestamp === "number" ? msg.timestamp * 1000 : Date.now();
+      const body = msg.body || "";
 
       const baseRecord = {
         chatId,
@@ -8966,22 +10910,34 @@ async function main() {
 
       if (config.wa.consentOnJoin) {
         const consentStatus = await getConsentStatus(chatId);
-        if (consentStatus !== 'granted') {
-          metrics.waMessagesDropped.labels('consent_pending').inc();
-          await messageStore.recordMessageCreate({ ...baseRecord, normalizedUrls: [], urlHashes: [] });
+        if (consentStatus !== "granted") {
+          metrics.waMessagesDropped.labels("consent_pending").inc();
+          await messageStore.recordMessageCreate({
+            ...baseRecord,
+            normalizedUrls: [],
+            urlHashes: [],
+          });
           return;
         }
       }
 
       if (urls.length === 0) {
-        metrics.waMessagesDropped.labels('no_url').inc();
-        await messageStore.recordMessageCreate({ ...baseRecord, normalizedUrls: [], urlHashes: [] });
+        metrics.waMessagesDropped.labels("no_url").inc();
+        await messageStore.recordMessageCreate({
+          ...baseRecord,
+          normalizedUrls: [],
+          urlHashes: [],
+        });
         return;
       }
       metrics.waMessagesWithUrls.labels(chatType).inc(urls.length);
       if (!chat.isGroup) {
-        metrics.waMessagesDropped.labels('non_group').inc();
-        await messageStore.recordMessageCreate({ ...baseRecord, normalizedUrls: [], urlHashes: [] });
+        metrics.waMessagesDropped.labels("non_group").inc();
+        await messageStore.recordMessageCreate({
+          ...baseRecord,
+          normalizedUrls: [],
+          urlHashes: [],
+        });
         return; // Only groups per spec
       }
 
@@ -8990,21 +10946,30 @@ async function main() {
       for (const raw of urls) {
         const norm = normalizeUrl(raw);
         if (!norm) {
-          metrics.waMessagesDropped.labels('invalid_url').inc();
+          metrics.waMessagesDropped.labels("invalid_url").inc();
           continue;
         }
 
         if (!(await isUrlAllowedForScanning(norm))) {
-          metrics.waMessagesDropped.labels('blocked_internal_host').inc();
-          logger.warn({ chatId: sanitizeLogValue(chat.id._serialized) }, 'Dropped URL due to disallowed host');
+          metrics.waMessagesDropped.labels("blocked_internal_host").inc();
+          logger.warn(
+            { chatId: sanitizeLogValue(chat.id._serialized) },
+            "Dropped URL due to disallowed host",
+          );
           continue;
         }
 
         const h = urlHash(norm);
         const idem = processedKey(chatId, messageId, h);
-        const already = await redis.set(idem, '1', 'EX', 60 * 60 * 24 * 7, 'NX');
+        const already = await redis.set(
+          idem,
+          "1",
+          "EX",
+          60 * 60 * 24 * 7,
+          "NX",
+        );
         if (already === null) {
-          metrics.waMessagesDropped.labels('duplicate').inc();
+          metrics.waMessagesDropped.labels("duplicate").inc();
           continue; // duplicate
         }
 
@@ -9014,18 +10979,27 @@ async function main() {
         try {
           await globalLimiter.consume(GLOBAL_TOKEN_BUCKET_ID);
         } catch {
-          metrics.waMessagesDropped.labels('rate_limited_global').inc();
+          metrics.waMessagesDropped.labels("rate_limited_global").inc();
           continue;
         }
 
-        const jobOpts: JobsOptions = { removeOnComplete: true, removeOnFail: 1000, attempts: 2, backoff: { type: 'exponential', delay: 1000 } };
-        await scanRequestQueue.add('scan', {
-          chatId,
-          messageId,
-          senderIdHash: senderHash,
-          url: norm,
-          timestamp: Date.now()
-        }, jobOpts);
+        const jobOpts: JobsOptions = {
+          removeOnComplete: true,
+          removeOnFail: 1000,
+          attempts: 2,
+          backoff: { type: "exponential", delay: 1000 },
+        };
+        await scanRequestQueue.add(
+          "scan",
+          {
+            chatId,
+            messageId,
+            senderIdHash: senderHash,
+            url: norm,
+            timestamp: Date.now(),
+          },
+          jobOpts,
+        );
       }
       await messageStore.recordMessageCreate({
         ...baseRecord,
@@ -9033,11 +11007,17 @@ async function main() {
         urlHashes,
       });
     } catch (e) {
-      logger.error({ err: e, chatId: sanitizeLogValue((msg as unknown as { from?: string })?.from) }, 'Failed to process incoming WhatsApp message');
+      logger.error(
+        {
+          err: e,
+          chatId: sanitizeLogValue((msg as unknown as { from?: string })?.from),
+        },
+        "Failed to process incoming WhatsApp message",
+      );
     }
   });
 
-  client.on('message_edit', async (msg: Message) => {
+  client.on("message_edit", async (msg: Message) => {
     try {
       const chat = await msg.getChat();
       if (!(chat as GroupChat).isGroup) {
@@ -9047,7 +11027,7 @@ async function main() {
       const messageId = msg.id._serialized || msg.id.id;
       const existing = await messageStore.getRecord(chatId, messageId);
       const previousHashes = existing?.urlHashes ?? [];
-      const urls = extractUrls(msg.body || '');
+      const urls = extractUrls(msg.body || "");
       const normalizedUrls: string[] = [];
       const urlHashes: string[] = [];
       for (const raw of urls) {
@@ -9059,12 +11039,12 @@ async function main() {
         urlHashes.push(urlHash(norm));
       }
       await messageStore.appendEdit(chatId, messageId, {
-        body: msg.body || '',
+        body: msg.body || "",
         normalizedUrls,
         urlHashes,
         timestamp: Date.now(),
       });
-      metrics.waMessageEdits.labels('processed').inc();
+      metrics.waMessageEdits.labels("processed").inc();
 
       const senderHash = sha256(msg.author || msg.from || chatId);
       const newHashes = new Set(urlHashes);
@@ -9075,112 +11055,161 @@ async function main() {
           continue;
         }
         const idem = processedKey(chatId, messageId, hash);
-        const already = await redis.set(idem, '1', 'EX', 60 * 60 * 24 * 7, 'NX');
+        const already = await redis.set(
+          idem,
+          "1",
+          "EX",
+          60 * 60 * 24 * 7,
+          "NX",
+        );
         if (already === null) {
           continue;
         }
         try {
           await globalLimiter.consume(GLOBAL_TOKEN_BUCKET_ID);
         } catch {
-          metrics.waMessagesDropped.labels('rate_limited_global').inc();
+          metrics.waMessagesDropped.labels("rate_limited_global").inc();
           continue;
         }
-        const jobOpts: JobsOptions = { removeOnComplete: true, removeOnFail: 1000, attempts: 2, backoff: { type: 'exponential', delay: 1000 } };
-        await scanRequestQueue.add('scan', {
-          chatId,
-          messageId,
-          senderIdHash: senderHash,
-          url: norm,
-          timestamp: Date.now(),
-        }, jobOpts);
-        metrics.waMessageEdits.labels('new_url').inc();
+        const jobOpts: JobsOptions = {
+          removeOnComplete: true,
+          removeOnFail: 1000,
+          attempts: 2,
+          backoff: { type: "exponential", delay: 1000 },
+        };
+        await scanRequestQueue.add(
+          "scan",
+          {
+            chatId,
+            messageId,
+            senderIdHash: senderHash,
+            url: norm,
+            timestamp: Date.now(),
+          },
+          jobOpts,
+        );
+        metrics.waMessageEdits.labels("new_url").inc();
       }
 
-      for (const removed of previousHashes.filter((hash) => !newHashes.has(hash))) {
+      for (const removed of previousHashes.filter(
+        (hash) => !newHashes.has(hash),
+      )) {
         const context: VerdictContext = { chatId, messageId, urlHash: removed };
         const verdict = await messageStore.getVerdictRecord(context);
-        if (verdict && verdict.status !== 'retracted') {
-          await messageStore.markVerdictStatus(context, 'retracted');
-          metrics.waMessageEdits.labels('retracted').inc();
+        if (verdict && verdict.status !== "retracted") {
+          await messageStore.markVerdictStatus(context, "retracted");
+          metrics.waMessageEdits.labels("retracted").inc();
           await clearAckWatchForContext(context);
           try {
-            await msg.reply('Automated scan verdict withdrawn due to message edit.');
+            await msg.reply(
+              "Automated scan verdict withdrawn due to message edit.",
+            );
           } catch (err) {
-            logger.warn({ err }, 'Failed to send verdict retraction after edit');
+            logger.warn(
+              { err },
+              "Failed to send verdict retraction after edit",
+            );
           }
         }
       }
     } catch (err) {
-      logger.error({ err }, 'Failed to process message edit');
+      logger.error({ err }, "Failed to process message edit");
     }
   });
 
-  client.on('message_revoke_everyone', async (msg: Message, revoked?: Message) => {
-    const snapshot = snapshotSession();
-    if (!isSessionReady(snapshot)) {
-      logger.debug({ messageId: msg.id?._serialized, session: describeSession(snapshot) }, 'Skipping group revoke handler because session is not ready');
-      return;
-    }
-    try {
-      const original = revoked ?? msg;
-      const chat = await original.getChat().catch((err) => {
-        const fallbackChat = (original.id as unknown as { remote?: string })?.remote ?? undefined;
-        throw enrichEvaluationError(err, {
-          operation: 'message_revoke_everyone:getChat',
-          chatId: fallbackChat,
-          messageId: original.id?._serialized,
-          snapshot,
-        });
-      });
-      if (!(chat as GroupChat).isGroup) {
+  client.on(
+    "message_revoke_everyone",
+    async (msg: Message, revoked?: Message) => {
+      const snapshot = snapshotSession();
+      if (!isSessionReady(snapshot)) {
+        logger.debug(
+          {
+            messageId: msg.id?._serialized,
+            session: describeSession(snapshot),
+          },
+          "Skipping group revoke handler because session is not ready",
+        );
         return;
       }
-      const chatId = chat.id._serialized;
-      const messageId = original.id._serialized || original.id.id;
-      await messageStore.recordRevocation(chatId, messageId, 'everyone', Date.now());
-      metrics.waMessageRevocations.labels('everyone').inc();
-      const record = await messageStore.getRecord(chatId, messageId);
-      if (record) {
-        let retracted = false;
-        for (const hash of Object.keys(record.verdicts)) {
-          const context: VerdictContext = { chatId, messageId, urlHash: hash };
-          const verdict = await messageStore.getVerdictRecord(context);
-          if (verdict && verdict.status !== 'retracted') {
-            await messageStore.markVerdictStatus(context, 'retracted');
-            await clearAckWatchForContext(context);
-            retracted = true;
+      try {
+        const original = revoked ?? msg;
+        const chat = await original.getChat().catch((err) => {
+          const fallbackChat =
+            (original.id as unknown as { remote?: string })?.remote ??
+            undefined;
+          throw enrichEvaluationError(err, {
+            operation: "message_revoke_everyone:getChat",
+            chatId: fallbackChat,
+            messageId: original.id?._serialized,
+            snapshot,
+          });
+        });
+        if (!(chat as GroupChat).isGroup) {
+          return;
+        }
+        const chatId = chat.id._serialized;
+        const messageId = original.id._serialized || original.id.id;
+        await messageStore.recordRevocation(
+          chatId,
+          messageId,
+          "everyone",
+          Date.now(),
+        );
+        metrics.waMessageRevocations.labels("everyone").inc();
+        const record = await messageStore.getRecord(chatId, messageId);
+        if (record) {
+          let retracted = false;
+          for (const hash of Object.keys(record.verdicts)) {
+            const context: VerdictContext = {
+              chatId,
+              messageId,
+              urlHash: hash,
+            };
+            const verdict = await messageStore.getVerdictRecord(context);
+            if (verdict && verdict.status !== "retracted") {
+              await messageStore.markVerdictStatus(context, "retracted");
+              await clearAckWatchForContext(context);
+              retracted = true;
+            }
+          }
+          if (retracted) {
+            try {
+              await chat.sendMessage(
+                "Previously flagged content was removed. Automated verdict withdrawn.",
+              );
+            } catch (err) {
+              logger.warn(
+                { err },
+                "Failed to announce verdict retraction after revoke",
+              );
+            }
           }
         }
-        if (retracted) {
-          try {
-            await chat.sendMessage('Previously flagged content was removed. Automated verdict withdrawn.');
-          } catch (err) {
-            logger.warn({ err }, 'Failed to announce verdict retraction after revoke');
-          }
-        }
+      } catch (err) {
+        logger.error({ err }, "Failed to handle message revoke for everyone");
       }
-    } catch (err) {
-      logger.error({ err }, 'Failed to handle message revoke for everyone');
-    }
-  });
+    },
+  );
 
-  client.on('message_revoke_me', async (msg: Message) => {
+  client.on("message_revoke_me", async (msg: Message) => {
     const snapshot = snapshotSession();
     try {
       await handleSelfMessageRevoke(msg, {
         snapshot,
         logger,
         messageStore,
-        recordMetric: () => metrics.waMessageRevocations.labels('me').inc(),
+        recordMetric: () => metrics.waMessageRevocations.labels("me").inc(),
       });
     } catch (err) {
-      logger.warn({ err }, 'Failed to record self message revoke');
+      logger.warn({ err }, "Failed to record self message revoke");
     }
   });
 
-  client.on('message_reaction', async (reaction: Reaction) => {
+  client.on("message_reaction", async (reaction: Reaction) => {
     try {
-      const messageId = (reaction.msgId as unknown as { _serialized?: string })?._serialized || reaction.msgId?.id;
+      const messageId =
+        (reaction.msgId as unknown as { _serialized?: string })?._serialized ||
+        reaction.msgId?.id;
       if (!messageId) return;
       const message = await client.getMessageById(messageId);
       if (!message) return;
@@ -9190,191 +11219,234 @@ async function main() {
       }
       const chatId = chat.id._serialized;
       await messageStore.recordReaction(chatId, messageId, {
-        reaction: reaction.reaction || '',
-        senderId: reaction.senderId || 'unknown',
+        reaction: reaction.reaction || "",
+        senderId: reaction.senderId || "unknown",
         timestamp: (reaction.timestamp || Math.floor(Date.now() / 1000)) * 1000,
       });
-      const emoji = (reaction.reaction || '').trim();
-      const label = emoji && emoji.length <= 2 ? emoji : 'other';
+      const emoji = (reaction.reaction || "").trim();
+      const label = emoji && emoji.length <= 2 ? emoji : "other";
       metrics.waMessageReactions.labels(label).inc();
     } catch (err) {
-      logger.warn({ err }, 'Failed to process message reaction');
+      logger.warn({ err }, "Failed to process message reaction");
     }
   });
 
-  client.on('message_ack', async (message: Message, ack: MessageAck) => {
+  client.on("message_ack", async (message: Message, ack: MessageAck) => {
     try {
       const verdictMessageId = message.id._serialized || message.id.id;
       if (!verdictMessageId) return;
       const context = await messageStore.getVerdictMapping(verdictMessageId);
       if (!context) return;
-      const ackNumber = typeof ack === 'number' ? ack : Number(ack);
+      const ackNumber = typeof ack === "number" ? ack : Number(ack);
       const timestamp = Date.now();
-      const result = await messageStore.updateVerdictAck(context, Number.isFinite(ackNumber) ? ackNumber : null, timestamp);
+      const result = await messageStore.updateVerdictAck(
+        context,
+        Number.isFinite(ackNumber) ? ackNumber : null,
+        timestamp,
+      );
       if (!result) return;
       const { verdict, previousAck } = result;
-      metrics.waVerdictAckTransitions.labels(String(previousAck ?? -1), String(ackNumber ?? -1)).inc();
+      metrics.waVerdictAckTransitions
+        .labels(String(previousAck ?? -1), String(ackNumber ?? -1))
+        .inc();
       if (ackNumber === -1) {
-        metrics.waVerdictAckTimeouts.labels('error').inc();
-        await messageStore.markVerdictStatus(context, 'failed');
+        metrics.waVerdictAckTimeouts.labels("error").inc();
+        await messageStore.markVerdictStatus(context, "failed");
         await clearAckWatchForContext(context);
         return;
       }
       if ((ackNumber ?? 0) >= VERDICT_ACK_TARGET) {
         await clearAckWatchForContext(context);
-        await messageStore.markVerdictStatus(context, 'sent');
+        await messageStore.markVerdictStatus(context, "sent");
       }
-      logger.debug({ context, ack: ackNumber, verdictAckHistory: verdict.ackHistory }, 'Updated verdict ack state');
+      logger.debug(
+        { context, ack: ackNumber, verdictAckHistory: verdict.ackHistory },
+        "Updated verdict ack state",
+      );
     } catch (err) {
-      logger.warn({ err }, 'Failed to process verdict ack event');
+      logger.warn({ err }, "Failed to process verdict ack event");
     }
   });
 
-  client.on('group_join', async (notification: GroupNotification) => {
+  client.on("group_join", async (notification: GroupNotification) => {
     try {
-      const chat = await notification.getChat() as GroupChat;
+      const chat = (await notification.getChat()) as GroupChat;
       const chatId = chat.id._serialized;
       try {
         await governanceLimiter.consume(chatId);
       } catch {
-        metrics.waGovernanceRateLimited.labels('group_join').inc();
+        metrics.waGovernanceRateLimited.labels("group_join").inc();
         return;
       }
-      metrics.waGroupEvents.labels('join').inc();
-      metrics.waGovernanceActions.labels('group_join').inc();
+      metrics.waGroupEvents.labels("join").inc();
+      metrics.waGovernanceActions.labels("group_join").inc();
       const toggled = await chat.setMessagesAdminsOnly(true).catch((err) => {
-        logger.warn({ err, chatId }, 'Failed to restrict messages to admins only');
+        logger.warn(
+          { err, chatId },
+          "Failed to restrict messages to admins only",
+        );
         return false;
       });
       if (config.wa.consentOnJoin) {
         await markConsentPending(chatId);
-        metrics.waGroupEvents.labels('consent_pending').inc();
+        metrics.waGroupEvents.labels("consent_pending").inc();
         await groupStore.recordEvent({
           chatId,
-          type: 'consent_pending',
+          type: "consent_pending",
           timestamp: Date.now(),
           actorId: notification.author,
           recipients: notification.recipientIds,
-          metadata: { reason: 'group_join' },
+          metadata: { reason: "group_join" },
         });
       } else {
         await markConsentGranted(chatId);
-        metrics.waGroupEvents.labels('consent_granted').inc();
+        metrics.waGroupEvents.labels("consent_granted").inc();
         await groupStore.recordEvent({
           chatId,
-          type: 'consent_granted',
+          type: "consent_granted",
           timestamp: Date.now(),
           actorId: notification.author,
           recipients: notification.recipientIds,
-          metadata: { reason: 'group_join' },
+          metadata: { reason: "group_join" },
         });
       }
       try {
         await chat.sendMessage(consentTemplate);
       } catch (err) {
-        logger.warn({ err, chatId }, 'Failed to send consent message on join');
+        logger.warn({ err, chatId }, "Failed to send consent message on join");
       }
       if (!config.wa.consentOnJoin && toggled) {
         await chat.setMessagesAdminsOnly(false).catch(() => undefined);
       }
       await groupStore.recordEvent({
         chatId,
-        type: 'join',
+        type: "join",
         timestamp: Date.now(),
         actorId: notification.author,
         recipients: notification.recipientIds,
-        metadata: { adminsOnly: toggled === true, consentRequired: config.wa.consentOnJoin },
+        metadata: {
+          adminsOnly: toggled === true,
+          consentRequired: config.wa.consentOnJoin,
+        },
       });
     } catch (err) {
-      logger.error({ err }, 'Failed to handle group join notification');
+      logger.error({ err }, "Failed to handle group join notification");
     }
   });
 
-  client.on('group_membership_request', async (notification: GroupNotification) => {
-    try {
-      const chat = await notification.getChat() as GroupChat;
-      const chatId = chat.id._serialized;
-      const requesterId = notification.author;
-      if (!requesterId) {
-        return;
-      }
-      metrics.waGroupEvents.labels('membership_request').inc();
-      await groupStore.recordEvent({
-        chatId,
-        type: 'membership_request',
-        timestamp: Date.now(),
-        actorId: requesterId,
-        recipients: notification.recipientIds,
-        metadata: { requestTimestamp: notification.timestamp },
-      });
+  client.on(
+    "group_membership_request",
+    async (notification: GroupNotification) => {
       try {
-        await membershipGroupLimiter.consume(chatId);
-        await membershipGlobalLimiter.consume('global');
-      } catch {
-        metrics.waGovernanceRateLimited.labels('membership_auto').inc();
-        await addPendingMembership(chatId, requesterId, Date.now());
-        metrics.waMembershipApprovals.labels('rate_limited').inc();
-        await groupStore.recordEvent({
-          chatId,
-          type: 'membership_pending',
-          timestamp: Date.now(),
-          actorId: requesterId,
-          metadata: { reason: 'rate_limited' },
-        });
-        try {
-          await chat.sendMessage(`Membership request from ${requesterId} queued for admin review. Use !scanner approve ${requesterId} to override.`);
-        } catch (err) {
-          logger.warn({ err, chatId }, 'Failed to notify group about pending membership request');
+        const chat = (await notification.getChat()) as GroupChat;
+        const chatId = chat.id._serialized;
+        const requesterId = notification.author;
+        if (!requesterId) {
+          return;
         }
-        return;
-      }
-
-      try {
-        await client.approveGroupMembershipRequests(chatId, { requesterIds: [requesterId], sleep: null });
-        metrics.waMembershipApprovals.labels('auto').inc();
-        metrics.waGovernanceActions.labels('membership_auto').inc();
-        await removePendingMembership(chatId, requesterId);
+        metrics.waGroupEvents.labels("membership_request").inc();
         await groupStore.recordEvent({
           chatId,
-          type: 'membership_auto',
+          type: "membership_request",
           timestamp: Date.now(),
           actorId: requesterId,
+          recipients: notification.recipientIds,
+          metadata: { requestTimestamp: notification.timestamp },
         });
         try {
-          await chat.sendMessage(`Automatically approved membership request from ${requesterId}.`);
+          await membershipGroupLimiter.consume(chatId);
+          await membershipGlobalLimiter.consume("global");
+        } catch {
+          metrics.waGovernanceRateLimited.labels("membership_auto").inc();
+          await addPendingMembership(chatId, requesterId, Date.now());
+          metrics.waMembershipApprovals.labels("rate_limited").inc();
+          await groupStore.recordEvent({
+            chatId,
+            type: "membership_pending",
+            timestamp: Date.now(),
+            actorId: requesterId,
+            metadata: { reason: "rate_limited" },
+          });
+          try {
+            await chat.sendMessage(
+              `Membership request from ${requesterId} queued for admin review. Use !scanner approve ${requesterId} to override.`,
+            );
+          } catch (err) {
+            logger.warn(
+              { err, chatId },
+              "Failed to notify group about pending membership request",
+            );
+          }
+          return;
+        }
+
+        try {
+          await client.approveGroupMembershipRequests(chatId, {
+            requesterIds: [requesterId],
+            sleep: null,
+          });
+          metrics.waMembershipApprovals.labels("auto").inc();
+          metrics.waGovernanceActions.labels("membership_auto").inc();
+          await removePendingMembership(chatId, requesterId);
+          await groupStore.recordEvent({
+            chatId,
+            type: "membership_auto",
+            timestamp: Date.now(),
+            actorId: requesterId,
+          });
+          try {
+            await chat.sendMessage(
+              `Automatically approved membership request from ${requesterId}.`,
+            );
+          } catch (err) {
+            logger.warn(
+              { err, chatId },
+              "Failed to announce auto-approved membership",
+            );
+          }
         } catch (err) {
-          logger.warn({ err, chatId }, 'Failed to announce auto-approved membership');
+          logger.warn(
+            { err, chatId, requesterId },
+            "Auto approval failed, storing for manual review",
+          );
+          metrics.waMembershipApprovals.labels("error").inc();
+          await addPendingMembership(chatId, requesterId, Date.now());
+          await groupStore.recordEvent({
+            chatId,
+            type: "membership_error",
+            timestamp: Date.now(),
+            actorId: requesterId,
+            metadata: { reason: "auto_approval_failed" },
+          });
+          try {
+            await chat.sendMessage(
+              `Could not auto-approve ${requesterId}. An admin may run !scanner approve ${requesterId} to proceed.`,
+            );
+          } catch (sendErr) {
+            logger.warn(
+              { err: sendErr, chatId },
+              "Failed to notify admin about membership approval failure",
+            );
+          }
         }
       } catch (err) {
-        logger.warn({ err, chatId, requesterId }, 'Auto approval failed, storing for manual review');
-        metrics.waMembershipApprovals.labels('error').inc();
-        await addPendingMembership(chatId, requesterId, Date.now());
-        await groupStore.recordEvent({
-          chatId,
-          type: 'membership_error',
-          timestamp: Date.now(),
-          actorId: requesterId,
-          metadata: { reason: 'auto_approval_failed' },
-        });
-        try {
-          await chat.sendMessage(`Could not auto-approve ${requesterId}. An admin may run !scanner approve ${requesterId} to proceed.`);
-        } catch (sendErr) {
-          logger.warn({ err: sendErr, chatId }, 'Failed to notify admin about membership approval failure');
-        }
+        logger.error({ err }, "Failed to process membership request");
       }
-    } catch (err) {
-      logger.error({ err }, 'Failed to process membership request');
-    }
-  });
+    },
+  );
 
-  client.on('group_leave', async (notification: GroupNotification) => {
+  client.on("group_leave", async (notification: GroupNotification) => {
     try {
-      const chat = await notification.getChat() as GroupChat;
+      const chat = (await notification.getChat()) as GroupChat;
       const chatId = chat.id._serialized;
-      const recipients = (notification.recipientIds && notification.recipientIds.length > 0)
-        ? notification.recipientIds
-        : (notification.author ? [notification.author] : []);
-      const normalizedType = notification.type === 'remove' ? 'leave_remove' : 'leave';
+      const recipients =
+        notification.recipientIds && notification.recipientIds.length > 0
+          ? notification.recipientIds
+          : notification.author
+            ? [notification.author]
+            : [];
+      const normalizedType =
+        notification.type === "remove" ? "leave_remove" : "leave";
       metrics.waGroupEvents.labels(normalizedType).inc();
       for (const member of recipients) {
         await removePendingMembership(chatId, member).catch(() => undefined);
@@ -9382,10 +11454,10 @@ async function main() {
       const includesBot = !!botWid && recipients.includes(botWid);
       if (includesBot) {
         await clearConsentState(chatId);
-        metrics.waGroupEvents.labels('bot_removed').inc();
+        metrics.waGroupEvents.labels("bot_removed").inc();
         await groupStore.recordEvent({
           chatId,
-          type: 'bot_removed',
+          type: "bot_removed",
           timestamp: Date.now(),
           actorId: notification.author,
           recipients,
@@ -9401,18 +11473,21 @@ async function main() {
         metadata: { includesBot },
       });
     } catch (err) {
-      logger.error({ err }, 'Failed to process group leave notification');
+      logger.error({ err }, "Failed to process group leave notification");
     }
   });
 
-  client.on('group_admin_changed', async (notification: GroupNotification) => {
+  client.on("group_admin_changed", async (notification: GroupNotification) => {
     try {
-      const chat = await notification.getChat() as GroupChat;
+      const chat = (await notification.getChat()) as GroupChat;
       const chatId = chat.id._serialized;
       const notificationType = notification.type as unknown as string;
-      const eventType = notificationType === 'promote' ? 'admin_promote' : 'admin_demote';
+      const eventType =
+        notificationType === "promote" ? "admin_promote" : "admin_demote";
       metrics.waGroupEvents.labels(eventType).inc();
-      const recipients = await notification.getRecipients().catch(() => [] as Contact[]);
+      const recipients = await notification
+        .getRecipients()
+        .catch(() => [] as Contact[]);
       await groupStore.recordEvent({
         chatId,
         type: eventType,
@@ -9421,39 +11496,52 @@ async function main() {
         recipients: notification.recipientIds,
         metadata: { body: notification.body },
       });
-      if (notificationType === 'promote' && recipients.length > 0) {
+      if (notificationType === "promote" && recipients.length > 0) {
         try {
           await governanceLimiter.consume(chatId);
         } catch {
-          metrics.waGovernanceRateLimited.labels('admin_change').inc();
+          metrics.waGovernanceRateLimited.labels("admin_change").inc();
           return;
         }
-        const consentStatus = config.wa.consentOnJoin ? await getConsentStatus(chatId) : 'granted';
-        const mentionText = recipients.map((contact) => `@${contact.id?.user || contact.id?._serialized || 'member'}`).join(' ');
+        const consentStatus = config.wa.consentOnJoin
+          ? await getConsentStatus(chatId)
+          : "granted";
+        const mentionText = recipients
+          .map(
+            (contact) =>
+              `@${contact.id?.user || contact.id?._serialized || "member"}`,
+          )
+          .join(" ");
         const lines = [`${mentionText} promoted to admin.`];
-        if (consentStatus !== 'granted') {
-          lines.push('This group is still awaiting consent. Please review and run !scanner consent when ready.');
+        if (consentStatus !== "granted") {
+          lines.push(
+            "This group is still awaiting consent. Please review and run !scanner consent when ready.",
+          );
           await chat.setMessagesAdminsOnly(true).catch(() => undefined);
         }
-        await chat.sendMessage(lines.join(' '), { mentions: recipients.map(c => c.id?._serialized).filter((id): id is string => !!id) } as any);
-        metrics.waGovernanceActions.labels('admin_prompt').inc();
+        await chat.sendMessage(lines.join(" "), {
+          mentions: recipients
+            .map((c) => c.id?._serialized)
+            .filter((id): id is string => !!id),
+        } as any);
+        metrics.waGovernanceActions.labels("admin_prompt").inc();
       }
     } catch (err) {
-      logger.error({ err }, 'Failed to process admin change notification');
+      logger.error({ err }, "Failed to process admin change notification");
     }
   });
 
-  client.on('group_update', async (notification: GroupNotification) => {
+  client.on("group_update", async (notification: GroupNotification) => {
     try {
-      const chat = await notification.getChat() as GroupChat;
+      const chat = (await notification.getChat()) as GroupChat;
       const chatId = chat.id._serialized;
-      const subtype = notification.type || 'unknown';
+      const subtype = notification.type || "unknown";
       const map: Record<string, string> = {
-        subject: 'update_subject',
-        description: 'update_description',
-        picture: 'update_picture',
-        announce: 'update_announce',
-        restrict: 'update_restrict',
+        subject: "update_subject",
+        description: "update_description",
+        picture: "update_picture",
+        announce: "update_announce",
+        restrict: "update_restrict",
       };
       const eventType = map[subtype] ?? `update_${subtype}`;
       metrics.waGroupEvents.labels(eventType).inc();
@@ -9466,108 +11554,139 @@ async function main() {
         details: notification.body,
         metadata: { subtype },
       });
-      if (subtype === 'announce' && config.wa.consentOnJoin) {
+      if (subtype === "announce" && config.wa.consentOnJoin) {
         const consentStatus = await getConsentStatus(chatId);
-        if (consentStatus === 'pending') {
+        if (consentStatus === "pending") {
           await chat.setMessagesAdminsOnly(true).catch(() => undefined);
         }
       }
     } catch (err) {
-      logger.error({ err }, 'Failed to process group update notification');
+      logger.error({ err }, "Failed to process group update notification");
     }
   });
 
   // Consume verdicts
-  new Worker(config.queues.scanVerdict, async (job) => {
-    const queueName = config.queues.scanVerdict;
-    const started = Date.now();
-    const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
-    metrics.queueJobWait.labels(queueName).observe(waitSeconds);
-    const data = job.data as VerdictJobData & { decidedAt?: number; redirectChain?: string[]; shortener?: { provider: string; chain: string[] } | null };
-    const payload: VerdictJobData = {
-      chatId: data.chatId,
-      messageId: data.messageId,
-      verdict: data.verdict,
-      reasons: data.reasons,
-      url: data.url,
-      urlHash: data.urlHash,
-      decidedAt: data.decidedAt,
-      redirectChain: data.redirectChain,
-      shortener: data.shortener ?? null,
-    };
-    try {
-      const delay = Math.floor(800 + Math.random() * 1200);
-      await new Promise<void>((resolve) => {
-        setTimeout(async () => {
-          try {
+  new Worker(
+    config.queues.scanVerdict,
+    async (job) => {
+      const queueName = config.queues.scanVerdict;
+      const started = Date.now();
+      const waitSeconds = Math.max(
+        0,
+        (started - (job.timestamp ?? started)) / 1000,
+      );
+      metrics.queueJobWait.labels(queueName).observe(waitSeconds);
+      const data = job.data as VerdictJobData & {
+        decidedAt?: number;
+        redirectChain?: string[];
+        shortener?: { provider: string; chain: string[] } | null;
+      };
+      const payload: VerdictJobData = {
+        chatId: data.chatId,
+        messageId: data.messageId,
+        verdict: data.verdict,
+        reasons: data.reasons,
+        url: data.url,
+        urlHash: data.urlHash,
+        decidedAt: data.decidedAt,
+        redirectChain: data.redirectChain,
+        shortener: data.shortener ?? null,
+      };
+      try {
+        const delay = Math.floor(800 + Math.random() * 1200);
+        await new Promise<void>((resolve) => {
+          setTimeout(async () => {
             try {
-              await groupLimiter.consume(payload.chatId);
-              await groupHourlyLimiter.consume(payload.chatId);
-            } catch {
-              metrics.waMessagesDropped.labels('verdict_rate_limited').inc();
-              return;
+              try {
+                await groupLimiter.consume(payload.chatId);
+                await groupHourlyLimiter.consume(payload.chatId);
+              } catch {
+                metrics.waMessagesDropped.labels("verdict_rate_limited").inc();
+                return;
+              }
+              const key = `verdict:${payload.chatId}:${payload.urlHash}`;
+              const nx = await redis.set(key, "1", "EX", 3600, "NX");
+              if (nx === null) {
+                metrics.waMessagesDropped.labels("verdict_duplicate").inc();
+                return;
+              }
+              const context: VerdictContext = {
+                chatId: payload.chatId,
+                messageId: payload.messageId,
+                urlHash: payload.urlHash,
+              };
+              await deliverVerdictMessage(client, payload, context);
+            } finally {
+              const verdictLatencySeconds = Math.max(
+                0,
+                (Date.now() - (payload.decidedAt ?? started)) / 1000,
+              );
+              metrics.waVerdictLatency.observe(verdictLatencySeconds);
+              const processingSeconds = (Date.now() - started) / 1000;
+              metrics.queueProcessingDuration
+                .labels(queueName)
+                .observe(processingSeconds);
+              metrics.queueCompleted.labels(queueName).inc();
+              if (job.attemptsMade > 0) {
+                metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
+              }
+              resolve();
             }
-            const key = `verdict:${payload.chatId}:${payload.urlHash}`;
-            const nx = await redis.set(key, '1', 'EX', 3600, 'NX');
-            if (nx === null) {
-              metrics.waMessagesDropped.labels('verdict_duplicate').inc();
-              return;
-            }
-            const context: VerdictContext = {
-              chatId: payload.chatId,
-              messageId: payload.messageId,
-              urlHash: payload.urlHash,
-            };
-            await deliverVerdictMessage(client, payload, context);
-          } finally {
-            const verdictLatencySeconds = Math.max(0, (Date.now() - (payload.decidedAt ?? started)) / 1000);
-            metrics.waVerdictLatency.observe(verdictLatencySeconds);
-            const processingSeconds = (Date.now() - started) / 1000;
-            metrics.queueProcessingDuration.labels(queueName).observe(processingSeconds);
-            metrics.queueCompleted.labels(queueName).inc();
-            if (job.attemptsMade > 0) {
-              metrics.queueRetries.labels(queueName).inc(job.attemptsMade);
-            }
-            resolve();
-          }
-        }, delay);
-      });
-    } catch (err) {
-      metrics.queueFailures.labels(queueName).inc();
-      metrics.queueProcessingDuration.labels(queueName).observe((Date.now() - started) / 1000);
-      throw err;
-    }
-  }, { connection: redis });
+          }, delay);
+        });
+      } catch (err) {
+        metrics.queueFailures.labels(queueName).inc();
+        metrics.queueProcessingDuration
+          .labels(queueName)
+          .observe((Date.now() - started) / 1000);
+        throw err;
+      }
+    },
+    { connection: redis },
+  );
 
   await initializeWhatsAppWithRetry(client);
 
   if (pairingOrchestrator && !pairingCodeDelivered) {
-    const configuredDelay = config.wa.remoteAuth.pairingDelayMs && config.wa.remoteAuth.pairingDelayMs > 0
-      ? config.wa.remoteAuth.pairingDelayMs
-      : 5000;
+    const configuredDelay =
+      config.wa.remoteAuth.pairingDelayMs &&
+      config.wa.remoteAuth.pairingDelayMs > 0
+        ? config.wa.remoteAuth.pairingDelayMs
+        : 5000;
     const initialDelay = Math.max(rateLimitDelayMs, configuredDelay);
     requestPairingCodeWithRetry(initialDelay);
   }
   startPairingFallbackTimer();
 
-  const port = parseInt(process.env.PORT || '3000', 10);
-  await app.listen({ host: '0.0.0.0', port });
+  const port = parseInt(process.env.PORT || "3000", 10);
+  await app.listen({ host: "0.0.0.0", port });
 }
 
-function sha256(s: string) { return createHash('sha256').update(s).digest('hex'); }
+function sha256(s: string) {
+  return createHash("sha256").update(s).digest("hex");
+}
 
 function redactDomain(u: string) {
-  try { const url = new URL(u); return url.hostname.replace(/\./g, '[.]'); } catch { return u; }
+  try {
+    const url = new URL(u);
+    return url.hostname.replace(/\./g, "[.]");
+  } catch {
+    return u;
+  }
 }
 
-export function formatGroupVerdict(verdict: string, reasons: string[], url: string) {
+export function formatGroupVerdict(
+  verdict: string,
+  reasons: string[],
+  url: string,
+) {
   const level = verdict.toUpperCase();
   const domain = redactDomain(url);
-  let advice = 'Use caution.';
-  if (verdict === 'malicious') advice = 'Do NOT open.';
-  if (verdict === 'benign') advice = 'Looks okay, stay vigilant.';
-  const reasonsStr = reasons.slice(0, 3).join('; ');
-  return `Link scan: ${level}\nDomain: ${domain}\n${advice}${reasonsStr ? `\nWhy: ${reasonsStr}` : ''}`;
+  let advice = "Use caution.";
+  if (verdict === "malicious") advice = "Do NOT open.";
+  if (verdict === "benign") advice = "Looks okay, stay vigilant.";
+  const reasonsStr = reasons.slice(0, 3).join("; ");
+  return `Link scan: ${level}\nDomain: ${domain}\n${advice}${reasonsStr ? `\nWhy: ${reasonsStr}` : ""}`;
 }
 
 interface AdminCommandContext {
@@ -9577,7 +11696,7 @@ interface AdminCommandContext {
   redis: Redis;
   senderId: string | undefined;
   parts: string[];
-  authHeaders: { authorization: string; 'x-csrf-token': string };
+  authHeaders: { authorization: string; "x-csrf-token": string };
   base: string;
   pairingOrchestrator: PairingOrchestrator | null;
   remotePhone: string | undefined;
@@ -9585,68 +11704,102 @@ interface AdminCommandContext {
   isSelfCommand: boolean;
 }
 
-const adminCommandHandlers: Record<string, (ctx: AdminCommandContext) => Promise<void>> = {
+const adminCommandHandlers: Record<
+  string,
+  (ctx: AdminCommandContext) => Promise<void>
+> = {
   mute: async ({ chat, base, authHeaders }) => {
-    const resp = await fetch(`${base}/groups/${encodeURIComponent(chat.id._serialized)}/mute`, { method: 'POST', headers: authHeaders }).catch(() => null);
-    await chat.sendMessage(resp && resp.ok ? 'Scanner muted for 60 minutes.' : 'Mute failed.');
+    const resp = await fetch(
+      `${base}/groups/${encodeURIComponent(chat.id._serialized)}/mute`,
+      { method: "POST", headers: authHeaders },
+    ).catch(() => null);
+    await chat.sendMessage(
+      resp && resp.ok ? "Scanner muted for 60 minutes." : "Mute failed.",
+    );
   },
   unmute: async ({ chat, base, authHeaders }) => {
-    const resp = await fetch(`${base}/groups/${encodeURIComponent(chat.id._serialized)}/unmute`, { method: 'POST', headers: authHeaders }).catch(() => null);
-    await chat.sendMessage(resp && resp.ok ? 'Scanner unmuted.' : 'Unmute failed.');
+    const resp = await fetch(
+      `${base}/groups/${encodeURIComponent(chat.id._serialized)}/unmute`,
+      { method: "POST", headers: authHeaders },
+    ).catch(() => null);
+    await chat.sendMessage(
+      resp && resp.ok ? "Scanner unmuted." : "Unmute failed.",
+    );
   },
   status: async ({ chat, base, authHeaders }) => {
     try {
-      const resp = await fetch(`${base}/status`, { headers: { authorization: authHeaders.authorization } });
+      const resp = await fetch(`${base}/status`, {
+        headers: { authorization: authHeaders.authorization },
+      });
       if (!resp.ok) {
-        logger.warn({ status: resp.status, chatId: chat.id._serialized }, 'Status command fetch failed');
-        await chat.sendMessage('Scanner status temporarily unavailable.');
+        logger.warn(
+          { status: resp.status, chatId: chat.id._serialized },
+          "Status command fetch failed",
+        );
+        await chat.sendMessage("Scanner status temporarily unavailable.");
         return;
       }
-      const json = (await resp.json().catch(() => ({}))) as { scans?: number; malicious?: number };
-      await chat.sendMessage(`Scanner status: scans=${json.scans ?? 0}, malicious=${json.malicious ?? 0}`);
+      const json = (await resp.json().catch(() => ({}))) as {
+        scans?: number;
+        malicious?: number;
+      };
+      await chat.sendMessage(
+        `Scanner status: scans=${json.scans ?? 0}, malicious=${json.malicious ?? 0}`,
+      );
     } catch (err) {
-      logger.warn({ err, chatId: chat.id._serialized }, 'Failed to handle status command');
-      await chat.sendMessage('Scanner status temporarily unavailable.');
+      logger.warn(
+        { err, chatId: chat.id._serialized },
+        "Failed to handle status command",
+      );
+      await chat.sendMessage("Scanner status temporarily unavailable.");
     }
   },
   rescan: async ({ chat, parts, base, authHeaders }) => {
     if (!parts[2]) return;
     const rescanUrl = parts[2];
     const resp = await fetch(`${base}/rescan`, {
-      method: 'POST',
-      headers: { ...authHeaders, 'content-type': 'application/json' },
+      method: "POST",
+      headers: { ...authHeaders, "content-type": "application/json" },
       body: JSON.stringify({ url: rescanUrl }),
     }).catch(() => null);
     if (resp && resp.ok) {
-      const data = (await resp.json().catch(() => null)) as { ok?: boolean; urlHash?: string; jobId?: string } | null;
+      const data = (await resp.json().catch(() => null)) as {
+        ok?: boolean;
+        urlHash?: string;
+        jobId?: string;
+      } | null;
       if (data?.ok && data.urlHash && data.jobId) {
-        await chat.sendMessage(`Rescan queued. hash=${data.urlHash} job=${data.jobId}`);
+        await chat.sendMessage(
+          `Rescan queued. hash=${data.urlHash} job=${data.jobId}`,
+        );
       } else {
-        await chat.sendMessage('Rescan queued, awaiting confirmation.');
+        await chat.sendMessage("Rescan queued, awaiting confirmation.");
       }
     } else {
-      await chat.sendMessage('Rescan failed.');
+      await chat.sendMessage("Rescan failed.");
     }
   },
   consent: async ({ chat, msg }) => {
     if (!config.wa.consentOnJoin) {
-      await chat.sendMessage('Consent enforcement is currently disabled.');
+      await chat.sendMessage("Consent enforcement is currently disabled.");
       return;
     }
     await markConsentGranted(chat.id._serialized);
     await chat.setMessagesAdminsOnly(false).catch(() => undefined);
-    await chat.sendMessage('Consent recorded. Automated scanning enabled for this group.');
-    metrics.waGroupEvents.labels('consent_granted').inc();
+    await chat.sendMessage(
+      "Consent recorded. Automated scanning enabled for this group.",
+    );
+    metrics.waGroupEvents.labels("consent_granted").inc();
     await groupStore.recordEvent({
       chatId: chat.id._serialized,
-      type: 'consent_granted',
+      type: "consent_granted",
       timestamp: Date.now(),
       actorId: msg.author || msg.from,
-      metadata: { source: 'command' },
+      metadata: { source: "command" },
     });
   },
   consentstatus: async ({ chat }) => {
-    const status = await getConsentStatus(chat.id._serialized) ?? 'none';
+    const status = (await getConsentStatus(chat.id._serialized)) ?? "none";
     await chat.sendMessage(`Consent status: ${status}`);
   },
   approve: async ({ client, chat, parts, msg }) => {
@@ -9654,127 +11807,192 @@ const adminCommandHandlers: Record<string, (ctx: AdminCommandContext) => Promise
     if (!target) {
       const pending = await listPendingMemberships(chat.id._serialized);
       if (pending.length === 0) {
-        await chat.sendMessage('No pending membership requests recorded.');
+        await chat.sendMessage("No pending membership requests recorded.");
       } else {
-        await chat.sendMessage(`Pending membership requests: ${pending.join(', ')}`);
+        await chat.sendMessage(
+          `Pending membership requests: ${pending.join(", ")}`,
+        );
       }
       return;
     }
     try {
-      await client.approveGroupMembershipRequests(chat.id._serialized, { requesterIds: [target], sleep: null });
+      await client.approveGroupMembershipRequests(chat.id._serialized, {
+        requesterIds: [target],
+        sleep: null,
+      });
       await removePendingMembership(chat.id._serialized, target);
-      metrics.waMembershipApprovals.labels('override').inc();
-      metrics.waGovernanceActions.labels('membership_override').inc();
-      metrics.waGroupEvents.labels('membership_override').inc();
+      metrics.waMembershipApprovals.labels("override").inc();
+      metrics.waGovernanceActions.labels("membership_override").inc();
+      metrics.waGroupEvents.labels("membership_override").inc();
       await groupStore.recordEvent({
         chatId: chat.id._serialized,
-        type: 'membership_override',
+        type: "membership_override",
         timestamp: Date.now(),
         actorId: msg.author || msg.from,
         recipients: [target],
       });
       await chat.sendMessage(`Approved membership request for ${target}.`);
     } catch (err) {
-      metrics.waMembershipApprovals.labels('error').inc();
-      logger.warn({ err, target }, 'Failed to approve membership via override');
+      metrics.waMembershipApprovals.labels("error").inc();
+      logger.warn({ err, target }, "Failed to approve membership via override");
       await chat.sendMessage(`Unable to approve ${target}.`);
     }
   },
   governance: async ({ chat, parts }) => {
-    const limit = Number.isFinite(Number(parts[2])) ? Math.max(1, Math.min(25, Number(parts[2]))) : 10;
-    const events = await groupStore.listRecentEvents(chat.id._serialized, limit);
+    const limit = Number.isFinite(Number(parts[2]))
+      ? Math.max(1, Math.min(25, Number(parts[2])))
+      : 10;
+    const events = await groupStore.listRecentEvents(
+      chat.id._serialized,
+      limit,
+    );
     if (events.length === 0) {
-      await chat.sendMessage('No recent governance events recorded.');
+      await chat.sendMessage("No recent governance events recorded.");
       return;
     }
     const lines = events.map((event) => {
       const timestamp = new Date(event.timestamp).toISOString();
-      const recipients = (event.recipients && event.recipients.length > 0) ? ` -> ${event.recipients.join(', ')}` : '';
-      const detail = event.details ? ` :: ${event.details}` : '';
-      return `- ${timestamp} [${event.type}] ${event.actorId ?? 'unknown'}${recipients}${detail}`;
+      const recipients =
+        event.recipients && event.recipients.length > 0
+          ? ` -> ${event.recipients.join(", ")}`
+          : "";
+      const detail = event.details ? ` :: ${event.details}` : "";
+      return `- ${timestamp} [${event.type}] ${event.actorId ?? "unknown"}${recipients}${detail}`;
     });
-    await chat.sendMessage(`Recent governance events:\n${lines.join('\n')}`);
+    await chat.sendMessage(`Recent governance events:\n${lines.join("\n")}`);
   },
   pair: async ({ chat, senderId, pairingOrchestrator }) => {
     if (!pairingOrchestrator) {
-      await chat.sendMessage('Pairing orchestrator not available (phone pairing may be disabled).');
+      await chat.sendMessage(
+        "Pairing orchestrator not available (phone pairing may be disabled).",
+      );
       return;
     }
     const status = pairingOrchestrator.getStatus();
     if (status.rateLimited && status.nextAttemptIn > 0) {
       const minutes = Math.ceil(status.nextAttemptIn / 60000);
       const seconds = Math.ceil((status.nextAttemptIn % 60000) / 1000);
-      await chat.sendMessage(`⚠️ Rate limited. Please wait ${minutes}m ${seconds}s before requesting another code.`);
+      await chat.sendMessage(
+        `⚠️ Rate limited. Please wait ${minutes}m ${seconds}s before requesting another code.`,
+      );
       return;
     }
     if (!status.canRequest) {
-      await chat.sendMessage('Cannot request pairing code at this time (session may already be active).');
+      await chat.sendMessage(
+        "Cannot request pairing code at this time (session may already be active).",
+      );
       return;
     }
     const requested = pairingOrchestrator.requestManually();
     if (requested) {
-      await chat.sendMessage('Pairing code request sent. Check logs/terminal for the code.');
-      logger.info({ chatId: chat.id._serialized, senderId }, 'Manual pairing code requested via admin command');
+      await chat.sendMessage(
+        "Pairing code request sent. Check logs/terminal for the code.",
+      );
+      logger.info(
+        { chatId: chat.id._serialized, senderId },
+        "Manual pairing code requested via admin command",
+      );
     } else {
-      await chat.sendMessage('Unable to request pairing code. Check status with !scanner pair-status.');
+      await chat.sendMessage(
+        "Unable to request pairing code. Check status with !scanner pair-status.",
+      );
     }
   },
-  'pair-status': async ({ chat, pairingOrchestrator }) => {
+  "pair-status": async ({ chat, pairingOrchestrator }) => {
     if (!pairingOrchestrator) {
-      await chat.sendMessage('Pairing orchestrator not available.');
+      await chat.sendMessage("Pairing orchestrator not available.");
       return;
     }
     const status = pairingOrchestrator.getStatus();
     if (status.canRequest) {
-      await chat.sendMessage('✅ Ready to request pairing code. Use !scanner pair');
+      await chat.sendMessage(
+        "✅ Ready to request pairing code. Use !scanner pair",
+      );
     } else if (status.rateLimited && status.nextAttemptIn > 0) {
       const minutes = Math.ceil(status.nextAttemptIn / 60000);
       const seconds = Math.ceil((status.nextAttemptIn % 60000) / 1000);
-      const lastAttempt = status.lastAttemptAt ? new Date(status.lastAttemptAt).toLocaleTimeString() : 'unknown';
-      await chat.sendMessage(`⚠️ Rate limited\nLast attempt: ${lastAttempt}\nRetry in: ${minutes}m ${seconds}s\nConsecutive rate limits: ${status.consecutiveRateLimits}`);
+      const lastAttempt = status.lastAttemptAt
+        ? new Date(status.lastAttemptAt).toLocaleTimeString()
+        : "unknown";
+      await chat.sendMessage(
+        `⚠️ Rate limited\nLast attempt: ${lastAttempt}\nRetry in: ${minutes}m ${seconds}s\nConsecutive rate limits: ${status.consecutiveRateLimits}`,
+      );
     } else {
-      await chat.sendMessage(`Status: Session may already be active or code delivered.`);
+      await chat.sendMessage(
+        `Status: Session may already be active or code delivered.`,
+      );
     }
   },
-  'pair-reset': async ({ chat, senderId, remotePhone, redis, sender, isSelfCommand }) => {
+  "pair-reset": async ({
+    chat,
+    senderId,
+    remotePhone,
+    redis,
+    sender,
+    isSelfCommand,
+  }) => {
     if (!sender?.isAdmin && !sender?.isSuperAdmin && !isSelfCommand) {
-      await chat.sendMessage('Only admins can use this command.');
+      await chat.sendMessage("Only admins can use this command.");
       return;
     }
     if (remotePhone) {
       const cacheKey = pairingCodeCacheKey(remotePhone);
       await redis.del(cacheKey);
-      await chat.sendMessage('Pairing code cache cleared.');
-      logger.info({ chatId: chat.id._serialized, senderId }, 'Pairing cache cleared via admin command');
+      await chat.sendMessage("Pairing code cache cleared.");
+      logger.info(
+        { chatId: chat.id._serialized, senderId },
+        "Pairing cache cleared via admin command",
+      );
     } else {
-      await chat.sendMessage('No phone number configured for remote auth.');
+      await chat.sendMessage("No phone number configured for remote auth.");
     }
   },
 };
 
-export async function handleAdminCommand(client: Client, msg: Message, existingChat: GroupChat | undefined, redis: Redis) {
+export async function handleAdminCommand(
+  client: Client,
+  msg: Message,
+  existingChat: GroupChat | undefined,
+  redis: Redis,
+) {
   const chat = existingChat ?? (await msg.getChat());
   if (!(chat as GroupChat).isGroup) return;
   const gc = chat as GroupChat;
   const participants = await hydrateParticipantList(gc);
   const senderId = msg.author || (msg.fromMe && botWid ? botWid : undefined);
   const senderVariants = expandWidVariants(senderId);
-  const isSelfCommand = msg.fromMe || (botWid !== null && senderVariants.includes(botWid));
-  const parts = (msg.body || '').trim().split(/\s+/);
-  logger.info({ chatId: gc.id._serialized, senderId, senderVariants, isSelfCommand, participantCount: participants.length, command: parts[1] ?? null }, 'Received admin command');
+  const isSelfCommand =
+    msg.fromMe || (botWid !== null && senderVariants.includes(botWid));
+  const parts = (msg.body || "").trim().split(/\s+/);
+  logger.info(
+    {
+      chatId: gc.id._serialized,
+      senderId,
+      senderVariants,
+      isSelfCommand,
+      participantCount: participants.length,
+      command: parts[1] ?? null,
+    },
+    "Received admin command",
+  );
 
   // Resolve contact to handle LID vs PN mismatch
   const contact = await msg.getContact();
   const contactId = contact.id._serialized;
 
   // Try to find sender by contact ID first, then by variants
-  let sender = participants.find(p => p.id._serialized === contactId);
+  let sender = participants.find((p) => p.id._serialized === contactId);
   if (!sender) {
-    sender = participants.find(p => senderVariants.includes(p.id._serialized));
+    sender = participants.find((p) =>
+      senderVariants.includes(p.id._serialized),
+    );
   }
 
   if (!isSelfCommand && !sender?.isAdmin && !sender?.isSuperAdmin) {
-    logger.info({ chatId: gc.id._serialized, senderId, contactId }, 'Ignoring command from non-admin sender');
+    logger.info(
+      { chatId: gc.id._serialized, senderId, contactId },
+      "Ignoring command from non-admin sender",
+    );
     return;
   }
 
@@ -9788,7 +12006,7 @@ export async function handleAdminCommand(client: Client, msg: Message, existingC
     const csrfToken = config.controlPlane.csrfToken;
     const authHeaders = {
       authorization: `Bearer ${token}`,
-      'x-csrf-token': csrfToken,
+      "x-csrf-token": csrfToken,
     };
 
     await handler({
@@ -9806,25 +12024,26 @@ export async function handleAdminCommand(client: Client, msg: Message, existingC
       isSelfCommand,
     });
   } else {
-    await chat.sendMessage('Commands: !scanner mute|unmute|status|rescan <url>|consent|consentstatus|approve [memberId]|governance [limit]|pair|pair-status|pair-reset');
+    await chat.sendMessage(
+      "Commands: !scanner mute|unmute|status|rescan <url>|consent|consentstatus|approve [memberId]|governance [limit]|pair|pair-status|pair-reset",
+    );
   }
 }
 
-if (process.env.NODE_ENV !== 'test') {
-  main().catch(err => {
-    logger.error({ err }, 'Fatal in wa-client');
+if (process.env.NODE_ENV !== "test") {
+  main().catch((err) => {
+    logger.error({ err }, "Fatal in wa-client");
     process.exit(1);
   });
 }
-
 ```
 
 # File: services/wa-client/src/crypto/dataKeyProvider.ts
 
 ```typescript
-import { createHash } from 'node:crypto';
-import type { Logger } from 'pino';
-import type { config } from '@wbscanner/shared';
+import { createHash } from "node:crypto";
+import type { Logger } from "pino";
+import type { config } from "@wbscanner/shared";
 
 export interface RemoteAuthCryptoConfig {
   store: string;
@@ -9847,90 +12066,121 @@ export interface EncryptionMaterials {
 }
 
 function deriveKey(base: Buffer, context: string): Buffer {
-  return createHash('sha256').update(base).update(context).digest();
+  return createHash("sha256").update(base).update(context).digest();
 }
 
 function decodeBase64(value: string, label: string): Buffer {
   try {
-    return Buffer.from(value, 'base64');
+    return Buffer.from(value, "base64");
   } catch (err) {
-    throw new Error(`Failed to decode base64 value for ${label}: ${(err as Error).message}`);
+    throw new Error(
+      `Failed to decode base64 value for ${label}: ${(err as Error).message}`,
+    );
   }
 }
 
-async function decryptWithKms(ciphertextB64: string, kmsKeyId: string, logger: Logger): Promise<Buffer> {
+async function decryptWithKms(
+  ciphertextB64: string,
+  kmsKeyId: string,
+  logger: Logger,
+): Promise<Buffer> {
   const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION;
   if (!region) {
-    throw new Error('AWS_REGION (or AWS_DEFAULT_REGION) must be set when using KMS decryption for RemoteAuth.');
+    throw new Error(
+      "AWS_REGION (or AWS_DEFAULT_REGION) must be set when using KMS decryption for RemoteAuth.",
+    );
   }
-  const { KMSClient, DecryptCommand } = await import('@aws-sdk/client-kms');
+  const { KMSClient, DecryptCommand } = await import("@aws-sdk/client-kms");
   const client = new KMSClient({ region });
-  const ciphertext = decodeBase64(ciphertextB64, 'WA_REMOTE_AUTH_ENCRYPTED_DATA_KEY');
+  const ciphertext = decodeBase64(
+    ciphertextB64,
+    "WA_REMOTE_AUTH_ENCRYPTED_DATA_KEY",
+  );
   const command = new DecryptCommand({
     CiphertextBlob: ciphertext,
     KeyId: kmsKeyId,
   });
   const response = await client.send(command);
   if (!response.Plaintext) {
-    throw new Error('KMS decrypt response did not include Plaintext.');
+    throw new Error("KMS decrypt response did not include Plaintext.");
   }
-  logger.info({ kmsKeyId }, 'Decrypted RemoteAuth data key using AWS KMS');
+  logger.info({ kmsKeyId }, "Decrypted RemoteAuth data key using AWS KMS");
   return Buffer.from(response.Plaintext);
 }
 
-async function decryptWithVault(options: RemoteAuthCryptoConfig, logger: Logger): Promise<Buffer> {
-  const { vaultAddress, vaultTransitPath, vaultToken, encryptedDataKey } = options;
+async function decryptWithVault(
+  options: RemoteAuthCryptoConfig,
+  logger: Logger,
+): Promise<Buffer> {
+  const { vaultAddress, vaultTransitPath, vaultToken, encryptedDataKey } =
+    options;
   if (!vaultAddress || !vaultTransitPath || !vaultToken || !encryptedDataKey) {
-    throw new Error('Vault configuration incomplete; require address, transit path, token, and encrypted data key.');
+    throw new Error(
+      "Vault configuration incomplete; require address, transit path, token, and encrypted data key.",
+    );
   }
-  const endpoint = `${vaultAddress.replace(/\/$/, '')}/v1/${vaultTransitPath.replace(/^\//, '')}/decrypt`;
+  const endpoint = `${vaultAddress.replace(/\/$/, "")}/v1/${vaultTransitPath.replace(/^\//, "")}/decrypt`;
   const resp = await fetch(endpoint, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      'X-Vault-Token': vaultToken,
+      "Content-Type": "application/json",
+      "X-Vault-Token": vaultToken,
     },
     body: JSON.stringify({ ciphertext: encryptedDataKey }),
   });
   if (!resp.ok) {
     const body = await resp.text();
-    throw new Error(`Vault transit decrypt failed: ${resp.status} ${resp.statusText} - ${body}`);
+    throw new Error(
+      `Vault transit decrypt failed: ${resp.status} ${resp.statusText} - ${body}`,
+    );
   }
-  const json = await resp.json() as { data?: { plaintext?: string } };
+  const json = (await resp.json()) as { data?: { plaintext?: string } };
   const plaintext = json?.data?.plaintext;
   if (!plaintext) {
-    throw new Error('Vault transit decrypt response missing plaintext field.');
+    throw new Error("Vault transit decrypt response missing plaintext field.");
   }
-  logger.info('Decrypted RemoteAuth data key using Vault transit');
-  return decodeBase64(plaintext, 'vault plaintext');
+  logger.info("Decrypted RemoteAuth data key using Vault transit");
+  return decodeBase64(plaintext, "vault plaintext");
 }
 
-async function resolveDataKey(options: RemoteAuthCryptoConfig, logger: Logger): Promise<{ key: Buffer; source: string }> {
+async function resolveDataKey(
+  options: RemoteAuthCryptoConfig,
+  logger: Logger,
+): Promise<{ key: Buffer; source: string }> {
   if (options.dataKey) {
-    logger.info('Using raw RemoteAuth data key from WA_REMOTE_AUTH_DATA_KEY');
-    return { key: decodeBase64(options.dataKey, 'WA_REMOTE_AUTH_DATA_KEY'), source: 'env' };
+    logger.info("Using raw RemoteAuth data key from WA_REMOTE_AUTH_DATA_KEY");
+    return {
+      key: decodeBase64(options.dataKey, "WA_REMOTE_AUTH_DATA_KEY"),
+      source: "env",
+    };
   }
   if (options.encryptedDataKey && options.kmsKeyId) {
-    const key = await decryptWithKms(options.encryptedDataKey, options.kmsKeyId, logger);
-    return { key, source: 'kms' };
+    const key = await decryptWithKms(
+      options.encryptedDataKey,
+      options.kmsKeyId,
+      logger,
+    );
+    return { key, source: "kms" };
   }
   if (options.vaultTransitPath && options.encryptedDataKey) {
     const key = await decryptWithVault(options, logger);
-    return { key, source: 'vault' };
+    return { key, source: "vault" };
   }
-  throw new Error('RemoteAuth encryption requires WA_REMOTE_AUTH_DATA_KEY, or KMS/Vault configuration.');
+  throw new Error(
+    "RemoteAuth encryption requires WA_REMOTE_AUTH_DATA_KEY, or KMS/Vault configuration.",
+  );
 }
 
 let cachedMaterials: EncryptionMaterials | undefined;
 
 export async function loadEncryptionMaterials(
   options: RemoteAuthCryptoConfig,
-  logger: Logger
+  logger: Logger,
 ): Promise<EncryptionMaterials> {
   if (cachedMaterials) return cachedMaterials;
   const { key, source } = await resolveDataKey(options, logger);
-  const encryptionKey = deriveKey(key, 'wbscanner-wa-enc');
-  const hmacKey = deriveKey(key, 'wbscanner-wa-hmac');
+  const encryptionKey = deriveKey(key, "wbscanner-wa-enc");
+  const hmacKey = deriveKey(key, "wbscanner-wa-hmac");
   cachedMaterials = {
     encryptionKey,
     hmacKey,
@@ -9940,14 +12190,19 @@ export async function loadEncryptionMaterials(
 }
 
 export type WaConfig = typeof config.wa;
-
 ```
 
 # File: services/wa-client/src/crypto/secureEnvelope.ts
 
 ```typescript
-import { randomBytes, createCipheriv, createDecipheriv, createHmac, timingSafeEqual } from 'node:crypto';
-import type { EncryptionMaterials } from './dataKeyProvider';
+import {
+  randomBytes,
+  createCipheriv,
+  createDecipheriv,
+  createHmac,
+  timingSafeEqual,
+} from "node:crypto";
+import type { EncryptionMaterials } from "./dataKeyProvider";
 
 export interface EncryptedPayload {
   ciphertext: string;
@@ -9957,15 +12212,22 @@ export interface EncryptedPayload {
   version: number;
 }
 
-const CIPHER_ALGO = 'aes-256-gcm';
-const HMAC_ALGO = 'sha256';
+const CIPHER_ALGO = "aes-256-gcm";
+const HMAC_ALGO = "sha256";
 const PAYLOAD_VERSION = 1;
 
-function buildMacInput(iv: Buffer, authTag: Buffer, ciphertext: Buffer): Buffer {
+function buildMacInput(
+  iv: Buffer,
+  authTag: Buffer,
+  ciphertext: Buffer,
+): Buffer {
   return Buffer.concat([iv, authTag, ciphertext]);
 }
 
-export function encryptPayload(plaintext: Buffer, materials: EncryptionMaterials): EncryptedPayload {
+export function encryptPayload(
+  plaintext: Buffer,
+  materials: EncryptionMaterials,
+): EncryptedPayload {
   const iv = randomBytes(12);
   const cipher = createCipheriv(CIPHER_ALGO, materials.encryptionKey, iv);
   const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
@@ -9973,42 +12235,57 @@ export function encryptPayload(plaintext: Buffer, materials: EncryptionMaterials
   const payload = buildMacInput(iv, authTag, ciphertext);
   const mac = createHmac(HMAC_ALGO, materials.hmacKey).update(payload).digest();
   return {
-    ciphertext: ciphertext.toString('base64'),
-    iv: iv.toString('base64'),
-    authTag: authTag.toString('base64'),
-    hmac: mac.toString('base64'),
+    ciphertext: ciphertext.toString("base64"),
+    iv: iv.toString("base64"),
+    authTag: authTag.toString("base64"),
+    hmac: mac.toString("base64"),
     version: PAYLOAD_VERSION,
   };
 }
 
-function verifyMac(iv: Buffer, authTag: Buffer, ciphertext: Buffer, macB64: string, materials: EncryptionMaterials): void {
+function verifyMac(
+  iv: Buffer,
+  authTag: Buffer,
+  ciphertext: Buffer,
+  macB64: string,
+  materials: EncryptionMaterials,
+): void {
   const payload = buildMacInput(iv, authTag, ciphertext);
-  const expected = createHmac(HMAC_ALGO, materials.hmacKey).update(payload).digest();
-  const provided = Buffer.from(macB64, 'base64');
-  if (expected.length !== provided.length || !timingSafeEqual(expected, provided)) {
-    throw new Error('Encrypted payload failed HMAC verification');
+  const expected = createHmac(HMAC_ALGO, materials.hmacKey)
+    .update(payload)
+    .digest();
+  const provided = Buffer.from(macB64, "base64");
+  if (
+    expected.length !== provided.length ||
+    !timingSafeEqual(expected, provided)
+  ) {
+    throw new Error("Encrypted payload failed HMAC verification");
   }
 }
 
-export function decryptPayload(payload: EncryptedPayload, materials: EncryptionMaterials): Buffer {
+export function decryptPayload(
+  payload: EncryptedPayload,
+  materials: EncryptionMaterials,
+): Buffer {
   if ((payload.version ?? PAYLOAD_VERSION) !== PAYLOAD_VERSION) {
-    throw new Error(`Unsupported RemoteAuth payload version: ${payload.version}`);
+    throw new Error(
+      `Unsupported RemoteAuth payload version: ${payload.version}`,
+    );
   }
-  const iv = Buffer.from(payload.iv, 'base64');
-  const authTag = Buffer.from(payload.authTag, 'base64');
-  const ciphertext = Buffer.from(payload.ciphertext, 'base64');
+  const iv = Buffer.from(payload.iv, "base64");
+  const authTag = Buffer.from(payload.authTag, "base64");
+  const ciphertext = Buffer.from(payload.ciphertext, "base64");
   verifyMac(iv, authTag, ciphertext, payload.hmac, materials);
   const decipher = createDecipheriv(CIPHER_ALGO, materials.encryptionKey, iv);
   decipher.setAuthTag(authTag);
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
 }
-
 ```
 
 # File: services/wa-client/src/state/messageStore.ts
 
 ```typescript
-import type Redis from 'ioredis';
+import type Redis from "ioredis";
 
 export interface StoredMessageState {
   chatId: string;
@@ -10021,7 +12298,12 @@ export interface StoredMessageState {
   revoked?: boolean;
   revokedAt?: number | null;
   verdictMessageId?: string;
-  verdictHistory?: Array<{ messageId: string; sentAt: number; attempt?: number; status?: string }>;
+  verdictHistory?: Array<{
+    messageId: string;
+    sentAt: number;
+    attempt?: number;
+    status?: string;
+  }>;
   reactions?: Record<string, string>;
   mentionedIds?: string[];
   groupMentions?: string[];
@@ -10040,7 +12322,11 @@ function stateKey(chatId: string, messageId: string) {
   return `wa:msg:${chatId}:${messageId}`;
 }
 
-async function loadState(redis: Redis, chatId: string, messageId: string): Promise<StoredMessageState | null> {
+async function loadState(
+  redis: Redis,
+  chatId: string,
+  messageId: string,
+): Promise<StoredMessageState | null> {
   const raw = await redis.get(stateKey(chatId, messageId));
   if (!raw) return null;
   try {
@@ -10050,8 +12336,16 @@ async function loadState(redis: Redis, chatId: string, messageId: string): Promi
   }
 }
 
-async function persistState(redis: Redis, state: StoredMessageState): Promise<void> {
-  await redis.set(stateKey(state.chatId, state.messageId), JSON.stringify(state), 'EX', TTL_SECONDS);
+async function persistState(
+  redis: Redis,
+  state: StoredMessageState,
+): Promise<void> {
+  await redis.set(
+    stateKey(state.chatId, state.messageId),
+    JSON.stringify(state),
+    "EX",
+    TTL_SECONDS,
+  );
 }
 
 type EnsureParams = {
@@ -10068,7 +12362,10 @@ type EnsureParams = {
   ephemeral?: boolean;
 };
 
-function updateExistingStateFromEnsureParams(existing: StoredMessageState, params: EnsureParams): boolean {
+function updateExistingStateFromEnsureParams(
+  existing: StoredMessageState,
+  params: EnsureParams,
+): boolean {
   let mutated = false;
 
   if (params.body && !existing.originalBody) {
@@ -10077,12 +12374,20 @@ function updateExistingStateFromEnsureParams(existing: StoredMessageState, param
     mutated = true;
   }
 
-  if (params.mentionedIds && params.mentionedIds.length > 0 && !existing.mentionedIds) {
+  if (
+    params.mentionedIds &&
+    params.mentionedIds.length > 0 &&
+    !existing.mentionedIds
+  ) {
     existing.mentionedIds = Array.from(new Set(params.mentionedIds));
     mutated = true;
   }
 
-  if (params.groupMentions && params.groupMentions.length > 0 && !existing.groupMentions) {
+  if (
+    params.groupMentions &&
+    params.groupMentions.length > 0 &&
+    !existing.groupMentions
+  ) {
     existing.groupMentions = Array.from(new Set(params.groupMentions));
     mutated = true;
   }
@@ -10092,7 +12397,10 @@ function updateExistingStateFromEnsureParams(existing: StoredMessageState, param
     mutated = true;
   }
 
-  if (typeof params.forwardingScore === 'number' && existing.forwardingScore === undefined) {
+  if (
+    typeof params.forwardingScore === "number" &&
+    existing.forwardingScore === undefined
+  ) {
     existing.forwardingScore = params.forwardingScore;
     mutated = true;
   }
@@ -10122,8 +12430,12 @@ function createInitialState(params: EnsureParams): StoredMessageState {
     revoked: false,
     verdictHistory: [],
     reactions: {},
-    mentionedIds: params.mentionedIds ? Array.from(new Set(params.mentionedIds)) : undefined,
-    groupMentions: params.groupMentions ? Array.from(new Set(params.groupMentions)) : undefined,
+    mentionedIds: params.mentionedIds
+      ? Array.from(new Set(params.mentionedIds))
+      : undefined,
+    groupMentions: params.groupMentions
+      ? Array.from(new Set(params.groupMentions))
+      : undefined,
     quotedMessageId: params.quotedMessageId,
     forwardingScore: params.forwardingScore,
     ackHistory: [],
@@ -10135,7 +12447,10 @@ function createInitialState(params: EnsureParams): StoredMessageState {
   };
 }
 
-export async function ensureMessageState(redis: Redis, params: EnsureParams): Promise<StoredMessageState> {
+export async function ensureMessageState(
+  redis: Redis,
+  params: EnsureParams,
+): Promise<StoredMessageState> {
   const existing = await loadState(redis, params.chatId, params.messageId);
   if (existing) {
     const mutated = updateExistingStateFromEnsureParams(existing, params);
@@ -10150,8 +12465,16 @@ export async function ensureMessageState(redis: Redis, params: EnsureParams): Pr
   return initial;
 }
 
-export async function updateMessageBody(redis: Redis, params: { chatId: string; messageId: string; newBody: string }): Promise<StoredMessageState | null> {
-  const state = (await loadState(redis, params.chatId, params.messageId)) ?? (await ensureMessageState(redis, { chatId: params.chatId, messageId: params.messageId }));
+export async function updateMessageBody(
+  redis: Redis,
+  params: { chatId: string; messageId: string; newBody: string },
+): Promise<StoredMessageState | null> {
+  const state =
+    (await loadState(redis, params.chatId, params.messageId)) ??
+    (await ensureMessageState(redis, {
+      chatId: params.chatId,
+      messageId: params.messageId,
+    }));
   const edits = state.edits ?? [];
   edits.push({ body: params.newBody, editedAt: Date.now() });
   state.edits = edits.slice(-20);
@@ -10163,7 +12486,10 @@ export async function updateMessageBody(redis: Redis, params: { chatId: string; 
   return state;
 }
 
-export async function appendMessageEdit(redis: Redis, params: { chatId: string; messageId: string; newBody: string }): Promise<StoredMessageState | null> {
+export async function appendMessageEdit(
+  redis: Redis,
+  params: { chatId: string; messageId: string; newBody: string },
+): Promise<StoredMessageState | null> {
   const state = await loadState(redis, params.chatId, params.messageId);
   if (!state) return null;
 
@@ -10176,7 +12502,10 @@ export async function appendMessageEdit(redis: Redis, params: { chatId: string; 
   return state;
 }
 
-export async function markMessageRevoked(redis: Redis, params: { chatId: string; messageId: string }): Promise<StoredMessageState | null> {
+export async function markMessageRevoked(
+  redis: Redis,
+  params: { chatId: string; messageId: string },
+): Promise<StoredMessageState | null> {
   const state = await loadState(redis, params.chatId, params.messageId);
   if (!state) return null;
   state.revoked = true;
@@ -10185,24 +12514,59 @@ export async function markMessageRevoked(redis: Redis, params: { chatId: string;
   return state;
 }
 
-export async function recordVerdictAssociation(redis: Redis, params: { chatId: string; messageId: string; verdictMessageId: string; attempt?: number; status?: string }): Promise<void> {
-  const state = (await loadState(redis, params.chatId, params.messageId)) ?? (await ensureMessageState(redis, { chatId: params.chatId, messageId: params.messageId }));
+export async function recordVerdictAssociation(
+  redis: Redis,
+  params: {
+    chatId: string;
+    messageId: string;
+    verdictMessageId: string;
+    attempt?: number;
+    status?: string;
+  },
+): Promise<void> {
+  const state =
+    (await loadState(redis, params.chatId, params.messageId)) ??
+    (await ensureMessageState(redis, {
+      chatId: params.chatId,
+      messageId: params.messageId,
+    }));
   state.verdictMessageId = params.verdictMessageId;
   const history = state.verdictHistory ?? [];
-  history.push({ messageId: params.verdictMessageId, sentAt: Date.now(), attempt: params.attempt, status: params.status ?? 'sent' });
+  history.push({
+    messageId: params.verdictMessageId,
+    sentAt: Date.now(),
+    attempt: params.attempt,
+    status: params.status ?? "sent",
+  });
   state.verdictHistory = history.slice(-10);
   await persistState(redis, state);
 }
 
-export async function clearVerdictAssociation(redis: Redis, params: { chatId: string; messageId: string }): Promise<void> {
+export async function clearVerdictAssociation(
+  redis: Redis,
+  params: { chatId: string; messageId: string },
+): Promise<void> {
   const state = await loadState(redis, params.chatId, params.messageId);
   if (!state) return;
   state.verdictMessageId = undefined;
   await persistState(redis, state);
 }
 
-export async function recordReaction(redis: Redis, params: { chatId: string; messageId: string; senderId: string; reaction: string | null }): Promise<void> {
-  const state = (await loadState(redis, params.chatId, params.messageId)) ?? (await ensureMessageState(redis, { chatId: params.chatId, messageId: params.messageId }));
+export async function recordReaction(
+  redis: Redis,
+  params: {
+    chatId: string;
+    messageId: string;
+    senderId: string;
+    reaction: string | null;
+  },
+): Promise<void> {
+  const state =
+    (await loadState(redis, params.chatId, params.messageId)) ??
+    (await ensureMessageState(redis, {
+      chatId: params.chatId,
+      messageId: params.messageId,
+    }));
   const reactions = state.reactions ?? {};
   if (params.reaction) {
     reactions[params.senderId] = params.reaction;
@@ -10213,7 +12577,11 @@ export async function recordReaction(redis: Redis, params: { chatId: string; mes
   await persistState(redis, state);
 }
 
-export async function getMessageState(redis: Redis, chatId: string, messageId: string): Promise<StoredMessageState | null> {
+export async function getMessageState(
+  redis: Redis,
+  chatId: string,
+  messageId: string,
+): Promise<StoredMessageState | null> {
   return loadState(redis, chatId, messageId);
 }
 
@@ -10228,11 +12596,16 @@ export interface MetadataUpdateParams {
   ephemeral?: boolean;
 }
 
-function updateMentionCollections(state: StoredMessageState, params: MetadataUpdateParams): boolean {
+function updateMentionCollections(
+  state: StoredMessageState,
+  params: MetadataUpdateParams,
+): boolean {
   let mutated = false;
 
   if (params.mentionedIds && params.mentionedIds.length > 0) {
-    const next = Array.from(new Set([...(state.mentionedIds ?? []), ...params.mentionedIds]));
+    const next = Array.from(
+      new Set([...(state.mentionedIds ?? []), ...params.mentionedIds]),
+    );
     if ((state.mentionedIds ?? []).length !== next.length) {
       state.mentionedIds = next;
       mutated = true;
@@ -10240,7 +12613,9 @@ function updateMentionCollections(state: StoredMessageState, params: MetadataUpd
   }
 
   if (params.groupMentions && params.groupMentions.length > 0) {
-    const next = Array.from(new Set([...(state.groupMentions ?? []), ...params.groupMentions]));
+    const next = Array.from(
+      new Set([...(state.groupMentions ?? []), ...params.groupMentions]),
+    );
     if ((state.groupMentions ?? []).length !== next.length) {
       state.groupMentions = next;
       mutated = true;
@@ -10250,7 +12625,10 @@ function updateMentionCollections(state: StoredMessageState, params: MetadataUpd
   return mutated;
 }
 
-function updateQuotedAndForwarding(state: StoredMessageState, params: MetadataUpdateParams): boolean {
+function updateQuotedAndForwarding(
+  state: StoredMessageState,
+  params: MetadataUpdateParams,
+): boolean {
   let mutated = false;
 
   if (params.quotedMessageId && !state.quotedMessageId) {
@@ -10258,7 +12636,10 @@ function updateQuotedAndForwarding(state: StoredMessageState, params: MetadataUp
     mutated = true;
   }
 
-  if (typeof params.forwardingScore === 'number' && state.forwardingScore === undefined) {
+  if (
+    typeof params.forwardingScore === "number" &&
+    state.forwardingScore === undefined
+  ) {
     state.forwardingScore = params.forwardingScore;
     mutated = true;
   }
@@ -10266,7 +12647,10 @@ function updateQuotedAndForwarding(state: StoredMessageState, params: MetadataUp
   return mutated;
 }
 
-function updateVisibilityFlags(state: StoredMessageState, params: MetadataUpdateParams): boolean {
+function updateVisibilityFlags(
+  state: StoredMessageState,
+  params: MetadataUpdateParams,
+): boolean {
   let mutated = false;
 
   if (params.viewOnce !== undefined && state.viewOnce !== params.viewOnce) {
@@ -10282,7 +12666,10 @@ function updateVisibilityFlags(state: StoredMessageState, params: MetadataUpdate
   return mutated;
 }
 
-export async function upsertMessageMetadata(redis: Redis, params: MetadataUpdateParams): Promise<void> {
+export async function upsertMessageMetadata(
+  redis: Redis,
+  params: MetadataUpdateParams,
+): Promise<void> {
   const state = await ensureMessageState(redis, params);
   let mutated = false;
 
@@ -10303,8 +12690,16 @@ export async function upsertMessageMetadata(redis: Redis, params: MetadataUpdate
   }
 }
 
-export async function recordMessageAck(redis: Redis, params: { chatId: string; messageId: string; ack: number }): Promise<void> {
-  const state = (await loadState(redis, params.chatId, params.messageId)) ?? (await ensureMessageState(redis, { chatId: params.chatId, messageId: params.messageId }));
+export async function recordMessageAck(
+  redis: Redis,
+  params: { chatId: string; messageId: string; ack: number },
+): Promise<void> {
+  const state =
+    (await loadState(redis, params.chatId, params.messageId)) ??
+    (await ensureMessageState(redis, {
+      chatId: params.chatId,
+      messageId: params.messageId,
+    }));
   const history = state.ackHistory ?? [];
   history.push({ ack: params.ack, at: Date.now() });
   state.ackHistory = history.slice(-20);
@@ -10314,12 +12709,19 @@ export async function recordMessageAck(redis: Redis, params: { chatId: string; m
   await persistState(redis, state);
 }
 
-export async function recordMediaUpload(redis: Redis, params: { chatId: string; messageId: string }): Promise<void> {
-  const state = (await loadState(redis, params.chatId, params.messageId)) ?? (await ensureMessageState(redis, { chatId: params.chatId, messageId: params.messageId }));
+export async function recordMediaUpload(
+  redis: Redis,
+  params: { chatId: string; messageId: string },
+): Promise<void> {
+  const state =
+    (await loadState(redis, params.chatId, params.messageId)) ??
+    (await ensureMessageState(redis, {
+      chatId: params.chatId,
+      messageId: params.messageId,
+    }));
   state.mediaUploadedAt = Date.now();
   await persistState(redis, state);
 }
-
 ```
 
 # File: services/wa-client/src/state/runtimeSession.ts
@@ -10333,8 +12735,10 @@ export class SessionNotReadyError extends Error {
   public readonly state: string | null;
 
   constructor(action: string, state: string | null) {
-    super(`WhatsApp session not ready while attempting to ${action}. Current state: ${state ?? 'unknown'}.`);
-    this.name = 'SessionNotReadyError';
+    super(
+      `WhatsApp session not ready while attempting to ${action}. Current state: ${state ?? "unknown"}.`,
+    );
+    this.name = "SessionNotReadyError";
     this.state = state;
   }
 }
@@ -10378,7 +12782,6 @@ export function resetRuntimeSessionState(): void {
   currentWaState = null;
   botWid = null;
 }
-
 ```
 
 # File: services/wa-client/src/utils/debounce.ts
@@ -10401,15 +12804,14 @@ export function createAsyncDebouncer(intervalMs: number) {
     }
   };
 }
-
 ```
 
 # File: services/wa-client/src/utils/chatResolver.ts
 
 ```typescript
-import type { Client, GroupChat, Message } from 'whatsapp-web.js';
-import type { Logger } from 'pino';
-import { assertSessionReady } from '../state/runtimeSession';
+import type { Client, GroupChat, Message } from "whatsapp-web.js";
+import type { Logger } from "pino";
+import { assertSessionReady } from "../state/runtimeSession";
 
 export class ChatLookupError extends Error {
   public readonly chatId: string;
@@ -10418,7 +12820,7 @@ export class ChatLookupError extends Error {
   constructor(chatId: string, cause: unknown) {
     const message = cause instanceof Error ? cause.message : String(cause);
     super(`Unable to load chat ${chatId}: ${message}`);
-    this.name = 'ChatLookupError';
+    this.name = "ChatLookupError";
     this.chatId = chatId;
     this.causeError = cause;
   }
@@ -10430,44 +12832,49 @@ export interface ChatResolutionResult {
 }
 
 export interface ChatResolutionOptions {
-  client: Pick<Client, 'getMessageById' | 'getChatById'>;
-  logger: Pick<Logger, 'warn'>;
+  client: Pick<Client, "getMessageById" | "getChatById">;
+  logger: Pick<Logger, "warn">;
   chatId: string;
   messageId: string;
 }
 
-export async function resolveChatForVerdict(options: ChatResolutionOptions): Promise<ChatResolutionResult> {
+export async function resolveChatForVerdict(
+  options: ChatResolutionOptions,
+): Promise<ChatResolutionResult> {
   const { client, logger, chatId, messageId } = options;
-  assertSessionReady('load chat context');
+  assertSessionReady("load chat context");
 
   let targetMessage: Message | null = null;
   try {
     targetMessage = await client.getMessageById(messageId);
   } catch (err) {
-    logger.warn({ err, messageId }, 'Failed to hydrate original message by id');
+    logger.warn({ err, messageId }, "Failed to hydrate original message by id");
   }
 
   try {
     if (targetMessage) {
-      const chat = await targetMessage.getChat() as GroupChat;
+      const chat = (await targetMessage.getChat()) as GroupChat;
       return { chat, targetMessage };
     }
-    const chat = await client.getChatById(chatId) as GroupChat;
+    const chat = (await client.getChatById(chatId)) as GroupChat;
     return { chat, targetMessage };
   } catch (err) {
     throw new ChatLookupError(chatId, err);
   }
 }
-
 ```
 
 # File: services/wa-client/src/utils/chatLookup.ts
 
 ```typescript
-import type { Logger } from 'pino';
-import type { Client, GroupChat } from 'whatsapp-web.js';
-import { describeSession, isSessionReady, type SessionSnapshot } from '../session/guards';
-import { enrichEvaluationError } from '../session/errors';
+import type { Logger } from "pino";
+import type { Client, GroupChat } from "whatsapp-web.js";
+import {
+  describeSession,
+  isSessionReady,
+  type SessionSnapshot,
+} from "../session/guards";
+import { enrichEvaluationError } from "../session/errors";
 
 interface ChatLookupParams {
   client: Client;
@@ -10477,10 +12884,15 @@ interface ChatLookupParams {
   suppressError?: boolean;
 }
 
-export async function safeGetGroupChatById(params: ChatLookupParams): Promise<GroupChat | null> {
+export async function safeGetGroupChatById(
+  params: ChatLookupParams,
+): Promise<GroupChat | null> {
   const { client, chatId, snapshot, logger, suppressError } = params;
   if (!isSessionReady(snapshot)) {
-    logger.debug({ chatId, session: describeSession(snapshot) }, 'Skipping chat lookup because session is not ready');
+    logger.debug(
+      { chatId, session: describeSession(snapshot) },
+      "Skipping chat lookup because session is not ready",
+    );
     return null;
   }
   try {
@@ -10491,34 +12903,39 @@ export async function safeGetGroupChatById(params: ChatLookupParams): Promise<Gr
     return null;
   } catch (err) {
     const wrapped = enrichEvaluationError(err, {
-      operation: 'getChatById',
+      operation: "getChatById",
       chatId,
       snapshot,
     });
     if (suppressError) {
-      logger.warn({ err: wrapped, chatId }, 'Chat lookup failed but was suppressed');
+      logger.warn(
+        { err: wrapped, chatId },
+        "Chat lookup failed but was suppressed",
+      );
       return null;
     }
     throw wrapped;
   }
 }
-
 ```
 
 # File: services/wa-client/src/utils/historySync.ts
 
 ```typescript
-import type Redis from 'ioredis';
-import type { Logger } from 'pino';
-import type { Client, GroupChat, Message } from 'whatsapp-web.js';
-import { safeGetGroupChatById } from './chatLookup';
-import type { SessionSnapshot } from '../session/guards';
+import type Redis from "ioredis";
+import type { Logger } from "pino";
+import type { Client, GroupChat, Message } from "whatsapp-web.js";
+import { safeGetGroupChatById } from "./chatLookup";
+import type { SessionSnapshot } from "../session/guards";
 
 const CHAT_CURSOR_KEY = (chatId: string) => `wa:chat:${chatId}:cursor`;
-const KNOWN_CHATS_KEY = 'wa:chats:known';
+const KNOWN_CHATS_KEY = "wa:chats:known";
 const DEFAULT_CURSOR_TTL_SECONDS = 60 * 60 * 24 * 7;
 
-export async function rememberChat(redis: Redis, chatId: string): Promise<void> {
+export async function rememberChat(
+  redis: Redis,
+  chatId: string,
+): Promise<void> {
   await redis.sadd(KNOWN_CHATS_KEY, chatId);
   await redis.expire(KNOWN_CHATS_KEY, DEFAULT_CURSOR_TTL_SECONDS);
 }
@@ -10527,12 +12944,24 @@ export async function listKnownChats(redis: Redis): Promise<string[]> {
   return redis.smembers(KNOWN_CHATS_KEY);
 }
 
-export async function updateChatCursor(redis: Redis, chatId: string, timestampMs: number): Promise<void> {
+export async function updateChatCursor(
+  redis: Redis,
+  chatId: string,
+  timestampMs: number,
+): Promise<void> {
   if (!Number.isFinite(timestampMs)) return;
-  await redis.set(CHAT_CURSOR_KEY(chatId), Math.max(timestampMs, 0).toString(), 'EX', DEFAULT_CURSOR_TTL_SECONDS);
+  await redis.set(
+    CHAT_CURSOR_KEY(chatId),
+    Math.max(timestampMs, 0).toString(),
+    "EX",
+    DEFAULT_CURSOR_TTL_SECONDS,
+  );
 }
 
-export async function getChatCursor(redis: Redis, chatId: string): Promise<number | null> {
+export async function getChatCursor(
+  redis: Redis,
+  chatId: string,
+): Promise<number | null> {
   const raw = await redis.get(CHAT_CURSOR_KEY(chatId));
   if (!raw) return null;
   const value = Number(raw);
@@ -10549,10 +12978,23 @@ interface HistorySyncParams {
   onMessage: (msg: Message, chat: GroupChat) => Promise<void>;
 }
 
-export async function syncChatHistory(params: HistorySyncParams): Promise<number> {
-  const { client, redis, logger, chatId, snapshot, limit = 200, onMessage } = params;
+export async function syncChatHistory(
+  params: HistorySyncParams,
+): Promise<number> {
+  const {
+    client,
+    redis,
+    logger,
+    chatId,
+    snapshot,
+    limit = 200,
+    onMessage,
+  } = params;
   const cursor = await getChatCursor(redis, chatId);
-  const effectiveSnapshot: SessionSnapshot = snapshot ?? { state: 'ready', wid: 'history-sync' };
+  const effectiveSnapshot: SessionSnapshot = snapshot ?? {
+    state: "ready",
+    wid: "history-sync",
+  };
   const chat = await safeGetGroupChatById({
     client,
     chatId,
@@ -10564,10 +13006,12 @@ export async function syncChatHistory(params: HistorySyncParams): Promise<number
   const groupChat = chat as GroupChat;
   await rememberChat(redis, chatId);
 
-  const messages = await groupChat.fetchMessages({ limit, fromMe: false }).catch((err) => {
-    logger.warn({ err, chatId }, 'Failed to fetch message history for chat');
-    return [] as Message[];
-  });
+  const messages = await groupChat
+    .fetchMessages({ limit, fromMe: false })
+    .catch((err) => {
+      logger.warn({ err, chatId }, "Failed to fetch message history for chat");
+      return [] as Message[];
+    });
   if (!messages || messages.length === 0) return 0;
 
   const baseline = cursor ?? null;
@@ -10588,24 +13032,26 @@ export async function syncChatHistory(params: HistorySyncParams): Promise<number
       await updateChatCursor(redis, chatId, tsMs);
       processed += 1;
     } catch (err) {
-      logger.error({ err, chatId, messageId: msg.id?._serialized }, 'Failed to sync historical message');
+      logger.error(
+        { err, chatId, messageId: msg.id?._serialized },
+        "Failed to sync historical message",
+      );
     }
   }
   return processed;
 }
-
 ```
 
 # File: services/wa-client/src/session/cleanup.ts
 
 ```typescript
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
-import type { Logger } from 'pino';
-import type { RedisRemoteAuthStore } from '../remoteAuthStore';
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import type { Logger } from "pino";
+import type { RedisRemoteAuthStore } from "../remoteAuthStore";
 
 export interface RemoteSessionCleanupOptions {
-  store: Pick<RedisRemoteAuthStore, 'delete'>;
+  store: Pick<RedisRemoteAuthStore, "delete">;
   sessionName: string;
   dataPath: string;
   logger: Logger;
@@ -10615,64 +13061,99 @@ function resolveZipPath(sessionName: string): string {
   return path.resolve(`${sessionName}.zip`);
 }
 
-async function removeIfExists(targetPath: string, options?: { recursive?: boolean }): Promise<void> {
-  await fs.rm(targetPath, { force: true, recursive: options?.recursive ?? false }).catch((err: unknown) => {
-    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return;
-    throw err;
-  });
+async function removeIfExists(
+  targetPath: string,
+  options?: { recursive?: boolean },
+): Promise<void> {
+  await fs
+    .rm(targetPath, { force: true, recursive: options?.recursive ?? false })
+    .catch((err: unknown) => {
+      if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return;
+      throw err;
+    });
 }
 
-export async function resetRemoteSessionArtifacts(options: RemoteSessionCleanupOptions): Promise<void> {
+export async function resetRemoteSessionArtifacts(
+  options: RemoteSessionCleanupOptions,
+): Promise<void> {
   const { store, sessionName, dataPath, logger } = options;
   try {
     await store.delete({ session: sessionName });
   } catch (err) {
-    logger.warn({ err, session: sessionName }, 'Failed to delete RemoteAuth session record from Redis');
+    logger.warn(
+      { err, session: sessionName },
+      "Failed to delete RemoteAuth session record from Redis",
+    );
   }
 
-  const resolvedDataPath = path.resolve(dataPath || './data/remote-session');
+  const resolvedDataPath = path.resolve(dataPath || "./data/remote-session");
   const zipPath = resolveZipPath(sessionName);
 
   await removeIfExists(zipPath).catch((err) => {
-    logger.warn({ err, zipPath }, 'Failed to delete RemoteAuth snapshot archive during force reset');
+    logger.warn(
+      { err, zipPath },
+      "Failed to delete RemoteAuth snapshot archive during force reset",
+    );
   });
 
   await removeIfExists(resolvedDataPath, { recursive: true }).catch((err) => {
-    logger.warn({ err, resolvedDataPath }, 'Failed to remove RemoteAuth data directory during force reset');
+    logger.warn(
+      { err, resolvedDataPath },
+      "Failed to remove RemoteAuth data directory during force reset",
+    );
   });
 
   try {
     await fs.mkdir(resolvedDataPath, { recursive: true });
-    const tempSessionPath = path.join(resolvedDataPath, 'wwebjs_temp_session_default', 'Default');
+    const tempSessionPath = path.join(
+      resolvedDataPath,
+      "wwebjs_temp_session_default",
+      "Default",
+    );
     await fs.mkdir(tempSessionPath, { recursive: true });
   } catch (err) {
-    logger.warn({ err, resolvedDataPath }, 'Failed to recreate RemoteAuth data directories during force reset');
+    logger.warn(
+      { err, resolvedDataPath },
+      "Failed to recreate RemoteAuth data directories during force reset",
+    );
   }
 }
 
-export async function ensureRemoteSessionDirectories(dataPath: string, logger: Logger): Promise<void> {
-  const resolvedDataPath = path.resolve(dataPath || './data/remote-session');
-  const tempSessionPath = path.join(resolvedDataPath, 'wwebjs_temp_session_default', 'Default');
+export async function ensureRemoteSessionDirectories(
+  dataPath: string,
+  logger: Logger,
+): Promise<void> {
+  const resolvedDataPath = path.resolve(dataPath || "./data/remote-session");
+  const tempSessionPath = path.join(
+    resolvedDataPath,
+    "wwebjs_temp_session_default",
+    "Default",
+  );
   try {
     await fs.mkdir(tempSessionPath, { recursive: true });
   } catch (err) {
-    logger.error({ err, resolvedDataPath }, 'Unable to create RemoteAuth session directories');
+    logger.error(
+      { err, resolvedDataPath },
+      "Unable to create RemoteAuth session directories",
+    );
     throw err;
   }
   try {
     await fs.access(tempSessionPath);
   } catch (err) {
-    logger.error({ err, resolvedDataPath }, 'RemoteAuth temp session directory still missing after creation attempt');
+    logger.error(
+      { err, resolvedDataPath },
+      "RemoteAuth temp session directory still missing after creation attempt",
+    );
     throw err;
   }
 }
-
 ```
 
 # File: services/wa-client/src/session/errors.ts
 
 ```typescript
-import type { SessionSnapshot } from './guards';
+import type { SessionSnapshot } from "./guards";
 
 export interface ChatLookupErrorContext {
   operation: string;
@@ -10681,25 +13162,35 @@ export interface ChatLookupErrorContext {
   snapshot: SessionSnapshot;
 }
 
-export function enrichEvaluationError(err: unknown, context: ChatLookupErrorContext): Error {
+export function enrichEvaluationError(
+  err: unknown,
+  context: ChatLookupErrorContext,
+): Error {
   if (err instanceof Error) {
     if (/Evaluation failed/.test(err.message)) {
       const descriptor = [
-        'WhatsApp Web evaluation failed during',
+        "WhatsApp Web evaluation failed during",
         context.operation,
-        context.chatId ? `for chat ${context.chatId}` : '',
-        context.messageId ? `message ${context.messageId}` : '',
-      ].filter(Boolean).join(' ');
-      return new Error(`${descriptor.trim()} (session ${context.snapshot.state ?? 'unknown'}, wid ${context.snapshot.wid ?? 'unset'}). Original message: ${err.message}`);
+        context.chatId ? `for chat ${context.chatId}` : "",
+        context.messageId ? `message ${context.messageId}` : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      return new Error(
+        `${descriptor.trim()} (session ${context.snapshot.state ?? "unknown"}, wid ${context.snapshot.wid ?? "unset"}). Original message: ${err.message}`,
+      );
     }
-    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
-      return new Error(`Filesystem artifact missing during ${context.operation}: ${(err as NodeJS.ErrnoException).path ?? 'unknown path'} (session ${context.snapshot.state ?? 'unknown'}, wid ${context.snapshot.wid ?? 'unset'})`);
+    if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
+      return new Error(
+        `Filesystem artifact missing during ${context.operation}: ${(err as NodeJS.ErrnoException).path ?? "unknown path"} (session ${context.snapshot.state ?? "unknown"}, wid ${context.snapshot.wid ?? "unset"})`,
+      );
     }
     return err;
   }
-  return new Error(`Unexpected error during ${context.operation}: ${String(err)}`);
+  return new Error(
+    `Unexpected error during ${context.operation}: ${String(err)}`,
+  );
 }
-
 ```
 
 # File: services/wa-client/src/session/guards.ts
@@ -10713,121 +13204,139 @@ export interface SessionSnapshot {
 
 export function isSessionReady(snapshot: SessionSnapshot): boolean {
   if (snapshot.paused) return false;
-  return snapshot.state === 'ready' && typeof snapshot.wid === 'string' && snapshot.wid.length > 0;
+  return (
+    snapshot.state === "ready" &&
+    typeof snapshot.wid === "string" &&
+    snapshot.wid.length > 0
+  );
 }
 
 export function describeSession(snapshot: SessionSnapshot): string {
   const { state, wid, paused } = snapshot;
-  const stateLabel = state ?? 'unknown';
-  const widLabel = wid ?? 'unset';
-  const pausedLabel = paused ? 'paused' : 'active';
+  const stateLabel = state ?? "unknown";
+  const widLabel = wid ?? "unset";
+  const pausedLabel = paused ? "paused" : "active";
   return `state=${stateLabel}, wid=${widLabel}, status=${pausedLabel}`;
 }
-
 ```
 
 # File: services/wa-client/src/session/sessionManager.ts
 
 ```typescript
-import { Logger } from 'pino';
-import Redis from 'ioredis';
-import { config } from '@wbscanner/shared';
-import { resetRemoteSessionArtifacts } from './cleanup';
-import { createRemoteAuthStore } from '../remoteAuthStore';
-import { loadEncryptionMaterials } from '../crypto/dataKeyProvider';
+import { Logger } from "pino";
+import Redis from "ioredis";
+import { config } from "@wbscanner/shared";
+import { resetRemoteSessionArtifacts } from "./cleanup";
+import { createRemoteAuthStore } from "../remoteAuthStore";
+import { loadEncryptionMaterials } from "../crypto/dataKeyProvider";
 
 export class SessionManager {
-    constructor(
-        private redis: Redis,
-        private logger: Logger
-    ) { }
+  constructor(
+    private redis: Redis,
+    private logger: Logger,
+  ) {}
 
-    async clearSession(reason: string): Promise<void> {
-        if (config.wa.authStrategy !== 'remote') {
-            this.logger.info('Skipping session clear (not using RemoteAuth)');
-            return;
-        }
-
-        this.logger.warn({ reason }, 'Clearing invalid RemoteAuth session to trigger re-pairing');
-
-        try {
-            const materials = await loadEncryptionMaterials(config.wa.remoteAuth, this.logger);
-            const store = createRemoteAuthStore({
-                redis: this.redis,
-                logger: this.logger,
-                prefix: `remoteauth:v1:${config.wa.remoteAuth.clientId}`,
-                materials,
-                clientId: config.wa.remoteAuth.clientId,
-            });
-
-            const sessionName = config.wa.remoteAuth.clientId ? `RemoteAuth-${config.wa.remoteAuth.clientId}` : 'RemoteAuth';
-
-            await resetRemoteSessionArtifacts({
-                store,
-                sessionName,
-                dataPath: config.wa.remoteAuth.dataPath || './data/remote-session',
-                logger: this.logger,
-            });
-
-            this.logger.info('Session cleared successfully');
-        } catch (err) {
-            this.logger.error({ err }, 'Failed to clear session');
-            throw err;
-        }
+  async clearSession(reason: string): Promise<void> {
+    if (config.wa.authStrategy !== "remote") {
+      this.logger.info("Skipping session clear (not using RemoteAuth)");
+      return;
     }
-}
 
+    this.logger.warn(
+      { reason },
+      "Clearing invalid RemoteAuth session to trigger re-pairing",
+    );
+
+    try {
+      const materials = await loadEncryptionMaterials(
+        config.wa.remoteAuth,
+        this.logger,
+      );
+      const store = createRemoteAuthStore({
+        redis: this.redis,
+        logger: this.logger,
+        prefix: `remoteauth:v1:${config.wa.remoteAuth.clientId}`,
+        materials,
+        clientId: config.wa.remoteAuth.clientId,
+      });
+
+      const sessionName = config.wa.remoteAuth.clientId
+        ? `RemoteAuth-${config.wa.remoteAuth.clientId}`
+        : "RemoteAuth";
+
+      await resetRemoteSessionArtifacts({
+        store,
+        sessionName,
+        dataPath: config.wa.remoteAuth.dataPath || "./data/remote-session",
+        logger: this.logger,
+      });
+
+      this.logger.info("Session cleared successfully");
+    } catch (err) {
+      this.logger.error({ err }, "Failed to clear session");
+      throw err;
+    }
+  }
+}
 ```
 
 # File: services/wa-client/src/events/messageRevoke.ts
 
 ```typescript
-import type { Logger } from 'pino';
-import type { Message } from 'whatsapp-web.js';
-import type { MessageStore } from '../message-store';
+import type { Logger } from "pino";
+import type { Message } from "whatsapp-web.js";
+import type { MessageStore } from "../message-store";
 
 type MetricsCounter = { inc: () => void };
 
 type Metrics = {
   waMessageRevocations: {
-    labels: (scope: 'me' | 'everyone') => MetricsCounter;
+    labels: (scope: "me" | "everyone") => MetricsCounter;
   };
 };
 
 export interface MessageRevokeDependencies {
-  messageStore: Pick<MessageStore, 'recordRevocation'>;
+  messageStore: Pick<MessageStore, "recordRevocation">;
   metrics: Metrics;
-  logger: Pick<Logger, 'warn'>;
+  logger: Pick<Logger, "warn">;
 }
 
-export async function handleSelfMessageRevoke(deps: MessageRevokeDependencies, msg: Pick<Message, 'fromMe' | 'from' | 'to' | 'id'>): Promise<void> {
+export async function handleSelfMessageRevoke(
+  deps: MessageRevokeDependencies,
+  msg: Pick<Message, "fromMe" | "from" | "to" | "id">,
+): Promise<void> {
   const { messageStore, metrics, logger } = deps;
   try {
     const chatId = msg.fromMe ? msg.to : msg.from;
     if (!chatId) {
       return;
     }
-    const messageId = (msg.id as unknown as { _serialized?: string })?._serialized || (msg.id as unknown as { id?: string })?.id;
+    const messageId =
+      (msg.id as unknown as { _serialized?: string })?._serialized ||
+      (msg.id as unknown as { id?: string })?.id;
     if (!messageId) {
       return;
     }
-    await messageStore.recordRevocation(chatId, messageId, 'me', Date.now());
-    metrics.waMessageRevocations.labels('me').inc();
+    await messageStore.recordRevocation(chatId, messageId, "me", Date.now());
+    metrics.waMessageRevocations.labels("me").inc();
   } catch (err) {
-    logger.warn({ err }, 'Failed to record self message revoke');
+    logger.warn({ err }, "Failed to record self message revoke");
   }
 }
-
 ```
 
 # File: services/wa-client/src/handlers/selfRevoke.ts
 
 ```typescript
-import type { Logger } from 'pino';
-import type { Message } from 'whatsapp-web.js';
-import type { MessageStore } from '../message-store';
-import { describeSession, isSessionReady, type SessionSnapshot } from '../session/guards';
-import { enrichEvaluationError } from '../session/errors';
+import type { Logger } from "pino";
+import type { Message } from "whatsapp-web.js";
+import type { MessageStore } from "../message-store";
+import {
+  describeSession,
+  isSessionReady,
+  type SessionSnapshot,
+} from "../session/guards";
+import { enrichEvaluationError } from "../session/errors";
 
 export interface SelfRevokeDependencies {
   snapshot: SessionSnapshot;
@@ -10837,24 +13346,34 @@ export interface SelfRevokeDependencies {
   now?: () => number;
 }
 
-export type SelfRevokeOutcome = 'recorded' | 'skipped';
+export type SelfRevokeOutcome = "recorded" | "skipped";
 
-export async function handleSelfMessageRevoke(msg: Message, deps: SelfRevokeDependencies): Promise<SelfRevokeOutcome> {
+export async function handleSelfMessageRevoke(
+  msg: Message,
+  deps: SelfRevokeDependencies,
+): Promise<SelfRevokeOutcome> {
   const { snapshot, logger, messageStore, recordMetric, now } = deps;
   if (!isSessionReady(snapshot)) {
-    logger.debug({ messageId: msg.id?._serialized, session: describeSession(snapshot) }, 'Skipping self revoke handler because session is not ready');
-    return 'skipped';
+    logger.debug(
+      { messageId: msg.id?._serialized, session: describeSession(snapshot) },
+      "Skipping self revoke handler because session is not ready",
+    );
+    return "skipped";
   }
 
-  const rawChatId = (msg.id as unknown as { remote?: string })?.remote ?? msg.from ?? '';
-  if (typeof rawChatId === 'string' && rawChatId.includes('status@broadcast')) {
-    logger.debug({ messageId: msg.id?._serialized }, 'Skipping self revoke for status broadcast message');
-    return 'skipped';
+  const rawChatId =
+    (msg.id as unknown as { remote?: string })?.remote ?? msg.from ?? "";
+  if (typeof rawChatId === "string" && rawChatId.includes("status@broadcast")) {
+    logger.debug(
+      { messageId: msg.id?._serialized },
+      "Skipping self revoke for status broadcast message",
+    );
+    return "skipped";
   }
 
   const chat = await msg.getChat().catch((err) => {
     throw enrichEvaluationError(err, {
-      operation: 'message_revoke_me:getChat',
+      operation: "message_revoke_me:getChat",
       chatId: (msg.id as unknown as { remote?: string })?.remote ?? undefined,
       messageId: msg.id?._serialized,
       snapshot,
@@ -10862,11 +13381,15 @@ export async function handleSelfMessageRevoke(msg: Message, deps: SelfRevokeDepe
   });
   const chatId = chat.id._serialized;
   const messageId = msg.id._serialized || msg.id.id;
-  await messageStore.recordRevocation(chatId, messageId, 'me', now ? now() : Date.now());
+  await messageStore.recordRevocation(
+    chatId,
+    messageId,
+    "me",
+    now ? now() : Date.now(),
+  );
   recordMetric();
-  return 'recorded';
+  return "recorded";
 }
-
 ```
 
 # File: services/landing-page/index.html
@@ -10874,115 +13397,140 @@ export async function handleSelfMessageRevoke(msg: Message, deps: SelfRevokeDepe
 ```html
 <!DOCTYPE html>
 <html lang="en">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>WhatsApp Bot Scanner | Getting Started</title>
-    <link rel="stylesheet" href="style.css?v=2">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-</head>
+    <link rel="stylesheet" href="style.css?v=2" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
 
-<body>
+  <body>
     <div class="background-glow"></div>
     <div class="container">
-        <header>
-            <div class="logo">
-                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="currentColor"
-                    class="icon">
-                    <path
-                        d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20ZM11 7H13V13H11V7ZM11 15H13V17H11V15Z" />
-                </svg>
-                <h1>Bot Scanner</h1>
+      <header>
+        <div class="logo">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="40"
+            height="40"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            class="icon"
+          >
+            <path
+              d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20ZM11 7H13V13H11V7ZM11 15H13V17H11V15Z"
+            />
+          </svg>
+          <h1>Bot Scanner</h1>
+        </div>
+        <p class="subtitle">
+          Secure your WhatsApp groups with automated link scanning.
+        </p>
+      </header>
+
+      <main>
+        <section class="card">
+          <h2>🚀 First Run Instructions</h2>
+          <p>
+            To start using the bot, you need to pair it with your WhatsApp
+            account and add it to a group.
+          </p>
+
+          <div class="step">
+            <div class="step-number">1</div>
+            <div class="step-content">
+              <h3>Pair Device</h3>
+              <p>
+                Check the terminal logs for the pairing code or QR code. Go to
+                <strong>WhatsApp > Linked Devices > Link a Device</strong>.
+              </p>
             </div>
-            <p class="subtitle">Secure your WhatsApp groups with automated link scanning.</p>
-        </header>
+          </div>
 
-        <main>
-            <section class="card">
-                <h2>🚀 First Run Instructions</h2>
-                <p>To start using the bot, you need to pair it with your WhatsApp account and add it to a group.</p>
+          <div class="step">
+            <div class="step-number">2</div>
+            <div class="step-content">
+              <h3>Add to Group</h3>
+              <p>
+                Add the bot's phone number to any WhatsApp group you want to
+                protect.
+              </p>
+            </div>
+          </div>
 
-                <div class="step">
-                    <div class="step-number">1</div>
-                    <div class="step-content">
-                        <h3>Pair Device</h3>
-                        <p>Check the terminal logs for the pairing code or QR code. Go to <strong>WhatsApp > Linked
-                                Devices > Link a Device</strong>.</p>
-                    </div>
-                </div>
+          <div class="step">
+            <div class="step-number">3</div>
+            <div class="step-content">
+              <h3>Grant Consent</h3>
+              <p>
+                The bot will not scan messages until an admin grants consent.
+                Run this command in the group:
+              </p>
+              <div class="code-block">
+                <code>!scanner consent</code>
+                <button
+                  class="copy-btn"
+                  onclick="copyToClipboard('!scanner consent')"
+                >
+                  Copy
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
 
-                <div class="step">
-                    <div class="step-number">2</div>
-                    <div class="step-content">
-                        <h3>Add to Group</h3>
-                        <p>Add the bot's phone number to any WhatsApp group you want to protect.</p>
-                    </div>
-                </div>
+        <section class="card">
+          <h2>🛠️ Admin Commands</h2>
+          <div class="command-list">
+            <div class="command-item">
+              <code>!scanner status</code>
+              <span>Check system health and scan stats.</span>
+            </div>
+            <div class="command-item">
+              <code>!scanner mute</code>
+              <span>Pause scanning for 60 minutes.</span>
+            </div>
+            <div class="command-item">
+              <code>!scanner unmute</code>
+              <span>Resume scanning immediately.</span>
+            </div>
+            <div class="command-item">
+              <code>!scanner rescan &lt;url&gt;</code>
+              <span>Manually trigger a scan for a specific URL.</span>
+            </div>
+            <div class="command-item">
+              <code>!scanner pair</code>
+              <span>Request a new pairing code (if disconnected).</span>
+            </div>
+          </div>
+        </section>
+      </main>
 
-                <div class="step">
-                    <div class="step-number">3</div>
-                    <div class="step-content">
-                        <h3>Grant Consent</h3>
-                        <p>The bot will not scan messages until an admin grants consent. Run this command in the group:
-                        </p>
-                        <div class="code-block">
-                            <code>!scanner consent</code>
-                            <button class="copy-btn" onclick="copyToClipboard('!scanner consent')">Copy</button>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <section class="card">
-                <h2>🛠️ Admin Commands</h2>
-                <div class="command-list">
-                    <div class="command-item">
-                        <code>!scanner status</code>
-                        <span>Check system health and scan stats.</span>
-                    </div>
-                    <div class="command-item">
-                        <code>!scanner mute</code>
-                        <span>Pause scanning for 60 minutes.</span>
-                    </div>
-                    <div class="command-item">
-                        <code>!scanner unmute</code>
-                        <span>Resume scanning immediately.</span>
-                    </div>
-                    <div class="command-item">
-                        <code>!scanner rescan &lt;url&gt;</code>
-                        <span>Manually trigger a scan for a specific URL.</span>
-                    </div>
-                    <div class="command-item">
-                        <code>!scanner pair</code>
-                        <span>Request a new pairing code (if disconnected).</span>
-                    </div>
-                </div>
-            </section>
-        </main>
-
-        <footer>
-            <p>
-                <a href="/dashboard" class="link">Uptime Kuma</a> •
-                <a href="http://localhost:3002" class="link">Grafana</a> •
-                <a href="/healthz" class="link">API Health</a>
-            </p>
-        </footer>
+      <footer>
+        <p>
+          <a href="/dashboard" class="link">Uptime Kuma</a> •
+          <a href="http://localhost:3002" class="link">Grafana</a> •
+          <a href="/healthz" class="link">API Health</a>
+        </p>
+      </footer>
     </div>
 
     <script>
-        function copyToClipboard(text) {
-            navigator.clipboard.writeText(text);
-            const btn = document.querySelector('.copy-btn');
-            const originalText = btn.innerText;
-            btn.innerText = 'Copied!';
-            setTimeout(() => btn.innerText = originalText, 2000);
-        }
+      function copyToClipboard(text) {
+        navigator.clipboard.writeText(text);
+        const btn = document.querySelector(".copy-btn");
+        const originalText = btn.innerText;
+        btn.innerText = "Copied!";
+        setTimeout(() => (btn.innerText = originalText), 2000);
+      }
     </script>
-</body>
-
+  </body>
 </html>
 ```
 
@@ -10990,258 +13538,267 @@ export async function handleSelfMessageRevoke(msg: Message, deps: SelfRevokeDepe
 
 ```css
 :root {
-    --bg-color: #0f172a;
-    --card-bg: rgba(30, 41, 59, 0.7);
-    --text-primary: #f8fafc;
-    --text-secondary: #94a3b8;
-    --accent: #38bdf8;
-    --accent-glow: rgba(56, 189, 248, 0.3);
-    --border: rgba(255, 255, 255, 0.1);
-    --font-family: 'Outfit', sans-serif;
+  --bg-color: #0f172a;
+  --card-bg: rgba(30, 41, 59, 0.7);
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --accent: #38bdf8;
+  --accent-glow: rgba(56, 189, 248, 0.3);
+  --border: rgba(255, 255, 255, 0.1);
+  --font-family: "Outfit", sans-serif;
 }
 
 * {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 body {
-    font-family: var(--font-family);
-    background-color: var(--bg-color);
-    color: var(--text-primary);
-    min-height: 100vh;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    overflow-x: hidden;
+  font-family: var(--font-family);
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow-x: hidden;
 }
 
 .background-glow {
-    position: fixed;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: radial-gradient(circle at center, var(--accent-glow) 0%, transparent 60%);
-    z-index: -1;
-    pointer-events: none;
+  position: fixed;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(
+    circle at center,
+    var(--accent-glow) 0%,
+    transparent 60%
+  );
+  z-index: -1;
+  pointer-events: none;
 }
 
 .container {
-    width: 100%;
-    max-width: 800px;
-    padding: 2rem;
+  width: 100%;
+  max-width: 800px;
+  padding: 2rem;
 }
 
 header {
-    text-align: center;
-    margin-bottom: 3rem;
-    animation: fadeInDown 0.8s ease-out;
+  text-align: center;
+  margin-bottom: 3rem;
+  animation: fadeInDown 0.8s ease-out;
 }
 
 .logo {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.75rem;
-    margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
 }
 
 .icon {
-    width: 40px;
-    height: 40px;
-    color: var(--accent);
+  width: 40px;
+  height: 40px;
+  color: var(--accent);
 }
 
 h1 {
-    font-size: 2.5rem;
-    font-weight: 700;
-    letter-spacing: -0.05em;
-    background: linear-gradient(to right, #fff, #94a3b8);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
+  font-size: 2.5rem;
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  background: linear-gradient(to right, #fff, #94a3b8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .subtitle {
-    color: var(--text-secondary);
-    font-size: 1.1rem;
+  color: var(--text-secondary);
+  font-size: 1.1rem;
 }
 
 .card {
-    background: var(--card-bg);
-    backdrop-filter: blur(12px);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 2rem;
-    margin-bottom: 2rem;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    animation: fadeInUp 0.8s ease-out;
+  background: var(--card-bg);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  animation: fadeInUp 0.8s ease-out;
 }
 
 h2 {
-    font-size: 1.5rem;
-    margin-bottom: 1.5rem;
-    color: var(--accent);
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 0.75rem;
+  font-size: 1.5rem;
+  margin-bottom: 1.5rem;
+  color: var(--accent);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.75rem;
 }
 
 .step {
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 1.5rem;
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
 }
 
 .step-number {
-    background: var(--accent);
-    color: var(--bg-color);
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 700;
-    flex-shrink: 0;
+  background: var(--accent);
+  color: var(--bg-color);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  flex-shrink: 0;
 }
 
 .step-content h3 {
-    font-size: 1.1rem;
-    margin-bottom: 0.25rem;
+  font-size: 1.1rem;
+  margin-bottom: 0.25rem;
 }
 
 .step-content p {
-    color: var(--text-secondary);
-    line-height: 1.5;
+  color: var(--text-secondary);
+  line-height: 1.5;
 }
 
 .code-block {
-    background: rgba(0, 0, 0, 0.3);
-    padding: 0.75rem 1rem;
-    border-radius: 8px;
-    margin-top: 0.75rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  margin-top: 0.75rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid var(--border);
 }
 
 code {
-    font-family: 'Courier New', Courier, monospace;
-    color: #e2e8f0;
+  font-family: "Courier New", Courier, monospace;
+  color: #e2e8f0;
 }
 
 .copy-btn {
-    background: rgba(255, 255, 255, 0.1);
-    border: none;
-    color: var(--text-secondary);
-    padding: 0.25rem 0.75rem;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.8rem;
-    transition: all 0.2s;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: var(--text-secondary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.2s;
 }
 
 .copy-btn:hover {
-    background: var(--accent);
-    color: var(--bg-color);
+  background: var(--accent);
+  color: var(--bg-color);
 }
 
 .command-list {
-    display: grid;
-    gap: 1rem;
+  display: grid;
+  gap: 1rem;
 }
 
 .command-item {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    padding-bottom: 0.75rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .command-item:last-child {
-    border-bottom: none;
+  border-bottom: none;
 }
 
 .command-item code {
-    color: var(--accent);
-    font-weight: 600;
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .command-item span {
-    color: var(--text-secondary);
-    font-size: 0.9rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
 }
 
 footer {
-    text-align: center;
-    margin-top: 2rem;
-    color: var(--text-secondary);
-    font-size: 0.9rem;
+  text-align: center;
+  margin-top: 2rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
 }
 
 .link {
-    color: var(--text-secondary);
-    text-decoration: none;
-    transition: color 0.2s;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: color 0.2s;
 }
 
 .link:hover {
-    color: var(--accent);
+  color: var(--accent);
 }
 
 @keyframes fadeInDown {
-    from {
-        opacity: 0;
-        transform: translateY(-20px);
-    }
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
 
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
 
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @media (max-width: 600px) {
-    .container {
-        padding: 1rem;
-    }
+  .container {
+    padding: 1rem;
+  }
 
-    h1 {
-        font-size: 2rem;
-    }
+  h1 {
+    font-size: 2rem;
+  }
 }
 ```
 
 # File: packages/shared/src/log.ts
 
 ```typescript
-import pino from 'pino';
+import pino from "pino";
 
 export const logger = pino({
-  level: process.env.LOG_LEVEL || 'info',
+  level: process.env.LOG_LEVEL || "info",
   redact: {
-    paths: ['req.headers.authorization', 'authorization', 'vt.apiKey', 'gsb.apiKey'],
-    remove: true
-  }
+    paths: [
+      "req.headers.authorization",
+      "authorization",
+      "vt.apiKey",
+      "gsb.apiKey",
+    ],
+    remove: true,
+  },
 });
-
-
 ```
 
 # File: packages/shared/src/circuit-breaker.ts
@@ -11304,7 +13861,7 @@ export class CircuitBreaker {
 
   private trimFailures(now: number) {
     const threshold = now - this.options.windowMs;
-    this.failures = this.failures.filter(ts => ts > threshold);
+    this.failures = this.failures.filter((ts) => ts > threshold);
   }
 
   private recordFailure(now: number) {
@@ -11313,14 +13870,20 @@ export class CircuitBreaker {
     if (this.state === CircuitState.HALF_OPEN) {
       this.changeState(CircuitState.OPEN);
       this.successes = 0;
-    } else if (this.failures.length >= this.options.failureThreshold && this.state === CircuitState.CLOSED) {
+    } else if (
+      this.failures.length >= this.options.failureThreshold &&
+      this.state === CircuitState.CLOSED
+    ) {
       this.changeState(CircuitState.OPEN);
     }
   }
 
   private recordSuccess() {
     this.successes += 1;
-    if (this.state === CircuitState.HALF_OPEN && this.successes >= this.options.successThreshold) {
+    if (
+      this.state === CircuitState.HALF_OPEN &&
+      this.successes >= this.options.successThreshold
+    ) {
       this.changeState(CircuitState.CLOSED);
       this.successes = 0;
       this.failures = [];
@@ -11340,7 +13903,12 @@ export class CircuitBreaker {
 
 export async function withRetry<T>(
   task: () => Promise<T>,
-  options: { retries: number; baseDelayMs: number; factor?: number; retryable?: (err: unknown) => boolean } = { retries: 0, baseDelayMs: 0 }
+  options: {
+    retries: number;
+    baseDelayMs: number;
+    factor?: number;
+    retryable?: (err: unknown) => boolean;
+  } = { retries: 0, baseDelayMs: 0 },
 ): Promise<T> {
   const factor = options.factor ?? 2;
   let attempt = 0;
@@ -11356,11 +13924,10 @@ export async function withRetry<T>(
         throw err;
       }
       const delay = options.baseDelayMs * Math.pow(factor, attempt - 1);
-      await new Promise(resolve => setTimeout(resolve, delay));
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
 }
-
 ```
 
 # File: packages/shared/src/errors.ts
@@ -11371,7 +13938,7 @@ export class QuotaExceededError extends Error {
 
   constructor(service: string, message?: string) {
     super(message ?? `${service} quota exceeded`);
-    this.name = 'QuotaExceededError';
+    this.name = "QuotaExceededError";
     this.service = service;
     Object.setPrototypeOf(this, new.target.prototype);
   }
@@ -11382,35 +13949,34 @@ export class FeatureDisabledError extends Error {
 
   constructor(feature: string, message?: string) {
     super(message ?? `${feature} feature disabled`);
-    this.name = 'FeatureDisabledError';
+    this.name = "FeatureDisabledError";
     this.feature = feature;
     Object.setPrototypeOf(this, new.target.prototype);
   }
 }
-
 ```
 
 # File: packages/shared/src/ssrf.ts
 
 ```typescript
-import dns from 'node:dns/promises';
-import ipaddr from 'ipaddr.js';
+import dns from "node:dns/promises";
+import ipaddr from "ipaddr.js";
 
 const privateCidrs = [
-  '10.0.0.0/8',
-  '172.16.0.0/12',
-  '192.168.0.0/16',
-  '127.0.0.0/8',
-  '169.254.0.0/16',
-  '::1/128',
-  'fc00::/7',
-  'fe80::/10'
-].map(c => ipaddr.parseCIDR(c));
+  "10.0.0.0/8",
+  "172.16.0.0/12",
+  "192.168.0.0/16",
+  "127.0.0.0/8",
+  "169.254.0.0/16",
+  "::1/128",
+  "fc00::/7",
+  "fe80::/10",
+].map((c) => ipaddr.parseCIDR(c));
 
 export async function isPrivateHostname(hostname: string): Promise<boolean> {
   try {
     const addrs = await dns.lookup(hostname, { all: true, family: 0 });
-    return addrs.some(a => isPrivateIp(a.address));
+    return addrs.some((a) => isPrivateIp(a.address));
   } catch {
     return true; // fail closed
   }
@@ -11427,17 +13993,15 @@ export function isPrivateIp(ip: string): boolean {
     return true;
   }
 }
-
-
 ```
 
 # File: packages/shared/src/homoglyph.ts
 
 ```typescript
-import { getConfusableCharacters } from 'confusable';
-import punycode from 'punycode';
+import { getConfusableCharacters } from "confusable";
+import punycode from "punycode";
 
-export type HomoglyphRiskLevel = 'none' | 'low' | 'medium' | 'high';
+export type HomoglyphRiskLevel = "none" | "low" | "medium" | "high";
 
 export interface HomoglyphCharacter {
   original: string;
@@ -11460,7 +14024,16 @@ export interface HomoglyphResult {
 
 const ASCII_PATTERN = /^[\x00-\x7F]+$/;
 
-const BRAND_NAMES = ['google', 'facebook', 'paypal', 'amazon', 'microsoft', 'apple', 'netflix', 'whatsapp'];
+const BRAND_NAMES = [
+  "google",
+  "facebook",
+  "paypal",
+  "amazon",
+  "microsoft",
+  "apple",
+  "netflix",
+  "whatsapp",
+];
 
 const RISK_PRIORITY: Record<HomoglyphRiskLevel, number> = {
   none: 0,
@@ -11469,7 +14042,12 @@ const RISK_PRIORITY: Record<HomoglyphRiskLevel, number> = {
   high: 3,
 };
 
-const PRIORITY_TO_LEVEL: HomoglyphRiskLevel[] = ['none', 'low', 'medium', 'high'];
+const PRIORITY_TO_LEVEL: HomoglyphRiskLevel[] = [
+  "none",
+  "low",
+  "medium",
+  "high",
+];
 
 interface ScriptRange {
   name: string;
@@ -11477,54 +14055,104 @@ interface ScriptRange {
 }
 
 const SCRIPT_RANGES: ScriptRange[] = [
-  { name: 'Latin', ranges: [
-    [0x0041, 0x024F],
-    [0x1E00, 0x1EFF],
-    [0x2C60, 0x2C7F],
-    [0xA720, 0xA7FF],
-    [0xFF21, 0xFF3A],
-    [0xFF41, 0xFF5A],
-  ] },
-  { name: 'Greek', ranges: [[0x0370, 0x03FF], [0x1F00, 0x1FFF]] },
-  { name: 'Cyrillic', ranges: [[0x0400, 0x052F], [0x2DE0, 0x2DFF], [0xA640, 0xA69F]] },
-  { name: 'Armenian', ranges: [[0x0530, 0x058F]] },
-  { name: 'Hebrew', ranges: [[0x0590, 0x05FF]] },
-  { name: 'Arabic', ranges: [[0x0600, 0x06FF], [0x0750, 0x077F], [0x08A0, 0x08FF]] },
-  { name: 'Devanagari', ranges: [[0x0900, 0x097F]] },
-  { name: 'Thai', ranges: [[0x0E00, 0x0E7F]] },
-  { name: 'Hangul', ranges: [[0x1100, 0x11FF], [0x3130, 0x318F], [0xAC00, 0xD7AF]] },
-  { name: 'Han', ranges: [[0x3400, 0x4DBF], [0x4E00, 0x9FFF], [0xF900, 0xFAFF]] },
-  { name: 'Katakana', ranges: [[0x30A0, 0x30FF], [0xFF66, 0xFF9F]] },
-  { name: 'Hiragana', ranges: [[0x3040, 0x309F]] },
+  {
+    name: "Latin",
+    ranges: [
+      [0x0041, 0x024f],
+      [0x1e00, 0x1eff],
+      [0x2c60, 0x2c7f],
+      [0xa720, 0xa7ff],
+      [0xff21, 0xff3a],
+      [0xff41, 0xff5a],
+    ],
+  },
+  {
+    name: "Greek",
+    ranges: [
+      [0x0370, 0x03ff],
+      [0x1f00, 0x1fff],
+    ],
+  },
+  {
+    name: "Cyrillic",
+    ranges: [
+      [0x0400, 0x052f],
+      [0x2de0, 0x2dff],
+      [0xa640, 0xa69f],
+    ],
+  },
+  { name: "Armenian", ranges: [[0x0530, 0x058f]] },
+  { name: "Hebrew", ranges: [[0x0590, 0x05ff]] },
+  {
+    name: "Arabic",
+    ranges: [
+      [0x0600, 0x06ff],
+      [0x0750, 0x077f],
+      [0x08a0, 0x08ff],
+    ],
+  },
+  { name: "Devanagari", ranges: [[0x0900, 0x097f]] },
+  { name: "Thai", ranges: [[0x0e00, 0x0e7f]] },
+  {
+    name: "Hangul",
+    ranges: [
+      [0x1100, 0x11ff],
+      [0x3130, 0x318f],
+      [0xac00, 0xd7af],
+    ],
+  },
+  {
+    name: "Han",
+    ranges: [
+      [0x3400, 0x4dbf],
+      [0x4e00, 0x9fff],
+      [0xf900, 0xfaff],
+    ],
+  },
+  {
+    name: "Katakana",
+    ranges: [
+      [0x30a0, 0x30ff],
+      [0xff66, 0xff9f],
+    ],
+  },
+  { name: "Hiragana", ranges: [[0x3040, 0x309f]] },
 ];
 
 export function detectHomoglyphs(domain: string): HomoglyphResult {
   const unicodeHostname = decodeDomain(domain);
-  const isPunycode = domain.split('.').some(label => label.startsWith('xn--'));
+  const isPunycode = domain
+    .split(".")
+    .some((label) => label.startsWith("xn--"));
 
   const confusableChars: HomoglyphCharacter[] = [];
   const scripts = new Set<string>();
   const riskReasons: string[] = [];
 
-  let asciiSkeletonBuilder = '';
+  let asciiSkeletonBuilder = "";
   const characters = Array.from(unicodeHostname);
 
   characters.forEach((char, index) => {
-    if (char === '.') {
+    if (char === ".") {
       asciiSkeletonBuilder += char;
       return;
     }
 
     const script = detectScript(char);
-    if (script !== 'Common') {
+    if (script !== "Common") {
       scripts.add(script);
     }
 
     const codePoint = char.codePointAt(0);
-    const confusableSet = codePoint !== undefined && codePoint > 0x7f
-      ? sanitizeAlternatives(char, getConfusableCharacters(char))
-      : [];
-    const asciiAlternative = confusableSet.find(candidate => ASCII_PATTERN.test(candidate) && candidate.toLowerCase() !== char.toLowerCase());
+    const confusableSet =
+      codePoint !== undefined && codePoint > 0x7f
+        ? sanitizeAlternatives(char, getConfusableCharacters(char))
+        : [];
+    const asciiAlternative = confusableSet.find(
+      (candidate) =>
+        ASCII_PATTERN.test(candidate) &&
+        candidate.toLowerCase() !== char.toLowerCase(),
+    );
 
     let replacement = char;
     if (asciiAlternative) {
@@ -11536,7 +14164,7 @@ export function detectHomoglyphs(domain: string): HomoglyphResult {
         script,
         alternatives: confusableSet,
       });
-    } else if (confusableSet.length > 0 && script !== 'Latin') {
+    } else if (confusableSet.length > 0 && script !== "Latin") {
       const fallback = confusableSet[0];
       replacement = fallback;
       confusableChars.push({
@@ -11558,22 +14186,32 @@ export function detectHomoglyphs(domain: string): HomoglyphResult {
 
   if (isPunycode) {
     riskPriority = Math.max(riskPriority, RISK_PRIORITY.low);
-    pushUnique(riskReasons, 'Hostname uses punycode/IDN encoding');
+    pushUnique(riskReasons, "Hostname uses punycode/IDN encoding");
   }
 
   if (mixedScript) {
     riskPriority = Math.max(riskPriority, RISK_PRIORITY.medium);
-    pushUnique(riskReasons, `Mixed scripts detected: ${Array.from(scripts).join(', ')}`);
+    pushUnique(
+      riskReasons,
+      `Mixed scripts detected: ${Array.from(scripts).join(", ")}`,
+    );
   }
 
   if (confusableChars.length > 0) {
     riskPriority = Math.max(riskPriority, RISK_PRIORITY.medium);
-    confusableChars.forEach(entry => {
-      pushUnique(riskReasons, `Confusable character ${entry.original}→${entry.confusedWith} (${entry.script})`);
+    confusableChars.forEach((entry) => {
+      pushUnique(
+        riskReasons,
+        `Confusable character ${entry.original}→${entry.confusedWith} (${entry.script})`,
+      );
     });
   }
 
-  if (confusableChars.length >= 2 || (confusableChars.length > 0 && mixedScript) || (isPunycode && confusableChars.length > 0)) {
+  if (
+    confusableChars.length >= 2 ||
+    (confusableChars.length > 0 && mixedScript) ||
+    (isPunycode && confusableChars.length > 0)
+  ) {
     riskPriority = Math.max(riskPriority, RISK_PRIORITY.high);
   }
 
@@ -11600,9 +14238,9 @@ export function detectHomoglyphs(domain: string): HomoglyphResult {
 
 function decodeDomain(domain: string): string {
   return domain
-    .split('.')
-    .map(label => {
-      if (!label.startsWith('xn--')) {
+    .split(".")
+    .map((label) => {
+      if (!label.startsWith("xn--")) {
         return label;
       }
 
@@ -11613,35 +14251,48 @@ function decodeDomain(domain: string): string {
         return label;
       }
     })
-    .join('.');
+    .join(".");
 }
 
 function detectScript(char: string): string {
   const codePoint = char.codePointAt(0);
   if (codePoint === undefined) {
-    return 'Common';
+    return "Common";
   }
-  if ((codePoint >= 0x0030 && codePoint <= 0x0039) || char === '-' || char === '_') {
-    return 'Common';
+  if (
+    (codePoint >= 0x0030 && codePoint <= 0x0039) ||
+    char === "-" ||
+    char === "_"
+  ) {
+    return "Common";
   }
   for (const script of SCRIPT_RANGES) {
-    if (script.ranges.some(([start, end]) => codePoint >= start && codePoint <= end)) {
+    if (
+      script.ranges.some(
+        ([start, end]) => codePoint >= start && codePoint <= end,
+      )
+    ) {
       return script.name;
     }
   }
-  return 'Common';
+  return "Common";
 }
 
 function sanitizeAlternatives(original: string, entries: string[]): string[] {
   if (!Array.isArray(entries)) {
     return [];
   }
-  return entries.filter(entry => entry && entry !== original);
+  return entries.filter((entry) => entry && entry !== original);
 }
 
-function detectBrandSpoof(unicodeHostname: string, asciiSkeleton: string): string | null {
-  const primaryLabel = unicodeHostname.split('.')[0]?.toLowerCase() ?? unicodeHostname.toLowerCase();
-  const normalizedLabel = asciiSkeleton.split('.')[0] ?? asciiSkeleton;
+function detectBrandSpoof(
+  unicodeHostname: string,
+  asciiSkeleton: string,
+): string | null {
+  const primaryLabel =
+    unicodeHostname.split(".")[0]?.toLowerCase() ??
+    unicodeHostname.toLowerCase();
+  const normalizedLabel = asciiSkeleton.split(".")[0] ?? asciiSkeleton;
   const normalizedLower = normalizedLabel.toLowerCase();
 
   for (const brand of BRAND_NAMES) {
@@ -11694,16 +14345,15 @@ function pushUnique(reasons: string[], reason: string) {
     reasons.push(reason);
   }
 }
-
 ```
 
 # File: packages/shared/src/database.ts
 
 ```typescript
-import Database from 'better-sqlite3';
-import type { Logger } from 'pino';
-import fs from 'fs';
-import path from 'path';
+import Database from "better-sqlite3";
+import type { Logger } from "pino";
+import fs from "fs";
+import path from "path";
 
 interface DatabaseConfig {
   dbPath?: string;
@@ -11715,7 +14365,8 @@ export class SQLiteConnection {
   private logger: Logger | undefined;
 
   constructor(config: DatabaseConfig = {}) {
-    const dbPath = config.dbPath || process.env.SQLITE_DB_PATH || './storage/wbscanner.db';
+    const dbPath =
+      config.dbPath || process.env.SQLITE_DB_PATH || "./storage/wbscanner.db";
 
     // Ensure directory exists
     const dbDir = path.dirname(dbPath);
@@ -11727,13 +14378,13 @@ export class SQLiteConnection {
     this.logger = config.logger;
 
     // Enable WAL mode for better concurrency
-    this.db.pragma('journal_mode = WAL');
-    this.db.pragma('synchronous = NORMAL');
-    this.db.pragma('cache_size = 64000');
-    this.db.pragma('foreign_keys = ON');
+    this.db.pragma("journal_mode = WAL");
+    this.db.pragma("synchronous = NORMAL");
+    this.db.pragma("cache_size = 64000");
+    this.db.pragma("foreign_keys = ON");
 
     if (this.logger) {
-      this.logger.info({ dbPath }, 'SQLite connection established');
+      this.logger.info({ dbPath }, "SQLite connection established");
     }
   }
 
@@ -11741,12 +14392,15 @@ export class SQLiteConnection {
     return this.db;
   }
 
-  async query(sql: string, params: unknown[] = []): Promise<{ rows: unknown[] }> {
+  async query(
+    sql: string,
+    params: unknown[] = [],
+  ): Promise<{ rows: unknown[] }> {
     try {
       const stmt = this.db.prepare(sql);
 
       // Handle SELECT queries
-      if (sql.trim().toLowerCase().startsWith('select')) {
+      if (sql.trim().toLowerCase().startsWith("select")) {
         const rows = stmt.all(...params);
         return { rows };
       }
@@ -11754,11 +14408,19 @@ export class SQLiteConnection {
       // Handle INSERT, UPDATE, DELETE queries
       const result = stmt.run(...params);
       return {
-        rows: result.changes > 0 ? [{ affectedRows: result.changes, lastInsertRowid: result.lastInsertRowid }] : []
+        rows:
+          result.changes > 0
+            ? [
+                {
+                  affectedRows: result.changes,
+                  lastInsertRowid: result.lastInsertRowid,
+                },
+              ]
+            : [],
       };
     } catch (error) {
       if (this.logger) {
-        this.logger.error({ error, sql, params }, 'Database query failed');
+        this.logger.error({ error, sql, params }, "Database query failed");
       }
       throw error;
     }
@@ -11772,7 +14434,7 @@ export class SQLiteConnection {
   close(): void {
     this.db.close();
     if (this.logger) {
-      this.logger.info('SQLite connection closed');
+      this.logger.info("SQLite connection closed");
     }
   }
 }
@@ -11787,7 +14449,9 @@ export function getSharedConnection(logger?: Logger): SQLiteConnection {
   return sharedConnection;
 }
 
-export function createConnection(config: DatabaseConfig = {}): SQLiteConnection {
+export function createConnection(
+  config: DatabaseConfig = {},
+): SQLiteConnection {
   return new SQLiteConnection(config);
 }
 ```
@@ -11795,21 +14459,21 @@ export function createConnection(config: DatabaseConfig = {}): SQLiteConnection 
 # File: packages/shared/src/verdict-cache.ts
 
 ```typescript
-import NodeCache from 'node-cache';
-import type { Logger } from 'pino';
+import NodeCache from "node-cache";
+import type { Logger } from "pino";
 
 export interface VerdictCacheOptions {
-    ttlSeconds?: number;
-    maxKeys?: number;
-    checkPeriodSeconds?: number;
-    logger?: Logger;
+  ttlSeconds?: number;
+  maxKeys?: number;
+  checkPeriodSeconds?: number;
+  logger?: Logger;
 }
 
 export interface CachedVerdict {
-    verdict: 'benign' | 'suspicious' | 'malicious';
-    confidence: number;
-    timestamp: number;
-    sources?: string[];
+  verdict: "benign" | "suspicious" | "malicious";
+  confidence: number;
+  timestamp: number;
+  sources?: string[];
 }
 
 /**
@@ -11818,135 +14482,138 @@ export interface CachedVerdict {
  * Each service instance maintains its own cache.
  */
 export class VerdictCache {
-    private cache: NodeCache;
-    private logger?: Logger;
-    private hits = 0;
-    private misses = 0;
+  private cache: NodeCache;
+  private logger?: Logger;
+  private hits = 0;
+  private misses = 0;
 
-    constructor(options: VerdictCacheOptions = {}) {
-        const {
-            ttlSeconds = 3600,
-            maxKeys = 10000,
-            checkPeriodSeconds = 600,
-            logger,
-        } = options;
+  constructor(options: VerdictCacheOptions = {}) {
+    const {
+      ttlSeconds = 3600,
+      maxKeys = 10000,
+      checkPeriodSeconds = 600,
+      logger,
+    } = options;
 
-        this.logger = logger;
-        this.cache = new NodeCache({
-            stdTTL: ttlSeconds,
-            maxKeys,
-            checkperiod: checkPeriodSeconds,
-            useClones: false, // Performance optimization
-        });
+    this.logger = logger;
+    this.cache = new NodeCache({
+      stdTTL: ttlSeconds,
+      maxKeys,
+      checkperiod: checkPeriodSeconds,
+      useClones: false, // Performance optimization
+    });
 
-        // Log cache statistics periodically
-        if (this.logger) {
-            setInterval(() => {
-                const stats = this.getStats();
-                this.logger?.debug(stats, 'Verdict cache statistics');
-            }, 60000); // Every minute
-        }
+    // Log cache statistics periodically
+    if (this.logger) {
+      setInterval(() => {
+        const stats = this.getStats();
+        this.logger?.debug(stats, "Verdict cache statistics");
+      }, 60000); // Every minute
     }
+  }
 
-    /**
-     * Get a cached verdict by URL hash
-     */
-    get(urlHash: string): CachedVerdict | undefined {
-        const value = this.cache.get<CachedVerdict>(urlHash);
-        if (value) {
-            this.hits++;
-            this.logger?.debug({ urlHash, verdict: value.verdict }, 'Cache hit');
-            return value;
-        }
-        this.misses++;
-        this.logger?.debug({ urlHash }, 'Cache miss');
-        return undefined;
+  /**
+   * Get a cached verdict by URL hash
+   */
+  get(urlHash: string): CachedVerdict | undefined {
+    const value = this.cache.get<CachedVerdict>(urlHash);
+    if (value) {
+      this.hits++;
+      this.logger?.debug({ urlHash, verdict: value.verdict }, "Cache hit");
+      return value;
     }
+    this.misses++;
+    this.logger?.debug({ urlHash }, "Cache miss");
+    return undefined;
+  }
 
-    /**
-     * Set a verdict in the cache
-     */
-    set(urlHash: string, verdict: CachedVerdict, ttlSeconds?: number): boolean {
-        try {
-            const success = ttlSeconds !== undefined
-                ? this.cache.set(urlHash, verdict, ttlSeconds)
-                : this.cache.set(urlHash, verdict);
-            if (success) {
-                this.logger?.debug({ urlHash, verdict: verdict.verdict }, 'Cached verdict');
-            }
-            return success;
-        } catch (err) {
-            this.logger?.warn({ err, urlHash }, 'Failed to cache verdict');
-            return false;
-        }
+  /**
+   * Set a verdict in the cache
+   */
+  set(urlHash: string, verdict: CachedVerdict, ttlSeconds?: number): boolean {
+    try {
+      const success =
+        ttlSeconds !== undefined
+          ? this.cache.set(urlHash, verdict, ttlSeconds)
+          : this.cache.set(urlHash, verdict);
+      if (success) {
+        this.logger?.debug(
+          { urlHash, verdict: verdict.verdict },
+          "Cached verdict",
+        );
+      }
+      return success;
+    } catch (err) {
+      this.logger?.warn({ err, urlHash }, "Failed to cache verdict");
+      return false;
     }
+  }
 
-    /**
-     * Delete a specific verdict from cache
-     */
-    delete(urlHash: string): number {
-        return this.cache.del(urlHash);
-    }
+  /**
+   * Delete a specific verdict from cache
+   */
+  delete(urlHash: string): number {
+    return this.cache.del(urlHash);
+  }
 
-    /**
-     * Clear all cached verdicts
-     */
-    clear(): void {
-        this.cache.flushAll();
-        this.hits = 0;
-        this.misses = 0;
-        this.logger?.info('Verdict cache cleared');
-    }
+  /**
+   * Clear all cached verdicts
+   */
+  clear(): void {
+    this.cache.flushAll();
+    this.hits = 0;
+    this.misses = 0;
+    this.logger?.info("Verdict cache cleared");
+  }
 
-    /**
-     * Get cache statistics
-     */
-    getStats(): {
-        keys: number;
-        hits: number;
-        misses: number;
-        hitRate: number;
-        ksize: number;
-        vsize: number;
-    } {
-        const stats = this.cache.getStats();
-        const totalRequests = this.hits + this.misses;
-        const hitRate = totalRequests > 0 ? this.hits / totalRequests : 0;
+  /**
+   * Get cache statistics
+   */
+  getStats(): {
+    keys: number;
+    hits: number;
+    misses: number;
+    hitRate: number;
+    ksize: number;
+    vsize: number;
+  } {
+    const stats = this.cache.getStats();
+    const totalRequests = this.hits + this.misses;
+    const hitRate = totalRequests > 0 ? this.hits / totalRequests : 0;
 
-        return {
-            keys: stats.keys,
-            hits: this.hits,
-            misses: this.misses,
-            hitRate: Math.round(hitRate * 10000) / 100, // Percentage with 2 decimals
-            ksize: stats.ksize,
-            vsize: stats.vsize,
-        };
-    }
+    return {
+      keys: stats.keys,
+      hits: this.hits,
+      misses: this.misses,
+      hitRate: Math.round(hitRate * 10000) / 100, // Percentage with 2 decimals
+      ksize: stats.ksize,
+      vsize: stats.vsize,
+    };
+  }
 
-    /**
-     * Check if cache has a specific key
-     */
-    has(urlHash: string): boolean {
-        return this.cache.has(urlHash);
-    }
+  /**
+   * Check if cache has a specific key
+   */
+  has(urlHash: string): boolean {
+    return this.cache.has(urlHash);
+  }
 
-    /**
-     * Get TTL for a specific key (in seconds)
-     */
-    getTtl(urlHash: string): number | undefined {
-        const ttl = this.cache.getTtl(urlHash);
-        return ttl !== undefined ? ttl : undefined;
-    }
+  /**
+   * Get TTL for a specific key (in seconds)
+   */
+  getTtl(urlHash: string): number | undefined {
+    const ttl = this.cache.getTtl(urlHash);
+    return ttl !== undefined ? ttl : undefined;
+  }
 
-    /**
-     * Close the cache and cleanup
-     */
-    close(): void {
-        this.cache.close();
-        this.logger?.info('Verdict cache closed');
-    }
+  /**
+   * Close the cache and cleanup
+   */
+  close(): void {
+    this.cache.close();
+    this.logger?.info("Verdict cache closed");
+  }
 }
-
 ```
 
 # File: packages/shared/src/http-errors.ts
@@ -11954,34 +14621,40 @@ export class VerdictCache {
 ```typescript
 // Shared error types for HTTP operations
 export interface HttpError extends Error {
-    statusCode?: number;
-    code?: number | string;
-    details?: unknown;
+  statusCode?: number;
+  code?: number | string;
+  details?: unknown;
 }
 
-export function createHttpError(message: string, statusCode?: number): HttpError {
-    const error = new Error(message) as HttpError;
-    if (statusCode !== undefined) {
-        error.statusCode = statusCode;
-    }
-    return error;
+export function createHttpError(
+  message: string,
+  statusCode?: number,
+): HttpError {
+  const error = new Error(message) as HttpError;
+  if (statusCode !== undefined) {
+    error.statusCode = statusCode;
+  }
+  return error;
 }
-
 ```
 
 # File: packages/shared/src/config.ts
 
 ```typescript
-import dotenv from 'dotenv';
-import { logger } from './log';
+import dotenv from "dotenv";
+import { logger } from "./log";
 
 dotenv.config();
 
-const urlscanEnabled = (process.env.URLSCAN_ENABLED || 'true') === 'true';
-const urlscanCallbackSecret = (process.env.URLSCAN_CALLBACK_SECRET || '').trim();
+const urlscanEnabled = (process.env.URLSCAN_ENABLED || "true") === "true";
+const urlscanCallbackSecret = (
+  process.env.URLSCAN_CALLBACK_SECRET || ""
+).trim();
 
 if (urlscanEnabled && !urlscanCallbackSecret) {
-  throw new Error('URLSCAN_CALLBACK_SECRET must be provided when URLSCAN_ENABLED=true');
+  throw new Error(
+    "URLSCAN_CALLBACK_SECRET must be provided when URLSCAN_ENABLED=true",
+  );
 }
 
 function parseStringList(value: string | undefined): string[] {
@@ -11989,13 +14662,13 @@ function parseStringList(value: string | undefined): string[] {
     return [];
   }
   return value
-    .split(',')
+    .split(",")
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
 }
 
 function ensureNonEmpty(raw: string | undefined, envVar: string): string {
-  const value = (raw ?? '').trim();
+  const value = (raw ?? "").trim();
   if (!value) {
     throw new Error(`${envVar} must not be empty`);
   }
@@ -12004,8 +14677,10 @@ function ensureNonEmpty(raw: string | undefined, envVar: string): string {
 
 function ensureQueueName(raw: string, envVar: string): string {
   const value = ensureNonEmpty(raw, envVar);
-  if (value.includes(':')) {
-    throw new Error(`${envVar} must not contain ':' characters. Use hyphen-separated names (e.g., scan-request).`);
+  if (value.includes(":")) {
+    throw new Error(
+      `${envVar} must not contain ':' characters. Use hyphen-separated names (e.g., scan-request).`,
+    );
   }
   return value;
 }
@@ -12014,21 +14689,31 @@ let cachedControlPlaneToken: string | undefined;
 
 function getControlPlaneToken(): string {
   if (!cachedControlPlaneToken) {
-    cachedControlPlaneToken = ensureNonEmpty(process.env.CONTROL_PLANE_API_TOKEN, 'CONTROL_PLANE_API_TOKEN');
+    cachedControlPlaneToken = ensureNonEmpty(
+      process.env.CONTROL_PLANE_API_TOKEN,
+      "CONTROL_PLANE_API_TOKEN",
+    );
   }
   return cachedControlPlaneToken;
 }
 
-function parsePositiveInt(value: string | undefined, fallback: number, { minimum = 1 }: { minimum?: number } = {}): number {
-  const parsed = Number.parseInt(value ?? '', 10);
+function parsePositiveInt(
+  value: string | undefined,
+  fallback: number,
+  { minimum = 1 }: { minimum?: number } = {},
+): number {
+  const parsed = Number.parseInt(value ?? "", 10);
   if (Number.isFinite(parsed) && parsed >= minimum) {
     return parsed;
   }
   return fallback;
 }
 
-function parseNonNegativeInt(value: string | undefined, fallback: number): number {
-  const parsed = Number.parseInt(value ?? '', 10);
+function parseNonNegativeInt(
+  value: string | undefined,
+  fallback: number,
+): number {
+  const parsed = Number.parseInt(value ?? "", 10);
   if (Number.isFinite(parsed) && parsed >= 0) {
     return parsed;
   }
@@ -12036,255 +14721,426 @@ function parseNonNegativeInt(value: string | undefined, fallback: number): numbe
 }
 
 const featureFlags = {
-  attachMediaToVerdicts: (process.env.FEATURE_ATTACH_MEDIA_TO_VERDICTS || 'false') === 'true',
+  attachMediaToVerdicts:
+    (process.env.FEATURE_ATTACH_MEDIA_TO_VERDICTS || "false") === "true",
 };
 
 export const config = {
-  nodeEnv: process.env.NODE_ENV || 'development',
-  redisUrl: process.env.REDIS_URL || 'redis://redis:6379/0',
+  nodeEnv: process.env.NODE_ENV || "development",
+  redisUrl: process.env.REDIS_URL || "redis://redis:6379/0",
   queues: {
-    scanRequest: ensureQueueName(process.env.SCAN_REQUEST_QUEUE || 'scan-request', 'SCAN_REQUEST_QUEUE'),
-    scanVerdict: ensureQueueName(process.env.SCAN_VERDICT_QUEUE || 'scan-verdict', 'SCAN_VERDICT_QUEUE'),
-    urlscan: ensureQueueName(process.env.SCAN_URLSCAN_QUEUE || 'scan-urlscan', 'SCAN_URLSCAN_QUEUE'),
+    scanRequest: ensureQueueName(
+      process.env.SCAN_REQUEST_QUEUE || "scan-request",
+      "SCAN_REQUEST_QUEUE",
+    ),
+    scanVerdict: ensureQueueName(
+      process.env.SCAN_VERDICT_QUEUE || "scan-verdict",
+      "SCAN_VERDICT_QUEUE",
+    ),
+    urlscan: ensureQueueName(
+      process.env.SCAN_URLSCAN_QUEUE || "scan-urlscan",
+      "SCAN_URLSCAN_QUEUE",
+    ),
   },
   vt: {
-    enabled: (process.env.VT_ENABLED || 'true') === 'true' && !!process.env.VT_API_KEY,
-    apiKey: process.env.VT_API_KEY || '',
-    timeoutMs: parseInt(process.env.VT_REQUEST_TIMEOUT_MS || '8000', 10),
+    enabled:
+      (process.env.VT_ENABLED || "true") === "true" && !!process.env.VT_API_KEY,
+    apiKey: process.env.VT_API_KEY || "",
+    timeoutMs: parseInt(process.env.VT_REQUEST_TIMEOUT_MS || "8000", 10),
     requestsPerMinute: parsePositiveInt(process.env.VT_REQUESTS_PER_MINUTE, 4),
     requestJitterMs: parseNonNegativeInt(process.env.VT_REQUEST_JITTER_MS, 0),
   },
   gsb: {
-    enabled: (process.env.GSB_ENABLED || 'true') === 'true' && !!process.env.GSB_API_KEY,
-    apiKey: process.env.GSB_API_KEY || '',
-    timeoutMs: parseInt(process.env.GSB_REQUEST_TIMEOUT_MS || '5000', 10),
-    fallbackLatencyMs: parseInt(process.env.GSB_FALLBACK_LATENCY_MS || '500', 10),
+    enabled:
+      (process.env.GSB_ENABLED || "true") === "true" &&
+      !!process.env.GSB_API_KEY,
+    apiKey: process.env.GSB_API_KEY || "",
+    timeoutMs: parseInt(process.env.GSB_REQUEST_TIMEOUT_MS || "5000", 10),
+    fallbackLatencyMs: parseInt(
+      process.env.GSB_FALLBACK_LATENCY_MS || "500",
+      10,
+    ),
   },
   urlhaus: {
-    enabled: (process.env.URLHAUS_ENABLED || 'true') === 'true',
-    timeoutMs: parseInt(process.env.URLHAUS_TIMEOUT_MS || '5000', 10),
+    enabled: (process.env.URLHAUS_ENABLED || "true") === "true",
+    timeoutMs: parseInt(process.env.URLHAUS_TIMEOUT_MS || "5000", 10),
   },
   phishtank: {
-    enabled: (process.env.PHISHTANK_ENABLED || 'true') === 'true' && !!process.env.PHISHTANK_APP_KEY,
-    appKey: process.env.PHISHTANK_APP_KEY || '',
-    userAgent: process.env.PHISHTANK_USER_AGENT || 'wbscanner-bot/1.0',
-    timeoutMs: parseInt(process.env.PHISHTANK_TIMEOUT_MS || '5000', 10),
+    enabled:
+      (process.env.PHISHTANK_ENABLED || "true") === "true" &&
+      !!process.env.PHISHTANK_APP_KEY,
+    appKey: process.env.PHISHTANK_APP_KEY || "",
+    userAgent: process.env.PHISHTANK_USER_AGENT || "wbscanner-bot/1.0",
+    timeoutMs: parseInt(process.env.PHISHTANK_TIMEOUT_MS || "5000", 10),
   },
   rdap: {
-    enabled: (process.env.RDAP_ENABLED || 'true') === 'true',
-    timeoutMs: parseInt(process.env.RDAP_TIMEOUT_MS || '5000', 10),
+    enabled: (process.env.RDAP_ENABLED || "true") === "true",
+    timeoutMs: parseInt(process.env.RDAP_TIMEOUT_MS || "5000", 10),
   },
   urlscan: {
     enabled: urlscanEnabled,
-    apiKey: process.env.URLSCAN_API_KEY || '',
-    baseUrl: process.env.URLSCAN_BASE_URL || 'https://urlscan.io',
-    visibility: process.env.URLSCAN_VISIBILITY || 'private',
-    tags: (process.env.URLSCAN_TAGS || 'wbscanner').split(',').map(t => t.trim()).filter(Boolean),
-    callbackUrl: process.env.URLSCAN_CALLBACK_URL || '',
+    apiKey: process.env.URLSCAN_API_KEY || "",
+    baseUrl: process.env.URLSCAN_BASE_URL || "https://urlscan.io",
+    visibility: process.env.URLSCAN_VISIBILITY || "private",
+    tags: (process.env.URLSCAN_TAGS || "wbscanner")
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean),
+    callbackUrl: process.env.URLSCAN_CALLBACK_URL || "",
     callbackSecret: urlscanCallbackSecret,
-    submitTimeoutMs: parseInt(process.env.URLSCAN_SUBMIT_TIMEOUT_MS || '10000', 10),
-    resultPollTimeoutMs: parseInt(process.env.URLSCAN_RESULT_TIMEOUT_MS || '30000', 10),
-    uuidTtlSeconds: parseInt(process.env.URLSCAN_UUID_TTL_SECONDS || '86400', 10),
-    resultTtlSeconds: parseInt(process.env.URLSCAN_RESULT_TTL_SECONDS || '86400', 10),
-    concurrency: parseInt(process.env.URLSCAN_CONCURRENCY || '2', 10),
+    submitTimeoutMs: parseInt(
+      process.env.URLSCAN_SUBMIT_TIMEOUT_MS || "10000",
+      10,
+    ),
+    resultPollTimeoutMs: parseInt(
+      process.env.URLSCAN_RESULT_TIMEOUT_MS || "30000",
+      10,
+    ),
+    uuidTtlSeconds: parseInt(
+      process.env.URLSCAN_UUID_TTL_SECONDS || "86400",
+      10,
+    ),
+    resultTtlSeconds: parseInt(
+      process.env.URLSCAN_RESULT_TTL_SECONDS || "86400",
+      10,
+    ),
+    concurrency: parseInt(process.env.URLSCAN_CONCURRENCY || "2", 10),
     get allowedArtifactHosts(): string[] {
-      const configuredHosts = parseStringList(process.env.URLSCAN_ALLOWED_HOSTS);
+      const configuredHosts = parseStringList(
+        process.env.URLSCAN_ALLOWED_HOSTS,
+      );
       const baseHosts = [] as string[];
       try {
-        const host = new URL(process.env.URLSCAN_BASE_URL || 'https://urlscan.io').hostname.toLowerCase();
+        const host = new URL(
+          process.env.URLSCAN_BASE_URL || "https://urlscan.io",
+        ).hostname.toLowerCase();
         baseHosts.push(host);
       } catch {
         // ignore invalid base URL overrides; validation happens elsewhere
       }
-      const combined = [...baseHosts, ...configuredHosts].map((host) => host.toLowerCase());
+      const combined = [...baseHosts, ...configuredHosts].map((host) =>
+        host.toLowerCase(),
+      );
       return Array.from(new Set(combined.filter((host) => host.length > 0)));
     },
   },
   whoisxml: {
-    enabled: ((process.env.WHOISXML_ENABLE ?? process.env.WHOISXML_ENABLED) || 'false') === 'true',
-    apiKey: process.env.WHOISXML_API_KEY || '',
-    timeoutMs: parseInt(process.env.WHOISXML_TIMEOUT_MS || '5000', 10),
+    enabled:
+      ((process.env.WHOISXML_ENABLE ?? process.env.WHOISXML_ENABLED) ||
+        "false") === "true",
+    apiKey: process.env.WHOISXML_API_KEY || "",
+    timeoutMs: parseInt(process.env.WHOISXML_TIMEOUT_MS || "5000", 10),
     monthlyQuota: parsePositiveInt(process.env.WHOISXML_MONTHLY_QUOTA, 500),
-    quotaAlertThreshold: parsePositiveInt(process.env.WHOISXML_QUOTA_ALERT_THRESHOLD, 100, { minimum: 1 }),
+    quotaAlertThreshold: parsePositiveInt(
+      process.env.WHOISXML_QUOTA_ALERT_THRESHOLD,
+      100,
+      { minimum: 1 },
+    ),
   },
   whodat: {
-    enabled: (process.env.WHODAT_ENABLED || 'true') === 'true',
-    baseUrl: process.env.WHODAT_BASE_URL || 'http://who-dat:8080',
-    timeoutMs: parseInt(process.env.WHODAT_TIMEOUT_MS || '5000', 10),
+    enabled: (process.env.WHODAT_ENABLED || "true") === "true",
+    baseUrl: process.env.WHODAT_BASE_URL || "http://who-dat:8080",
+    timeoutMs: parseInt(process.env.WHODAT_TIMEOUT_MS || "5000", 10),
   },
   shortener: {
-    unshortenEndpoint: process.env.UNSHORTEN_ENDPOINT || 'https://unshorten.me/json/',
-    unshortenRetries: parseInt(process.env.UNSHORTEN_RETRIES || '1', 10),
-    cacheTtlSeconds: parseInt(process.env.SHORTENER_CACHE_TTL_SECONDS || '86400', 10),
+    unshortenEndpoint:
+      process.env.UNSHORTEN_ENDPOINT || "https://unshorten.me/json/",
+    unshortenRetries: parseInt(process.env.UNSHORTEN_RETRIES || "1", 10),
+    cacheTtlSeconds: parseInt(
+      process.env.SHORTENER_CACHE_TTL_SECONDS || "86400",
+      10,
+    ),
   },
   orchestrator: {
-    concurrency: parseInt(process.env.SCAN_CONCURRENCY || '10', 10),
+    concurrency: parseInt(process.env.SCAN_CONCURRENCY || "10", 10),
     expansion: {
-      maxRedirects: parseInt(process.env.URL_EXPANSION_MAX_REDIRECTS || '5', 10),
-      timeoutMs: parseInt(process.env.URL_EXPANSION_TIMEOUT_MS || '5000', 10),
-      maxContentLength: parseInt(process.env.URL_MAX_CONTENT_LENGTH || '1048576', 10),
+      maxRedirects: parseInt(
+        process.env.URL_EXPANSION_MAX_REDIRECTS || "5",
+        10,
+      ),
+      timeoutMs: parseInt(process.env.URL_EXPANSION_TIMEOUT_MS || "5000", 10),
+      maxContentLength: parseInt(
+        process.env.URL_MAX_CONTENT_LENGTH || "1048576",
+        10,
+      ),
     },
     cacheTtl: {
-      benign: parseInt(process.env.CACHE_TTL_BENIGN_SECONDS || '86400', 10),
-      suspicious: parseInt(process.env.CACHE_TTL_SUSPICIOUS_SECONDS || '3600', 10),
-      malicious: parseInt(process.env.CACHE_TTL_MALICIOUS_SECONDS || '900', 10),
-    }
+      benign: parseInt(process.env.CACHE_TTL_BENIGN_SECONDS || "86400", 10),
+      suspicious: parseInt(
+        process.env.CACHE_TTL_SUSPICIOUS_SECONDS || "3600",
+        10,
+      ),
+      malicious: parseInt(process.env.CACHE_TTL_MALICIOUS_SECONDS || "900", 10),
+    },
   },
   cache: {
-    inMemoryEnabled: (process.env.CACHE_IN_MEMORY_ENABLED || 'true') === 'true',
-    inMemoryTtlSeconds: parseInt(process.env.CACHE_IN_MEMORY_TTL_SECONDS || '3600', 10),
-    inMemoryMaxKeys: parseInt(process.env.CACHE_IN_MEMORY_MAX_KEYS || '10000', 10),
+    inMemoryEnabled: (process.env.CACHE_IN_MEMORY_ENABLED || "true") === "true",
+    inMemoryTtlSeconds: parseInt(
+      process.env.CACHE_IN_MEMORY_TTL_SECONDS || "3600",
+      10,
+    ),
+    inMemoryMaxKeys: parseInt(
+      process.env.CACHE_IN_MEMORY_MAX_KEYS || "10000",
+      10,
+    ),
   },
   enhancedSecurity: {
-    enabled: (process.env.ENHANCED_SECURITY_ENABLED || 'true') === 'true',
+    enabled: (process.env.ENHANCED_SECURITY_ENABLED || "true") === "true",
     dnsbl: {
-      enabled: (process.env.DNSBL_ENABLED || 'true') === 'true',
-      timeoutMs: parseInt(process.env.DNSBL_TIMEOUT_MS || '2000', 10),
+      enabled: (process.env.DNSBL_ENABLED || "true") === "true",
+      timeoutMs: parseInt(process.env.DNSBL_TIMEOUT_MS || "2000", 10),
     },
     certIntel: {
-      enabled: (process.env.CERT_INTEL_ENABLED || 'true') === 'true',
-      timeoutMs: parseInt(process.env.CERT_INTEL_TIMEOUT_MS || '3000', 10),
-      ctCheckEnabled: (process.env.CERT_INTEL_CT_CHECK_ENABLED || 'true') === 'true',
+      enabled: (process.env.CERT_INTEL_ENABLED || "true") === "true",
+      timeoutMs: parseInt(process.env.CERT_INTEL_TIMEOUT_MS || "3000", 10),
+      ctCheckEnabled:
+        (process.env.CERT_INTEL_CT_CHECK_ENABLED || "true") === "true",
     },
     localThreatDb: {
-      enabled: (process.env.LOCAL_THREAT_DB_ENABLED || 'true') === 'true',
-      feedUrl: process.env.OPENPHISH_FEED_URL || 'https://openphish.com/feed.txt',
-      updateIntervalMs: parseInt(process.env.OPENPHISH_UPDATE_INTERVAL_MS || '7200000', 10),
+      enabled: (process.env.LOCAL_THREAT_DB_ENABLED || "true") === "true",
+      feedUrl:
+        process.env.OPENPHISH_FEED_URL || "https://openphish.com/feed.txt",
+      updateIntervalMs: parseInt(
+        process.env.OPENPHISH_UPDATE_INTERVAL_MS || "7200000",
+        10,
+      ),
     },
     httpFingerprint: {
-      enabled: (process.env.HTTP_FINGERPRINT_ENABLED || 'true') === 'true',
-      timeoutMs: parseInt(process.env.HTTP_FINGERPRINT_TIMEOUT_MS || '2000', 10),
+      enabled: (process.env.HTTP_FINGERPRINT_ENABLED || "true") === "true",
+      timeoutMs: parseInt(
+        process.env.HTTP_FINGERPRINT_TIMEOUT_MS || "2000",
+        10,
+      ),
     },
     heuristics: {
-      entropyThreshold: parseFloat(process.env.ENHANCED_HEURISTICS_ENTROPY_THRESHOLD || '4.5'),
+      entropyThreshold: parseFloat(
+        process.env.ENHANCED_HEURISTICS_ENTROPY_THRESHOLD || "4.5",
+      ),
     },
   },
   controlPlane: {
-    port: parseInt(process.env.CONTROL_PLANE_PORT || '8080', 10),
+    port: parseInt(process.env.CONTROL_PLANE_PORT || "8080", 10),
     get token(): string {
       return getControlPlaneToken();
     },
-    enableUi: (process.env.CONTROL_PLANE_ENABLE_UI || 'true') === 'true',
+    enableUi: (process.env.CONTROL_PLANE_ENABLE_UI || "true") === "true",
     get csrfToken(): string {
-      return (process.env.CONTROL_PLANE_CSRF_TOKEN || getControlPlaneToken()).trim();
+      return (
+        process.env.CONTROL_PLANE_CSRF_TOKEN || getControlPlaneToken()
+      ).trim();
     },
     get allowedOrigins(): string[] {
-      return parseStringList(process.env.CONTROL_PLANE_ALLOWED_ORIGINS).map((origin) => origin.toLowerCase());
+      return parseStringList(process.env.CONTROL_PLANE_ALLOWED_ORIGINS).map(
+        (origin) => origin.toLowerCase(),
+      );
     },
   },
   features: featureFlags,
   wa: {
-    headless: (process.env.WA_HEADLESS || 'true') === 'true',
-    qrTerminal: (process.env.WA_QR_TERMINAL || 'true') === 'true',
-    consentOnJoin: (process.env.WA_CONSENT_ON_JOIN || 'true') === 'true',
-    quietHours: process.env.WA_QUIET_HOURS || '22-07',
-    perGroupCooldownSeconds: parseInt(process.env.WA_PER_GROUP_REPLY_COOLDOWN_SECONDS || '60', 10),
-    globalRatePerHour: parsePositiveInt(process.env.WA_GLOBAL_REPLY_RATE_PER_HOUR, 1000),
-    globalTokenBucketKey: process.env.WA_GLOBAL_TOKEN_BUCKET_KEY || 'wa_global_token_bucket',
-    perGroupHourlyLimit: parsePositiveInt(process.env.WA_PER_GROUP_HOURLY_LIMIT, 60),
+    headless: (process.env.WA_HEADLESS || "true") === "true",
+    qrTerminal: (process.env.WA_QR_TERMINAL || "true") === "true",
+    consentOnJoin: (process.env.WA_CONSENT_ON_JOIN || "true") === "true",
+    quietHours: process.env.WA_QUIET_HOURS || "22-07",
+    perGroupCooldownSeconds: parseInt(
+      process.env.WA_PER_GROUP_REPLY_COOLDOWN_SECONDS || "60",
+      10,
+    ),
+    globalRatePerHour: parsePositiveInt(
+      process.env.WA_GLOBAL_REPLY_RATE_PER_HOUR,
+      1000,
+    ),
+    globalTokenBucketKey:
+      process.env.WA_GLOBAL_TOKEN_BUCKET_KEY || "wa_global_token_bucket",
+    perGroupHourlyLimit: parsePositiveInt(
+      process.env.WA_PER_GROUP_HOURLY_LIMIT,
+      60,
+    ),
     remoteAuth: {
-      store: (process.env.WA_REMOTE_AUTH_STORE || 'redis').toLowerCase(),
-      clientId: process.env.WA_AUTH_CLIENT_ID || 'default',
-      autoPair: (process.env.WA_REMOTE_AUTH_AUTO_PAIR || 'false') === 'true',
-      pairingDelayMs: parsePositiveInt(process.env.WA_REMOTE_AUTH_AUTO_PAIR_DELAY_MS, 0, { minimum: 0 }),
-      pairingRetryDelayMs: parsePositiveInt(process.env.WA_REMOTE_AUTH_RETRY_DELAY_MS, 15000, { minimum: 1000 }),
-      maxPairingRetries: parsePositiveInt(process.env.WA_REMOTE_AUTH_MAX_RETRIES, 5, { minimum: 1 }),
-      disableQrFallback: (process.env.WA_REMOTE_AUTH_DISABLE_QR_FALLBACK || 'false') === 'true',
-      kmsKeyId: (process.env.WA_REMOTE_AUTH_KMS_KEY_ID || '').trim() || undefined,
-      encryptedDataKey: (process.env.WA_REMOTE_AUTH_ENCRYPTED_DATA_KEY || '').trim() || undefined,
-      dataKey: (process.env.WA_REMOTE_AUTH_DATA_KEY || '').trim() || undefined,
-      vaultTransitPath: (process.env.WA_REMOTE_AUTH_VAULT_PATH || '').trim() || undefined,
-      vaultToken: (process.env.WA_REMOTE_AUTH_VAULT_TOKEN || '').trim() || undefined,
-      vaultAddress: (process.env.WA_REMOTE_AUTH_VAULT_ADDRESS || '').trim() || undefined,
-      alertThreshold: parsePositiveInt(process.env.WA_AUTH_FAILURE_ALERT_THRESHOLD, 3, { minimum: 1 }),
-      alertCooldownSeconds: parsePositiveInt(process.env.WA_AUTH_FAILURE_ALERT_COOLDOWN_SECONDS, 1800, { minimum: 60 }),
-      failureWindowSeconds: parsePositiveInt(process.env.WA_AUTH_FAILURE_WINDOW_SECONDS, 900, { minimum: 60 }),
-      resetDebounceSeconds: parsePositiveInt(process.env.WA_RESET_DEBOUNCE_SECONDS, 60, { minimum: 15 }),
-      backupIntervalMs: parsePositiveInt(process.env.WA_REMOTE_AUTH_BACKUP_INTERVAL_MS, 300000, { minimum: 60000 }),
-      dataPath: process.env.WA_REMOTE_AUTH_DATA_PATH || './data/remote-session',
-      forceNewSession: (process.env.WA_REMOTE_AUTH_FORCE_NEW_SESSION || 'false') === 'true',
+      store: (process.env.WA_REMOTE_AUTH_STORE || "redis").toLowerCase(),
+      clientId: process.env.WA_AUTH_CLIENT_ID || "default",
+      autoPair: (process.env.WA_REMOTE_AUTH_AUTO_PAIR || "false") === "true",
+      pairingDelayMs: parsePositiveInt(
+        process.env.WA_REMOTE_AUTH_AUTO_PAIR_DELAY_MS,
+        0,
+        { minimum: 0 },
+      ),
+      pairingRetryDelayMs: parsePositiveInt(
+        process.env.WA_REMOTE_AUTH_RETRY_DELAY_MS,
+        15000,
+        { minimum: 1000 },
+      ),
+      maxPairingRetries: parsePositiveInt(
+        process.env.WA_REMOTE_AUTH_MAX_RETRIES,
+        5,
+        { minimum: 1 },
+      ),
+      disableQrFallback:
+        (process.env.WA_REMOTE_AUTH_DISABLE_QR_FALLBACK || "false") === "true",
+      kmsKeyId:
+        (process.env.WA_REMOTE_AUTH_KMS_KEY_ID || "").trim() || undefined,
+      encryptedDataKey:
+        (process.env.WA_REMOTE_AUTH_ENCRYPTED_DATA_KEY || "").trim() ||
+        undefined,
+      dataKey: (process.env.WA_REMOTE_AUTH_DATA_KEY || "").trim() || undefined,
+      vaultTransitPath:
+        (process.env.WA_REMOTE_AUTH_VAULT_PATH || "").trim() || undefined,
+      vaultToken:
+        (process.env.WA_REMOTE_AUTH_VAULT_TOKEN || "").trim() || undefined,
+      vaultAddress:
+        (process.env.WA_REMOTE_AUTH_VAULT_ADDRESS || "").trim() || undefined,
+      alertThreshold: parsePositiveInt(
+        process.env.WA_AUTH_FAILURE_ALERT_THRESHOLD,
+        3,
+        { minimum: 1 },
+      ),
+      alertCooldownSeconds: parsePositiveInt(
+        process.env.WA_AUTH_FAILURE_ALERT_COOLDOWN_SECONDS,
+        1800,
+        { minimum: 60 },
+      ),
+      failureWindowSeconds: parsePositiveInt(
+        process.env.WA_AUTH_FAILURE_WINDOW_SECONDS,
+        900,
+        { minimum: 60 },
+      ),
+      resetDebounceSeconds: parsePositiveInt(
+        process.env.WA_RESET_DEBOUNCE_SECONDS,
+        60,
+        { minimum: 15 },
+      ),
+      backupIntervalMs: parsePositiveInt(
+        process.env.WA_REMOTE_AUTH_BACKUP_INTERVAL_MS,
+        300000,
+        { minimum: 60000 },
+      ),
+      dataPath: process.env.WA_REMOTE_AUTH_DATA_PATH || "./data/remote-session",
+      forceNewSession:
+        (process.env.WA_REMOTE_AUTH_FORCE_NEW_SESSION || "false") === "true",
 
       // Multi-number support (comma-separated list)
       phoneNumbers: (() => {
-        const raw = (process.env.WA_REMOTE_AUTH_PHONE_NUMBERS || process.env.WA_REMOTE_AUTH_PHONE_NUMBER || '').trim();
-        return raw.split(',')
-          .map(num => num.replace(/\D/g, ''))
-          .filter(num => num.length > 4);
+        const raw = (
+          process.env.WA_REMOTE_AUTH_PHONE_NUMBERS ||
+          process.env.WA_REMOTE_AUTH_PHONE_NUMBER ||
+          ""
+        ).trim();
+        return raw
+          .split(",")
+          .map((num) => num.replace(/\D/g, ""))
+          .filter((num) => num.length > 4);
       })(),
 
       // Backwards compatibility: single phoneNumber (deprecated)
       phoneNumber: (() => {
-        const raw = (process.env.WA_REMOTE_AUTH_PHONE_NUMBER || '').replace(/\D/g, '');
+        const raw = (process.env.WA_REMOTE_AUTH_PHONE_NUMBER || "").replace(
+          /\D/g,
+          "",
+        );
         return raw.length > 4 ? raw : undefined;
       })(),
 
       // On-demand polling configuration
-      pollingEnabled: (process.env.WA_REMOTE_AUTH_POLLING_ENABLED || 'false') === 'true',
-      pollingIntervalMinutes: parsePositiveInt(process.env.WA_REMOTE_AUTH_POLLING_INTERVAL_MINUTES, 10, { minimum: 5 }),
-      pollingDurationMinutes: parsePositiveInt(process.env.WA_REMOTE_AUTH_POLLING_DURATION_MINUTES, 60, { minimum: 10 }),
-      pollingSchedule: (process.env.WA_REMOTE_AUTH_POLLING_SCHEDULE || '').trim() || undefined,
+      pollingEnabled:
+        (process.env.WA_REMOTE_AUTH_POLLING_ENABLED || "false") === "true",
+      pollingIntervalMinutes: parsePositiveInt(
+        process.env.WA_REMOTE_AUTH_POLLING_INTERVAL_MINUTES,
+        10,
+        { minimum: 5 },
+      ),
+      pollingDurationMinutes: parsePositiveInt(
+        process.env.WA_REMOTE_AUTH_POLLING_DURATION_MINUTES,
+        60,
+        { minimum: 10 },
+      ),
+      pollingSchedule:
+        (process.env.WA_REMOTE_AUTH_POLLING_SCHEDULE || "").trim() || undefined,
 
       // Parallel checking configuration
-      parallelCheckTimeoutMs: parsePositiveInt(process.env.WA_REMOTE_AUTH_PARALLEL_TIMEOUT_MS, 30000, { minimum: 10000 }),
+      parallelCheckTimeoutMs: parsePositiveInt(
+        process.env.WA_REMOTE_AUTH_PARALLEL_TIMEOUT_MS,
+        30000,
+        { minimum: 10000 },
+      ),
     },
     authStrategy: (() => {
-      const raw = (process.env.WA_AUTH_STRATEGY || 'remote').toLowerCase();
-      return raw === 'local' ? 'local' : 'remote';
-    })() as 'local' | 'remote',
+      const raw = (process.env.WA_AUTH_STRATEGY || "remote").toLowerCase();
+      return raw === "local" ? "local" : "remote";
+    })() as "local" | "remote",
     puppeteerArgs: (() => {
       const raw = process.env.WA_PUPPETEER_ARGS;
-      if (!raw || raw.trim() === '') {
+      if (!raw || raw.trim() === "") {
         // Optimized args to reduce memory and CPU overhead by 40-60%
         return [
           // Security (required for Docker)
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
 
           // Memory optimization
-          '--disable-dev-shm-usage',        // Use /tmp instead of /dev/shm (prevents OOM)
-          '--disable-gpu',                   // No GPU rendering needed
-          '--disable-software-rasterizer',   // Disable software rasterizer fallback
+          "--disable-dev-shm-usage", // Use /tmp instead of /dev/shm (prevents OOM)
+          "--disable-gpu", // No GPU rendering needed
+          "--disable-software-rasterizer", // Disable software rasterizer fallback
 
           // CPU optimization
-          '--disable-background-networking', // No background requests
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-breakpad',              // Disable crash reporting
-          '--disable-component-extensions-with-background-pages',
-          '--disable-features=TranslateUI,BlinkGenPropertyTrees',
-          '--disable-ipc-flooding-protection', // Reduce IPC overhead
-          '--disable-renderer-backgrounding', // Keep renderer active
+          "--disable-background-networking", // No background requests
+          "--disable-background-timer-throttling",
+          "--disable-backgrounding-occluded-windows",
+          "--disable-breakpad", // Disable crash reporting
+          "--disable-component-extensions-with-background-pages",
+          "--disable-features=TranslateUI,BlinkGenPropertyTrees",
+          "--disable-ipc-flooding-protection", // Reduce IPC overhead
+          "--disable-renderer-backgrounding", // Keep renderer active
 
           // Feature disabling (not needed for WhatsApp Web)
-          '--disable-extensions',
-          '--disable-default-apps',
-          '--disable-sync',
-          '--disable-translate',
-          '--metrics-recording-only',       // Minimal metrics
-          '--mute-audio',                   // No audio needed
-          '--no-first-run',
-          '--no-default-browser-check',
-          '--disable-hang-monitor',
-          '--disable-prompt-on-repost',
-          '--disable-domain-reliability',
-          '--disable-client-side-phishing-detection',
+          "--disable-extensions",
+          "--disable-default-apps",
+          "--disable-sync",
+          "--disable-translate",
+          "--metrics-recording-only", // Minimal metrics
+          "--mute-audio", // No audio needed
+          "--no-first-run",
+          "--no-default-browser-check",
+          "--disable-hang-monitor",
+          "--disable-prompt-on-repost",
+          "--disable-domain-reliability",
+          "--disable-client-side-phishing-detection",
 
           // Resource preloading (reduce initial load)
-          '--disable-features=AudioServiceOutOfProcess',
-          '--disable-features=IsolateOrigins,site-per-process',
-          '--disable-blink-features=AutomationControlled', // Anti-detection
+          "--disable-features=AudioServiceOutOfProcess",
+          "--disable-features=IsolateOrigins,site-per-process",
+          "--disable-blink-features=AutomationControlled", // Anti-detection
         ];
       }
-      return raw.split(',').map((segment) => segment.trim()).filter((segment) => segment.length > 0);
+      return raw
+        .split(",")
+        .map((segment) => segment.trim())
+        .filter((segment) => segment.length > 0);
     })(),
-    verdictAckTimeoutSeconds: parsePositiveInt(process.env.WA_VERDICT_ACK_TIMEOUT_SECONDS, 30),
-    verdictAckMaxRetries: parsePositiveInt(process.env.WA_VERDICT_ACK_MAX_RETRIES, 5),
+    verdictAckTimeoutSeconds: parsePositiveInt(
+      process.env.WA_VERDICT_ACK_TIMEOUT_SECONDS,
+      30,
+    ),
+    verdictAckMaxRetries: parsePositiveInt(
+      process.env.WA_VERDICT_ACK_MAX_RETRIES,
+      5,
+    ),
     verdictMaxRetries: parsePositiveInt(process.env.WA_VERDICT_MAX_RETRIES, 3),
-    membershipAutoApprovePerHour: parsePositiveInt(process.env.WA_MEMBERSHIP_AUTO_APPROVE_PER_HOUR, 10),
-    membershipGlobalHourlyLimit: parsePositiveInt(process.env.WA_MEMBERSHIP_GLOBAL_HOURLY_LIMIT, 100),
-    governanceInterventionsPerHour: parsePositiveInt(process.env.WA_GOVERNANCE_INTERVENTIONS_PER_HOUR, 12),
-    messageLineageTtlSeconds: parsePositiveInt(process.env.WA_MESSAGE_LINEAGE_TTL_SECONDS, 60 * 60 * 24 * 30),
-  }
+    membershipAutoApprovePerHour: parsePositiveInt(
+      process.env.WA_MEMBERSHIP_AUTO_APPROVE_PER_HOUR,
+      10,
+    ),
+    membershipGlobalHourlyLimit: parsePositiveInt(
+      process.env.WA_MEMBERSHIP_GLOBAL_HOURLY_LIMIT,
+      100,
+    ),
+    governanceInterventionsPerHour: parsePositiveInt(
+      process.env.WA_GOVERNANCE_INTERVENTIONS_PER_HOUR,
+      12,
+    ),
+    messageLineageTtlSeconds: parsePositiveInt(
+      process.env.WA_MESSAGE_LINEAGE_TTL_SECONDS,
+      60 * 60 * 24 * 30,
+    ),
+  },
 };
 
 export function assertControlPlaneToken(): string {
@@ -12294,56 +15150,56 @@ export function assertControlPlaneToken(): string {
 export function assertEssentialConfig(serviceName: string): void {
   const missing: string[] = [];
 
-  if (!config.vt.apiKey?.trim()) missing.push('VT_API_KEY');
-  if (!config.redisUrl?.trim()) missing.push('REDIS_URL');
+  if (!config.vt.apiKey?.trim()) missing.push("VT_API_KEY");
+  if (!config.redisUrl?.trim()) missing.push("REDIS_URL");
 
   if (missing.length > 0) {
-    logger.error({ service: serviceName, missing }, 'Missing required environment variables');
+    logger.error(
+      { service: serviceName, missing },
+      "Missing required environment variables",
+    );
     process.exit(1);
   }
 }
-
-
 ```
 
 # File: packages/shared/src/index.ts
 
 ```typescript
-export * from './log';
-export * from './metrics';
-export * from './config';
-export * from './url';
-export * from './ssrf';
-export * from './scoring';
-export * from './reputation/virustotal';
-export * from './reputation/gsb';
-export * from './reputation/rdap';
-export * from './reputation/urlhaus';
-export * from './reputation/phishtank';
-export * from './reputation/urlscan';
-export * from './reputation/whoisxml';
-export * from './reputation/whodat';
-export * from './reputation/dns-intelligence';
-export * from './reputation/certificate-intelligence';
-export * from './reputation/advanced-heuristics';
-export * from './reputation/local-threat-db';
-export * from './reputation/http-fingerprint';
-export * from './circuit-breaker';
-export * from './url-shortener';
-export * from './types';
-export * from './errors';
-export * from './homoglyph';
-export * from './database';
-export * from './verdict-cache';
-
+export * from "./log";
+export * from "./metrics";
+export * from "./config";
+export * from "./url";
+export * from "./ssrf";
+export * from "./scoring";
+export * from "./reputation/virustotal";
+export * from "./reputation/gsb";
+export * from "./reputation/rdap";
+export * from "./reputation/urlhaus";
+export * from "./reputation/phishtank";
+export * from "./reputation/urlscan";
+export * from "./reputation/whoisxml";
+export * from "./reputation/whodat";
+export * from "./reputation/dns-intelligence";
+export * from "./reputation/certificate-intelligence";
+export * from "./reputation/advanced-heuristics";
+export * from "./reputation/local-threat-db";
+export * from "./reputation/http-fingerprint";
+export * from "./circuit-breaker";
+export * from "./url-shortener";
+export * from "./types";
+export * from "./errors";
+export * from "./homoglyph";
+export * from "./database";
+export * from "./verdict-cache";
 ```
 
 # File: packages/shared/src/scoring.ts
 
 ```typescript
-import { isSuspiciousTld } from './url';
-import { detectHomoglyphs } from './homoglyph';
-import type { HomoglyphResult } from './homoglyph';
+import { isSuspiciousTld } from "./url";
+import { detectHomoglyphs } from "./homoglyph";
+import type { HomoglyphResult } from "./homoglyph";
 
 export interface Signals {
   gsbThreatTypes?: string[];
@@ -12360,7 +15216,7 @@ export interface Signals {
   urlLength?: number;
   hasExecutableExtension?: boolean;
   wasShortened?: boolean;
-  manualOverride?: 'allow' | 'deny' | null;
+  manualOverride?: "allow" | "deny" | null;
   finalUrlMismatch?: boolean;
   homoglyph?: HomoglyphResult;
   heuristicsOnly?: boolean;
@@ -12368,7 +15224,7 @@ export interface Signals {
 
 export interface RiskVerdict {
   score: number;
-  level: 'benign' | 'suspicious' | 'malicious';
+  level: "benign" | "suspicious" | "malicious";
   reasons: string[];
   cacheTtl: number;
 }
@@ -12379,24 +15235,35 @@ function pushReason(reasons: string[], reason: string) {
   }
 }
 
-function evaluateBlocklistSignals(signals: Signals, score: number, reasons: string[]): number {
+function evaluateBlocklistSignals(
+  signals: Signals,
+  score: number,
+  reasons: string[],
+): number {
   const threatTypes = signals.gsbThreatTypes ?? [];
-  if (threatTypes.includes('MALWARE') || threatTypes.includes('SOCIAL_ENGINEERING')) {
+  if (
+    threatTypes.includes("MALWARE") ||
+    threatTypes.includes("SOCIAL_ENGINEERING")
+  ) {
     score += 10;
-    pushReason(reasons, `Google Safe Browsing: ${threatTypes.join(', ')}`);
+    pushReason(reasons, `Google Safe Browsing: ${threatTypes.join(", ")}`);
   }
   if (signals.phishtankVerified) {
     score += 10;
-    pushReason(reasons, 'Verified phishing (Phishtank)');
+    pushReason(reasons, "Verified phishing (Phishtank)");
   }
   if (signals.urlhausListed) {
     score += 10;
-    pushReason(reasons, 'Known malware distribution (URLhaus)');
+    pushReason(reasons, "Known malware distribution (URLhaus)");
   }
   return score;
 }
 
-function evaluateVirusTotalSignals(signals: Signals, score: number, reasons: string[]): number {
+function evaluateVirusTotalSignals(
+  signals: Signals,
+  score: number,
+  reasons: string[],
+): number {
   const vtMalicious = signals.vtMalicious ?? 0;
   if (vtMalicious >= 3) {
     score += 8;
@@ -12408,62 +15275,90 @@ function evaluateVirusTotalSignals(signals: Signals, score: number, reasons: str
   return score;
 }
 
-function evaluateDomainAge(signals: Signals, score: number, reasons: string[]): number {
+function evaluateDomainAge(
+  signals: Signals,
+  score: number,
+  reasons: string[],
+): number {
   if (signals.domainAgeDays !== undefined && signals.domainAgeDays !== null) {
     if (signals.domainAgeDays < 7) {
       score += 6;
-      pushReason(reasons, `Domain registered ${signals.domainAgeDays} days ago (<7)`);
+      pushReason(
+        reasons,
+        `Domain registered ${signals.domainAgeDays} days ago (<7)`,
+      );
     } else if (signals.domainAgeDays < 14) {
       score += 4;
-      pushReason(reasons, `Domain registered ${signals.domainAgeDays} days ago (<14)`);
+      pushReason(
+        reasons,
+        `Domain registered ${signals.domainAgeDays} days ago (<14)`,
+      );
     } else if (signals.domainAgeDays < 30) {
       score += 2;
-      pushReason(reasons, `Domain registered ${signals.domainAgeDays} days ago (<30)`);
+      pushReason(
+        reasons,
+        `Domain registered ${signals.domainAgeDays} days ago (<30)`,
+      );
     }
   }
   return score;
 }
 
-function evaluateHomoglyphSignals(signals: Signals, score: number, reasons: string[]): number {
+function evaluateHomoglyphSignals(
+  signals: Signals,
+  score: number,
+  reasons: string[],
+): number {
   const homoglyph = signals.homoglyph;
   if (homoglyph?.detected) {
-    const characterPairs = homoglyph.confusableChars.map(c => `${c.original}→${c.confusedWith}`).join(', ');
-    if (homoglyph.riskLevel === 'high') {
+    const characterPairs = homoglyph.confusableChars
+      .map((c) => `${c.original}→${c.confusedWith}`)
+      .join(", ");
+    if (homoglyph.riskLevel === "high") {
       score += 5;
       pushReason(
         reasons,
         characterPairs
           ? `High-risk homoglyph attack detected (${characterPairs})`
-          : 'High-risk homoglyph attack detected',
+          : "High-risk homoglyph attack detected",
       );
-    } else if (homoglyph.riskLevel === 'medium') {
+    } else if (homoglyph.riskLevel === "medium") {
       score += 3;
       pushReason(
         reasons,
         characterPairs
           ? `Suspicious homoglyph characters detected (${characterPairs})`
-          : 'Suspicious homoglyph characters detected',
+          : "Suspicious homoglyph characters detected",
       );
     } else {
       score += 1;
-      const baseReason = homoglyph.isPunycode ? 'Punycode/IDN hostname detected' : 'Internationalized hostname detected';
-      pushReason(reasons, characterPairs ? `${baseReason} (${characterPairs})` : baseReason);
+      const baseReason = homoglyph.isPunycode
+        ? "Punycode/IDN hostname detected"
+        : "Internationalized hostname detected";
+      pushReason(
+        reasons,
+        characterPairs ? `${baseReason} (${characterPairs})` : baseReason,
+      );
     }
     homoglyph.riskReasons
-      .filter(reason => !reason.startsWith('Confusable character'))
-      .forEach(reason => pushReason(reasons, reason));
+      .filter((reason) => !reason.startsWith("Confusable character"))
+      .forEach((reason) => pushReason(reasons, reason));
   }
   return score;
 }
 
-function evaluateHeuristicSignals(signals: Signals, score: number, reasons: string[]): number {
+function evaluateHeuristicSignals(
+  signals: Signals,
+  score: number,
+  reasons: string[],
+): number {
   if (signals.isIpLiteral) {
     score += 3;
-    pushReason(reasons, 'URL uses IP address');
+    pushReason(reasons, "URL uses IP address");
   }
   if (signals.hasSuspiciousTld) {
     score += 2;
-    pushReason(reasons, 'Suspicious TLD');
+    pushReason(reasons, "Suspicious TLD");
   }
   if ((signals.redirectCount ?? 0) >= 3) {
     score += 2;
@@ -12471,7 +15366,7 @@ function evaluateHeuristicSignals(signals: Signals, score: number, reasons: stri
   }
   if (signals.hasUncommonPort) {
     score += 2;
-    pushReason(reasons, 'Uncommon port');
+    pushReason(reasons, "Uncommon port");
   }
   if ((signals.urlLength ?? 0) > 200) {
     score += 2;
@@ -12479,35 +15374,48 @@ function evaluateHeuristicSignals(signals: Signals, score: number, reasons: stri
   }
   if (signals.hasExecutableExtension) {
     score += 1;
-    pushReason(reasons, 'Executable file extension');
+    pushReason(reasons, "Executable file extension");
   }
   if (signals.wasShortened) {
     score += 1;
-    pushReason(reasons, 'Shortened URL expanded');
+    pushReason(reasons, "Shortened URL expanded");
   }
   if (signals.finalUrlMismatch) {
     score += 2;
-    pushReason(reasons, 'Redirect leads to mismatched domain/brand');
+    pushReason(reasons, "Redirect leads to mismatched domain/brand");
   }
   return score;
 }
 
-function determineRiskLevel(finalScore: number): { level: RiskVerdict['level']; cacheTtl: number } {
+function determineRiskLevel(finalScore: number): {
+  level: RiskVerdict["level"];
+  cacheTtl: number;
+} {
   if (finalScore <= 3) {
-    return { level: 'benign', cacheTtl: 86400 };
+    return { level: "benign", cacheTtl: 86400 };
   } else if (finalScore <= 7) {
-    return { level: 'suspicious', cacheTtl: 3600 };
+    return { level: "suspicious", cacheTtl: 3600 };
   } else {
-    return { level: 'malicious', cacheTtl: 900 };
+    return { level: "malicious", cacheTtl: 900 };
   }
 }
 
 export function scoreFromSignals(signals: Signals): RiskVerdict {
-  if (signals.manualOverride === 'allow') {
-    return { score: 0, level: 'benign', reasons: ['Manually allowed'], cacheTtl: 86400 };
+  if (signals.manualOverride === "allow") {
+    return {
+      score: 0,
+      level: "benign",
+      reasons: ["Manually allowed"],
+      cacheTtl: 86400,
+    };
   }
-  if (signals.manualOverride === 'deny') {
-    return { score: 15, level: 'malicious', reasons: ['Manually blocked'], cacheTtl: 86400 };
+  if (signals.manualOverride === "deny") {
+    return {
+      score: 15,
+      level: "malicious",
+      reasons: ["Manually blocked"],
+      cacheTtl: 86400,
+    };
   }
 
   let score = 0;
@@ -12520,7 +15428,10 @@ export function scoreFromSignals(signals: Signals): RiskVerdict {
   score = evaluateHeuristicSignals(signals, score, reasons);
 
   if (signals.heuristicsOnly) {
-    pushReason(reasons, 'Heuristics-only scan (external providers unavailable)');
+    pushReason(
+      reasons,
+      "Heuristics-only scan (external providers unavailable)",
+    );
   }
 
   const finalScore = Math.max(0, Math.min(score, 15));
@@ -12530,10 +15441,17 @@ export function scoreFromSignals(signals: Signals): RiskVerdict {
 }
 
 export function extraHeuristics(u: URL): Partial<Signals> {
-  const port = u.port ? parseInt(u.port, 10) : (u.protocol === 'http:' ? 80 : 443);
+  const port = u.port
+    ? parseInt(u.port, 10)
+    : u.protocol === "http:"
+      ? 80
+      : 443;
   const hasUncommonPort = ![80, 443, 8080, 8443].includes(port);
-  const isIpLiteral = /^(\d+\.\d+\.\d+\.\d+|\[[0-9a-fA-F:]+\])$/.test(u.hostname);
-  const hasExecutableExtension = /\.(exe|msi|apk|bat|cmd|ps1|scr|jar|pkg|dmg|iso)$/i.test(u.pathname);
+  const isIpLiteral = /^(\d+\.\d+\.\d+\.\d+|\[[0-9a-fA-F:]+\])$/.test(
+    u.hostname,
+  );
+  const hasExecutableExtension =
+    /\.(exe|msi|apk|bat|cmd|ps1|scr|jar|pkg|dmg|iso)$/i.test(u.pathname);
   const hasSuspiciousTld = isSuspiciousTld(u.hostname);
   const homoglyph = detectHomoglyphs(u.hostname);
   return {
@@ -12545,13 +15463,12 @@ export function extraHeuristics(u: URL): Partial<Signals> {
     homoglyph,
   };
 }
-
 ```
 
 # File: packages/shared/src/types.ts
 
 ```typescript
-export type Verdict = 'benign' | 'suspicious' | 'malicious';
+export type Verdict = "benign" | "suspicious" | "malicious";
 
 export interface ScanRequest {
   chatId: string;
@@ -12571,7 +15488,7 @@ export interface ScanResult {
   score: number;
   reasons: string[];
   override?: {
-    status: 'allow' | 'deny';
+    status: "allow" | "deny";
     reason?: string | null;
   };
   vt?: unknown;
@@ -12583,7 +15500,7 @@ export interface ScanResult {
     uuid?: string;
   };
   whois?: {
-    source?: 'rdap' | 'whoisxml';
+    source?: "rdap" | "whoisxml";
     ageDays?: number;
     registrar?: string;
   };
@@ -12607,35 +15524,112 @@ export interface GroupSettings {
   quiet_hours?: string; // e.g., "22-07"
   language?: string; // e.g., "en"
 }
-
 ```
 
 # File: packages/shared/src/url-shortener.ts
 
 ```typescript
-import { request, fetch as undiciFetch } from 'undici';
-import urlExpandModuleRaw from 'url-expand';
-import { promisify } from 'node:util';
-import { config } from './config';
-import { normalizeUrl } from './url';
-import { isPrivateHostname } from './ssrf';
-import { metrics } from './metrics';
+import { request, fetch as undiciFetch } from "undici";
+import urlExpandModuleRaw from "url-expand";
+import { promisify } from "node:util";
+import { config } from "./config";
+import { normalizeUrl } from "./url";
+import { isPrivateHostname } from "./ssrf";
+import { metrics } from "./metrics";
 
 const DEFAULT_SHORTENERS = [
-  'bit.ly', 'goo.gl', 't.co', 'tinyurl.com', 'ow.ly', 'is.gd', 'buff.ly', 'adf.ly',
-  'rebrand.ly', 'lnkd.in', 'rb.gy', 's.id', 'shorturl.at', 'short.io', 'trib.al',
-  'po.st', 'bit.do', 'cutt.ly', 'mcaf.ee', 'su.pr', 'qr.ae', 'zpr.io', 'shor.by',
-  'tiny.cc', 'x.co', 'lnk.to', 'amzn.to', 'fb.me', 'ift.tt', 'j.mp', 'youtu.be',
-  'spr.ly', 'cli.re', 'wa.link', 'tele.cm', 'grabify.link', 'short.cm', 'v.gd',
-  'kutt.it', 'snip.ly', 'ttm.sh', 'gg.gg', 'rb.gy', 'prf.hn', 'chilp.it',
-  'qps.ru', 'clk.im', 'u.to', 't2m.io', 'soo.gd', 'shorte.st', 't.ly', 'smarturl.it',
-  'vn.tl', 'cbsn.ws', 'cnvrt.ly', 'ibm.co', 'es.pn', 'nyti.ms', 'wapo.st',
-  'apne.ws', 'reut.rs', 'trib.it', 'bloom.bg', 'for.tn', 'on.ft.com', 'on.mktw.net',
-  'lat.ms', 'washpo.st', 'cnet.co', 'g.co', 'hearsay.social', 'dlvr.it', 'relia.pe',
-  'go.aws', 'sforce.co', 'drd.sh', 'get.msgsndr.com', 'expi.co', 'plnk.to', 'starturl.com',
-  'shortest.link', 'shorten.rest', 'w.wiki', 'hbr.org/go/', 'r.fr24.com', 'lnkd.in',
-  'win.gs', 'engt.co', 'go.nasa.gov', 'go.wired.com'
-].map(s => s.toLowerCase());
+  "bit.ly",
+  "goo.gl",
+  "t.co",
+  "tinyurl.com",
+  "ow.ly",
+  "is.gd",
+  "buff.ly",
+  "adf.ly",
+  "rebrand.ly",
+  "lnkd.in",
+  "rb.gy",
+  "s.id",
+  "shorturl.at",
+  "short.io",
+  "trib.al",
+  "po.st",
+  "bit.do",
+  "cutt.ly",
+  "mcaf.ee",
+  "su.pr",
+  "qr.ae",
+  "zpr.io",
+  "shor.by",
+  "tiny.cc",
+  "x.co",
+  "lnk.to",
+  "amzn.to",
+  "fb.me",
+  "ift.tt",
+  "j.mp",
+  "youtu.be",
+  "spr.ly",
+  "cli.re",
+  "wa.link",
+  "tele.cm",
+  "grabify.link",
+  "short.cm",
+  "v.gd",
+  "kutt.it",
+  "snip.ly",
+  "ttm.sh",
+  "gg.gg",
+  "rb.gy",
+  "prf.hn",
+  "chilp.it",
+  "qps.ru",
+  "clk.im",
+  "u.to",
+  "t2m.io",
+  "soo.gd",
+  "shorte.st",
+  "t.ly",
+  "smarturl.it",
+  "vn.tl",
+  "cbsn.ws",
+  "cnvrt.ly",
+  "ibm.co",
+  "es.pn",
+  "nyti.ms",
+  "wapo.st",
+  "apne.ws",
+  "reut.rs",
+  "trib.it",
+  "bloom.bg",
+  "for.tn",
+  "on.ft.com",
+  "on.mktw.net",
+  "lat.ms",
+  "washpo.st",
+  "cnet.co",
+  "g.co",
+  "hearsay.social",
+  "dlvr.it",
+  "relia.pe",
+  "go.aws",
+  "sforce.co",
+  "drd.sh",
+  "get.msgsndr.com",
+  "expi.co",
+  "plnk.to",
+  "starturl.com",
+  "shortest.link",
+  "shorten.rest",
+  "w.wiki",
+  "hbr.org/go/",
+  "r.fr24.com",
+  "lnkd.in",
+  "win.gs",
+  "engt.co",
+  "go.nasa.gov",
+  "go.wired.com",
+].map((s) => s.toLowerCase());
 
 const SHORTENER_HOSTS = new Set(DEFAULT_SHORTENERS);
 
@@ -12650,16 +15644,16 @@ export function isKnownShortener(hostname: string): boolean {
 }
 
 export type ExpansionFailureReason =
-  | 'timeout'
-  | 'max-content-length'
-  | 'http-error'
-  | 'library-error'
-  | 'ssrf-blocked'
-  | 'expansion-failed';
+  | "timeout"
+  | "max-content-length"
+  | "http-error"
+  | "library-error"
+  | "ssrf-blocked"
+  | "expansion-failed";
 
 export interface ShortenerResolution {
   finalUrl: string;
-  provider: 'unshorten_me' | 'direct' | 'urlexpander' | 'original';
+  provider: "unshorten_me" | "direct" | "urlexpander" | "original";
   chain: string[];
   wasShortened: boolean;
   expanded: boolean;
@@ -12668,9 +15662,12 @@ export interface ShortenerResolution {
 }
 
 class DirectExpansionError extends Error {
-  constructor(public reason: ExpansionFailureReason, message?: string) {
+  constructor(
+    public reason: ExpansionFailureReason,
+    message?: string,
+  ) {
     super(message ?? reason);
-    this.name = 'DirectExpansionError';
+    this.name = "DirectExpansionError";
   }
 }
 
@@ -12678,20 +15675,29 @@ function failureReasonFrom(
   urlExpanderError: unknown,
   directError: unknown,
 ): ExpansionFailureReason {
-  if (urlExpanderError instanceof Error && urlExpanderError.message.includes('SSRF protection')) {
-    return 'ssrf-blocked';
+  if (
+    urlExpanderError instanceof Error &&
+    urlExpanderError.message.includes("SSRF protection")
+  ) {
+    return "ssrf-blocked";
   }
   if (directError instanceof DirectExpansionError) {
     return directError.reason;
   }
   if (urlExpanderError) {
-    return 'library-error';
+    return "library-error";
   }
-  return 'expansion-failed';
+  return "expansion-failed";
 }
 
-function failureMessageFrom(urlExpanderError: unknown, directError: unknown): string {
-  if (urlExpanderError instanceof Error && urlExpanderError.message.includes('SSRF protection')) {
+function failureMessageFrom(
+  urlExpanderError: unknown,
+  directError: unknown,
+): string {
+  if (
+    urlExpanderError instanceof Error &&
+    urlExpanderError.message.includes("SSRF protection")
+  ) {
     return urlExpanderError.message;
   }
   if (directError instanceof DirectExpansionError) {
@@ -12703,7 +15709,7 @@ function failureMessageFrom(urlExpanderError: unknown, directError: unknown): st
   if (directError instanceof Error) {
     return directError.message;
   }
-  return 'Expansion failed';
+  return "Expansion failed";
 }
 
 interface UnshortenResponse {
@@ -12715,14 +15721,14 @@ interface UnshortenResponse {
 
 async function resolveWithUnshorten(url: string): Promise<string | null> {
   try {
-    const endpoint = config.shortener.unshortenEndpoint.replace(/\/+$/, '');
+    const endpoint = config.shortener.unshortenEndpoint.replace(/\/+$/, "");
     const res = await request(`${endpoint}/${encodeURIComponent(url)}`, {
-      method: 'GET',
+      method: "GET",
       headersTimeout: 5000,
-      bodyTimeout: 5000
+      bodyTimeout: 5000,
     });
     if (res.statusCode >= 400) return null;
-    const json = await res.body.json() as UnshortenResponse;
+    const json = (await res.body.json()) as UnshortenResponse;
     if (json?.resolved_url && json.success !== false) {
       const normalized = normalizeUrl(json.resolved_url);
       return normalized || json.resolved_url;
@@ -12734,31 +15740,46 @@ async function resolveWithUnshorten(url: string): Promise<string | null> {
 }
 
 type FetchInput = Parameters<typeof undiciFetch>[0];
-type SafeFetch = (input: FetchInput, init?: Parameters<typeof undiciFetch>[1]) => ReturnType<typeof undiciFetch>;
+type SafeFetch = (
+  input: FetchInput,
+  init?: Parameters<typeof undiciFetch>[1],
+) => ReturnType<typeof undiciFetch>;
 
 function extractTargetUrl(input: FetchInput): string {
   const rawTarget =
-    typeof input === 'string'
+    typeof input === "string"
       ? input
       : input instanceof URL
         ? input.toString()
-        : input && typeof input === 'object' && 'url' in input && typeof (input as { url?: unknown }).url === 'string'
+        : input &&
+            typeof input === "object" &&
+            "url" in input &&
+            typeof (input as { url?: unknown }).url === "string"
           ? (input as { url: string }).url
           : undefined;
 
   if (!rawTarget) {
-    throw new DirectExpansionError('expansion-failed', 'Expansion failed: Missing target URL');
+    throw new DirectExpansionError(
+      "expansion-failed",
+      "Expansion failed: Missing target URL",
+    );
   }
 
   return rawTarget;
 }
 
-async function validateAndNormalizeUrl(rawTarget: string, chain: string[]): Promise<string> {
+async function validateAndNormalizeUrl(
+  rawTarget: string,
+  chain: string[],
+): Promise<string> {
   const normalizedTarget = normalizeUrl(rawTarget) || rawTarget;
   const parsed = new URL(normalizedTarget);
 
   if (await isPrivateHostname(parsed.hostname)) {
-    throw new DirectExpansionError('ssrf-blocked', 'SSRF protection: Private host blocked');
+    throw new DirectExpansionError(
+      "ssrf-blocked",
+      "SSRF protection: Private host blocked",
+    );
   }
 
   if (!chain.length || chain[chain.length - 1] !== normalizedTarget) {
@@ -12770,14 +15791,20 @@ async function validateAndNormalizeUrl(rawTarget: string, chain: string[]): Prom
 
 type UndiciResponse = Awaited<ReturnType<typeof undiciFetch>>;
 
-async function checkContentLength(response: UndiciResponse, maxContentLength: number): Promise<void> {
-  const contentLengthHeader = response.headers?.get?.('content-length');
+async function checkContentLength(
+  response: UndiciResponse,
+  maxContentLength: number,
+): Promise<void> {
+  const contentLengthHeader = response.headers?.get?.("content-length");
   if (contentLengthHeader) {
     const contentLength = Number.parseInt(contentLengthHeader, 10);
     if (Number.isFinite(contentLength) && contentLength > maxContentLength) {
       // @ts-ignore - body.cancel is not in the type definition but exists at runtime for undici streams
       response.body?.cancel?.();
-      throw new DirectExpansionError('max-content-length', `Content too large: ${contentLength} bytes`);
+      throw new DirectExpansionError(
+        "max-content-length",
+        `Content too large: ${contentLength} bytes`,
+      );
     }
   }
 }
@@ -12786,12 +15813,15 @@ function handleFetchError(error: unknown, timeoutMs: number): never {
   if (error instanceof DirectExpansionError) {
     throw error;
   }
-  if (error instanceof Error && error.name === 'AbortError') {
-    throw new DirectExpansionError('timeout', `Expansion timed out after ${timeoutMs}ms`);
+  if (error instanceof Error && error.name === "AbortError") {
+    throw new DirectExpansionError(
+      "timeout",
+      `Expansion timed out after ${timeoutMs}ms`,
+    );
   }
   throw new DirectExpansionError(
-    'http-error',
-    error instanceof Error ? error.message : 'Expansion failed',
+    "http-error",
+    error instanceof Error ? error.message : "Expansion failed",
   );
 }
 
@@ -12808,14 +15838,17 @@ function createGuardedFetch(
     const normalizedTarget = await validateAndNormalizeUrl(rawTarget, chain);
 
     if (attempts >= maxRedirects) {
-      throw new DirectExpansionError('expansion-failed', `Redirect limit exceeded (${maxRedirects})`);
+      throw new DirectExpansionError(
+        "expansion-failed",
+        `Redirect limit exceeded (${maxRedirects})`,
+      );
     }
     attempts += 1;
 
     try {
       const response = await undiciFetch(normalizedTarget, {
         ...init,
-        redirect: 'manual',
+        redirect: "manual",
         signal: AbortSignal.timeout(timeoutMs),
       });
 
@@ -12827,8 +15860,15 @@ function createGuardedFetch(
   };
 }
 
-async function processRedirectResponse(response: UndiciResponse, normalized: string, chain: string[]): Promise<{ nextUrl?: string; result?: { finalUrl: string; chain: string[] } }> {
-  const location = response.headers?.get?.('location');
+async function processRedirectResponse(
+  response: UndiciResponse,
+  normalized: string,
+  chain: string[],
+): Promise<{
+  nextUrl?: string;
+  result?: { finalUrl: string; chain: string[] };
+}> {
+  const location = response.headers?.get?.("location");
   if (response.status >= 300 && response.status < 400) {
     if (!location) {
       // @ts-ignore
@@ -12845,20 +15885,27 @@ async function processRedirectResponse(response: UndiciResponse, normalized: str
   return { result: { finalUrl: normalized, chain } };
 }
 
-async function fetchAndValidateUrl(normalized: string, timeoutMs: number, maxContentLength: number): Promise<UndiciResponse | null> {
+async function fetchAndValidateUrl(
+  normalized: string,
+  timeoutMs: number,
+  maxContentLength: number,
+): Promise<UndiciResponse | null> {
   const response = await undiciFetch(normalized, {
-    method: 'GET',
-    redirect: 'manual',
+    method: "GET",
+    redirect: "manual",
     signal: AbortSignal.timeout(timeoutMs),
   });
 
-  const contentLengthHeader = response.headers?.get?.('content-length');
+  const contentLengthHeader = response.headers?.get?.("content-length");
   if (contentLengthHeader) {
     const contentLength = Number.parseInt(contentLengthHeader, 10);
     if (Number.isFinite(contentLength) && contentLength > maxContentLength) {
       // @ts-ignore
       response.body?.cancel?.();
-      throw new DirectExpansionError('max-content-length', `Content too large: ${contentLength} bytes`);
+      throw new DirectExpansionError(
+        "max-content-length",
+        `Content too large: ${contentLength} bytes`,
+      );
     }
   }
 
@@ -12866,7 +15913,10 @@ async function fetchAndValidateUrl(normalized: string, timeoutMs: number, maxCon
     if (response.status >= 500) {
       // @ts-ignore
       response.body?.cancel?.();
-      throw new DirectExpansionError('http-error', `Expansion request failed with status ${response.status}`);
+      throw new DirectExpansionError(
+        "http-error",
+        `Expansion request failed with status ${response.status}`,
+      );
     }
     return null;
   }
@@ -12874,8 +15924,11 @@ async function fetchAndValidateUrl(normalized: string, timeoutMs: number, maxCon
   return response;
 }
 
-async function resolveDirectly(url: string): Promise<{ finalUrl: string; chain: string[] } | null> {
-  const { maxRedirects, timeoutMs, maxContentLength } = config.orchestrator.expansion;
+async function resolveDirectly(
+  url: string,
+): Promise<{ finalUrl: string; chain: string[] } | null> {
+  const { maxRedirects, timeoutMs, maxContentLength } =
+    config.orchestrator.expansion;
   let current = url;
   const chain: string[] = [];
 
@@ -12885,7 +15938,10 @@ async function resolveDirectly(url: string): Promise<{ finalUrl: string; chain: 
 
     const parsed = new URL(normalized);
     if (await isPrivateHostname(parsed.hostname)) {
-      throw new DirectExpansionError('ssrf-blocked', 'SSRF protection: Private host blocked');
+      throw new DirectExpansionError(
+        "ssrf-blocked",
+        "SSRF protection: Private host blocked",
+      );
     }
 
     if (!chain.length || chain[chain.length - 1] !== normalized) {
@@ -12893,10 +15949,18 @@ async function resolveDirectly(url: string): Promise<{ finalUrl: string; chain: 
     }
 
     try {
-      const response = await fetchAndValidateUrl(normalized, timeoutMs, maxContentLength);
+      const response = await fetchAndValidateUrl(
+        normalized,
+        timeoutMs,
+        maxContentLength,
+      );
       if (!response) return null;
 
-      const { nextUrl, result } = await processRedirectResponse(response, normalized, chain);
+      const { nextUrl, result } = await processRedirectResponse(
+        response,
+        normalized,
+        chain,
+      );
       if (result) return result;
       if (nextUrl) {
         current = nextUrl;
@@ -12906,12 +15970,15 @@ async function resolveDirectly(url: string): Promise<{ finalUrl: string; chain: 
       if (error instanceof DirectExpansionError) {
         throw error;
       }
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new DirectExpansionError('timeout', `Expansion timed out after ${timeoutMs}ms`);
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new DirectExpansionError(
+          "timeout",
+          `Expansion timed out after ${timeoutMs}ms`,
+        );
       }
       throw new DirectExpansionError(
-        'http-error',
-        error instanceof Error ? error.message : 'Expansion failed',
+        "http-error",
+        error instanceof Error ? error.message : "Expansion failed",
       );
     }
   }
@@ -12922,17 +15989,33 @@ async function resolveDirectly(url: string): Promise<{ finalUrl: string; chain: 
 function getUrlExpandModule() {
   const moduleUnknown = urlExpandModuleRaw as unknown;
   const moduleAny = moduleUnknown as { expand?: unknown };
-  const modernExpand: ((shortUrl: string, options: { fetch: SafeFetch; maxRedirects: number; timeoutMs: number }) => Promise<{ url: string; redirects?: string[] }>) | undefined =
-    typeof moduleAny?.expand === 'function' ? (moduleAny.expand as typeof modernExpand) : undefined;
+  const modernExpand:
+    | ((
+        shortUrl: string,
+        options: { fetch: SafeFetch; maxRedirects: number; timeoutMs: number },
+      ) => Promise<{ url: string; redirects?: string[] }>)
+    | undefined =
+    typeof moduleAny?.expand === "function"
+      ? (moduleAny.expand as typeof modernExpand)
+      : undefined;
 
-  const legacyExpand = typeof moduleAny === 'function'
-    ? promisify(moduleAny as (shortUrl: string, callback: (error: unknown, expandedUrl?: string | null) => void) => void)
-    : undefined;
+  const legacyExpand =
+    typeof moduleAny === "function"
+      ? promisify(
+          moduleAny as (
+            shortUrl: string,
+            callback: (error: unknown, expandedUrl?: string | null) => void,
+          ) => void,
+        )
+      : undefined;
 
   return { modernExpand, legacyExpand };
 }
 
-async function processModernExpandResult(result: { url: string; redirects?: string[] }, chain: string[]): Promise<{ finalUrl: string; chain: string[] }> {
+async function processModernExpandResult(
+  result: { url: string; redirects?: string[] },
+  chain: string[],
+): Promise<{ finalUrl: string; chain: string[] }> {
   if (Array.isArray(result.redirects)) {
     for (const redirect of result.redirects) {
       const normalizedRedirect = normalizeUrl(redirect) || redirect;
@@ -12950,9 +16033,12 @@ async function processModernExpandResult(result: { url: string; redirects?: stri
   return { finalUrl, chain };
 }
 
-async function processLegacyExpandResult(expandedUrl: string, chain: string[]): Promise<{ finalUrl: string; chain: string[] }> {
+async function processLegacyExpandResult(
+  expandedUrl: string,
+  chain: string[],
+): Promise<{ finalUrl: string; chain: string[] }> {
   if (!expandedUrl) {
-    throw new Error('url-expand returned empty response');
+    throw new Error("url-expand returned empty response");
   }
 
   const normalizedFinal = normalizeUrl(expandedUrl) || expandedUrl;
@@ -12961,11 +16047,14 @@ async function processLegacyExpandResult(expandedUrl: string, chain: string[]): 
   try {
     parsedFinal = new URL(normalizedFinal);
   } catch {
-    throw new Error('url-expand returned invalid URL');
+    throw new Error("url-expand returned invalid URL");
   }
 
   if (await isPrivateHostname(parsedFinal.hostname)) {
-    throw new DirectExpansionError('ssrf-blocked', 'SSRF protection: Private host blocked');
+    throw new DirectExpansionError(
+      "ssrf-blocked",
+      "SSRF protection: Private host blocked",
+    );
   }
 
   if (chain[chain.length - 1] !== normalizedFinal) {
@@ -12975,15 +16064,23 @@ async function processLegacyExpandResult(expandedUrl: string, chain: string[]): 
   return { finalUrl: normalizedFinal, chain };
 }
 
-async function resolveWithUrlExpand(url: string): Promise<{ finalUrl: string; chain: string[] }> {
-  const { maxRedirects, timeoutMs, maxContentLength } = config.orchestrator.expansion;
+async function resolveWithUrlExpand(
+  url: string,
+): Promise<{ finalUrl: string; chain: string[] }> {
+  const { maxRedirects, timeoutMs, maxContentLength } =
+    config.orchestrator.expansion;
   const normalizedInput = normalizeUrl(url) || url;
   const chain: string[] = [normalizedInput];
 
   const { modernExpand, legacyExpand } = getUrlExpandModule();
 
   if (modernExpand) {
-    const fetchWithGuards = createGuardedFetch(chain, maxRedirects, timeoutMs, maxContentLength);
+    const fetchWithGuards = createGuardedFetch(
+      chain,
+      maxRedirects,
+      timeoutMs,
+      maxContentLength,
+    );
     const result = await modernExpand(normalizedInput, {
       fetch: fetchWithGuards,
       maxRedirects,
@@ -12994,39 +16091,53 @@ async function resolveWithUrlExpand(url: string): Promise<{ finalUrl: string; ch
   }
 
   if (!legacyExpand) {
-    throw new Error('url-expand module does not expose a supported interface');
+    throw new Error("url-expand module does not expose a supported interface");
   }
 
-  const expandedUrl = await legacyExpand(normalizedInput) as string;
+  const expandedUrl = (await legacyExpand(normalizedInput)) as string;
   return processLegacyExpandResult(expandedUrl, chain);
 }
 
-export async function resolveShortener(url: string): Promise<ShortenerResolution> {
+export async function resolveShortener(
+  url: string,
+): Promise<ShortenerResolution> {
   const normalized = normalizeUrl(url);
   const chain: string[] = [];
   if (!normalized) {
-    return { finalUrl: url, provider: 'original', chain, wasShortened: false, expanded: false };
+    return {
+      finalUrl: url,
+      provider: "original",
+      chain,
+      wasShortened: false,
+      expanded: false,
+    };
   }
   const hostname = new URL(normalized).hostname.toLowerCase();
   if (!isKnownShortener(hostname)) {
-    return { finalUrl: normalized, provider: 'original', chain, wasShortened: false, expanded: false };
+    return {
+      finalUrl: normalized,
+      provider: "original",
+      chain,
+      wasShortened: false,
+      expanded: false,
+    };
   }
 
   const tries = Math.max(1, config.shortener.unshortenRetries);
   for (let attempt = 0; attempt < tries; attempt += 1) {
     const resolved = await resolveWithUnshorten(normalized);
     if (resolved) {
-      metrics.shortenerExpansion.labels('unshorten.me', 'success').inc();
+      metrics.shortenerExpansion.labels("unshorten.me", "success").inc();
       return {
         finalUrl: resolved,
-        provider: 'unshorten_me',
+        provider: "unshorten_me",
         chain: [normalized, resolved],
         wasShortened: true,
         expanded: normalized !== resolved,
       };
     }
   }
-  metrics.shortenerExpansion.labels('unshorten.me', 'error').inc();
+  metrics.shortenerExpansion.labels("unshorten.me", "error").inc();
 
   let directResult: { finalUrl: string; chain: string[] } | null = null;
   let directError: unknown;
@@ -13034,35 +16145,36 @@ export async function resolveShortener(url: string): Promise<ShortenerResolution
     directResult = await resolveDirectly(normalized);
   } catch (error) {
     directError = error;
-    metrics.shortenerExpansion.labels('direct', 'error').inc();
+    metrics.shortenerExpansion.labels("direct", "error").inc();
   }
 
   if (directResult) {
-    metrics.shortenerExpansion.labels('direct', 'success').inc();
+    metrics.shortenerExpansion.labels("direct", "success").inc();
     return {
       finalUrl: directResult.finalUrl,
-      provider: 'direct',
+      provider: "direct",
       chain: directResult.chain,
       wasShortened: true,
-      expanded: directResult.chain.length > 1 || directResult.finalUrl !== normalized,
+      expanded:
+        directResult.chain.length > 1 || directResult.finalUrl !== normalized,
     };
   }
 
   try {
     const expanded = await resolveWithUrlExpand(normalized);
-    metrics.shortenerExpansion.labels('urlexpander', 'success').inc();
+    metrics.shortenerExpansion.labels("urlexpander", "success").inc();
     return {
       finalUrl: expanded.finalUrl,
-      provider: 'urlexpander',
+      provider: "urlexpander",
       chain: expanded.chain,
       wasShortened: true,
       expanded: expanded.chain.length > 1 || expanded.finalUrl !== normalized,
     };
   } catch (error) {
-    metrics.shortenerExpansion.labels('urlexpander', 'error').inc();
+    metrics.shortenerExpansion.labels("urlexpander", "error").inc();
     return {
       finalUrl: normalized,
-      provider: 'original',
+      provider: "original",
       chain: [normalized],
       wasShortened: true,
       expanded: false,
@@ -13071,48 +16183,65 @@ export async function resolveShortener(url: string): Promise<ShortenerResolution
     };
   }
 }
-
 ```
 
 # File: packages/shared/src/url.ts
 
 ```typescript
-import { createHash } from 'node:crypto';
-import { URL } from 'node:url';
-import { isPrivateHostname } from './ssrf';
-import { request } from 'undici';
-import { toASCII } from 'punycode/';
-import { parse } from 'tldts';
-import { isKnownShortener } from './url-shortener';
+import { createHash } from "node:crypto";
+import { URL } from "node:url";
+import { isPrivateHostname } from "./ssrf";
+import { request } from "undici";
+import { toASCII } from "punycode/";
+import { parse } from "tldts";
+import { isKnownShortener } from "./url-shortener";
 
-const TRACKING_PARAMS = new Set(['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'fbclid', 'mc_cid', 'mc_eid', 'vero_conv', 'vero_id']);
+const TRACKING_PARAMS = new Set([
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_term",
+  "utm_content",
+  "gclid",
+  "fbclid",
+  "mc_cid",
+  "mc_eid",
+  "vero_conv",
+  "vero_id",
+]);
 
 export function extractUrls(text: string): string[] {
   if (!text) return [];
-  const urlRegex = /((https?:\/\/|www\.)[^\s<>()]+[^\s`!()\[\]{};:'".,<>?«»“”‘’])/gi;
+  const urlRegex =
+    /((https?:\/\/|www\.)[^\s<>()]+[^\s`!()\[\]{};:'".,<>?«»“”‘’])/gi;
   const matches = text.match(urlRegex) || [];
-  return Array.from(new Set(matches.map(m => m.startsWith('http') ? m : `http://${m}`)));
+  return Array.from(
+    new Set(matches.map((m) => (m.startsWith("http") ? m : `http://${m}`))),
+  );
 }
 
 export function normalizeUrl(raw: string): string | null {
   try {
     const u = new URL(raw);
-    if (!['http:', 'https:'].includes(u.protocol)) return null;
+    if (!["http:", "https:"].includes(u.protocol)) return null;
     u.hostname = u.hostname.toLowerCase();
     // IDN -> ASCII
     u.hostname = toASCII(u.hostname);
     // strip default ports
-    if ((u.protocol === 'http:' && u.port === '80') || (u.protocol === 'https:' && u.port === '443')) {
-      u.port = '';
+    if (
+      (u.protocol === "http:" && u.port === "80") ||
+      (u.protocol === "https:" && u.port === "443")
+    ) {
+      u.port = "";
     }
     // strip fragments
-    u.hash = '';
+    u.hash = "";
     // strip tracking params
     for (const p of Array.from(u.searchParams.keys())) {
       if (TRACKING_PARAMS.has(p)) u.searchParams.delete(p);
     }
     // normalize path
-    u.pathname = u.pathname.replace(/\/+/g, '/');
+    u.pathname = u.pathname.replace(/\/+/g, "/");
     return u.toString();
   } catch {
     return null;
@@ -13120,10 +16249,13 @@ export function normalizeUrl(raw: string): string | null {
 }
 
 export function urlHash(norm: string): string {
-  return createHash('sha256').update(norm).digest('hex');
+  return createHash("sha256").update(norm).digest("hex");
 }
 
-export async function expandUrl(raw: string, opts: { maxRedirects: number; timeoutMs: number; maxContentLength: number; }): Promise<{ finalUrl: string; chain: string[]; contentType?: string; }> {
+export async function expandUrl(
+  raw: string,
+  opts: { maxRedirects: number; timeoutMs: number; maxContentLength: number },
+): Promise<{ finalUrl: string; chain: string[]; contentType?: string }> {
   const chain: string[] = [];
   let current = raw;
   for (let i = 0; i < opts.maxRedirects; i++) {
@@ -13132,20 +16264,22 @@ export async function expandUrl(raw: string, opts: { maxRedirects: number; timeo
     const u = new URL(nu);
     if (await isPrivateHostname(u.hostname)) break; // SSRF block
     const { statusCode, headers } = await request(u, {
-      method: 'HEAD',
+      method: "HEAD",
       maxRedirections: 0,
       headersTimeout: opts.timeoutMs,
       bodyTimeout: opts.timeoutMs,
-      headers: { 'user-agent': 'wbscanner/0.1' }
+      headers: { "user-agent": "wbscanner/0.1" },
     }).catch(() => ({ statusCode: 0, headers: {} as Record<string, unknown> }));
     chain.push(nu);
     if (statusCode && statusCode >= 300 && statusCode < 400) {
-      const loc = headers['location'];
+      const loc = headers["location"];
       if (!loc) break;
       current = new URL(loc as string, u).toString();
       continue;
     }
-    const ct = Array.isArray(headers['content-type']) ? headers['content-type'][0] : headers['content-type'];
+    const ct = Array.isArray(headers["content-type"])
+      ? headers["content-type"][0]
+      : headers["content-type"];
     return { finalUrl: nu, chain, contentType: ct as string | undefined };
   }
   const nu = normalizeUrl(current) || current;
@@ -13154,7 +16288,25 @@ export async function expandUrl(raw: string, opts: { maxRedirects: number; timeo
 
 export function isSuspiciousTld(hostname: string): boolean {
   const t = parse(hostname);
-  const bad = new Set(['zip', 'mov', 'tk', 'ml', 'cf', 'gq', 'work', 'click', 'country', 'kim', 'men', 'party', 'science', 'top', 'xyz', 'club', 'link']);
+  const bad = new Set([
+    "zip",
+    "mov",
+    "tk",
+    "ml",
+    "cf",
+    "gq",
+    "work",
+    "click",
+    "country",
+    "kim",
+    "men",
+    "party",
+    "science",
+    "top",
+    "xyz",
+    "club",
+    "link",
+  ]);
   return !!t.publicSuffix && bad.has(t.publicSuffix);
 }
 
@@ -13163,10 +16315,10 @@ export function isShortener(hostname: string): boolean {
 }
 
 function parseForbiddenPatterns(): string[] {
-  return (process.env.WA_FORBIDDEN_HOSTNAMES || '')
-    .split(',')
-    .map(entry => entry.trim().toLowerCase())
-    .filter(entry => entry.length > 0);
+  return (process.env.WA_FORBIDDEN_HOSTNAMES || "")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter((entry) => entry.length > 0);
 }
 
 export async function isForbiddenHostname(hostname: string): Promise<boolean> {
@@ -13174,549 +16326,554 @@ export async function isForbiddenHostname(hostname: string): Promise<boolean> {
   if (patterns.length === 0) return false;
 
   const lowerHost = hostname.toLowerCase();
-  return patterns.some(pattern => lowerHost === pattern || lowerHost.endsWith(`.${pattern}`));
+  return patterns.some(
+    (pattern) => lowerHost === pattern || lowerHost.endsWith(`.${pattern}`),
+  );
 }
-
 ```
 
 # File: packages/shared/src/metrics.ts
 
 ```typescript
-import client from 'prom-client';
+import client from "prom-client";
 
 export const register = new client.Registry();
 client.collectDefaultMetrics({ register });
 
 export const metrics = {
   ingestionRate: new client.Counter({
-    name: 'wbscanner_messages_ingested_total',
-    help: 'Total messages ingested',
+    name: "wbscanner_messages_ingested_total",
+    help: "Total messages ingested",
     registers: [register],
   }),
   urlsPerMessage: new client.Histogram({
-    name: 'wbscanner_urls_per_message',
-    help: 'URLs extracted per message',
+    name: "wbscanner_urls_per_message",
+    help: "URLs extracted per message",
     buckets: [0, 1, 2, 3, 5, 8, 13],
     registers: [register],
   }),
   scanLatency: new client.Histogram({
-    name: 'wbscanner_scan_latency_seconds',
-    help: 'End-to-end scan latency',
+    name: "wbscanner_scan_latency_seconds",
+    help: "End-to-end scan latency",
     buckets: [0.5, 1, 2, 5, 10, 30, 60],
     registers: [register],
   }),
   cacheHit: new client.Counter({
-    name: 'wbscanner_cache_hits_total',
-    help: 'Cache hits',
+    name: "wbscanner_cache_hits_total",
+    help: "Cache hits",
     registers: [register],
   }),
   cacheMiss: new client.Counter({
-    name: 'wbscanner_cache_misses_total',
-    help: 'Cache misses',
+    name: "wbscanner_cache_misses_total",
+    help: "Cache misses",
     registers: [register],
   }),
   vtSubmissions: new client.Counter({
-    name: 'wbscanner_vt_submissions_total',
-    help: 'VirusTotal submissions',
+    name: "wbscanner_vt_submissions_total",
+    help: "VirusTotal submissions",
     registers: [register],
   }),
   gsbHits: new client.Counter({
-    name: 'wbscanner_gsb_hits_total',
-    help: 'Google Safe Browsing hits',
+    name: "wbscanner_gsb_hits_total",
+    help: "Google Safe Browsing hits",
     registers: [register],
   }),
   phishtankSecondaryChecks: new client.Counter({
-    name: 'wbscanner_phishtank_secondary_checks_total',
-    help: 'Phishtank secondary checks executed when GSB is inconclusive',
+    name: "wbscanner_phishtank_secondary_checks_total",
+    help: "Phishtank secondary checks executed when GSB is inconclusive",
     registers: [register],
   }),
   phishtankSecondaryHits: new client.Counter({
-    name: 'wbscanner_phishtank_secondary_hits_total',
-    help: 'Phishtank hits observed during secondary checks, partitioned by verification status',
-    labelNames: ['verified'],
+    name: "wbscanner_phishtank_secondary_hits_total",
+    help: "Phishtank hits observed during secondary checks, partitioned by verification status",
+    labelNames: ["verified"],
     registers: [register],
   }),
   shortenerExpansion: new client.Counter({
-    name: 'wbscanner_shortener_expansions_total',
-    help: 'URL shortener expansion attempts by method and result',
-    labelNames: ['method', 'result'],
+    name: "wbscanner_shortener_expansions_total",
+    help: "URL shortener expansion attempts by method and result",
+    labelNames: ["method", "result"],
     registers: [register],
   }),
   manualOverrideApplied: new client.Counter({
-    name: 'wbscanner_manual_overrides_total',
-    help: 'Manual overrides applied during scoring',
-    labelNames: ['status'],
+    name: "wbscanner_manual_overrides_total",
+    help: "Manual overrides applied during scoring",
+    labelNames: ["status"],
     registers: [register],
   }),
   rescanRequests: new client.Counter({
-    name: 'wbscanner_rescan_requests_total',
-    help: 'Rescan requests received by source',
-    labelNames: ['source'],
+    name: "wbscanner_rescan_requests_total",
+    help: "Rescan requests received by source",
+    labelNames: ["source"],
     registers: [register],
   }),
   artifactDownloadFailures: new client.Counter({
-    name: 'wbscanner_artifact_download_failures_total',
-    help: 'Failures when downloading urlscan artifacts',
-    labelNames: ['type', 'reason'],
+    name: "wbscanner_artifact_download_failures_total",
+    help: "Failures when downloading urlscan artifacts",
+    labelNames: ["type", "reason"],
     registers: [register],
   }),
   homoglyphDetections: new client.Counter({
-    name: 'wbscanner_homoglyph_detections_total',
-    help: 'Homoglyph detections by risk level',
-    labelNames: ['risk_level'],
+    name: "wbscanner_homoglyph_detections_total",
+    help: "Homoglyph detections by risk level",
+    labelNames: ["risk_level"],
     registers: [register],
   }),
   whoisRequests: new client.Counter({
-    name: 'wbscanner_whois_requests_total',
-    help: 'WhoisXML lookups executed',
+    name: "wbscanner_whois_requests_total",
+    help: "WhoisXML lookups executed",
     registers: [register],
   }),
   whoisResults: new client.Counter({
-    name: 'wbscanner_whois_results_total',
-    help: 'WhoisXML lookup outcomes by result',
-    labelNames: ['result'],
+    name: "wbscanner_whois_results_total",
+    help: "WhoisXML lookup outcomes by result",
+    labelNames: ["result"],
     registers: [register],
   }),
   whoisDisabled: new client.Counter({
-    name: 'wbscanner_whois_disabled_total',
-    help: 'WhoisXML disabled events by reason',
-    labelNames: ['reason'],
+    name: "wbscanner_whois_disabled_total",
+    help: "WhoisXML disabled events by reason",
+    labelNames: ["reason"],
     registers: [register],
   }),
   verdictCounter: new client.Counter({
-    name: 'wbscanner_verdicts_total',
-    help: 'Verdicts issued by level',
-    labelNames: ['level'],
+    name: "wbscanner_verdicts_total",
+    help: "Verdicts issued by level",
+    labelNames: ["level"],
     registers: [register],
   }),
   degradedModeEvents: new client.Counter({
-    name: 'wbscanner_degraded_mode_events_total',
-    help: 'Scans processed while operating in degraded mode',
+    name: "wbscanner_degraded_mode_events_total",
+    help: "Scans processed while operating in degraded mode",
     registers: [register],
   }),
   externalScannersDegraded: new client.Gauge({
-    name: 'wbscanner_external_scanners_degraded',
-    help: 'Indicates if all external scanners are degraded (1) or operational (0)',
+    name: "wbscanner_external_scanners_degraded",
+    help: "Indicates if all external scanners are degraded (1) or operational (0)",
     registers: [register],
   }),
   cacheLookupDuration: new client.Histogram({
-    name: 'wbscanner_cache_lookup_duration_seconds',
-    help: 'Latency of cache lookups by cache type',
-    labelNames: ['cache_type'],
+    name: "wbscanner_cache_lookup_duration_seconds",
+    help: "Latency of cache lookups by cache type",
+    labelNames: ["cache_type"],
     buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5],
     registers: [register],
   }),
   cacheWriteDuration: new client.Histogram({
-    name: 'wbscanner_cache_write_duration_seconds',
-    help: 'Latency of cache writes by cache type',
-    labelNames: ['cache_type'],
+    name: "wbscanner_cache_write_duration_seconds",
+    help: "Latency of cache writes by cache type",
+    labelNames: ["cache_type"],
     buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5],
     registers: [register],
   }),
   cacheEntryBytes: new client.Gauge({
-    name: 'wbscanner_cache_entry_bytes',
-    help: 'Serialized cache entry size by cache type',
-    labelNames: ['cache_type'],
+    name: "wbscanner_cache_entry_bytes",
+    help: "Serialized cache entry size by cache type",
+    labelNames: ["cache_type"],
     registers: [register],
   }),
   cacheRefreshTotal: new client.Counter({
-    name: 'wbscanner_cache_refresh_total',
-    help: 'Cache refresh operations by cache type',
-    labelNames: ['cache_type'],
+    name: "wbscanner_cache_refresh_total",
+    help: "Cache refresh operations by cache type",
+    labelNames: ["cache_type"],
     registers: [register],
   }),
   cacheStaleTotal: new client.Counter({
-    name: 'wbscanner_cache_stale_total',
-    help: 'Cache hits considered stale by cache type',
-    labelNames: ['cache_type'],
+    name: "wbscanner_cache_stale_total",
+    help: "Cache hits considered stale by cache type",
+    labelNames: ["cache_type"],
     registers: [register],
   }),
   cacheEntryTtl: new client.Gauge({
-    name: 'wbscanner_cache_entry_ttl_seconds',
-    help: 'Remaining TTL for cache entries by cache type',
-    labelNames: ['cache_type'],
+    name: "wbscanner_cache_entry_ttl_seconds",
+    help: "Remaining TTL for cache entries by cache type",
+    labelNames: ["cache_type"],
     registers: [register],
   }),
   verdictScore: new client.Histogram({
-    name: 'wbscanner_verdict_score',
-    help: 'Distribution of computed risk scores',
+    name: "wbscanner_verdict_score",
+    help: "Distribution of computed risk scores",
     buckets: [0, 2, 4, 6, 8, 10, 12, 15, 20],
     registers: [register],
   }),
   verdictReasons: new client.Counter({
-    name: 'wbscanner_verdict_reasons_total',
-    help: 'Reasons contributing to final verdicts',
-    labelNames: ['reason'],
+    name: "wbscanner_verdict_reasons_total",
+    help: "Reasons contributing to final verdicts",
+    labelNames: ["reason"],
     registers: [register],
   }),
   verdictSignals: new client.Counter({
-    name: 'wbscanner_verdict_signals_total',
-    help: 'Signals observed while composing verdicts',
-    labelNames: ['signal'],
+    name: "wbscanner_verdict_signals_total",
+    help: "Signals observed while composing verdicts",
+    labelNames: ["signal"],
     registers: [register],
   }),
   verdictLatency: new client.Histogram({
-    name: 'wbscanner_verdict_latency_seconds',
-    help: 'Latency from ingestion to verdict emission',
+    name: "wbscanner_verdict_latency_seconds",
+    help: "Latency from ingestion to verdict emission",
     buckets: [0.5, 1, 2, 5, 10, 20, 40, 80],
     registers: [register],
   }),
   verdictCacheTtl: new client.Histogram({
-    name: 'wbscanner_verdict_cache_ttl_seconds',
-    help: 'Cache TTL assigned to verdict responses',
+    name: "wbscanner_verdict_cache_ttl_seconds",
+    help: "Cache TTL assigned to verdict responses",
     buckets: [300, 900, 1800, 3600, 7200, 14400, 28800, 86400],
     registers: [register],
   }),
   verdictEscalations: new client.Counter({
-    name: 'wbscanner_verdict_escalations_total',
-    help: 'Verdict transitions compared to cached decision',
-    labelNames: ['from', 'to'],
+    name: "wbscanner_verdict_escalations_total",
+    help: "Verdict transitions compared to cached decision",
+    labelNames: ["from", "to"],
     registers: [register],
   }),
   queueJobWait: new client.Histogram({
-    name: 'wbscanner_queue_job_wait_seconds',
-    help: 'Time jobs spend waiting in queue before execution',
-    labelNames: ['queue'],
+    name: "wbscanner_queue_job_wait_seconds",
+    help: "Time jobs spend waiting in queue before execution",
+    labelNames: ["queue"],
     buckets: [0.1, 0.5, 1, 2, 5, 10, 30, 60, 120, 300],
     registers: [register],
   }),
   queueProcessingDuration: new client.Histogram({
-    name: 'wbscanner_queue_processing_duration_seconds',
-    help: 'Job processing duration per queue',
-    labelNames: ['queue'],
+    name: "wbscanner_queue_processing_duration_seconds",
+    help: "Job processing duration per queue",
+    labelNames: ["queue"],
     buckets: [0.1, 0.5, 1, 2, 5, 10, 20, 40, 80],
     registers: [register],
   }),
   queueCompleted: new client.Counter({
-    name: 'wbscanner_queue_completed_total',
-    help: 'Jobs completed by queue',
-    labelNames: ['queue'],
+    name: "wbscanner_queue_completed_total",
+    help: "Jobs completed by queue",
+    labelNames: ["queue"],
     registers: [register],
   }),
   queueRetries: new client.Counter({
-    name: 'wbscanner_queue_retries_total',
-    help: 'Retry attempts by queue',
-    labelNames: ['queue'],
+    name: "wbscanner_queue_retries_total",
+    help: "Retry attempts by queue",
+    labelNames: ["queue"],
     registers: [register],
   }),
   queueFailures: new client.Counter({
-    name: 'wbscanner_queue_failures_total',
-    help: 'Failed jobs by queue',
-    labelNames: ['queue'],
+    name: "wbscanner_queue_failures_total",
+    help: "Failed jobs by queue",
+    labelNames: ["queue"],
     registers: [register],
   }),
   queueActive: new client.Gauge({
-    name: 'wbscanner_queue_active_jobs',
-    help: 'Active jobs per queue',
-    labelNames: ['queue'],
+    name: "wbscanner_queue_active_jobs",
+    help: "Active jobs per queue",
+    labelNames: ["queue"],
     registers: [register],
   }),
   queueDelayed: new client.Gauge({
-    name: 'wbscanner_queue_delayed_jobs',
-    help: 'Delayed jobs per queue',
-    labelNames: ['queue'],
+    name: "wbscanner_queue_delayed_jobs",
+    help: "Delayed jobs per queue",
+    labelNames: ["queue"],
     registers: [register],
   }),
   queueFailedGauge: new client.Gauge({
-    name: 'wbscanner_queue_failed_jobs',
-    help: 'Failed job backlog per queue',
-    labelNames: ['queue'],
+    name: "wbscanner_queue_failed_jobs",
+    help: "Failed job backlog per queue",
+    labelNames: ["queue"],
     registers: [register],
   }),
   waMessagesReceived: new client.Counter({
-    name: 'wbscanner_wa_messages_received_total',
-    help: 'WhatsApp messages received by chat type',
-    labelNames: ['chat_type'],
+    name: "wbscanner_wa_messages_received_total",
+    help: "WhatsApp messages received by chat type",
+    labelNames: ["chat_type"],
     registers: [register],
   }),
   waMessagesWithUrls: new client.Counter({
-    name: 'wbscanner_wa_messages_with_urls_total',
-    help: 'WhatsApp messages containing URLs',
-    labelNames: ['chat_type'],
+    name: "wbscanner_wa_messages_with_urls_total",
+    help: "WhatsApp messages containing URLs",
+    labelNames: ["chat_type"],
     registers: [register],
   }),
   waMessagesDropped: new client.Counter({
-    name: 'wbscanner_wa_messages_dropped_total',
-    help: 'WhatsApp messages dropped before scanning by reason',
-    labelNames: ['reason'],
+    name: "wbscanner_wa_messages_dropped_total",
+    help: "WhatsApp messages dropped before scanning by reason",
+    labelNames: ["reason"],
     registers: [register],
   }),
   waSessionReconnects: new client.Counter({
-    name: 'wbscanner_wa_session_events_total',
-    help: 'WhatsApp client session lifecycle events',
-    labelNames: ['event'],
+    name: "wbscanner_wa_session_events_total",
+    help: "WhatsApp client session lifecycle events",
+    labelNames: ["event"],
     registers: [register],
   }),
   waQrCodesGenerated: new client.Counter({
-    name: 'wbscanner_wa_qr_generated_total',
-    help: 'QR codes generated for WhatsApp reauthentication',
+    name: "wbscanner_wa_qr_generated_total",
+    help: "QR codes generated for WhatsApp reauthentication",
     registers: [register],
   }),
   waVerdictsSent: new client.Counter({
-    name: 'wbscanner_wa_verdict_messages_sent_total',
-    help: 'Verdict messages sent back to WhatsApp groups',
+    name: "wbscanner_wa_verdict_messages_sent_total",
+    help: "Verdict messages sent back to WhatsApp groups",
     registers: [register],
   }),
   waVerdictFailures: new client.Counter({
-    name: 'wbscanner_wa_verdict_messages_failed_total',
-    help: 'Failed attempts to send verdict messages',
+    name: "wbscanner_wa_verdict_messages_failed_total",
+    help: "Failed attempts to send verdict messages",
     registers: [register],
   }),
   waVerdictLatency: new client.Histogram({
-    name: 'wbscanner_wa_verdict_delivery_latency_seconds',
-    help: 'Latency between verdict availability and WhatsApp delivery',
+    name: "wbscanner_wa_verdict_delivery_latency_seconds",
+    help: "Latency between verdict availability and WhatsApp delivery",
     buckets: [0.5, 1, 2, 5, 10, 20, 40],
     registers: [register],
   }),
   waMessageEdits: new client.Counter({
-    name: 'wbscanner_wa_message_edits_total',
-    help: 'WhatsApp message edit events handled by cause',
-    labelNames: ['cause'],
+    name: "wbscanner_wa_message_edits_total",
+    help: "WhatsApp message edit events handled by cause",
+    labelNames: ["cause"],
     registers: [register],
   }),
   waMessageRevocations: new client.Counter({
-    name: 'wbscanner_wa_message_revocations_total',
-    help: 'WhatsApp message revocation events by scope',
-    labelNames: ['scope'],
+    name: "wbscanner_wa_message_revocations_total",
+    help: "WhatsApp message revocation events by scope",
+    labelNames: ["scope"],
     registers: [register],
   }),
   waMessageReactions: new client.Counter({
-    name: 'wbscanner_wa_message_reactions_total',
-    help: 'WhatsApp message reaction events grouped by reaction emoji',
-    labelNames: ['reaction'],
+    name: "wbscanner_wa_message_reactions_total",
+    help: "WhatsApp message reaction events grouped by reaction emoji",
+    labelNames: ["reaction"],
     registers: [register],
   }),
   waVerdictAckTransitions: new client.Counter({
-    name: 'wbscanner_wa_verdict_ack_transitions_total',
-    help: 'Ack transitions observed for verdict messages',
-    labelNames: ['from', 'to'],
+    name: "wbscanner_wa_verdict_ack_transitions_total",
+    help: "Ack transitions observed for verdict messages",
+    labelNames: ["from", "to"],
     registers: [register],
   }),
   waVerdictAckTimeouts: new client.Counter({
-    name: 'wbscanner_wa_verdict_ack_timeouts_total',
-    help: 'Verdict delivery attempts that exceeded ack thresholds',
-    labelNames: ['reason'],
+    name: "wbscanner_wa_verdict_ack_timeouts_total",
+    help: "Verdict delivery attempts that exceeded ack thresholds",
+    labelNames: ["reason"],
     registers: [register],
   }),
   waVerdictRetryAttempts: new client.Counter({
-    name: 'wbscanner_wa_verdict_retries_total',
-    help: 'Verdict resend attempts by outcome',
-    labelNames: ['outcome'],
+    name: "wbscanner_wa_verdict_retries_total",
+    help: "Verdict resend attempts by outcome",
+    labelNames: ["outcome"],
     registers: [register],
   }),
   waVerdictDelivery: new client.Counter({
-    name: 'wbscanner_wa_verdict_delivery_total',
-    help: 'Verdict delivery outcomes recorded by result',
-    labelNames: ['outcome'],
+    name: "wbscanner_wa_verdict_delivery_total",
+    help: "Verdict delivery outcomes recorded by result",
+    labelNames: ["outcome"],
     registers: [register],
   }),
   waVerdictDeliveryRetries: new client.Counter({
-    name: 'wbscanner_wa_verdict_delivery_retries_total',
-    help: 'Verdict resend attempts triggered by ack workflows',
-    labelNames: ['reason'],
+    name: "wbscanner_wa_verdict_delivery_retries_total",
+    help: "Verdict resend attempts triggered by ack workflows",
+    labelNames: ["reason"],
     registers: [register],
   }),
   waVerdictAttachmentsSent: new client.Counter({
-    name: 'wbscanner_wa_verdict_attachments_total',
-    help: 'Media attachments delivered alongside verdicts by type',
-    labelNames: ['type'],
+    name: "wbscanner_wa_verdict_attachments_total",
+    help: "Media attachments delivered alongside verdicts by type",
+    labelNames: ["type"],
     registers: [register],
   }),
   waGroupEvents: new client.Counter({
-    name: 'wbscanner_wa_group_events_total',
-    help: 'Group lifecycle and governance events observed',
-    labelNames: ['event'],
+    name: "wbscanner_wa_group_events_total",
+    help: "Group lifecycle and governance events observed",
+    labelNames: ["event"],
     registers: [register],
   }),
   waGovernanceActions: new client.Counter({
-    name: 'wbscanner_wa_governance_actions_total',
-    help: 'Group governance interventions executed by action',
-    labelNames: ['action'],
+    name: "wbscanner_wa_governance_actions_total",
+    help: "Group governance interventions executed by action",
+    labelNames: ["action"],
     registers: [register],
   }),
   waGovernanceRateLimited: new client.Counter({
-    name: 'wbscanner_wa_governance_rate_limited_total',
-    help: 'Governance actions skipped due to rate limiting by action',
-    labelNames: ['action'],
+    name: "wbscanner_wa_governance_rate_limited_total",
+    help: "Governance actions skipped due to rate limiting by action",
+    labelNames: ["action"],
     registers: [register],
   }),
   waMembershipApprovals: new client.Counter({
-    name: 'wbscanner_wa_membership_approvals_total',
-    help: 'Membership approvals handled by mode',
-    labelNames: ['mode'],
+    name: "wbscanner_wa_membership_approvals_total",
+    help: "Membership approvals handled by mode",
+    labelNames: ["mode"],
     registers: [register],
   }),
   waConsentGauge: new client.Gauge({
-    name: 'wbscanner_wa_group_consent_pending',
-    help: 'Number of WhatsApp groups awaiting consent acknowledgment',
+    name: "wbscanner_wa_group_consent_pending",
+    help: "Number of WhatsApp groups awaiting consent acknowledgment",
     registers: [register],
   }),
   waSessionState: new client.Gauge({
-    name: 'wbscanner_wa_session_state',
-    help: 'Current WhatsApp client state indicator (1 for current state, 0 otherwise)',
-    labelNames: ['state'],
+    name: "wbscanner_wa_session_state",
+    help: "Current WhatsApp client state indicator (1 for current state, 0 otherwise)",
+    labelNames: ["state"],
     registers: [register],
   }),
   waStateChanges: new client.Counter({
-    name: 'wbscanner_wa_state_changes_total',
-    help: 'WhatsApp state transition events emitted by wa-client',
-    labelNames: ['event', 'state'],
+    name: "wbscanner_wa_state_changes_total",
+    help: "WhatsApp state transition events emitted by wa-client",
+    labelNames: ["event", "state"],
     registers: [register],
   }),
   waConsecutiveAuthFailures: new client.Gauge({
-    name: 'wbscanner_wa_auth_consecutive_failures',
-    help: 'Count of consecutive authentication failures per client instance',
-    labelNames: ['client'],
+    name: "wbscanner_wa_auth_consecutive_failures",
+    help: "Count of consecutive authentication failures per client instance",
+    labelNames: ["client"],
     registers: [register],
   }),
   waIncomingCalls: new client.Counter({
-    name: 'wbscanner_wa_incoming_calls_total',
-    help: 'Incoming WhatsApp calls handled by action',
-    labelNames: ['action'],
+    name: "wbscanner_wa_incoming_calls_total",
+    help: "Incoming WhatsApp calls handled by action",
+    labelNames: ["action"],
     registers: [register],
   }),
   apiQuotaConsumption: new client.Counter({
-    name: 'wbscanner_api_quota_consumption_total',
-    help: 'API quota tokens consumed by service',
-    labelNames: ['service'],
+    name: "wbscanner_api_quota_consumption_total",
+    help: "API quota tokens consumed by service",
+    labelNames: ["service"],
     registers: [register],
   }),
   apiQuotaResets: new client.Counter({
-    name: 'wbscanner_api_quota_resets_total',
-    help: 'API quota reset events by service',
-    labelNames: ['service'],
+    name: "wbscanner_api_quota_resets_total",
+    help: "API quota reset events by service",
+    labelNames: ["service"],
     registers: [register],
   }),
   apiQuotaProjectedDepletion: new client.Gauge({
-    name: 'wbscanner_api_quota_projected_depletion_seconds',
-    help: 'Projected seconds until quota depletion by service',
-    labelNames: ['service'],
+    name: "wbscanner_api_quota_projected_depletion_seconds",
+    help: "Projected seconds until quota depletion by service",
+    labelNames: ["service"],
     registers: [register],
   }),
   apiQuotaUtilization: new client.Gauge({
-    name: 'wbscanner_api_quota_utilization_ratio',
-    help: 'Fraction of quota consumed by service',
-    labelNames: ['service'],
+    name: "wbscanner_api_quota_utilization_ratio",
+    help: "Fraction of quota consumed by service",
+    labelNames: ["service"],
     registers: [register],
   }),
-
 };
 
 export const externalLatency = new client.Histogram({
-  name: 'wbscanner_external_api_latency_seconds',
-  help: 'External API latency by service',
+  name: "wbscanner_external_api_latency_seconds",
+  help: "External API latency by service",
   buckets: [0.1, 0.25, 0.5, 1, 2, 5, 10],
-  labelNames: ['service'],
+  labelNames: ["service"],
   registers: [register],
 });
 
 export const externalErrors = new client.Counter({
-  name: 'wbscanner_external_api_errors_total',
-  help: 'External API errors by service and type',
-  labelNames: ['service', 'reason'],
+  name: "wbscanner_external_api_errors_total",
+  help: "External API errors by service and type",
+  labelNames: ["service", "reason"],
   registers: [register],
 });
 
 export const circuitStates = new client.Gauge({
-  name: 'wbscanner_circuit_breaker_state',
-  help: 'Circuit breaker state per external service (0=closed,1=open,2=half-open)',
-  labelNames: ['service'],
+  name: "wbscanner_circuit_breaker_state",
+  help: "Circuit breaker state per external service (0=closed,1=open,2=half-open)",
+  labelNames: ["service"],
   registers: [register],
 });
 
 export const rateLimiterDelay = new client.Histogram({
-  name: 'wbscanner_rate_limiter_delay_seconds',
-  help: 'Delay introduced by rate limiters before external API calls',
+  name: "wbscanner_rate_limiter_delay_seconds",
+  help: "Delay introduced by rate limiters before external API calls",
   buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5],
-  labelNames: ['service'],
+  labelNames: ["service"],
   registers: [register],
 });
 
 export const apiQuotaRemainingGauge = new client.Gauge({
-  name: 'wbscanner_api_quota_remaining',
-  help: 'Remaining API quota tokens for external services',
-  labelNames: ['service'],
+  name: "wbscanner_api_quota_remaining",
+  help: "Remaining API quota tokens for external services",
+  labelNames: ["service"],
   registers: [register],
 });
 
 export const apiQuotaStatusGauge = new client.Gauge({
-  name: 'wbscanner_api_quota_status',
-  help: 'API quota status (1=available,0=exhausted)',
-  labelNames: ['service'],
+  name: "wbscanner_api_quota_status",
+  help: "API quota status (1=available,0=exhausted)",
+  labelNames: ["service"],
   registers: [register],
 });
 
 export const apiQuotaDepletedCounter = new client.Counter({
-  name: 'wbscanner_api_quota_depleted_total',
-  help: 'Total number of times an external service quota was depleted',
-  labelNames: ['service'],
+  name: "wbscanner_api_quota_depleted_total",
+  help: "Total number of times an external service quota was depleted",
+  labelNames: ["service"],
   registers: [register],
 });
 
 export const cacheHitRatioGauge = new client.Gauge({
-  name: 'wbscanner_cache_hit_ratio',
-  help: 'Cache hit ratio by cache type',
-  labelNames: ['cache_type'],
+  name: "wbscanner_cache_hit_ratio",
+  help: "Cache hit ratio by cache type",
+  labelNames: ["cache_type"],
   registers: [register],
 });
 
 export const queueDepthGauge = new client.Gauge({
-  name: 'wbscanner_queue_depth',
-  help: 'Queue depth for BullMQ queues',
-  labelNames: ['queue'],
+  name: "wbscanner_queue_depth",
+  help: "Queue depth for BullMQ queues",
+  labelNames: ["queue"],
   registers: [register],
 });
 
 export const circuitBreakerTransitionCounter = new client.Counter({
-  name: 'wbscanner_circuit_breaker_transitions_total',
-  help: 'Circuit breaker state transitions by service',
-  labelNames: ['service', 'from', 'to'],
+  name: "wbscanner_circuit_breaker_transitions_total",
+  help: "Circuit breaker state transitions by service",
+  labelNames: ["service", "from", "to"],
   registers: [register],
 });
 
 export const waSessionStatusGauge = new client.Gauge({
-  name: 'wbscanner_wa_session_status',
-  help: 'WhatsApp session status (1=ready,0=disconnected)',
-  labelNames: ['state'],
+  name: "wbscanner_wa_session_status",
+  help: "WhatsApp session status (1=ready,0=disconnected)",
+  labelNames: ["state"],
   registers: [register],
 });
 
 export const circuitBreakerRejections = new client.Counter({
-  name: 'wbscanner_circuit_breaker_rejections_total',
-  help: 'Requests rejected due to open circuit breakers by service',
-  labelNames: ['service'],
+  name: "wbscanner_circuit_breaker_rejections_total",
+  help: "Requests rejected due to open circuit breakers by service",
+  labelNames: ["service"],
   registers: [register],
 });
 
 export const circuitBreakerOpenDuration = new client.Histogram({
-  name: 'wbscanner_circuit_breaker_open_duration_seconds',
-  help: 'Duration circuits remain open before recovery',
-  labelNames: ['service'],
+  name: "wbscanner_circuit_breaker_open_duration_seconds",
+  help: "Duration circuits remain open before recovery",
+  labelNames: ["service"],
   buckets: [5, 10, 30, 60, 120, 300, 600, 1200],
   registers: [register],
 });
 
 export const rateLimiterQueueDepth = new client.Gauge({
-  name: 'wbscanner_rate_limiter_queue_depth',
-  help: 'Jobs queued inside external API rate limiters',
-  labelNames: ['service'],
+  name: "wbscanner_rate_limiter_queue_depth",
+  help: "Jobs queued inside external API rate limiters",
+  labelNames: ["service"],
   registers: [register],
 });
 
 export function metricsRoute() {
   // Using minimal types to avoid Express dependency in shared package
-  return async (_req: { header?: unknown }, res: { header: (name: string, value: string) => void; send: (data: string) => void }) => {
-    res.header('Content-Type', register.contentType);
+  return async (
+    _req: { header?: unknown },
+    res: {
+      header: (name: string, value: string) => void;
+      send: (data: string) => void;
+    },
+  ) => {
+    res.header("Content-Type", register.contentType);
     res.send(await register.metrics());
   };
 }
-
 ```
 
 # File: packages/shared/src/reputation/advanced-heuristics.ts
 
 ```typescript
-import { logger } from '../log';
+import { logger } from "../log";
 
 export interface SubdomainAnalysis {
   count: number;
@@ -13733,7 +16890,9 @@ export interface AdvancedHeuristicsResult {
   suspiciousPatterns: string[];
 }
 
-export async function advancedHeuristics(url: string): Promise<AdvancedHeuristicsResult> {
+export async function advancedHeuristics(
+  url: string,
+): Promise<AdvancedHeuristicsResult> {
   const result: AdvancedHeuristicsResult = {
     score: 0,
     reasons: [],
@@ -13757,48 +16916,50 @@ export async function advancedHeuristics(url: string): Promise<AdvancedHeuristic
     result.entropy = calculateShannonEntropy(hostname);
     if (result.entropy > 4.5) {
       result.score += 0.6;
-      result.reasons.push('High entropy in hostname (possible DGA)');
+      result.reasons.push("High entropy in hostname (possible DGA)");
     }
 
     // Subdomain analysis
     result.subdomainAnalysis = analyzeSubdomains(hostname);
     result.score += result.subdomainAnalysis.suspicionScore;
     if (result.subdomainAnalysis.suspicionScore > 0) {
-      result.reasons.push('Suspicious subdomain structure');
+      result.reasons.push("Suspicious subdomain structure");
     }
 
     // Keyboard walk detection
     const keyboardWalk = detectKeyboardWalk(hostname);
     if (keyboardWalk) {
       result.score += 0.4;
-      result.reasons.push('Keyboard walk pattern detected');
-      result.suspiciousPatterns.push('keyboard_walk');
+      result.reasons.push("Keyboard walk pattern detected");
+      result.suspiciousPatterns.push("keyboard_walk");
     }
 
     // Suspicious character patterns
     const suspiciousChars = detectSuspiciousCharacters(fullUrl);
     if (suspiciousChars.length > 0) {
       result.score += 0.3 * suspiciousChars.length;
-      result.reasons.push(`Suspicious characters: ${suspiciousChars.join(', ')}`);
+      result.reasons.push(
+        `Suspicious characters: ${suspiciousChars.join(", ")}`,
+      );
       result.suspiciousPatterns.push(...suspiciousChars);
     }
 
     // URL length analysis
     if (fullUrl.length > 200) {
       result.score += 0.3;
-      result.reasons.push('Unusually long URL');
+      result.reasons.push("Unusually long URL");
     }
 
     // Path depth analysis
-    const pathDepth = pathname.split('/').filter(Boolean).length;
+    const pathDepth = pathname.split("/").filter(Boolean).length;
     if (pathDepth > 8) {
       result.score += 0.2;
-      result.reasons.push('Deep path structure');
+      result.reasons.push("Deep path structure");
     }
 
     // Suspicious TLD patterns
-    const tld = hostname.split('.').pop()?.toLowerCase();
-    const suspiciousTlds = ['tk', 'ml', 'ga', 'cf', 'click', 'download'];
+    const tld = hostname.split(".").pop()?.toLowerCase();
+    const suspiciousTlds = ["tk", "ml", "ga", "cf", "click", "download"];
     if (tld && suspiciousTlds.includes(tld)) {
       result.score += 0.4;
       result.reasons.push(`Suspicious TLD: .${tld}`);
@@ -13808,20 +16969,20 @@ export async function advancedHeuristics(url: string): Promise<AdvancedHeuristic
     const homographs = detectBasicHomographs(hostname);
     if (homographs.length > 0) {
       result.score += 0.5;
-      result.reasons.push('Potential homograph attack');
-      result.suspiciousPatterns.push('homograph');
+      result.reasons.push("Potential homograph attack");
+      result.suspiciousPatterns.push("homograph");
     }
 
     return result;
   } catch (err) {
-    logger.warn({ url, err }, 'Advanced heuristics analysis failed');
+    logger.warn({ url, err }, "Advanced heuristics analysis failed");
     return result;
   }
 }
 
 function calculateShannonEntropy(str: string): number {
   const freq: { [key: string]: number } = {};
-  
+
   // Count character frequencies
   for (const char of str) {
     freq[char] = (freq[char] || 0) + 1;
@@ -13839,9 +17000,9 @@ function calculateShannonEntropy(str: string): number {
 }
 
 function analyzeSubdomains(hostname: string): SubdomainAnalysis {
-  const parts = hostname.split('.');
+  const parts = hostname.split(".");
   const subdomains = parts.slice(0, -2); // Remove domain and TLD
-  
+
   const analysis: SubdomainAnalysis = {
     count: subdomains.length,
     maxDepth: subdomains.length,
@@ -13850,7 +17011,7 @@ function analyzeSubdomains(hostname: string): SubdomainAnalysis {
   };
 
   // Check for numeric subdomains
-  analysis.hasNumericSubdomains = subdomains.some(sub => /^\d+$/.test(sub));
+  analysis.hasNumericSubdomains = subdomains.some((sub) => /^\d+$/.test(sub));
   if (analysis.hasNumericSubdomains) {
     analysis.suspicionScore += 0.3;
   }
@@ -13861,7 +17022,7 @@ function analyzeSubdomains(hostname: string): SubdomainAnalysis {
   }
 
   // Very long subdomains
-  const longSubdomains = subdomains.filter(sub => sub.length > 20);
+  const longSubdomains = subdomains.filter((sub) => sub.length > 20);
   if (longSubdomains.length > 0) {
     analysis.suspicionScore += 0.3;
   }
@@ -13870,12 +17031,7 @@ function analyzeSubdomains(hostname: string): SubdomainAnalysis {
 }
 
 function detectKeyboardWalk(str: string): boolean {
-  const keyboardRows = [
-    'qwertyuiop',
-    'asdfghjkl',
-    'zxcvbnm',
-    '1234567890',
-  ];
+  const keyboardRows = ["qwertyuiop", "asdfghjkl", "zxcvbnm", "1234567890"];
 
   for (const row of keyboardRows) {
     for (let i = 0; i <= row.length - 4; i++) {
@@ -13894,22 +17050,22 @@ function detectSuspiciousCharacters(url: string): string[] {
 
   // Multiple consecutive hyphens
   if (/-{2,}/.test(url)) {
-    suspicious.push('multiple_hyphens');
+    suspicious.push("multiple_hyphens");
   }
 
   // Mixed scripts (basic check)
   if (/[а-я]/.test(url) && /[a-z]/.test(url)) {
-    suspicious.push('mixed_scripts');
+    suspicious.push("mixed_scripts");
   }
 
   // Unusual Unicode characters
   if (/[^\x00-\x7F]/.test(url)) {
-    suspicious.push('unicode_chars');
+    suspicious.push("unicode_chars");
   }
 
   // Excessive dots
   if ((url.match(/\./g) || []).length > 8) {
-    suspicious.push('excessive_dots');
+    suspicious.push("excessive_dots");
   }
 
   return suspicious;
@@ -13920,12 +17076,12 @@ function detectBasicHomographs(hostname: string): string[] {
 
   // Common homograph substitutions
   const substitutions = {
-    'a': ['а', 'à', 'á', 'â', 'ã', 'ä', 'å'],
-    'e': ['е', 'è', 'é', 'ê', 'ë'],
-    'o': ['о', 'ò', 'ó', 'ô', 'õ', 'ö'],
-    'p': ['р'],
-    'c': ['с'],
-    'x': ['х'],
+    a: ["а", "à", "á", "â", "ã", "ä", "å"],
+    e: ["е", "è", "é", "ê", "ë"],
+    o: ["о", "ò", "ó", "ô", "õ", "ö"],
+    p: ["р"],
+    c: ["с"],
+    x: ["х"],
   };
 
   for (const [latin, variants] of Object.entries(substitutions)) {
@@ -13943,9 +17099,9 @@ function detectBasicHomographs(hostname: string): string[] {
 # File: packages/shared/src/reputation/certificate-intelligence.ts
 
 ```typescript
-import { request } from 'undici';
-import { logger } from '../log';
-import tls from 'tls';
+import { request } from "undici";
+import { logger } from "../log";
+import tls from "tls";
 
 export interface CertificateAnalysis {
   isValid: boolean;
@@ -13975,14 +17131,14 @@ interface CertificateInfo {
 
 export async function certificateIntelligence(
   hostname: string,
-  options: CertificateIntelligenceOptions = {}
+  options: CertificateIntelligenceOptions = {},
 ): Promise<CertificateAnalysis> {
   const { timeoutMs = 3000, ctCheckEnabled = true } = options;
 
   const result: CertificateAnalysis = {
     isValid: true,
     isSelfSigned: false,
-    issuer: 'unknown',
+    issuer: "unknown",
     age: 0,
     expiryDays: 0,
     sanCount: 0,
@@ -13993,7 +17149,10 @@ export async function certificateIntelligence(
   };
 
   try {
-    const { certInfo, isValidCert } = await fetchCertificateInfo(hostname, timeoutMs);
+    const { certInfo, isValidCert } = await fetchCertificateInfo(
+      hostname,
+      timeoutMs,
+    );
 
     if (certInfo) {
       analyzeCertificateProperties(certInfo, result);
@@ -14007,17 +17166,17 @@ export async function certificateIntelligence(
 
     return result;
   } catch (err) {
-    logger.warn({ hostname, err }, 'Certificate analysis failed');
+    logger.warn({ hostname, err }, "Certificate analysis failed");
     result.isValid = false;
     result.suspicionScore += 0.5;
-    result.reasons.push('Certificate analysis failed');
+    result.reasons.push("Certificate analysis failed");
     return result;
   }
 }
 
 async function fetchCertificateInfo(
   hostname: string,
-  timeoutMs: number
+  timeoutMs: number,
 ): Promise<{ certInfo: unknown; isValidCert: boolean }> {
   try {
     // First attempt with certificate validation enabled for security
@@ -14025,96 +17184,125 @@ async function fetchCertificateInfo(
     return { certInfo, isValidCert: true };
   } catch (validCertError) {
     // If validation fails, try again without validation to analyze the invalid cert
-    logger.debug({ hostname, err: validCertError }, 'Certificate validation failed, attempting to analyze invalid certificate');
+    logger.debug(
+      { hostname, err: validCertError },
+      "Certificate validation failed, attempting to analyze invalid certificate",
+    );
     const certInfo = await getCertificateWithoutValidation(hostname, timeoutMs);
     return { certInfo, isValidCert: false };
   }
 }
 
-async function getCertificateWithValidation(hostname: string, timeoutMs: number): Promise<unknown> {
+async function getCertificateWithValidation(
+  hostname: string,
+  timeoutMs: number,
+): Promise<unknown> {
   return new Promise<unknown>((resolve, reject) => {
     const timeout = setTimeout(() => {
-      reject(new Error('Certificate check timeout'));
+      reject(new Error("Certificate check timeout"));
     }, timeoutMs);
 
-    const socket = tls.connect(443, hostname, {
-      servername: hostname,
-      rejectUnauthorized: true, // Secure by default
-      checkServerIdentity: tls.checkServerIdentity, // Explicit hostname verification
-    }, () => {
-      clearTimeout(timeout);
-      const cert = socket.getPeerCertificate(true);
-      socket.destroy();
-      resolve(cert);
-    });
-
-    socket.on('error', (err: Error) => {
-      clearTimeout(timeout);
-      reject(err);
-    });
-  });
-}
-
-async function getCertificateWithoutValidation(hostname: string, timeoutMs: number): Promise<unknown> {
-  return new Promise<unknown>((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error('Certificate check timeout'));
-    }, timeoutMs);
-
-    const socket = tls.connect(443, hostname, {
-      servername: hostname,
-      rejectUnauthorized: false, // skip-check: JS-S1017 // NOSONAR Only bypass validation to analyze invalid certs
-      checkServerIdentity: (servername, cert) => {
-        // Still perform hostname verification even when bypassing cert validation
-        // This allows us to detect hostname mismatches in invalid certificates
-        return tls.checkServerIdentity(servername, cert);
+    const socket = tls.connect(
+      443,
+      hostname,
+      {
+        servername: hostname,
+        rejectUnauthorized: true, // Secure by default
+        checkServerIdentity: tls.checkServerIdentity, // Explicit hostname verification
       },
-    }, () => {
-      clearTimeout(timeout);
-      const cert = socket.getPeerCertificate(true);
-      socket.destroy();
-      resolve(cert);
-    });
+      () => {
+        clearTimeout(timeout);
+        const cert = socket.getPeerCertificate(true);
+        socket.destroy();
+        resolve(cert);
+      },
+    );
 
-    socket.on('error', (err: Error) => {
+    socket.on("error", (err: Error) => {
       clearTimeout(timeout);
       reject(err);
     });
   });
 }
 
-function analyzeCertificateProperties(certInfo: unknown, result: CertificateAnalysis): void {
+async function getCertificateWithoutValidation(
+  hostname: string,
+  timeoutMs: number,
+): Promise<unknown> {
+  return new Promise<unknown>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error("Certificate check timeout"));
+    }, timeoutMs);
+
+    const socket = tls.connect(
+      443,
+      hostname,
+      {
+        servername: hostname,
+        rejectUnauthorized: false, // skip-check: JS-S1017 // NOSONAR Only bypass validation to analyze invalid certs
+        checkServerIdentity: (servername, cert) => {
+          // Still perform hostname verification even when bypassing cert validation
+          // This allows us to detect hostname mismatches in invalid certificates
+          return tls.checkServerIdentity(servername, cert);
+        },
+      },
+      () => {
+        clearTimeout(timeout);
+        const cert = socket.getPeerCertificate(true);
+        socket.destroy();
+        resolve(cert);
+      },
+    );
+
+    socket.on("error", (err: Error) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
+  });
+}
+
+function analyzeCertificateProperties(
+  certInfo: unknown,
+  result: CertificateAnalysis,
+): void {
   const cert = certInfo as CertificateInfo;
 
   if (!cert) return;
 
   // Extract basic certificate information
-  result.issuer = cert.issuer?.CN || 'unknown';
+  result.issuer = cert.issuer?.CN || "unknown";
   result.isSelfSigned = cert.issuer?.CN === cert.subject?.CN;
 
   // Calculate certificate age
   if (cert.valid_from) {
     const issuedDate = new Date(cert.valid_from);
-    result.age = Math.floor((Date.now() - issuedDate.getTime()) / (1000 * 60 * 60 * 24));
+    result.age = Math.floor(
+      (Date.now() - issuedDate.getTime()) / (1000 * 60 * 60 * 24),
+    );
   }
 
   // Calculate days until expiry
   if (cert.valid_to) {
     const expiryDate = new Date(cert.valid_to);
-    result.expiryDays = Math.floor((expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    result.expiryDays = Math.floor(
+      (expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24),
+    );
   }
 
   // Count Subject Alternative Names
   if (cert.subjectaltname) {
-    result.sanCount = cert.subjectaltname.split(',').length;
+    result.sanCount = cert.subjectaltname.split(",").length;
   }
 }
 
-function updateValidationStatus(isValidCert: boolean, result: CertificateAnalysis): void {
+function updateValidationStatus(
+  isValidCert: boolean,
+  result: CertificateAnalysis,
+): void {
   result.isValid = isValidCert;
   if (!isValidCert) {
     result.suspicionScore += 0.7;
-    result.reasons.push('Certificate validation failed');
+    result.reasons.push("Certificate validation failed");
   }
 }
 
@@ -14122,48 +17310,54 @@ function checkSuspiciousPatterns(result: CertificateAnalysis): void {
   // Check for self-signed certificates
   if (result.isSelfSigned) {
     result.suspicionScore += 0.8;
-    result.reasons.push('Self-signed certificate detected');
+    result.reasons.push("Self-signed certificate detected");
   }
 
   // Check for very new certificates
   if (result.age < 7) {
     result.suspicionScore += 0.5;
-    result.reasons.push('Very new certificate (< 7 days old)');
+    result.reasons.push("Very new certificate (< 7 days old)");
   }
 
   // Check for certificates expiring soon
   if (result.expiryDays < 30) {
     result.suspicionScore += 0.3;
-    result.reasons.push('Certificate expires soon');
+    result.reasons.push("Certificate expires soon");
   }
 
   // Check for unusually high number of SANs
   if (result.sanCount > 100) {
     result.suspicionScore += 0.4;
-    result.reasons.push('Unusually high number of SANs');
+    result.reasons.push("Unusually high number of SANs");
   }
 
   // Check for suspicious issuers
   if (hasSuspiciousIssuer(result.issuer)) {
     result.suspicionScore += 0.6;
-    result.reasons.push('Suspicious certificate issuer');
+    result.reasons.push("Suspicious certificate issuer");
   }
 }
 
 function hasSuspiciousIssuer(issuer: string): boolean {
-  const suspiciousIssuers = ['localhost', 'test', 'example', 'invalid'];
-  return suspiciousIssuers.some(sus => issuer.toLowerCase().includes(sus));
+  const suspiciousIssuers = ["localhost", "test", "example", "invalid"];
+  return suspiciousIssuers.some((sus) => issuer.toLowerCase().includes(sus));
 }
 
-async function checkCertificateTransparency(hostname: string, result: CertificateAnalysis): Promise<void> {
+async function checkCertificateTransparency(
+  hostname: string,
+  result: CertificateAnalysis,
+): Promise<void> {
   try {
     // Simplified CT log check - in production you'd query actual CT logs
     // This is a placeholder that assumes most legitimate sites are in CT logs
-    const response = await request(`https://crt.sh/?q=${encodeURIComponent(hostname)}&output=json`, {
-      method: 'GET',
-      headersTimeout: 2000,
-      bodyTimeout: 2000,
-    });
+    const response = await request(
+      `https://crt.sh/?q=${encodeURIComponent(hostname)}&output=json`,
+      {
+        method: "GET",
+        headersTimeout: 2000,
+        bodyTimeout: 2000,
+      },
+    );
 
     if (response.statusCode === 200) {
       const data = await response.body.json();
@@ -14174,10 +17368,10 @@ async function checkCertificateTransparency(hostname: string, result: Certificat
 
     if (!result.ctLogPresent) {
       result.suspicionScore += 0.4;
-      result.reasons.push('Certificate not found in CT logs');
+      result.reasons.push("Certificate not found in CT logs");
     }
   } catch (err) {
-    logger.debug({ hostname, err }, 'CT log check failed');
+    logger.debug({ hostname, err }, "CT log check failed");
   }
 }
 ```
@@ -14185,8 +17379,8 @@ async function checkCertificateTransparency(hostname: string, result: Certificat
 # File: packages/shared/src/reputation/dns-intelligence.ts
 
 ```typescript
-import { logger } from '../log';
-import dns from 'dns/promises';
+import { logger } from "../log";
+import dns from "dns/promises";
 
 export interface DNSBLResult {
   provider: string;
@@ -14210,14 +17404,14 @@ interface DNSIntelligenceOptions {
 }
 
 const DNSBL_PROVIDERS = [
-  'zen.spamhaus.org',
-  'bl.spamcop.net',
-  'dnsbl.sorbs.net',
+  "zen.spamhaus.org",
+  "bl.spamcop.net",
+  "dnsbl.sorbs.net",
 ];
 
 export async function dnsIntelligence(
   hostname: string,
-  options: DNSIntelligenceOptions = {}
+  options: DNSIntelligenceOptions = {},
 ): Promise<DNSIntelligenceResult> {
   const {
     dnsblEnabled = true,
@@ -14250,76 +17444,94 @@ export async function dnsIntelligence(
 
     return result;
   } catch (err) {
-    logger.warn({ hostname, err }, 'DNS intelligence check failed');
+    logger.warn({ hostname, err }, "DNS intelligence check failed");
     return result;
   }
 }
 
 async function performDNSBLChecks(
-  hostname: string, 
-  dnsblTimeoutMs: number, 
-  result: DNSIntelligenceResult
+  hostname: string,
+  dnsblTimeoutMs: number,
+  result: DNSIntelligenceResult,
 ): Promise<void> {
   const dnsblResults = await Promise.allSettled(
-    DNSBL_PROVIDERS.map(provider => checkDNSBL(hostname, provider, dnsblTimeoutMs))
+    DNSBL_PROVIDERS.map((provider) =>
+      checkDNSBL(hostname, provider, dnsblTimeoutMs),
+    ),
   );
 
   for (const dnsblResult of dnsblResults) {
-    if (dnsblResult.status === 'fulfilled' && dnsblResult.value.listed) {
+    if (dnsblResult.status === "fulfilled" && dnsblResult.value.listed) {
       result.dnsblResults.push(dnsblResult.value);
       result.score += 1.0;
-      result.reasons.push(`Domain listed in DNSBL: ${dnsblResult.value.provider}`);
+      result.reasons.push(
+        `Domain listed in DNSBL: ${dnsblResult.value.provider}`,
+      );
     }
   }
 }
 
-async function performDNSSECCheck(hostname: string, result: DNSIntelligenceResult): Promise<void> {
+async function performDNSSECCheck(
+  hostname: string,
+  result: DNSIntelligenceResult,
+): Promise<void> {
   try {
     const dnssecValid = await checkDNSSEC(hostname);
     result.dnssecValid = dnssecValid;
     if (!dnssecValid) {
       result.score += 0.3;
-      result.reasons.push('DNSSEC validation failed');
+      result.reasons.push("DNSSEC validation failed");
     }
   } catch (err) {
-    logger.debug({ hostname, err }, 'DNSSEC check failed');
+    logger.debug({ hostname, err }, "DNSSEC check failed");
   }
 }
 
-async function performFastFluxDetection(hostname: string, result: DNSIntelligenceResult): Promise<void> {
+async function performFastFluxDetection(
+  hostname: string,
+  result: DNSIntelligenceResult,
+): Promise<void> {
   try {
     const fastFlux = await detectFastFlux(hostname);
     result.fastFluxDetected = fastFlux;
     if (fastFlux) {
       result.score += 0.8;
-      result.reasons.push('Fast-flux DNS pattern detected');
+      result.reasons.push("Fast-flux DNS pattern detected");
     }
   } catch (err) {
-    logger.debug({ hostname, err }, 'Fast-flux detection failed');
+    logger.debug({ hostname, err }, "Fast-flux detection failed");
   }
 }
 
-async function checkDNSBL(hostname: string, provider: string, timeoutMs: number): Promise<DNSBLResult> {
+async function checkDNSBL(
+  hostname: string,
+  provider: string,
+  timeoutMs: number,
+): Promise<DNSBLResult> {
   try {
     // This is a simplified DNSBL check - in production you'd use proper DNS queries
     const query = `${hostname}.${provider}`;
 
     // Use Promise.race for timeout
     const timeoutPromise = new Promise<never>((_resolve, reject) => {
-      setTimeout(() => reject(new Error('DNS timeout')), timeoutMs);
+      setTimeout(() => reject(new Error("DNS timeout")), timeoutMs);
     });
 
     try {
       await Promise.race([dns.resolve4(query), timeoutPromise]);
-      return { provider, listed: true, reason: 'Listed in DNSBL' };
+      return { provider, listed: true, reason: "Listed in DNSBL" };
     } catch (err: unknown) {
       const error = err as { code?: string; message?: string };
-      if (error.code === 'ENOTFOUND' || error.code === 'ENODATA') {
+      if (error.code === "ENOTFOUND" || error.code === "ENODATA") {
         return { provider, listed: false };
       }
-      if (error.message === 'DNS timeout') {
+      if (error.message === "DNS timeout") {
         // Treat timeout as not listed for this specific check
-        return { provider, listed: false, reason: 'Timeout during DNSBL check' };
+        return {
+          provider,
+          listed: false,
+          reason: "Timeout during DNSBL check",
+        };
       }
       throw err;
     }
@@ -14365,9 +17577,9 @@ async function detectFastFlux(hostname: string): Promise<boolean> {
 # File: packages/shared/src/reputation/gsb.ts
 
 ```typescript
-import { request } from 'undici';
-import { config } from '../config';
-import { HttpError } from '../http-errors';
+import { request } from "undici";
+import { config } from "../config";
+import { HttpError } from "../http-errors";
 
 export interface GsbThreatMatch {
   threatType: string;
@@ -14381,49 +17593,72 @@ export interface GsbLookupResult {
   latencyMs: number;
 }
 
-export async function gsbLookup(urls: string[], timeoutMs = config.gsb.timeoutMs): Promise<GsbLookupResult> {
-  if (!config.gsb.apiKey || urls.length === 0) return { matches: [], latencyMs: 0 };
+export async function gsbLookup(
+  urls: string[],
+  timeoutMs = config.gsb.timeoutMs,
+): Promise<GsbLookupResult> {
+  if (!config.gsb.apiKey || urls.length === 0)
+    return { matches: [], latencyMs: 0 };
   const body = {
-    client: { clientId: 'wbscanner', clientVersion: '0.1' },
+    client: { clientId: "wbscanner", clientVersion: "0.1" },
     threatInfo: {
-      threatTypes: ['MALWARE', 'SOCIAL_ENGINEERING', 'UNWANTED_SOFTWARE', 'MALICIOUS_BINARY'],
-      platformTypes: ['ANY_PLATFORM'],
-      threatEntryTypes: ['URL'],
-      threatEntries: urls.map(u => ({ url: u }))
-    }
+      threatTypes: [
+        "MALWARE",
+        "SOCIAL_ENGINEERING",
+        "UNWANTED_SOFTWARE",
+        "MALICIOUS_BINARY",
+      ],
+      platformTypes: ["ANY_PLATFORM"],
+      threatEntryTypes: ["URL"],
+      threatEntries: urls.map((u) => ({ url: u })),
+    },
   };
   const start = Date.now();
-  const res = await request(`https://safebrowsing.googleapis.com/v4/threatMatches:find?key=${config.gsb.apiKey}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-    headersTimeout: timeoutMs,
-    bodyTimeout: timeoutMs
-  });
+  const res = await request(
+    `https://safebrowsing.googleapis.com/v4/threatMatches:find?key=${config.gsb.apiKey}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      headersTimeout: timeoutMs,
+      bodyTimeout: timeoutMs,
+    },
+  );
   if (res.statusCode >= 500) {
-    const err = new Error(`Google Safe Browsing error: ${res.statusCode}`) as HttpError;
+    const err = new Error(
+      `Google Safe Browsing error: ${res.statusCode}`,
+    ) as HttpError;
     err.statusCode = res.statusCode;
     throw err;
   }
-  const json = await res.body.json() as { matches?: Array<{ threatType: string; platformType: string; threatEntryType: string; threat: { url?: string } | string }> };
+  const json = (await res.body.json()) as {
+    matches?: Array<{
+      threatType: string;
+      platformType: string;
+      threatEntryType: string;
+      threat: { url?: string } | string;
+    }>;
+  };
   const matches: GsbThreatMatch[] = Array.isArray(json?.matches)
     ? json.matches.map((match) => ({
-      threatType: match.threatType,
-      platformType: match.platformType,
-      threatEntryType: match.threatEntryType,
-      threat: typeof match.threat === 'string' ? match.threat : (match.threat?.url ?? '')
-    }))
+        threatType: match.threatType,
+        platformType: match.platformType,
+        threatEntryType: match.threatEntryType,
+        threat:
+          typeof match.threat === "string"
+            ? match.threat
+            : (match.threat?.url ?? ""),
+      }))
     : [];
   return { matches, latencyMs: Date.now() - start };
 }
-
 ```
 
 # File: packages/shared/src/reputation/http-fingerprint.ts
 
 ```typescript
-import { request } from 'undici';
-import { logger } from '../log';
+import { request } from "undici";
+import { logger } from "../log";
 
 export interface SecurityHeaders {
   hsts: boolean;
@@ -14447,7 +17682,7 @@ interface HTTPFingerprintOptions {
 
 export async function httpFingerprinting(
   url: string,
-  options: HTTPFingerprintOptions = {}
+  options: HTTPFingerprintOptions = {},
 ): Promise<HTTPFingerprint> {
   const { timeoutMs = 2000, enableSSRFGuard = true } = options;
 
@@ -14468,12 +17703,12 @@ export async function httpFingerprinting(
     // SSRF protection
     if (enableSSRFGuard && isPrivateIP(new URL(url).hostname)) {
       result.suspicionScore += 1.0;
-      result.reasons.push('URL points to private IP address');
+      result.reasons.push("URL points to private IP address");
       return result;
     }
 
     const response = await request(url, {
-      method: 'HEAD', // Use HEAD to minimize data transfer
+      method: "HEAD", // Use HEAD to minimize data transfer
       headersTimeout: timeoutMs,
       bodyTimeout: timeoutMs,
       maxRedirections: 5,
@@ -14487,26 +17722,36 @@ export async function httpFingerprinting(
     analyzeStatusCode(result.statusCode, result);
     analyzeServerHeader(headers.server as string, result);
     analyzeRedirects(url, headers.location as string, result);
-    analyzeContentType(headers['content-type'] as string, result);
+    analyzeContentType(headers["content-type"] as string, result);
 
     return result;
   } catch (err: unknown) {
-    return handleHttpError(err as { message?: string; code?: string }, url, result);
+    return handleHttpError(
+      err as { message?: string; code?: string },
+      url,
+      result,
+    );
   }
 }
 
-function analyzeSecurityHeaders(headers: Record<string, unknown>, result: HTTPFingerprint): void {
+function analyzeSecurityHeaders(
+  headers: Record<string, unknown>,
+  result: HTTPFingerprint,
+): void {
   // Check security headers
-  result.securityHeaders.hsts = !!(headers['strict-transport-security']);
-  result.securityHeaders.csp = !!(headers['content-security-policy']);
-  result.securityHeaders.xFrameOptions = !!(headers['x-frame-options']);
-  result.securityHeaders.xContentTypeOptions = !!(headers['x-content-type-options']);
+  result.securityHeaders.hsts = !!headers["strict-transport-security"];
+  result.securityHeaders.csp = !!headers["content-security-policy"];
+  result.securityHeaders.xFrameOptions = !!headers["x-frame-options"];
+  result.securityHeaders.xContentTypeOptions =
+    !!headers["x-content-type-options"];
 
   // Score based on missing security headers
-  const missingHeaders = Object.values(result.securityHeaders).filter(present => !present).length;
+  const missingHeaders = Object.values(result.securityHeaders).filter(
+    (present) => !present,
+  ).length;
   if (missingHeaders >= 3) {
     result.suspicionScore += 0.4;
-    result.reasons.push('Multiple security headers missing');
+    result.reasons.push("Multiple security headers missing");
   }
 }
 
@@ -14523,61 +17768,68 @@ function analyzeStatusCode(statusCode: number, result: HTTPFingerprint): void {
 
 function analyzeServerHeader(server: string, result: HTTPFingerprint): void {
   if (!server) return;
-  
-  const suspiciousServers = ['apache/1.', 'nginx/0.', 'test', 'localhost'];
-  if (suspiciousServers.some(sus => server.toLowerCase().includes(sus))) {
+
+  const suspiciousServers = ["apache/1.", "nginx/0.", "test", "localhost"];
+  if (suspiciousServers.some((sus) => server.toLowerCase().includes(sus))) {
     result.suspicionScore += 0.3;
-    result.reasons.push('Suspicious server header');
+    result.reasons.push("Suspicious server header");
   }
 }
 
-function analyzeRedirects(originalUrl: string, location: string, result: HTTPFingerprint): void {
+function analyzeRedirects(
+  originalUrl: string,
+  location: string,
+  result: HTTPFingerprint,
+): void {
   if (!location) return;
-  
+
   try {
     const originalHost = new URL(originalUrl).hostname;
     const redirectHost = new URL(location).hostname;
 
     if (originalHost !== redirectHost) {
       // Cross-domain redirect - check if suspicious
-      if (isPrivateIP(redirectHost) || redirectHost.includes('localhost')) {
+      if (isPrivateIP(redirectHost) || redirectHost.includes("localhost")) {
         result.suspiciousRedirects = true;
         result.suspicionScore += 0.6;
-        result.reasons.push('Suspicious redirect to private/local address');
+        result.reasons.push("Suspicious redirect to private/local address");
       }
     }
   } catch (_err) {
     // Invalid redirect URL
     result.suspiciousRedirects = true;
     result.suspicionScore += 0.4;
-    result.reasons.push('Invalid redirect URL');
+    result.reasons.push("Invalid redirect URL");
   }
 }
 
-function analyzeContentType(contentType: string, result: HTTPFingerprint): void {
-  if (contentType && contentType.includes('application/octet-stream')) {
+function analyzeContentType(
+  contentType: string,
+  result: HTTPFingerprint,
+): void {
+  if (contentType && contentType.includes("application/octet-stream")) {
     result.suspicionScore += 0.3;
-    result.reasons.push('Binary content type detected');
+    result.reasons.push("Binary content type detected");
   }
 }
 
 function handleHttpError(
-  error: { message?: string; code?: string }, 
-  url: string, 
-  result: HTTPFingerprint
+  error: { message?: string; code?: string },
+  url: string,
+  result: HTTPFingerprint,
 ): HTTPFingerprint {
-  logger.warn({ url, err: error.message }, 'HTTP fingerprinting failed');
+  logger.warn({ url, err: error.message }, "HTTP fingerprinting failed");
 
   // Analyze the error for additional insights
-  if (error.code === 'ENOTFOUND') {
+  if (error.code === "ENOTFOUND") {
     result.suspicionScore += 0.5;
-    result.reasons.push('Domain not found');
-  } else if (error.code === 'ECONNREFUSED') {
+    result.reasons.push("Domain not found");
+  } else if (error.code === "ECONNREFUSED") {
     result.suspicionScore += 0.4;
-    result.reasons.push('Connection refused');
-  } else if (error.code === 'CERT_AUTHORITY_INVALID') {
+    result.reasons.push("Connection refused");
+  } else if (error.code === "CERT_AUTHORITY_INVALID") {
     result.suspicionScore += 0.6;
-    result.reasons.push('Invalid certificate authority');
+    result.reasons.push("Invalid certificate authority");
   }
 
   return result;
@@ -14597,20 +17849,20 @@ function isPrivateIP(hostname: string): boolean {
   ];
 
   // Check for localhost variations
-  if (hostname === 'localhost' || hostname === '0.0.0.0') {
+  if (hostname === "localhost" || hostname === "0.0.0.0") {
     return true;
   }
 
-  return privateRanges.some(range => range.test(hostname));
+  return privateRanges.some((range) => range.test(hostname));
 }
 ```
 
 # File: packages/shared/src/reputation/local-threat-db.ts
 
 ```typescript
-import { request } from 'undici';
-import { logger } from '../log';
-import type Redis from 'ioredis';
+import { request } from "undici";
+import { logger } from "../log";
+import type Redis from "ioredis";
 
 export interface LocalThreatResult {
   score: number;
@@ -14628,9 +17880,9 @@ export class LocalThreatDatabase {
   private redis: Redis;
   private options: LocalThreatDatabaseOptions;
   private updateTimer?: NodeJS.Timeout;
-  private readonly OPENPHISH_KEY = 'threat_db:openphish';
-  private readonly COLLABORATIVE_KEY = 'threat_db:collaborative';
-  private readonly LAST_UPDATE_KEY = 'threat_db:last_update';
+  private readonly OPENPHISH_KEY = "threat_db:openphish";
+  private readonly COLLABORATIVE_KEY = "threat_db:collaborative";
+  private readonly LAST_UPDATE_KEY = "threat_db:last_update";
 
   constructor(redis: Redis, options: LocalThreatDatabaseOptions) {
     this.redis = redis;
@@ -14642,17 +17894,20 @@ export class LocalThreatDatabase {
     try {
       await this.updateOpenPhishFeed();
     } catch (err) {
-      logger.warn({ err }, 'Initial OpenPh feed update failed; will retry on next interval');
+      logger.warn(
+        { err },
+        "Initial OpenPh feed update failed; will retry on next interval",
+      );
     }
 
     // Schedule periodic updates
     this.updateTimer = setInterval(() => {
-      this.updateOpenPhishFeed().catch(err => {
-        logger.error({ err }, 'Failed to update OpenPhish feed');
+      this.updateOpenPhishFeed().catch((err) => {
+        logger.error({ err }, "Failed to update OpenPhish feed");
       });
     }, this.options.updateIntervalMs);
 
-    logger.info('Local threat database started');
+    logger.info("Local threat database started");
   }
 
   async stop(): Promise<void> {
@@ -14660,7 +17915,7 @@ export class LocalThreatDatabase {
       clearInterval(this.updateTimer);
       this.updateTimer = undefined;
     }
-    logger.info('Local threat database stopped');
+    logger.info("Local threat database stopped");
   }
 
   async check(url: string, _hash: string): Promise<LocalThreatResult> {
@@ -14673,34 +17928,40 @@ export class LocalThreatDatabase {
       const normalizedUrl = this.normalizeUrl(url);
 
       // Check OpenPhish feed
-      const openphishMatch = await this.redis.sismember(this.OPENPHISH_KEY, normalizedUrl);
+      const openphishMatch = await this.redis.sismember(
+        this.OPENPHISH_KEY,
+        normalizedUrl,
+      );
       if (openphishMatch) {
         result.openphishMatch = true;
         result.score += 2.0;
-        result.reasons.push('URL found in OpenPhish feed');
+        result.reasons.push("URL found in OpenPhish feed");
       }
 
       // Check collaborative learning database
-      const collaborativeScore = await this.redis.zscore(this.COLLABORATIVE_KEY, normalizedUrl);
+      const collaborativeScore = await this.redis.zscore(
+        this.COLLABORATIVE_KEY,
+        normalizedUrl,
+      );
       if (collaborativeScore !== null && Number(collaborativeScore) > 0.7) {
         result.collaborativeMatch = true;
         result.score += Math.min(1.5, Number(collaborativeScore));
-        result.reasons.push('URL flagged by collaborative learning');
+        result.reasons.push("URL flagged by collaborative learning");
       }
 
       return result;
     } catch (_err) {
-      logger.warn({ url, err: _err }, 'Local threat database check failed');
+      logger.warn({ url, err: _err }, "Local threat database check failed");
       return result;
     }
   }
 
   async updateOpenPhishFeed(): Promise<void> {
     try {
-      logger.info('Updating OpenPhish feed...');
+      logger.info("Updating OpenPhish feed...");
 
       const response = await request(this.options.feedUrl, {
-        method: 'GET',
+        method: "GET",
         headersTimeout: 10000,
         bodyTimeout: 30000,
         maxRedirections: 5, // Follow redirects
@@ -14712,13 +17973,13 @@ export class LocalThreatDatabase {
 
       const feedData = await response.body.text();
       const urls = feedData
-        .split('\n')
-        .map(line => line.trim())
-        .filter(line => line && line.startsWith('http'))
-        .map(url => this.normalizeUrl(url));
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line && line.startsWith("http"))
+        .map((url) => this.normalizeUrl(url));
 
       if (urls.length === 0) {
-        throw new Error('No URLs found in OpenPhish feed');
+        throw new Error("No URLs found in OpenPhish feed");
       }
 
       // Update Redis with new feed data
@@ -14737,25 +17998,28 @@ export class LocalThreatDatabase {
 
       await pipeline.exec();
 
-      logger.info({ count: urls.length }, 'OpenPhish feed updated successfully');
+      logger.info(
+        { count: urls.length },
+        "OpenPhish feed updated successfully",
+      );
     } catch (err) {
-      logger.error({ err }, 'Failed to update OpenPhish feed');
+      logger.error({ err }, "Failed to update OpenPhish feed");
       // Don't throw - make this non-fatal to allow service to continue running
     }
   }
 
   async recordVerdict(
     url: string,
-    verdict: 'benign' | 'suspicious' | 'malicious',
-    confidence: number
+    verdict: "benign" | "suspicious" | "malicious",
+    confidence: number,
   ): Promise<void> {
     try {
       const normalizedUrl = this.normalizeUrl(url);
 
       let score = 0;
-      if (verdict === 'malicious') {
+      if (verdict === "malicious") {
         score = confidence;
-      } else if (verdict === 'suspicious') {
+      } else if (verdict === "suspicious") {
         score = confidence * 0.5;
       }
 
@@ -14765,11 +18029,17 @@ export class LocalThreatDatabase {
         await this.redis.expire(this.COLLABORATIVE_KEY, 30 * 24 * 60 * 60);
       }
     } catch (err) {
-      logger.warn({ url, verdict, err }, 'Failed to record verdict in collaborative database');
+      logger.warn(
+        { url, verdict, err },
+        "Failed to record verdict in collaborative database",
+      );
     }
   }
 
-  async getStats(): Promise<{ openphishCount: number; collaborativeCount: number }> {
+  async getStats(): Promise<{
+    openphishCount: number;
+    collaborativeCount: number;
+  }> {
     try {
       const [openphishCount, collaborativeCount] = await Promise.all([
         this.redis.scard(this.OPENPHISH_KEY),
@@ -14781,7 +18051,7 @@ export class LocalThreatDatabase {
         collaborativeCount: collaborativeCount || 0,
       };
     } catch (err) {
-      logger.warn({ err }, 'Failed to get threat database stats');
+      logger.warn({ err }, "Failed to get threat database stats");
       return { openphishCount: 0, collaborativeCount: 0 };
     }
   }
@@ -14790,8 +18060,8 @@ export class LocalThreatDatabase {
     try {
       const parsed = new URL(url);
       // Remove common tracking parameters and fragments
-      parsed.search = '';
-      parsed.hash = '';
+      parsed.search = "";
+      parsed.hash = "";
       return parsed.toString().toLowerCase();
     } catch (_err) {
       return url.toLowerCase();
@@ -14803,9 +18073,9 @@ export class LocalThreatDatabase {
 # File: packages/shared/src/reputation/phishtank.ts
 
 ```typescript
-import { request } from 'undici';
-import { config } from '../config';
-import { HttpError } from '../http-errors';
+import { request } from "undici";
+import { config } from "../config";
+import { HttpError } from "../http-errors";
 
 export interface PhishtankLookupResult {
   inDatabase: boolean;
@@ -14818,31 +18088,34 @@ export interface PhishtankLookupResult {
   latencyMs?: number;
 }
 
-export async function phishtankLookup(url: string, timeoutMs = config.phishtank.timeoutMs): Promise<PhishtankLookupResult> {
+export async function phishtankLookup(
+  url: string,
+  timeoutMs = config.phishtank.timeoutMs,
+): Promise<PhishtankLookupResult> {
   if (!config.phishtank.enabled) {
     return { inDatabase: false, verified: false, latencyMs: 0 };
   }
   const params = new URLSearchParams({
     url,
-    format: 'json',
-    app_key: config.phishtank.appKey || '',
-    response: 'json'
+    format: "json",
+    app_key: config.phishtank.appKey || "",
+    response: "json",
   });
 
   const start = Date.now();
-  const res = await request('https://checkurl.phishtank.com/checkurl/', {
-    method: 'POST',
+  const res = await request("https://checkurl.phishtank.com/checkurl/", {
+    method: "POST",
     headers: {
-      'content-type': 'application/x-www-form-urlencoded',
-      'user-agent': config.phishtank.userAgent
+      "content-type": "application/x-www-form-urlencoded",
+      "user-agent": config.phishtank.userAgent,
     },
     body: params.toString(),
     headersTimeout: timeoutMs,
-    bodyTimeout: timeoutMs
+    bodyTimeout: timeoutMs,
   });
 
   if (res.statusCode === 429) {
-    const err = new Error('Phishtank rate limited') as HttpError;
+    const err = new Error("Phishtank rate limited") as HttpError;
     err.code = 429;
     throw err;
   }
@@ -14852,7 +18125,7 @@ export async function phishtankLookup(url: string, timeoutMs = config.phishtank.
     throw err;
   }
 
-  const json = await res.body.json() as {
+  const json = (await res.body.json()) as {
     results?: {
       in_database?: boolean;
       verified?: boolean;
@@ -14865,7 +18138,11 @@ export async function phishtankLookup(url: string, timeoutMs = config.phishtank.
   };
   const results = json?.results;
   if (!results) {
-    return { inDatabase: false, verified: false, latencyMs: Date.now() - start };
+    return {
+      inDatabase: false,
+      verified: false,
+      latencyMs: Date.now() - start,
+    };
   }
   const inDatabase = Boolean(results.in_database);
   const verified = inDatabase && Boolean(results.verified);
@@ -14877,47 +18154,54 @@ export async function phishtankLookup(url: string, timeoutMs = config.phishtank.
     phishId: results.phish_id ?? undefined,
     submissionTime: results.submission_time ?? undefined,
     detailsUrl: results.phishtank_url ?? undefined,
-    latencyMs: Date.now() - start
+    latencyMs: Date.now() - start,
   };
 }
-
 ```
 
 # File: packages/shared/src/reputation/rdap.ts
 
 ```typescript
-import { request } from 'undici';
-import { parse } from 'tldts';
+import { request } from "undici";
+import { parse } from "tldts";
 
-export async function domainAgeDaysFromRdap(hostname: string, timeoutMs = 5000): Promise<number | undefined> {
+export async function domainAgeDaysFromRdap(
+  hostname: string,
+  timeoutMs = 5000,
+): Promise<number | undefined> {
   const { domain } = parse(hostname);
   if (!domain) return undefined;
   const url = `https://rdap.org/domain/${domain}`;
-  const res = await request(url, { headersTimeout: timeoutMs, bodyTimeout: timeoutMs }).catch(() => null);
+  const res = await request(url, {
+    headersTimeout: timeoutMs,
+    bodyTimeout: timeoutMs,
+  }).catch(() => null);
   if (!res || res.statusCode >= 400) return undefined;
-  const json = await res.body.json() as {
+  const json = (await res.body.json()) as {
     events?: Array<{
       eventAction?: string;
       eventDate?: string;
     }>;
   };
   const events = json?.events || [];
-  const reg = events.find(e => e.eventAction === 'registration' || e.eventAction === 'registered');
+  const reg = events.find(
+    (e) => e.eventAction === "registration" || e.eventAction === "registered",
+  );
   if (!reg?.eventDate) return undefined;
   const regDate = new Date(reg.eventDate);
   const now = new Date();
-  return Math.floor((now.getTime() - regDate.getTime()) / (1000 * 60 * 60 * 24));
+  return Math.floor(
+    (now.getTime() - regDate.getTime()) / (1000 * 60 * 60 * 24),
+  );
 }
-
-
 ```
 
 # File: packages/shared/src/reputation/urlhaus.ts
 
 ```typescript
-import { request } from 'undici';
-import { config } from '../config';
-import { HttpError } from '../http-errors';
+import { request } from "undici";
+import { config } from "../config";
+import { HttpError } from "../http-errors";
 
 export interface UrlhausLookupResult {
   listed: boolean;
@@ -14930,18 +18214,21 @@ export interface UrlhausLookupResult {
   latencyMs?: number;
 }
 
-export async function urlhausLookup(url: string, timeoutMs = config.urlhaus.timeoutMs): Promise<UrlhausLookupResult> {
+export async function urlhausLookup(
+  url: string,
+  timeoutMs = config.urlhaus.timeoutMs,
+): Promise<UrlhausLookupResult> {
   if (!config.urlhaus.enabled) return { listed: false, latencyMs: 0 };
   const start = Date.now();
-  const res = await request('https://urlhaus-api.abuse.ch/v1/url/', {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+  const res = await request("https://urlhaus-api.abuse.ch/v1/url/", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ url }).toString(),
     headersTimeout: timeoutMs,
-    bodyTimeout: timeoutMs
+    bodyTimeout: timeoutMs,
   });
   if (res.statusCode === 429) {
-    const err = new Error('URLhaus rate limited') as HttpError;
+    const err = new Error("URLhaus rate limited") as HttpError;
     err.code = 429;
     throw err;
   }
@@ -14950,7 +18237,7 @@ export async function urlhausLookup(url: string, timeoutMs = config.urlhaus.time
     err.statusCode = res.statusCode;
     throw err;
   }
-  const json = await res.body.json() as {
+  const json = (await res.body.json()) as {
     query_status?: string;
     threat?: string;
     threat_type?: string;
@@ -14962,7 +18249,7 @@ export async function urlhausLookup(url: string, timeoutMs = config.urlhaus.time
     reporter?: string;
     blacklists?: string[];
   };
-  if (json?.query_status === 'ok') {
+  if (json?.query_status === "ok") {
     return {
       listed: true,
       threat: json.threat ?? json.threat_type ?? undefined,
@@ -14971,26 +18258,25 @@ export async function urlhausLookup(url: string, timeoutMs = config.urlhaus.time
       lastSeen: json.last_seen ?? undefined,
       reporter: json.reporter ?? undefined,
       blacklists: Array.isArray(json.blacklists) ? json.blacklists : undefined,
-      latencyMs: Date.now() - start
+      latencyMs: Date.now() - start,
     };
   }
-  if (json?.query_status === 'no_results') {
+  if (json?.query_status === "no_results") {
     return { listed: false, latencyMs: Date.now() - start };
   }
   // Unknown response – treat as error to trigger fallback handling
-  const err = new Error('URLhaus unexpected response') as HttpError;
+  const err = new Error("URLhaus unexpected response") as HttpError;
   err.details = json;
   throw err;
 }
-
 ```
 
 # File: packages/shared/src/reputation/urlscan.ts
 
 ```typescript
-import { request } from 'undici';
-import { config } from '../config';
-import { HttpError } from '../http-errors';
+import { request } from "undici";
+import { config } from "../config";
+import { HttpError } from "../http-errors";
 
 export interface UrlscanSubmissionOptions {
   visibility?: string;
@@ -15027,37 +18313,37 @@ export interface UrlscanResult {
 
 function buildHeaders() {
   const headers: Record<string, string> = {
-    'content-type': 'application/json',
+    "content-type": "application/json",
   };
   if (config.urlscan.apiKey) {
-    headers['API-Key'] = config.urlscan.apiKey;
+    headers["API-Key"] = config.urlscan.apiKey;
   }
   return headers;
 }
 
 export async function submitUrlscan(
   url: string,
-  options: UrlscanSubmissionOptions = {}
+  options: UrlscanSubmissionOptions = {},
 ): Promise<UrlscanSubmissionResponse> {
   if (!config.urlscan.enabled) {
-    throw new Error('urlscan integration disabled');
+    throw new Error("urlscan integration disabled");
   }
   if (!config.urlscan.apiKey) {
-    throw new Error('urlscan API key missing');
+    throw new Error("urlscan API key missing");
   }
 
   const payload = {
     url,
-    visibility: options.visibility || config.urlscan.visibility || 'private',
+    visibility: options.visibility || config.urlscan.visibility || "private",
     tags: options.tags || config.urlscan.tags || [],
     referer: options.referer,
     callbackurl: options.callbackUrl || config.urlscan.callbackUrl || undefined,
-    customagent: options.customAgent || 'wbscanner/urlscan',
+    customagent: options.customAgent || "wbscanner/urlscan",
   };
 
   const start = Date.now();
   const res = await request(`${config.urlscan.baseUrl}/api/v1/scan/`, {
-    method: 'POST',
+    method: "POST",
     headers: buildHeaders(),
     body: JSON.stringify(payload),
     headersTimeout: config.urlscan.submitTimeoutMs,
@@ -15065,7 +18351,7 @@ export async function submitUrlscan(
   });
 
   if (res.statusCode === 429) {
-    const err = new Error('urlscan quota exceeded') as HttpError;
+    const err = new Error("urlscan quota exceeded") as HttpError;
     err.code = 429;
     throw err;
   }
@@ -15076,12 +18362,14 @@ export async function submitUrlscan(
   }
   if (res.statusCode >= 400) {
     const errBody = await res.body.text();
-    const err = new Error(`urlscan submission failed: ${res.statusCode} - ${errBody}`) as HttpError;
+    const err = new Error(
+      `urlscan submission failed: ${res.statusCode} - ${errBody}`,
+    ) as HttpError;
     err.statusCode = res.statusCode;
     throw err;
   }
 
-  const json = await res.body.json() as {
+  const json = (await res.body.json()) as {
     uuid?: string;
     result?: string;
     api?: string;
@@ -15102,42 +18390,48 @@ export async function submitUrlscan(
 
 export async function fetchUrlscanResult(uuid: string): Promise<UrlscanResult> {
   if (!config.urlscan.enabled) {
-    throw new Error('urlscan integration disabled');
+    throw new Error("urlscan integration disabled");
   }
-  const res = await request(`${config.urlscan.baseUrl}/api/v1/result/${uuid}/`, {
-    method: 'GET',
-    headers: buildHeaders(),
-    headersTimeout: config.urlscan.resultPollTimeoutMs,
-    bodyTimeout: config.urlscan.resultPollTimeoutMs,
-  });
+  const res = await request(
+    `${config.urlscan.baseUrl}/api/v1/result/${uuid}/`,
+    {
+      method: "GET",
+      headers: buildHeaders(),
+      headersTimeout: config.urlscan.resultPollTimeoutMs,
+      bodyTimeout: config.urlscan.resultPollTimeoutMs,
+    },
+  );
   if (res.statusCode === 404) {
-    const err = new Error('urlscan result not ready') as HttpError;
+    const err = new Error("urlscan result not ready") as HttpError;
     err.code = 404;
     throw err;
   }
   if (res.statusCode >= 500) {
-    const err = new Error(`urlscan result error: ${res.statusCode}`) as HttpError;
+    const err = new Error(
+      `urlscan result error: ${res.statusCode}`,
+    ) as HttpError;
     err.statusCode = res.statusCode;
     throw err;
   }
   if (res.statusCode >= 400) {
-    const err = new Error(`urlscan result failed: ${res.statusCode}`) as HttpError;
+    const err = new Error(
+      `urlscan result failed: ${res.statusCode}`,
+    ) as HttpError;
     err.statusCode = res.statusCode;
     throw err;
   }
-  const json = await res.body.json() as UrlscanResult;
+  const json = (await res.body.json()) as UrlscanResult;
   return json;
 }
-
 ```
 
 # File: packages/shared/src/reputation/virustotal.ts
 
 ```typescript
-import Bottleneck from 'bottleneck';
-import { fetch } from 'undici';
-import { config } from '../config';
-import { logger } from '../log';
+import Bottleneck from "bottleneck";
+import { fetch } from "undici";
+import { config } from "../config";
+import { logger } from "../log";
 import {
   apiQuotaDepletedCounter,
   apiQuotaRemainingGauge,
@@ -15145,9 +18439,9 @@ import {
   metrics,
   rateLimiterDelay,
   rateLimiterQueueDepth,
-} from '../metrics';
-import { QuotaExceededError } from '../errors';
-import { HttpError } from '../http-errors';
+} from "../metrics";
+import { QuotaExceededError } from "../errors";
+import { HttpError } from "../http-errors";
 
 export interface VirusTotalAnalysis {
   data?: unknown;
@@ -15169,19 +18463,19 @@ let requestsRemaining = VT_LIMITER_RESERVOIR;
 let lastReservoir = VT_LIMITER_RESERVOIR;
 initializeQuotaMetrics(requestsRemaining);
 
-vtLimiter.on('depleted', () => {
+vtLimiter.on("depleted", () => {
   recordReservoir(0);
 });
 
 const refreshInterval = setInterval(async () => {
   try {
     const current = await vtLimiter.currentReservoir();
-    if (typeof current === 'number') {
+    if (typeof current === "number") {
       recordReservoir(current);
     }
-    rateLimiterQueueDepth.labels('virustotal').set(getQueuedJobs());
+    rateLimiterQueueDepth.labels("virustotal").set(getQueuedJobs());
   } catch (err) {
-    logger.debug({ err }, 'Failed to poll VT limiter reservoir');
+    logger.debug({ err }, "Failed to poll VT limiter reservoir");
   }
 }, 10_000);
 refreshInterval.unref();
@@ -15189,10 +18483,10 @@ refreshInterval.unref();
 function getQueuedJobs(): number {
   // Bottleneck doesn't export the queued method type, so we need to access it dynamically
   const limiter = vtLimiter as unknown as { queued?: () => number };
-  if (typeof limiter.queued === 'function') {
+  if (typeof limiter.queued === "function") {
     try {
       const value = limiter.queued();
-      return typeof value === 'number' ? value : 0;
+      return typeof value === "number" ? value : 0;
     } catch {
       return 0;
     }
@@ -15201,24 +18495,30 @@ function getQueuedJobs(): number {
 }
 
 function initializeQuotaMetrics(initial: number) {
-  apiQuotaRemainingGauge.labels('virustotal').set(initial);
-  apiQuotaStatusGauge.labels('virustotal').set(1);
-  metrics.apiQuotaUtilization.labels('virustotal').set(0);
-  metrics.apiQuotaProjectedDepletion.labels('virustotal').set((initial * 60) / VT_LIMITER_RESERVOIR);
+  apiQuotaRemainingGauge.labels("virustotal").set(initial);
+  apiQuotaStatusGauge.labels("virustotal").set(1);
+  metrics.apiQuotaUtilization.labels("virustotal").set(0);
+  metrics.apiQuotaProjectedDepletion
+    .labels("virustotal")
+    .set((initial * 60) / VT_LIMITER_RESERVOIR);
 }
 
 function recordReservoir(reservoir: number) {
   requestsRemaining = reservoir;
-  apiQuotaRemainingGauge.labels('virustotal').set(Math.max(reservoir, 0));
-  apiQuotaStatusGauge.labels('virustotal').set(reservoir > 0 ? 1 : 0);
+  apiQuotaRemainingGauge.labels("virustotal").set(Math.max(reservoir, 0));
+  apiQuotaStatusGauge.labels("virustotal").set(reservoir > 0 ? 1 : 0);
   if (reservoir > lastReservoir) {
-    metrics.apiQuotaResets.labels('virustotal').inc();
+    metrics.apiQuotaResets.labels("virustotal").inc();
   }
   lastReservoir = reservoir;
-  const utilization = reservoir <= 0 ? 1 : Math.min(1, Math.max(0, 1 - reservoir / VT_LIMITER_RESERVOIR));
-  metrics.apiQuotaUtilization.labels('virustotal').set(utilization);
-  const projection = reservoir <= 0 ? 0 : (reservoir * 60) / VT_LIMITER_RESERVOIR;
-  metrics.apiQuotaProjectedDepletion.labels('virustotal').set(projection);
+  const utilization =
+    reservoir <= 0
+      ? 1
+      : Math.min(1, Math.max(0, 1 - reservoir / VT_LIMITER_RESERVOIR));
+  metrics.apiQuotaUtilization.labels("virustotal").set(utilization);
+  const projection =
+    reservoir <= 0 ? 0 : (reservoir * 60) / VT_LIMITER_RESERVOIR;
+  metrics.apiQuotaProjectedDepletion.labels("virustotal").set(projection);
 }
 
 async function scheduleVtCall<T>(cb: () => Promise<T>): Promise<T> {
@@ -15226,16 +18526,16 @@ async function scheduleVtCall<T>(cb: () => Promise<T>): Promise<T> {
   return vtLimiter.schedule(async () => {
     const waitSeconds = (Date.now() - queuedAt) / 1000;
     if (waitSeconds > 0) {
-      rateLimiterDelay.labels('virustotal').observe(waitSeconds);
+      rateLimiterDelay.labels("virustotal").observe(waitSeconds);
     }
-    metrics.apiQuotaConsumption.labels('virustotal').inc();
-    rateLimiterQueueDepth.labels('virustotal').set(getQueuedJobs());
+    metrics.apiQuotaConsumption.labels("virustotal").inc();
+    rateLimiterQueueDepth.labels("virustotal").set(getQueuedJobs());
 
     const jitterMs = config.vt.requestJitterMs;
     if (jitterMs > 0) {
       const jitterDelay = Math.floor(Math.random() * (jitterMs + 1));
       if (jitterDelay > 0) {
-        await new Promise(resolve => setTimeout(resolve, jitterDelay));
+        await new Promise((resolve) => setTimeout(resolve, jitterDelay));
       }
     }
 
@@ -15243,100 +18543,116 @@ async function scheduleVtCall<T>(cb: () => Promise<T>): Promise<T> {
       return await cb();
     } finally {
       const reservoir = await vtLimiter.currentReservoir();
-      if (typeof reservoir === 'number') {
+      if (typeof reservoir === "number") {
         recordReservoir(reservoir);
       }
-      rateLimiterQueueDepth.labels('virustotal').set(getQueuedJobs());
+      rateLimiterQueueDepth.labels("virustotal").set(getQueuedJobs());
     }
   });
 }
 
-function handleVirusTotalQuotaExceeded(stage: 'submission' | 'polling'): never {
+function handleVirusTotalQuotaExceeded(stage: "submission" | "polling"): never {
   recordReservoir(0);
-  apiQuotaDepletedCounter.labels('virustotal').inc();
-  logger.warn({ stage }, 'VirusTotal quota exhausted');
-  throw new QuotaExceededError('virustotal', 'VirusTotal quota exhausted');
+  apiQuotaDepletedCounter.labels("virustotal").inc();
+  logger.warn({ stage }, "VirusTotal quota exhausted");
+  throw new QuotaExceededError("virustotal", "VirusTotal quota exhausted");
 }
 
 export async function vtAnalyzeUrl(url: string): Promise<VirusTotalAnalysis> {
   if (!config.vt.apiKey) return { disabled: true };
   const submitResponse = await scheduleVtCall(() =>
-    fetch('https://www.virustotal.com/api/v3/urls', {
-      method: 'POST',
+    fetch("https://www.virustotal.com/api/v3/urls", {
+      method: "POST",
       headers: {
-        'x-apikey': config.vt.apiKey,
-        'content-type': 'application/x-www-form-urlencoded',
+        "x-apikey": config.vt.apiKey,
+        "content-type": "application/x-www-form-urlencoded",
       },
       body: new URLSearchParams({ url }).toString(),
-    })
+    }),
   );
 
   if (submitResponse.status === 429) {
-    handleVirusTotalQuotaExceeded('submission');
+    handleVirusTotalQuotaExceeded("submission");
   }
 
   if (submitResponse.status >= 400) {
-    const err = new Error(`VirusTotal submission failed: ${submitResponse.status}`) as HttpError;
+    const err = new Error(
+      `VirusTotal submission failed: ${submitResponse.status}`,
+    ) as HttpError;
     err.statusCode = submitResponse.status;
     throw err;
   }
 
-  const body = await submitResponse.json() as { data?: { id?: string } };
+  const body = (await submitResponse.json()) as { data?: { id?: string } };
   const analysisId = body.data?.id;
   const started = Date.now();
   let analysis: unknown;
   while (Date.now() - started < 50000) {
     const res = await scheduleVtCall(() =>
       fetch(`https://www.virustotal.com/api/v3/analyses/${analysisId}`, {
-        headers: { 'x-apikey': config.vt.apiKey },
-      })
+        headers: { "x-apikey": config.vt.apiKey },
+      }),
     );
 
     if (res.status === 429) {
-      handleVirusTotalQuotaExceeded('polling');
+      handleVirusTotalQuotaExceeded("polling");
     }
     if (res.status >= 500) {
-      const err = new Error(`VirusTotal analysis failed: ${res.status}`) as HttpError;
+      const err = new Error(
+        `VirusTotal analysis failed: ${res.status}`,
+      ) as HttpError;
       err.statusCode = res.status;
       throw err;
     }
     analysis = await res.json();
-    const analysisData = analysis as { data?: { attributes?: { status?: string } } };
+    const analysisData = analysis as {
+      data?: { attributes?: { status?: string } };
+    };
     const status = analysisData.data?.attributes?.status;
-    if (status !== 'queued') break;
-    await new Promise(r => setTimeout(r, 2000));
+    if (status !== "queued") break;
+    await new Promise((r) => setTimeout(r, 2000));
   }
   return { data: analysis, latencyMs: Date.now() - started };
 }
 
-export function vtVerdictStats(analysis: VirusTotalAnalysis): { malicious: number; suspicious: number; harmless: number } | undefined {
+export function vtVerdictStats(
+  analysis: VirusTotalAnalysis,
+): { malicious: number; suspicious: number; harmless: number } | undefined {
   if (analysis?.disabled) return undefined;
 
   // Type guard for analysis data structure
-  const data = analysis?.data as { data?: { attributes?: { stats?: unknown } }; attributes?: { stats?: unknown } } | undefined;
+  const data = analysis?.data as
+    | {
+        data?: { attributes?: { stats?: unknown } };
+        attributes?: { stats?: unknown };
+      }
+    | undefined;
   const st = data?.data?.attributes?.stats ?? data?.attributes?.stats;
 
-  if (!st || typeof st !== 'object') return undefined;
+  if (!st || typeof st !== "object") return undefined;
 
-  const stats = st as { malicious?: number; suspicious?: number; harmless?: number };
+  const stats = st as {
+    malicious?: number;
+    suspicious?: number;
+    harmless?: number;
+  };
   return {
     malicious: stats.malicious || 0,
     suspicious: stats.suspicious || 0,
-    harmless: stats.harmless || 0
+    harmless: stats.harmless || 0,
   };
 }
-
 ```
 
 # File: packages/shared/src/reputation/whodat.ts
 
 ```typescript
-import { request } from 'undici';
-import { config } from '../config';
-import { metrics } from '../metrics';
-import { FeatureDisabledError } from '../errors';
-import { logger } from '../log';
-import { HttpError } from '../http-errors';
+import { request } from "undici";
+import { config } from "../config";
+import { metrics } from "../metrics";
+import { FeatureDisabledError } from "../errors";
+import { logger } from "../log";
+import { HttpError } from "../http-errors";
 
 export interface WhoDatRecord {
   domainName?: string;
@@ -15360,17 +18676,19 @@ export interface WhoDatResponse {
  */
 export async function whoDatLookup(domain: string): Promise<WhoDatResponse> {
   if (!config.whodat.enabled) {
-    throw new FeatureDisabledError('whodat', 'Who-dat WHOIS service disabled');
+    throw new FeatureDisabledError("whodat", "Who-dat WHOIS service disabled");
   }
 
-  const url = new URL(`${config.whodat.baseUrl}/whois/${encodeURIComponent(domain)}`);
+  const url = new URL(
+    `${config.whodat.baseUrl}/whois/${encodeURIComponent(domain)}`,
+  );
 
   metrics.whoisRequests.inc();
   const start = Date.now();
 
   try {
     const res = await request(url.toString(), {
-      method: 'GET',
+      method: "GET",
       headersTimeout: config.whodat.timeoutMs,
       bodyTimeout: config.whodat.timeoutMs,
     });
@@ -15378,26 +18696,30 @@ export async function whoDatLookup(domain: string): Promise<WhoDatResponse> {
     const latency = Date.now() - start;
 
     if (res.statusCode === 404) {
-      metrics.whoisResults.labels('not_found').inc();
-      logger.debug({ domain }, 'Who-dat: domain not found');
+      metrics.whoisResults.labels("not_found").inc();
+      logger.debug({ domain }, "Who-dat: domain not found");
       return { record: undefined };
     }
 
     if (res.statusCode >= 500) {
-      metrics.whoisResults.labels('error').inc();
-      const err = new Error(`Who-dat service error: ${res.statusCode}`) as HttpError;
+      metrics.whoisResults.labels("error").inc();
+      const err = new Error(
+        `Who-dat service error: ${res.statusCode}`,
+      ) as HttpError;
       err.statusCode = res.statusCode;
       throw err;
     }
 
     if (res.statusCode >= 400) {
-      metrics.whoisResults.labels('error').inc();
-      const err = new Error(`Who-dat request failed: ${res.statusCode}`) as HttpError;
+      metrics.whoisResults.labels("error").inc();
+      const err = new Error(
+        `Who-dat request failed: ${res.statusCode}`,
+      ) as HttpError;
       err.statusCode = res.statusCode;
       throw err;
     }
 
-    const json = await res.body.json() as {
+    const json = (await res.body.json()) as {
       domain_name?: string;
       created_date?: string;
       creation_date?: string;
@@ -15410,7 +18732,7 @@ export async function whoDatLookup(domain: string): Promise<WhoDatResponse> {
       nameservers?: string[];
       status?: string[];
     };
-    metrics.whoisResults.labels('success').inc();
+    metrics.whoisResults.labels("success").inc();
 
     // Parse creation date and calculate domain age
     const createdDate = json.created_date || json.creation_date;
@@ -15424,7 +18746,7 @@ export async function whoDatLookup(domain: string): Promise<WhoDatResponse> {
       }
     }
 
-    logger.debug({ domain, latency, ageDays }, 'Who-dat lookup completed');
+    logger.debug({ domain, latency, ageDays }, "Who-dat lookup completed");
 
     return {
       record: {
@@ -15439,8 +18761,8 @@ export async function whoDatLookup(domain: string): Promise<WhoDatResponse> {
       },
     };
   } catch (err) {
-    metrics.whoisResults.labels('error').inc();
-    logger.warn({ err, domain }, 'Who-dat lookup failed');
+    metrics.whoisResults.labels("error").inc();
+    logger.warn({ err, domain }, "Who-dat lookup failed");
     throw err;
   }
 }
@@ -15449,12 +18771,16 @@ export async function whoDatLookup(domain: string): Promise<WhoDatResponse> {
 # File: packages/shared/src/reputation/whoisxml.ts
 
 ```typescript
-import { request } from 'undici';
-import { config } from '../config';
-import { apiQuotaRemainingGauge, apiQuotaStatusGauge, metrics } from '../metrics';
-import { QuotaExceededError, FeatureDisabledError } from '../errors';
-import { logger } from '../log';
-import { HttpError } from '../http-errors';
+import { request } from "undici";
+import { config } from "../config";
+import {
+  apiQuotaRemainingGauge,
+  apiQuotaStatusGauge,
+  metrics,
+} from "../metrics";
+import { QuotaExceededError, FeatureDisabledError } from "../errors";
+import { logger } from "../log";
+import { HttpError } from "../http-errors";
 
 export interface WhoisXmlRecord {
   domainName?: string;
@@ -15469,7 +18795,7 @@ export interface WhoisXmlResponse {
   record?: WhoisXmlRecord;
 }
 
-const SERVICE_LABEL = 'whoisxml';
+const SERVICE_LABEL = "whoisxml";
 
 let monthlyRequestCount = 0;
 let currentMonth = new Date().getMonth();
@@ -15487,16 +18813,25 @@ function updateQuotaMetrics(remaining: number, available: boolean): void {
   metrics.apiQuotaProjectedDepletion.labels(SERVICE_LABEL).set(projection);
 }
 
-updateQuotaMetrics(config.whoisxml.enabled ? config.whoisxml.monthlyQuota : 0, config.whoisxml.enabled);
+updateQuotaMetrics(
+  config.whoisxml.enabled ? config.whoisxml.monthlyQuota : 0,
+  config.whoisxml.enabled,
+);
 
 function resetMonthlyQuotaIfNeeded(): void {
   const now = new Date();
   if (now.getMonth() !== currentMonth) {
-    logger.info({ previousCount: monthlyRequestCount }, 'WhoisXML quota counter reset (new month)');
+    logger.info(
+      { previousCount: monthlyRequestCount },
+      "WhoisXML quota counter reset (new month)",
+    );
     monthlyRequestCount = 0;
     currentMonth = now.getMonth();
     quotaDisabled = false;
-    updateQuotaMetrics(config.whoisxml.enabled ? config.whoisxml.monthlyQuota : 0, config.whoisxml.enabled);
+    updateQuotaMetrics(
+      config.whoisxml.enabled ? config.whoisxml.monthlyQuota : 0,
+      config.whoisxml.enabled,
+    );
     metrics.apiQuotaResets.labels(SERVICE_LABEL).inc();
   }
 }
@@ -15504,25 +18839,33 @@ function resetMonthlyQuotaIfNeeded(): void {
 function assertQuotaAvailable(): void {
   if (!config.whoisxml.enabled) {
     updateQuotaMetrics(0, false);
-    metrics.whoisResults.labels('disabled').inc();
-    throw new FeatureDisabledError('whoisxml', 'WhoisXML disabled');
+    metrics.whoisResults.labels("disabled").inc();
+    throw new FeatureDisabledError("whoisxml", "WhoisXML disabled");
   }
   if (quotaDisabled) {
     updateQuotaMetrics(0, false);
-    throw new QuotaExceededError('whoisxml', 'WhoisXML monthly quota exhausted');
+    throw new QuotaExceededError(
+      "whoisxml",
+      "WhoisXML monthly quota exhausted",
+    );
   }
   if (monthlyRequestCount >= config.whoisxml.monthlyQuota) {
     quotaDisabled = true;
     updateQuotaMetrics(0, false);
-    metrics.whoisDisabled.labels('quota').inc();
-    metrics.whoisResults.labels('quota_exhausted').inc();
-    throw new QuotaExceededError('whoisxml', 'WhoisXML monthly quota exhausted');
+    metrics.whoisDisabled.labels("quota").inc();
+    metrics.whoisResults.labels("quota_exhausted").inc();
+    throw new QuotaExceededError(
+      "whoisxml",
+      "WhoisXML monthly quota exhausted",
+    );
   }
 }
 
-export async function whoisXmlLookup(domain: string): Promise<WhoisXmlResponse> {
+export async function whoisXmlLookup(
+  domain: string,
+): Promise<WhoisXmlResponse> {
   if (!config.whoisxml.apiKey) {
-    throw new FeatureDisabledError('whoisxml', 'WhoisXML missing API key');
+    throw new FeatureDisabledError("whoisxml", "WhoisXML missing API key");
   }
 
   resetMonthlyQuotaIfNeeded();
@@ -15530,56 +18873,59 @@ export async function whoisXmlLookup(domain: string): Promise<WhoisXmlResponse> 
 
   monthlyRequestCount += 1;
   metrics.apiQuotaConsumption.labels(SERVICE_LABEL).inc();
-  const remaining = Math.max(0, config.whoisxml.monthlyQuota - monthlyRequestCount);
+  const remaining = Math.max(
+    0,
+    config.whoisxml.monthlyQuota - monthlyRequestCount,
+  );
   updateQuotaMetrics(remaining, remaining > 0);
   metrics.whoisRequests.inc();
 
   if (remaining <= config.whoisxml.quotaAlertThreshold) {
-    logger.warn({ remaining }, 'WhoisXML quota nearing exhaustion');
+    logger.warn({ remaining }, "WhoisXML quota nearing exhaustion");
   }
 
-  const url = new URL('https://www.whoisxmlapi.com/whoisserver/WhoisService');
-  url.searchParams.set('apiKey', config.whoisxml.apiKey);
-  url.searchParams.set('domainName', domain);
-  url.searchParams.set('outputFormat', 'JSON');
+  const url = new URL("https://www.whoisxmlapi.com/whoisserver/WhoisService");
+  url.searchParams.set("apiKey", config.whoisxml.apiKey);
+  url.searchParams.set("domainName", domain);
+  url.searchParams.set("outputFormat", "JSON");
   let res: Awaited<ReturnType<typeof request>>;
   try {
     res = await request(url.toString(), {
-      method: 'GET',
+      method: "GET",
       headersTimeout: config.whoisxml.timeoutMs,
-      bodyTimeout: config.whoisxml.timeoutMs
+      bodyTimeout: config.whoisxml.timeoutMs,
     });
   } catch (err) {
-    metrics.whoisResults.labels('error').inc();
+    metrics.whoisResults.labels("error").inc();
     throw err;
   }
   if (res.statusCode === 401 || res.statusCode === 403) {
-    metrics.whoisResults.labels('unauthorized').inc();
-    const err = new Error('WhoisXML unauthorized') as HttpError;
+    metrics.whoisResults.labels("unauthorized").inc();
+    const err = new Error("WhoisXML unauthorized") as HttpError;
     err.code = res.statusCode;
     throw err;
   }
   if (res.statusCode === 429) {
     quotaDisabled = true;
     updateQuotaMetrics(0, false);
-    metrics.whoisDisabled.labels('rate_limited').inc();
-    metrics.whoisResults.labels('rate_limited').inc();
-    metrics.whoisResults.labels('quota_exhausted').inc();
-    throw new QuotaExceededError('whoisxml', 'WhoisXML rate limited');
+    metrics.whoisDisabled.labels("rate_limited").inc();
+    metrics.whoisResults.labels("rate_limited").inc();
+    metrics.whoisResults.labels("quota_exhausted").inc();
+    throw new QuotaExceededError("whoisxml", "WhoisXML rate limited");
   }
   if (res.statusCode >= 400 && res.statusCode < 500) {
-    metrics.whoisResults.labels('error').inc();
+    metrics.whoisResults.labels("error").inc();
     const err = new Error(`WhoisXML error: ${res.statusCode}`) as HttpError;
     err.statusCode = res.statusCode;
     throw err;
   }
   if (res.statusCode >= 500) {
-    metrics.whoisResults.labels('error').inc();
+    metrics.whoisResults.labels("error").inc();
     const err = new Error(`WhoisXML error: ${res.statusCode}`) as HttpError;
     err.statusCode = res.statusCode;
     throw err;
   }
-  const json = await res.body.json() as {
+  const json = (await res.body.json()) as {
     WhoisRecord?: {
       domainName?: string;
       createdDateNormalized?: string;
@@ -15596,9 +18942,12 @@ export async function whoisXmlLookup(domain: string): Promise<WhoisXmlResponse> 
     };
   };
   const record = json?.WhoisRecord;
-  metrics.whoisResults.labels('success').inc();
+  metrics.whoisResults.labels("success").inc();
   if (!record) return { record: undefined };
-  const created = record.createdDateNormalized || record.registryData?.createdDateNormalized || record.createdDate;
+  const created =
+    record.createdDateNormalized ||
+    record.registryData?.createdDateNormalized ||
+    record.createdDate;
   const createdDate = created ? new Date(created) : undefined;
   let ageDays: number | undefined;
   if (createdDate && !Number.isNaN(createdDate.getTime())) {
@@ -15612,8 +18961,8 @@ export async function whoisXmlLookup(domain: string): Promise<WhoisXmlResponse> 
       updatedDate: record.updatedDateNormalized || record.updatedDate,
       expiresDate: record.expiresDateNormalized || record.expiresDate,
       registrarName: record.registrarName || record.registrarNameSponsored,
-      estimatedDomainAgeDays: ageDays
-    }
+      estimatedDomainAgeDays: ageDays,
+    },
   };
 }
 
@@ -15621,36 +18970,34 @@ export function disableWhoisXmlForMonth(): void {
   quotaDisabled = true;
   updateQuotaMetrics(0, false);
 }
-
 ```
 
 # File: packages/shared/src/types/url-expand.d.ts
 
 ```typescript
-declare module 'url-expand' {
+declare module "url-expand" {
   type Callback = (err: unknown, expanded?: string) => void;
   export default function expandUrl(url: string, cb: Callback): void;
 }
-
 ```
 
 # File: packages/confusable/index.js
 
 ```javascript
-const confusables = require('confusables.js');
+const confusables = require("confusables.js");
 
 function toStringValue(entry) {
-  if (typeof entry === 'string') {
+  if (typeof entry === "string") {
     return entry;
   }
   if (Array.isArray(entry)) {
-    return entry.join('');
+    return entry.join("");
   }
-  return '';
+  return "";
 }
 
 function getConfusableCharacters(char) {
-  if (typeof char !== 'string' || char.length === 0) {
+  if (typeof char !== "string" || char.length === 0) {
     return [];
   }
   try {
@@ -15665,7 +19012,7 @@ function getConfusableCharacters(char) {
 }
 
 function hasConfusable(char) {
-  if (typeof char !== 'string' || char.length === 0) {
+  if (typeof char !== "string" || char.length === 0) {
     return false;
   }
   try {
@@ -15680,7 +19027,6 @@ module.exports = {
   getConfusableCharacters,
   hasConfusable,
 };
-
 ```
 
 # File: packages/confusable/index.d.ts
@@ -15688,7 +19034,6 @@ module.exports = {
 ```typescript
 export function getConfusableCharacters(char: string): string[];
 export function hasConfusable(char: string): boolean;
-
 ```
 
 # File: scripts/pair.sh
@@ -15706,16 +19051,13 @@ echo "Check 'docker compose logs wa-client' for the code."
 # File: scripts/watch-pairing-code.js
 
 ```javascript
-
-
-
 /**
  * Continuously watch wa-client logs and surface pairing-code events with a
  * visual + audible cue. Useful when you cannot stare at the raw docker logs.
  */
 
-import { spawn } from 'node:child_process';
-import readline from 'node:readline';
+import { spawn } from "node:child_process";
+import readline from "node:readline";
 
 const PAIRING_CODE_TTL_MS = 160_000;
 const REMINDER_INTERVAL_MS = 30_000;
@@ -15727,7 +19069,7 @@ let expiryTimestamp = 0;
 function bell(times = 1) {
   for (let i = 0; i < times; i += 1) {
     try {
-      process.stdout.write('\x07');
+      process.stdout.write("\x07");
     } catch {
       // ignore
     }
@@ -15735,29 +19077,29 @@ function bell(times = 1) {
 }
 
 function formatPhone(masked) {
-  return masked ?? 'unknown';
+  return masked ?? "unknown";
 }
 
 function formatWhen(timestampIso) {
-  if (!timestampIso) return 'unknown';
+  if (!timestampIso) return "unknown";
   const when = new Date(timestampIso);
   if (Number.isNaN(when.getTime())) return timestampIso;
   return when.toLocaleTimeString();
 }
 
 function prettyDelay(ms) {
-  if (!Number.isFinite(ms)) return 'unknown';
+  if (!Number.isFinite(ms)) return "unknown";
   if (ms >= 60_000) {
     const minutes = Math.round(ms / 60_000);
-    return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+    return `${minutes} minute${minutes === 1 ? "" : "s"}`;
   }
   const seconds = Math.round(ms / 1000);
-  return `${seconds} second${seconds === 1 ? '' : 's'}`;
+  return `${seconds} second${seconds === 1 ? "" : "s"}`;
 }
 
 function sanitize(line) {
-  if (typeof line !== 'string') return '';
-  const pipeIndex = line.indexOf('|');
+  if (typeof line !== "string") return "";
+  const pipeIndex = line.indexOf("|");
   if (pipeIndex >= 0) {
     return line.slice(pipeIndex + 1).trim();
   }
@@ -15765,14 +19107,14 @@ function sanitize(line) {
 }
 
 function speak(text) {
-  const volume = process.env.WATCH_PAIRING_VOLUME ?? '0.8';
+  const volume = process.env.WATCH_PAIRING_VOLUME ?? "0.8";
   let voiceCmd = null;
-  if (process.platform === 'darwin') {
-    voiceCmd = spawn('say', ['-v', 'Ava', '-r', '180', text]);
+  if (process.platform === "darwin") {
+    voiceCmd = spawn("say", ["-v", "Ava", "-r", "180", text]);
   } else {
-    voiceCmd = spawn('espeak', ['-a', String(Number(volume) * 200), text]);
+    voiceCmd = spawn("espeak", ["-a", String(Number(volume) * 200), text]);
   }
-  voiceCmd.on('error', () => {
+  voiceCmd.on("error", () => {
     // ignore speech errors; bell + console output still work
   });
 }
@@ -15795,30 +19137,38 @@ function scheduleReminder(maskedPhone) {
     }
     const remaining = expiryTimestamp - Date.now();
     if (remaining <= 0) {
-      console.log(`[watch] Code ${activeCode} for ${maskedPhone} likely expired.`);
+      console.log(
+        `[watch] Code ${activeCode} for ${maskedPhone} likely expired.`,
+      );
       cancelReminder();
       return;
     }
     bell(2);
-    speak(`Reminder. Enter WhatsApp pairing code ${activeCode}. ${Math.ceil(remaining / 1000)} seconds remain.`);
+    speak(
+      `Reminder. Enter WhatsApp pairing code ${activeCode}. ${Math.ceil(remaining / 1000)} seconds remain.`,
+    );
   }, REMINDER_INTERVAL_MS);
 }
 
-const source = process.env.WATCH_PAIRING_SOURCE === 'stdin' ? 'stdin' : 'docker';
+const source =
+  process.env.WATCH_PAIRING_SOURCE === "stdin" ? "stdin" : "docker";
 
 let docker;
 let inputStream;
 
-if (source === 'stdin') {
+if (source === "stdin") {
   inputStream = process.stdin;
-  console.log('[watch] Reading pairing events from STDIN (test mode).');
+  console.log("[watch] Reading pairing events from STDIN (test mode).");
 } else {
-  docker = spawn('docker', ['compose', 'logs', '-f', 'wa-client'], {
-    stdio: ['ignore', 'pipe', 'pipe'],
+  docker = spawn("docker", ["compose", "logs", "-f", "wa-client"], {
+    stdio: ["ignore", "pipe", "pipe"],
   });
 
-  docker.on('error', (err) => {
-    console.error('[watch-pairing-code] Failed to start docker compose logs:', err.message);
+  docker.on("error", (err) => {
+    console.error(
+      "[watch-pairing-code] Failed to start docker compose logs:",
+      err.message,
+    );
     process.exitCode = 1;
   });
   inputStream = docker.stdout;
@@ -15829,12 +19179,12 @@ const rl = readline.createInterface({ input: inputStream });
 function triggerPairingAlert(code, attempt, maskedPhone, expiresAt) {
   bell(3);
   speak(`WhatsApp pairing code ${code} is ready. It expires in two minutes.`);
-  console.log('\n=== WhatsApp Pairing Code Available ===');
+  console.log("\n=== WhatsApp Pairing Code Available ===");
   console.log(` Code:       ${code}`);
   console.log(` Attempt:    ${attempt}`);
   console.log(` Phone:      ${maskedPhone}`);
   console.log(` Expires at: ${expiresAt.toLocaleTimeString()}`);
-  console.log('======================================\n');
+  console.log("======================================\n");
   activeCode = code;
   expiryTimestamp = expiresAt.getTime();
   scheduleReminder(maskedPhone);
@@ -15844,48 +19194,50 @@ function handleRateLimitEvent(parsed) {
   const maskedPhone = formatPhone(parsed?.phoneNumber);
   const nextAt = formatWhen(parsed?.nextRetryAt);
   const delay = prettyDelay(parsed?.nextRetryMs);
-  console.log(`[watch] Rate limited for ${maskedPhone}. Next retry in ~${delay} (${nextAt}).`);
+  console.log(
+    `[watch] Rate limited for ${maskedPhone}. Next retry in ~${delay} (${nextAt}).`,
+  );
   cancelReminder();
 }
 
 function handlePairingLine(parsed) {
   const maskedPhone = formatPhone(parsed?.phoneNumber);
-  const code = parsed?.code ?? 'UNKNOWN';
-  const attempt = parsed?.attempt ?? 'n/a';
+  const code = parsed?.code ?? "UNKNOWN";
+  const attempt = parsed?.attempt ?? "n/a";
   const expiresAt = new Date(Date.now() + PAIRING_CODE_TTL_MS);
   triggerPairingAlert(code, attempt, maskedPhone, expiresAt);
 }
 
-if (source === 'docker') {
-  console.log('[watch] Live mode. Commands: d=demo alert, q=quit\n');
+if (source === "docker") {
+  console.log("[watch] Live mode. Commands: d=demo alert, q=quit\n");
   if (process.stdin.isTTY) {
     process.stdin.setRawMode(true);
     process.stdin.resume();
-    process.stdin.on('data', (chunk) => {
+    process.stdin.on("data", (chunk) => {
       const key = chunk.toString().trim().toLowerCase();
-      if (key === 'q') {
+      if (key === "q") {
         shutdown();
         process.exit(0);
       }
-      if (key === 'd') {
+      if (key === "d") {
         const demoCode = `DEMO${Math.random().toString(36).toUpperCase().slice(2, 6)}`;
-        const masked = '****DEMO';
+        const masked = "****DEMO";
         const expiresAt = new Date(Date.now() + PAIRING_CODE_TTL_MS);
-        console.log('[watch] Running demo alert...');
-        triggerPairingAlert(demoCode, 'demo', masked, expiresAt);
+        console.log("[watch] Running demo alert...");
+        triggerPairingAlert(demoCode, "demo", masked, expiresAt);
       }
     });
   } else {
-    console.log('[watch] (stdin not TTY; demo shortcuts disabled)');
+    console.log("[watch] (stdin not TTY; demo shortcuts disabled)");
   }
 }
 
-rl.on('line', (rawLine) => {
+rl.on("line", (rawLine) => {
   const line = sanitize(rawLine);
   if (!line) return;
 
   let parsed;
-  if (line.startsWith('{')) {
+  if (line.startsWith("{")) {
     try {
       parsed = JSON.parse(line);
     } catch {
@@ -15894,19 +19246,24 @@ rl.on('line', (rawLine) => {
   }
 
   const message = parsed?.msg ?? line;
-  if (message.includes('Requested phone-number pairing code')) {
+  if (message.includes("Requested phone-number pairing code")) {
     handlePairingLine(parsed);
     return;
   }
 
-  if (message.includes('Failed to request pairing code automatically') && parsed?.rateLimited) {
+  if (
+    message.includes("Failed to request pairing code automatically") &&
+    parsed?.rateLimited
+  ) {
     handleRateLimitEvent(parsed);
     return;
   }
 
-  if (message.includes('Pairing code not received within timeout')) {
+  if (message.includes("Pairing code not received within timeout")) {
     const maskedPhone = formatPhone(parsed?.phoneNumber);
-    console.log(`[watch] No code received yet for ${maskedPhone}. Keeping QR suppressed.`);
+    console.log(
+      `[watch] No code received yet for ${maskedPhone}. Keeping QR suppressed.`,
+    );
     cancelReminder();
   }
 });
@@ -15914,20 +19271,19 @@ rl.on('line', (rawLine) => {
 const shutdown = () => {
   rl.close();
   if (docker && !docker.killed) {
-    docker.kill('SIGINT');
+    docker.kill("SIGINT");
   }
 };
 
-process.on('SIGINT', () => {
+process.on("SIGINT", () => {
   shutdown();
   process.exit(0);
 });
 
-process.on('SIGTERM', () => {
+process.on("SIGTERM", () => {
   shutdown();
   process.exit(0);
 });
-
 ```
 
 # File: scripts/validate-setup.sh
@@ -15976,4 +19332,3 @@ echo "OK: REDIS_URL is set."
 echo "Setup validation passed!"
 exit 0
 ```
-
