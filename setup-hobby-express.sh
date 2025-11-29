@@ -203,6 +203,61 @@ wait_for_docker() {
   return 1
 }
 
+# Helper to find devcontainer.json
+find_devcontainer_json() {
+  # Check common locations
+  local search_dir="${ROOT_DIR:-.}"
+  if [ -f "$search_dir/.devcontainer/devcontainer.json" ]; then
+    echo "$search_dir/.devcontainer/devcontainer.json"
+    return 0
+  elif [ -f "$search_dir/.devcontainer.json" ]; then
+    echo "$search_dir/.devcontainer.json"
+    return 0
+  fi
+  return 1
+}
+
+show_docker_socket_instructions() {
+  echo ""
+  echo "╔═══════════════════════════════════════════════════════════════════╗"
+  echo "║  Docker Socket Not Available - Action Required                   ║"
+  echo "╚═══════════════════════════════════════════════════════════════════╝"
+  echo ""
+  echo "You're running in a devcontainer, but the Docker socket is not mounted."
+  echo "This project REQUIRES Docker to function."
+  echo ""
+  
+  local devcontainer_file=$(find_devcontainer_json)
+  if [ -n "$devcontainer_file" ]; then
+    echo "📝 Found devcontainer config: $devcontainer_file"
+    echo ""
+    echo "Add this to your devcontainer.json (inside the main object):"
+    echo "" 
+    echo '  "mounts": ['
+    echo '    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"'
+    echo '  ]'
+    echo ""
+    echo "Or if you already have a \"mounts\" array, add this line to it:"
+    echo '  "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"'
+    echo ""
+    echo "After editing, rebuild your container:"
+    echo "  1. Press F1 in VS Code"
+    echo "  2. Select 'Dev Containers: Rebuild Container'"
+  else
+    echo "For VS Code devcontainers, add this to .devcontainer/devcontainer.json:"
+    echo ""
+    echo '  "mounts": ['
+    echo '    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"'
+    echo '  ]'
+    echo ""
+    echo "Then rebuild the container (F1 → 'Dev Containers: Rebuild Container')"
+  fi
+  echo ""
+  echo "For GitHub Codespaces, Docker should already be available."
+  echo "If not, contact GitHub Support."
+  echo ""
+}
+
 # -----------------------------------------------------------------------------
 # Execution
 # -----------------------------------------------------------------------------
@@ -212,30 +267,25 @@ if check_docker_socket; then
   success "Docker socket detected and accessible."
 elif ! command -v docker >/dev/null 2>&1; then
   # Docker binary not found, attempt installation
-  if ! install_docker && detect_container_env; then
-    echo ""
-    echo "════════════════════════════════════════════════════════════════"
-    warning "Running in a container without Docker access"
-    echo "════════════════════════════════════════════════════════════════"
-    echo ""
-    echo "This appears to be a devcontainer or similar environment."
-    echo "To use Docker, you need to mount the Docker socket from the host."
-    echo ""
-    echo "For VS Code devcontainers, add this to .devcontainer/devcontainer.json:"
-    echo '  "mounts": ['
-    echo '    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"'
-    echo '  ]'
-    echo ""
-    echo "Then rebuild the container."
-    echo ""
-    error "Docker not available. Cannot proceed with hobby setup."
+  if ! install_docker; then
+    # Installation failed or skipped (e.g., in container)
+    if detect_container_env; then
+      show_docker_socket_instructions
+      error "Cannot proceed without Docker."
+    fi
   fi
 else
   # Docker binary exists, check if daemon is running
   if ! docker info >/dev/null 2>&1 && ! sudo docker info >/dev/null 2>&1; then
-    # Try to start the daemon
+    # Check if we're in a container - if so, socket is probably not mounted
+    if detect_container_env; then
+      show_docker_socket_instructions
+      error "Cannot proceed without Docker."
+    fi
+    
+    # Try to start the daemon (only on bare metal)
     init_system=$(detect_init_system)
-    if [ "$init_system" != "none" ] && ! detect_container_env; then
+    if [ "$init_system" != "none" ]; then
       echo "Docker daemon not running. Attempting to start..."
       case "$init_system" in
         systemd)
@@ -248,11 +298,9 @@ else
           sudo /etc/init.d/docker start
           ;;
       esac
-      wait_for_docker || error "Docker daemon failed to start."
+      wait_for_docker || error "Failed to start Docker daemon."
     else
-      warning "Docker daemon not accessible and cannot be started in this environment."
-      echo "Please ensure Docker is running and accessible."
-      error "Docker not available."
+      error "No init system detected. Cannot start Docker."
     fi
   fi
 fi
