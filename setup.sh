@@ -12,6 +12,45 @@ fi
 
 
 # -----------------------------------------------------------------------------
+# Environment Detection
+# -----------------------------------------------------------------------------
+
+detect_container_env() {
+  # Check if running inside a container
+  if [ -f /.dockerenv ] || grep -q docker /proc/1/cgroup 2>/dev/null; then
+    echo "container"
+    return 0
+  fi
+  return 1
+}
+
+check_docker_socket() {
+  # Check if Docker socket is accessible (common in devcontainers)
+  if [ -S /var/run/docker.sock ]; then
+    if docker version >/dev/null 2>&1; then
+      return 0
+    fi
+    # Socket exists but might need permissions
+    if sudo docker version >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+  return 1
+}
+
+detect_init_system() {
+  if command -v systemctl >/dev/null 2>&1 && systemctl --version >/dev/null 2>&1; then
+    echo "systemd"
+  elif [ -f /etc/init.d/docker ]; then
+    echo "sysvinit"
+  elif command -v service >/dev/null 2>&1; then
+    echo "service"
+  else
+    echo "none"
+  fi
+}
+
+# -----------------------------------------------------------------------------
 # Auto-Installation Helpers
 # -----------------------------------------------------------------------------
 
@@ -85,7 +124,15 @@ install_node() {
 }
 
 install_docker() {
-  echo "🐳 Docker not found. Installing via official script..."
+  # Check if we're in a container environment first
+  if detect_container_env; then
+    echo "⚠️  Detected container environment. Docker installation skipped."
+    echo "� If you need Docker, ensure the Docker socket is mounted from the host."
+    echo "   For devcontainers: Add \"mounts\": [\"source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind\"]"
+    return 1
+  fi
+  
+  echo "�🐳 Docker not found. Installing via official script..."
   if ! command -v curl >/dev/null 2>&1; then install_system_packages; fi
   
   curl -fsSL https://get.docker.com | sh
@@ -98,28 +145,40 @@ install_docker() {
   
   echo "✅ Docker installed."
   
-  # Attempt to start Docker daemon
-  if command -v systemctl >/dev/null 2>&1; then
-    echo "Starting Docker service..."
-    sudo systemctl enable docker
-    sudo systemctl start docker
-  elif command -v service >/dev/null 2>&1; then
-    sudo service docker start
-  fi
+  # Attempt to start Docker daemon based on init system
+  local init_system=$(detect_init_system)
+  case "$init_system" in
+    systemd)
+      echo "Starting Docker service with systemd..."
+      sudo systemctl enable docker
+      sudo systemctl start docker
+      ;;
+    service)
+      echo "Starting Docker service..."
+      sudo service docker start
+      ;;
+    sysvinit)
+      sudo /etc/init.d/docker start
+      ;;
+    *)
+      echo "⚠️  Unable to start Docker automatically (no init system detected)."
+      echo "   Please start Docker manually."
+      ;;
+  esac
 }
 
 wait_for_docker() {
   echo "Waiting for Docker daemon to be ready..."
   local retries=30
   while [ $retries -gt 0 ]; do
-    if sudo docker info >/dev/null 2>&1; then
+    if docker info >/dev/null 2>&1 || sudo docker info >/dev/null 2>&1; then
       echo "✅ Docker daemon is running."
       return 0
     fi
     sleep 1
     retries=$((retries - 1))
   done
-  echo "❌ Docker daemon failed to start. Please check logs."
+  echo "⚠️  Docker daemon not responding after 30 seconds."
   return 1
 }
 
@@ -158,20 +217,78 @@ fi
 
 
 # Check for Docker (Global)
-if ! command -v docker >/dev/null 2>&1; then
-  install_docker
+DOCKER_AVAILABLE=false
+
+# First, check if Docker socket is already available (devcontainer/DinD scenario)
+if check_docker_socket; then
+  echo "✅ Docker socket detected and accessible."
+  DOCKER_AVAILABLE=true
+elif ! command -v docker >/dev/null 2>&1; then
+  # Docker binary not found, attempt installation
+  if install_docker; then
+    DOCKER_AVAILABLE=true
+  else
+    # Installation failed or skipped (e.g., in container)
+    if detect_container_env; then
+      echo ""
+      echo "════════════════════════════════════════════════════════════════"
+      echo "⚠️  Running in a container without Docker access"
+      echo "════════════════════════════════════════════════════════════════"
+      echo ""
+      echo "This appears to be a devcontainer or similar environment."
+      echo "To use Docker, you need to mount the Docker socket from the host."
+      echo ""
+      echo "For VS Code devcontainers, add this to .devcontainer/devcontainer.json:"
+      echo '  "mounts": ['
+      echo '    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"'
+      echo '  ]'
+      echo ""
+      echo "Then rebuild the container."
+      echo ""
+      DOCKER_AVAILABLE=false
+    fi
+  fi
+else
+  # Docker binary exists, check if daemon is running
+  if docker info >/dev/null 2>&1 || sudo docker info >/dev/null 2>&1; then
+    DOCKER_AVAILABLE=true
+  else
+    # Try to start the daemon
+    local init_system=$(detect_init_system)
+    if [ "$init_system" != "none" ] && ! detect_container_env; then
+      echo "Docker daemon not running. Attempting to start..."
+      case "$init_system" in
+        systemd)
+          sudo systemctl start docker
+          ;;
+        service)
+          sudo service docker start
+          ;;
+        sysvinit)
+          sudo /etc/init.d/docker start
+          ;;
+      esac
+      
+      if wait_for_docker; then
+        DOCKER_AVAILABLE=true
+      fi
+    else
+      echo "⚠️  Docker daemon not accessible and cannot be started in this environment."
+      DOCKER_AVAILABLE=false
+    fi
+  fi
 fi
 
-# Ensure Docker daemon is running
-if command -v docker >/dev/null 2>&1; then
-  if ! sudo docker info >/dev/null 2>&1; then
-    echo "Docker daemon not running. Attempting to start..."
-    if command -v systemctl >/dev/null 2>&1; then
-      sudo systemctl start docker
-    elif command -v service >/dev/null 2>&1; then
-      sudo service docker start
-    fi
-    wait_for_docker
+if [ "$DOCKER_AVAILABLE" = "false" ]; then
+  echo ""
+  echo "⚠️  Warning: Docker is not available. The setup wizard may fail."
+  echo "   You can still run the wizard, but Docker-dependent steps will not work."
+  echo ""
+  read -p "Continue anyway? (y/N) " -n 1 -r
+  echo
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo "Setup cancelled. Please fix Docker access and try again."
+    exit 1
   fi
 fi
 
