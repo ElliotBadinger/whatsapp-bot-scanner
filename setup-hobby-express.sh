@@ -244,32 +244,61 @@ show_docker_socket_instructions() {
       # Backup the file
       cp "$devcontainer_file" "$devcontainer_file.backup"
       
-      # Try to add the mount using jq if available
-      if command -v jq >/dev/null 2>&1; then
-        # Use jq to properly modify JSON
-        local mount_entry="source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
-        jq --arg mount "$mount_entry" '
-          if .mounts then
-            if (.mounts | type) == "array" then
-              .mounts += [$mount]
-            else
-              .mounts = [$mount]
-            end
-          else
-            .mounts = [$mount]
-          end
-        ' "$devcontainer_file.backup" > "$devcontainer_file"
+      # Try Python-based JSON modification (handles JSONC better)
+      if command -v python3 >/dev/null 2>&1; then
+        python3 - "$devcontainer_file" << 'PYPYTHON'
+import json
+import re
+import sys
+
+devcontainer_file = sys.argv[1]
+
+# Read the file
+with open(devcontainer_file, 'r') as f:
+    content = f.read()
+
+# Strip comments (simple approach for JSONC)
+# Remove // comments
+content_no_comments = re.sub(r'//.*?$', '', content, flags=re.MULTILINE)
+# Remove /* */ comments
+content_no_comments = re.sub(r'/\*.*?\*/', '', content_no_comments, flags=re.DOTALL)
+
+try:
+    # Parse JSON
+    config = json.loads(content_no_comments)
+    
+    # Add or update mounts
+    mount_entry = "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+    
+    if 'mounts' not in config:
+        config['mounts'] = []
+    elif not isinstance(config['mounts'], list):
+        config['mounts'] = [config['mounts']]
+    
+    # Add the mount if not already present
+    if mount_entry not in config['mounts']:
+        config['mounts'].append(mount_entry)
+    
+    # Write back (preserving original formatting style)
+    with open(devcontainer_file, 'w') as f:
+        json.dump(config, f, indent=2)
+    
+    print("SUCCESS")
+except Exception as e:
+    print(f"ERROR: {e}", file=sys.stderr)
+    sys.exit(1)
+PYPYTHON
         
         if [ $? -eq 0 ]; then
           success "Successfully added Docker socket mount to $devcontainer_file"
           modified=true
         else
-          error "Failed to modify devcontainer.json with jq"
+          error "Failed to modify devcontainer.json automatically"
           mv "$devcontainer_file.backup" "$devcontainer_file"
         fi
       else
-        warning "'jq' not found. Cannot automatically modify JSON."
-        echo "   Please install jq or manually add the mount configuration."
+        warning "'python3' not found. Cannot automatically modify JSON."
+        echo "   Installing Python would enable auto-configuration."
       fi
     fi
     
