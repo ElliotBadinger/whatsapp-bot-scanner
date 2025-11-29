@@ -32,22 +32,116 @@ warning() {
 
 # Step 1: Check Prerequisites
 echo "Step 1/5: Checking prerequisites..."
-command -v docker >/dev/null 2>&1 || error "Docker is required. Install from https://docs.docker.com/get-docker/"
-command -v node >/dev/null 2>&1 || error "Node.js 18+ is required. Install from https://nodejs.org/"
+
+# -----------------------------------------------------------------------------
+# Auto-Installation Helpers
+# -----------------------------------------------------------------------------
+
+detect_package_manager() {
+  if command -v apt-get >/dev/null 2>&1; then echo "apt";
+  elif command -v dnf >/dev/null 2>&1; then echo "dnf";
+  elif command -v pacman >/dev/null 2>&1; then echo "pacman";
+  elif command -v brew >/dev/null 2>&1; then echo "brew";
+  else echo "unknown"; fi
+}
+
+install_system_packages() {
+  local pm=$(detect_package_manager)
+  echo "📦 Detected package manager: $pm"
+  echo "Installing system prerequisites (curl, git, make, unzip)..."
+  
+  case "$pm" in
+    apt)
+      sudo apt-get update -qq
+      sudo apt-get install -y -qq curl git make build-essential unzip
+      ;;
+    dnf)
+      sudo dnf install -y curl git make unzip @development-tools
+      ;;
+    pacman)
+      sudo pacman -Sy --noconfirm curl git make base-devel unzip
+      ;;
+    brew)
+      brew install curl git make unzip
+      ;;
+    *)
+      warning "Unsupported package manager. Please ensure curl, git, make, and unzip are installed."
+      ;;
+  esac
+}
+
+install_node() {
+  echo "🟢 Node.js not found or too old. Installing via fnm (Fast Node Manager)..."
+  if ! command -v curl >/dev/null 2>&1; then install_system_packages; fi
+  
+  # Install fnm
+  curl -fsSL https://fnm.vercel.app/install | bash -s -- --skip-shell
+  
+  # Load fnm for this session
+  export PATH="$HOME/.local/share/fnm:$PATH"
+  if command -v fnm >/dev/null 2>&1; then
+    eval "$(fnm env --use-on-cd)"
+    echo "Installing Node.js v20 (LTS)..."
+    fnm install 20
+    fnm use 20
+    fnm default 20
+    success "Node.js installed: $(node -v)"
+  else
+    error "Failed to install fnm. Please install Node.js 18+ manually."
+  fi
+}
+
+install_docker() {
+  echo "🐳 Docker not found. Installing via official script..."
+  if ! command -v curl >/dev/null 2>&1; then install_system_packages; fi
+  
+  curl -fsSL https://get.docker.com | sh
+  
+  # Add user to docker group
+  if ! getent group docker >/dev/null 2>&1; then
+    sudo groupadd docker
+  fi
+  sudo usermod -aG docker $USER
+  
+  success "Docker installed."
+  warning "You may need to log out and back in for group changes to take effect."
+}
+
+# -----------------------------------------------------------------------------
+# Execution
+# -----------------------------------------------------------------------------
+
+# Check for Docker
+if ! command -v docker >/dev/null 2>&1; then
+  install_docker
+fi
+
+# Check Docker daemon
+if command -v docker >/dev/null 2>&1; then
+  if ! docker info >/dev/null 2>&1; then
+    echo "Starting Docker service..."
+    sudo systemctl start docker || warning "Failed to start Docker service automatically."
+  fi
+fi
+
+if ! docker info >/dev/null 2>&1; then
+  error "Docker daemon is not running. Please start Docker."
+fi
+
+# Check for Node.js
+if ! command -v node >/dev/null 2>&1; then
+  install_node
+fi
 
 # Check Node version
 NODE_VERSION="$(node -v | sed 's/^v//')"
 NODE_MAJOR="${NODE_VERSION%%.*}"
 if [ "${NODE_MAJOR:-0}" -lt 18 ]; then
-  error "Node.js 18 or newer required. Current version: $NODE_VERSION"
+  warning "Node.js 18 or newer required. Current version: $NODE_VERSION"
+  install_node
 fi
 
-# Check Docker daemon
-if ! docker info >/dev/null 2>&1; then
-  error "Docker daemon is not running. Please start Docker Desktop or the Docker service."
-fi
-
-success "Prerequisites verified (Docker + Node.js $NODE_VERSION)"
+success "Prerequisites verified (Docker + Node.js $(node -v))"
 
 # Step 2: Install Node Dependencies
 echo ""
