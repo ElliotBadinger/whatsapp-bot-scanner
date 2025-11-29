@@ -97,7 +97,30 @@ install_docker() {
   sudo usermod -aG docker $USER
   
   echo "✅ Docker installed."
-  echo "⚠️  You may need to log out and back in for group changes to take effect."
+  
+  # Attempt to start Docker daemon
+  if command -v systemctl >/dev/null 2>&1; then
+    echo "Starting Docker service..."
+    sudo systemctl enable docker
+    sudo systemctl start docker
+  elif command -v service >/dev/null 2>&1; then
+    sudo service docker start
+  fi
+}
+
+wait_for_docker() {
+  echo "Waiting for Docker daemon to be ready..."
+  local retries=30
+  while [ $retries -gt 0 ]; do
+    if sudo docker info >/dev/null 2>&1; then
+      echo "✅ Docker daemon is running."
+      return 0
+    fi
+    sleep 1
+    retries=$((retries - 1))
+  done
+  echo "❌ Docker daemon failed to start. Please check logs."
+  return 1
 }
 
 # -----------------------------------------------------------------------------
@@ -137,6 +160,19 @@ fi
 # Check for Docker (Global)
 if ! command -v docker >/dev/null 2>&1; then
   install_docker
+fi
+
+# Ensure Docker daemon is running
+if command -v docker >/dev/null 2>&1; then
+  if ! sudo docker info >/dev/null 2>&1; then
+    echo "Docker daemon not running. Attempting to start..."
+    if command -v systemctl >/dev/null 2>&1; then
+      sudo systemctl start docker
+    elif command -v service >/dev/null 2>&1; then
+      sudo service docker start
+    fi
+    wait_for_docker
+  fi
 fi
 
 # Check for hobby mode flag
@@ -228,4 +264,16 @@ if [ "${1:-}" == "--hobby-mode" ]; then
   exit 0
 fi
 # Run the CLI-based setup wizard
-exec "$NODE_BIN" "$SETUP_WIZARD" "$@"
+# Run the CLI-based setup wizard
+# If user is in docker group but current session doesn't have it, use sg
+if groups | grep -q "docker"; then
+  exec "$NODE_BIN" "$SETUP_WIZARD" "$@"
+else
+  if getent group docker | grep -q "\b$USER\b"; then
+    echo "🔄 Switching to 'docker' group for this session..."
+    exec sg docker -c "$NODE_BIN $SETUP_WIZARD $*"
+  else
+    # Fallback if group membership failed or isn't needed yet
+    exec "$NODE_BIN" "$SETUP_WIZARD" "$@"
+  fi
+fi
