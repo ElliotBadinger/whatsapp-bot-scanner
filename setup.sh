@@ -19,6 +19,8 @@ detect_package_manager() {
   if command -v apt-get >/dev/null 2>&1; then echo "apt";
   elif command -v dnf >/dev/null 2>&1; then echo "dnf";
   elif command -v pacman >/dev/null 2>&1; then echo "pacman";
+  elif command -v apk >/dev/null 2>&1; then echo "apk";
+  elif command -v zypper >/dev/null 2>&1; then echo "zypper";
   elif command -v brew >/dev/null 2>&1; then echo "brew";
   else echo "unknown"; fi
 }
@@ -39,11 +41,23 @@ install_system_packages() {
     pacman)
       sudo pacman -Sy --noconfirm curl git make base-devel unzip
       ;;
+    apk)
+      sudo apk add curl git make build-base unzip
+      ;;
+    zypper)
+      sudo zypper install -y curl git make -t pattern devel_basis unzip
+      ;;
     brew)
       brew install curl git make unzip
       ;;
     *)
-      echo "⚠️  Unsupported package manager. Please install curl, git, make, and unzip manually."
+      # Check for Windows/MinGW
+      if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
+        echo "⚠️  Windows detected. We recommend running this in WSL2 (Ubuntu) for the best experience."
+        echo "   If you must use Windows directly, please install Git, Node.js, and Docker Desktop manually."
+      else
+        echo "⚠️  Unsupported package manager. Please install curl, git, make, and unzip manually."
+      fi
       ;;
   esac
 }
@@ -119,6 +133,11 @@ if ! npm list --depth=0 >/dev/null 2>&1; then
   echo "Dependencies installed successfully."
 fi
 
+
+# Check for Docker (Global)
+if ! command -v docker >/dev/null 2>&1; then
+  install_docker
+fi
 
 # Check for hobby mode flag
 if [ "${1:-}" == "--hobby-mode" ]; then
