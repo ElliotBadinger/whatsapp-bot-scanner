@@ -15,8 +15,20 @@ fi
 # Environment Detection
 # -----------------------------------------------------------------------------
 
+detect_codespaces() {
+  # Check if running in GitHub Codespaces
+  if [ -n "$CODESPACES" ] || [ -n "$GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN" ]; then
+    return 0
+  fi
+  return 1
+}
+
 detect_container_env() {
-  # Check if running inside a container
+  # Check if running inside a container (but not Codespaces)
+  if detect_codespaces; then
+    return 1  # Codespaces is not a container environment for our purposes
+  fi
+  
   if [ -f /.dockerenv ] || grep -q docker /proc/1/cgroup 2>/dev/null; then
     echo "container"
     return 0
@@ -25,7 +37,7 @@ detect_container_env() {
 }
 
 check_docker_socket() {
-  # Check if Docker socket is accessible (common in devcontainers)
+  # Check if Docker socket is accessible
   if [ -S /var/run/docker.sock ]; then
     if docker version >/dev/null 2>&1; then
       return 0
@@ -156,15 +168,21 @@ install_node() {
 }
 
 install_docker() {
+  # Codespaces has Docker pre-installed, just needs to be started
+  if detect_codespaces; then
+    echo "🐳 GitHub Codespaces detected. Docker should be pre-installed."
+    return 0
+  fi
+  
   # Check if we're in a container environment first
   if detect_container_env; then
     echo "⚠️  Detected container environment. Docker installation skipped."
-    echo "� If you need Docker, ensure the Docker socket is mounted from the host."
+    echo "💡 If you need Docker, ensure the Docker socket is mounted from the host."
     echo "   For devcontainers: Add \"mounts\": [\"source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind\"]"
     return 1
   fi
   
-  echo "�🐳 Docker not found. Installing via official script..."
+  echo "🐳 Docker not found. Installing via official script..."
   if ! command -v curl >/dev/null 2>&1; then install_system_packages; fi
   
   curl -fsSL https://get.docker.com | sh
@@ -403,7 +421,7 @@ PYPYTHON
   echo ""
 }
 
-# First, check if Docker socket is already available (devcontainer/DinD scenario)
+# First, check if Docker socket is already available
 if check_docker_socket; then
   echo "✅ Docker socket detected and accessible."
   DOCKER_AVAILABLE=true
@@ -423,19 +441,38 @@ elif ! command -v docker >/dev/null 2>&1; then
 else
   # Docker binary exists, check if daemon is running
   if docker info >/dev/null 2>&1 || sudo docker info >/dev/null 2>&1; then
-    DOCKER_AVAILABLE=true
+    echo "\u2705 Docker is available and running."
   else
-    # Check if we're in a container - if so, socket is probably not mounted
-    if detect_container_env; then
+    # In Codespaces, Docker might just need sudo or to be started
+    if detect_codespaces; then
+      echo "\ud83d\udc33 GitHub Codespaces detected. Checking Docker status..."
+      
+      # Try to start Docker if it's not running
+      if sudo service docker status >/dev/null 2>&1; then
+        echo "\u2705 Docker service is running."
+      else
+        echo "Starting Docker service..."
+        sudo service docker start
+        sleep 2
+        if sudo docker info >/dev/null 2>&1; then
+          echo "\u2705 Docker started successfully."
+        else
+          echo "\u274c Failed to start Docker in Codespaces."
+          echo "Please contact GitHub Support."
+          exit 1
+        fi
+      fi
+    # Check if we're in a regular container
+    elif detect_container_env; then
       show_docker_socket_instructions
-      echo "❌ Cannot proceed without Docker. Exiting."
+      echo "\u274c Cannot proceed without Docker. Exiting."
       echo ""
       exit 1
     fi
     
     # Try to start the daemon (only on bare metal)
     init_system=$(detect_init_system)
-    if [ "$init_system" != "none" ]; then
+    if [ "$init_system" != "none" ] && ! detect_codespaces && ! detect_container_env; then
       echo "Docker daemon not running. Attempting to start..."
       case "$init_system" in
         systemd)
@@ -450,16 +487,12 @@ else
       esac
       
       if wait_for_docker; then
-        DOCKER_AVAILABLE=true
+        echo "\u2705 Docker daemon started."
       else
-        echo "❌ Failed to start Docker daemon."
+        echo "\u274c Failed to start Docker daemon."
         echo "Please start Docker manually and try again."
         exit 1
       fi
-    else
-      echo "❌ No init system detected. Cannot start Docker."
-      echo "Please start Docker manually and try again."
-      exit 1
     fi
   fi
 fi
