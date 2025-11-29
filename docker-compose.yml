@@ -27,6 +27,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
     networks: [internal]
     mem_limit: 512m
     healthcheck:
@@ -38,7 +40,9 @@ services:
   migrate:
     build:
       context: .
-      dockerfile: scripts/Dockerfile.migrate
+      dockerfile: docker/Dockerfile
+      target: migrate
+      network: host
     working_dir: /app
     env_file: [.env]
     mem_limit: 512m
@@ -54,25 +58,28 @@ services:
   wa-client:
     build:
       context: .
-      dockerfile: services/wa-client/Dockerfile
+      dockerfile: docker/Dockerfile
+      target: wa-client
+      network: host
     env_file: [.env]
     depends_on:
       redis:
         condition: service_healthy
       postgres:
         condition: service_healthy
-    networks: [internal]
     mem_limit: 1g
+    network_mode: "host"
     environment:
+      - PORT=3005
       - NODE_OPTIONS=--max-old-space-size=768
-      - REDIS_URL=redis://redis:6379
+      - REDIS_URL=redis://localhost:6379/0
       # Using env var reference - secure practice
-      - DATABASE_URL=postgres://wbscanner:${POSTGRES_PASSWORD}@postgres:5432/wbscanner
+      - DATABASE_URL=postgres://wbscanner:${POSTGRES_PASSWORD}@localhost:5432/wbscanner
     volumes:
       - wa_session:/app/services/wa-client/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL","wget -qO- http://localhost:3000/healthz || exit 1"]
+      test: ["CMD-SHELL","wget -qO- http://localhost:3005/healthz || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -83,7 +90,9 @@ services:
   scan-orchestrator:
     build:
       context: .
-      dockerfile: services/scan-orchestrator/Dockerfile
+      dockerfile: docker/Dockerfile
+      target: scan-orchestrator
+      network: host
     env_file: [.env]
     depends_on:
       redis:
@@ -96,7 +105,7 @@ services:
     mem_limit: 1g
     environment:
       - NODE_OPTIONS=--max-old-space-size=768
-      - REDIS_URL=redis://redis:6379
+      - REDIS_URL=redis://redis:6379/0
       # Using env var reference - secure practice
       - DATABASE_URL=postgres://wbscanner:${POSTGRES_PASSWORD}@postgres:5432/wbscanner
     restart: unless-stopped
@@ -112,7 +121,9 @@ services:
   control-plane:
     build:
       context: .
-      dockerfile: services/control-plane/Dockerfile
+      dockerfile: docker/Dockerfile
+      target: control-plane
+      network: host
     env_file: [.env]
     depends_on:
       postgres:
@@ -147,6 +158,24 @@ services:
     networks: [internal, public]
     restart: unless-stopped
 
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    restart: unless-stopped
+    volumes:
+      - uptime_kuma_data:/app/data
+    ports:
+      - "${UPTIME_KUMA_PORT:-3001}:3001"
+    networks: [internal]
+    mem_limit: 256m
+    environment:
+      - UPTIME_KUMA_PORT=3001
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
 networks:
   internal:
     driver: bridge
@@ -157,3 +186,4 @@ volumes:
   pgdata:
   wa_session:
   redisdata:
+  uptime_kuma_data:

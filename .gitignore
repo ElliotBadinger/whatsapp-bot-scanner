@@ -46,3 +46,4 @@ docs/security-reports/SECURITY_FINDINGS.md
 # Test/utility scripts (not part of core setup)
 test_certificate_validation.js
 services/scan-orchestrator/src/index-original.ts
+SETUP_FIXES_SUMMARY.md

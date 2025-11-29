@@ -11,8 +11,9 @@ export const PORT_CHECKS = [
   { port: 8088, label: 'Reverse proxy', envHint: 'REVERSE_PROXY_PORT' },
   { port: 8080, label: 'Control plane', envHint: 'CONTROL_PLANE_PORT' },
   { port: 3002, label: 'Grafana', envHint: 'GRAFANA_PORT' },
-  { port: 3001, label: 'Uptime Kuma', envHint: 'UPTIME_KUMA_PORT' },
-  { port: 3000, label: 'WA client (internal)', envHint: null }
+  { port: 3001, label: 'Uptime Kuma', envHint: 'UPTIME_KUMA_PORT' }
+  // Note: Port 3000 (wa-client) and 3001 (scan-orchestrator) are container-internal only
+  // and not exposed to the host, so they don't need port conflict checking
 ];
 
 export const WAIT_FOR_SERVICES = [
