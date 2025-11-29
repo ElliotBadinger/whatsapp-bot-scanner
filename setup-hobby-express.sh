@@ -124,7 +124,39 @@ install_system_packages() {
 }
 
 install_node() {
-  echo "🟢 Node.js not found or too old. Installing via fnm (Fast Node Manager)..."
+  echo "🟢 Node.js not found or too old. Installing..."
+  
+  # In containers, use system package manager with NodeSource
+  if detect_container_env; then
+    echo "Detected container environment. Using NodeSource repository..."
+    
+    # Install prerequisites
+    if ! command -v curl >/dev/null 2>&1; then install_system_packages; fi
+    
+    # Use NodeSource setup script
+    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+    
+    local pm=$(detect_package_manager)
+    case "$pm" in
+      apt)
+        sudo apt-get install -y nodejs
+        ;;
+      dnf)
+        sudo dnf install -y nodejs
+        ;;
+      *)
+        echo "⚠️  Unsupported package manager for container Node.js installation"
+        echo "Please install Node.js 18+ manually."
+        return 1
+        ;;
+    esac
+    
+    success "Node.js installed: $(node -v)"
+    return 0
+  fi
+  
+  # On bare metal, use fnm as before
+  echo "Installing via fnm (Fast Node Manager)..."
   if ! command -v curl >/dev/null 2>&1; then install_system_packages; fi
   
   # Install fnm
