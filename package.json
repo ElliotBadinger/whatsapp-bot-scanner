@@ -17,5 +17,18 @@
   "workspaces": [
     "packages/*",
     "services/*"
-  ]
+  ],
+  "devDependencies": {
+    "boxen": "^7.1.1",
+    "chalk": "^5.3.0",
+    "inquirer": "^9.2.12",
+    "humanize-duration": "^3.31.0",
+    "ora": "^7.0.1",
+    "cli-spinners": "^2.9.2",
+    "nanospinner": "^1.1.0",
+    "cli-table3": "^0.6.3",
+    "execa": "^8.0.1",
+    "log-symbols": "^6.0.0",
+    "enquirer": "^2.4.1"
+  }
 }

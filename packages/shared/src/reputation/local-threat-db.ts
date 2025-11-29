@@ -28,8 +28,12 @@ export class LocalThreatDatabase {
   }
 
   async start(): Promise<void> {
-    // Initial feed update
-    await this.updateOpenPhishFeed();
+    // Initial feed update - non-fatal if it fails
+    try {
+      await this.updateOpenPhishFeed();
+    } catch (err) {
+      logger.warn({ err }, 'Initial OpenPh feed update failed; will retry on next interval');
+    }
 
     // Schedule periodic updates
     this.updateTimer = setInterval(() => {
@@ -126,7 +130,7 @@ export class LocalThreatDatabase {
       logger.info({ count: urls.length }, 'OpenPhish feed updated successfully');
     } catch (err) {
       logger.error({ err }, 'Failed to update OpenPhish feed');
-      throw err;
+      // Don't throw - make this non-fatal to allow service to continue running
     }
   }
 

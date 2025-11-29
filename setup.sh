@@ -24,6 +24,18 @@ if [ "${NODE_MAJOR:-0}" -lt 18 ]; then
   exit 1
 fi
 
+# Check if dependencies are installed properly
+# Use npm list to check if all dependencies from package.json are satisfied
+if ! npm list --depth=0 >/dev/null 2>&1; then
+  echo "Installing or updating Node.js dependencies (this may take a minute)..."
+  cd "$ROOT_DIR"
+  npm install || {
+    echo "Failed to install dependencies. Please run 'npm install' manually." >&2
+    exit 1
+  }
+  echo "Dependencies installed successfully."
+fi
+
 
 # Check for hobby mode flag
 if [ "${1:-}" == "--hobby-mode" ]; then
@@ -53,7 +65,53 @@ if [ "${1:-}" == "--hobby-mode" ]; then
     fi
   fi
 
-  echo "Hobby Mode setup complete. You can now run 'make up-minimal' to start the scanner."
+  echo ""
+  echo "✅ Hobby Mode configuration complete!"
+  echo ""
+  echo "Starting services with Docker Compose..."
+  if command -v docker >/dev/null 2>&1; then
+    if docker info >/dev/null 2>&1; then
+      make up-minimal || {
+        echo "⚠️  Warning: Failed to start services automatically."
+        echo "Please run manually: make up-minimal"
+      }
+      echo ""
+      echo "📋 Next Steps:"
+      echo ""
+      
+      # Function to check and display service URL
+      show_service_url() {
+        local service=$1
+        local container_port=$2
+        local description=$3
+        
+        local host_port=$(docker compose port "$service" "$container_port" 2>/dev/null | cut -d: -f2)
+        if [ -n "$host_port" ]; then
+          echo "     $description: http://localhost:${host_port}"
+        fi
+      }
+      
+      echo "  Service URLs (if running):"
+      show_service_url "uptime-kuma" "3001" "• Monitoring Dashboard"
+      show_service_url "reverse-proxy" "8088" "• Control Plane API"
+      show_service_url "grafana" "3000" "• Grafana Metrics"
+      
+      echo ""
+      echo "  Quick Commands:"
+      echo "  1. Check service status: docker compose ps"
+      echo "  2. View logs: docker compose logs -f"
+      echo "  3. Find WhatsApp auth: docker compose logs -f wa-client | grep -i 'pairing\\|qr'"
+      echo ""
+      echo "💡 Tip: Services may take 30-60 seconds to become healthy"
+    else
+      echo "⚠️  Docker daemon is not running."
+      echo "Please start Docker, then run: make up-minimal"
+    fi
+  else
+    echo "⚠️  Docker not found in PATH."
+    echo "After installing Docker, run: make up-minimal"
+  fi
+
   exit 0
 fi
 # Run the CLI-based setup wizard

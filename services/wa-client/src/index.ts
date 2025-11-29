@@ -1,4 +1,4 @@
-import Fastify from 'fastify';
+import Fastify, { type FastifyRequest, type FastifyReply } from 'fastify';
 import { Client, LocalAuth, RemoteAuth, Message, GroupChat, GroupNotification, MessageMedia, Reaction, MessageAck, Call, Contact, GroupParticipant } from 'whatsapp-web.js';
 import type { ClientOptions } from 'whatsapp-web.js';
 import QRCode from 'qrcode-terminal';
@@ -945,7 +945,7 @@ async function main() {
   }
 
   const app = Fastify();
-  app.get('/healthz', async (_req, reply) => {
+  app.get('/healthz', async (_req: FastifyRequest, reply: FastifyReply) => {
     try {
       // Check Redis connectivity
       await redis.ping();
@@ -956,26 +956,38 @@ async function main() {
       return { ok: false, redis: 'disconnected', error: 'Redis unreachable' };
     }
   });
-  app.get('/metrics', async (_req, reply) => {
+  app.get('/metrics', async (_req: FastifyRequest, reply: FastifyReply) => {
     reply.header('Content-Type', register.contentType);
     return register.metrics();
   });
 
-  app.post('/pair', async (_req, reply) => {
-    if (!pairingOrchestrator) {
-      return reply.code(400).send({ error: 'Pairing orchestrator not available' });
+  app.post('/pair', async (_req: FastifyRequest, reply: FastifyReply) => {
+    const numbers = remotePhoneNumbers;
+    if (numbers.length === 0) {
+      return reply.code(400).send({ error: 'No phone numbers configured' });
     }
-    const status = pairingOrchestrator.getStatus();
-    if (status.rateLimited && status.nextAttemptIn > 0) {
-      return reply.code(429).send({ error: 'Rate limited', nextAttemptIn: status.nextAttemptIn });
+
+    // Check rate limiting via orchestrator if available
+    if (pairingOrchestrator) {
+      const status = pairingOrchestrator.getStatus();
+      if (status.rateLimited && status.nextAttemptIn > 0) {
+        return reply.code(429).send({ error: 'Rate limited', nextAttemptIn: status.nextAttemptIn });
+      }
+
+      // Reset auto-refresh counter so loop can resume if needed
+      consecutiveAutoRefreshes = 0;
     }
-    // Reset auto-refresh counter so loop can resume if needed
-    consecutiveAutoRefreshes = 0;
-    const requested = pairingOrchestrator.requestManually();
-    if (requested) {
-      return { ok: true, message: 'Pairing code requested' };
+
+    try {
+      const result = await performParallelPairingCodeRequest(numbers);
+      if (result) {
+        return { ok: true, code: result.code, phone: maskPhone(result.phone), message: 'Pairing code generated' };
+      }
+      return reply.code(500).send({ error: 'Failed to get pairing code from any configured number' });
+    } catch (err) {
+      logger.error({ err, count: numbers.length }, 'Parallel pairing request failed');
+      return reply.code(500).send({ error: 'Pairing code request failed', details: err instanceof Error ? err.message : String(err) });
     }
-    return reply.code(409).send({ error: 'Cannot request code', status });
   });
 
   await refreshConsentGauge();
@@ -1000,19 +1012,36 @@ async function main() {
     authStrategy: authResolution.strategy,
   };
 
-  remotePhone = config.wa.remoteAuth.phoneNumber;
+  // Initialize phone numbers for Remote Auth
+  const remotePhoneNumbers = config.wa.remoteAuth.phoneNumbers.length > 0
+    ? config.wa.remoteAuth.phoneNumbers
+    : (config.wa.remoteAuth.phoneNumber ? [config.wa.remoteAuth.phoneNumber] : []);
+
+  remotePhone = remotePhoneNumbers[0]; // Keep backwards compatibility for single phone variable
+
+  if (remotePhoneNumbers.length > 0) {
+    logger.info(
+      {
+        count: remotePhoneNumbers.length,
+        numbers: remotePhoneNumbers.map(maskPhone),
+        pollingEnabled: config.wa.remoteAuth.pollingEnabled
+      },
+      'Remote Auth phone numbers configured'
+    );
+  }
+
   if (!config.wa.remoteAuth.autoPair) {
     logger.info('RemoteAuth auto pairing disabled; a QR code will be displayed for first-time linking.');
   }
   let remoteSessionActive = authResolution.remote?.sessionExists ?? false;
   const shouldRequestPhonePairing = Boolean(
     authResolution.remote &&
-    remotePhone &&
+    remotePhoneNumbers.length > 0 &&
     !remoteSessionActive &&
     config.wa.remoteAuth.autoPair
   );
-  if (shouldRequestPhonePairing && remotePhone) {
-    logger.info({ phoneNumber: maskPhone(remotePhone) }, 'Auto pairing enabled; open WhatsApp > Linked Devices on the target device before continuing.');
+  if (shouldRequestPhonePairing && remotePhoneNumbers.length > 0) {
+    logger.info({ phoneNumbers: remotePhoneNumbers.map(maskPhone) }, 'Auto pairing enabled; open WhatsApp > Linked Devices on the target device before continuing.');
   }
 
   const client = new Client(clientOptions);
@@ -1028,6 +1057,115 @@ async function main() {
   let lastPairingAttemptMs = 0;
   let consecutiveAutoRefreshes = 0;
   const MAX_CONSECUTIVE_AUTO_REFRESHES = 3;
+
+  // Track the currently active phone number
+  const getActivePairingPhone = async (): Promise<string | null> => {
+    try {
+      return await redis.get('wa:pairing:active_phone');
+    } catch (err) {
+      logger.warn({ err }, 'Failed to get active pairing phone');
+      return null;
+    }
+  };
+
+  const setActivePairingPhone = async (phone: string): Promise<void> => {
+    try {
+      const ttlSeconds = Math.max(1, Math.ceil(PHONE_PAIRING_CODE_TTL_MS / 1000));
+      await redis.set('wa:pairing:active_phone', phone, 'EX', ttlSeconds);
+    } catch (err) {
+      logger.warn({ err, phone: maskPhone(phone) }, 'Failed to set active pairing phone');
+    }
+  };
+
+  // Perform parallel pairing code requests across multiple phone numbers
+  // Returns the first successful code or null
+  const performParallelPairingCodeRequest = async (
+    phoneNumbers: string[]
+  ): Promise<{ code: string; phone: string } | null> => {
+    if (phoneNumbers.length === 0) {
+      logger.warn('No phone numbers provided for parallel pairing request');
+      return null;
+    }
+
+    if (phoneNumbers.length === 1) {
+      // Optimize for single number case
+      const code = await performPairingCodeRequestForPhone(phoneNumbers[0]);
+      return code ? { code, phone: phoneNumbers[0] } : null;
+    }
+
+    logger.info(
+      { count: phoneNumbers.length, numbers: phoneNumbers.map(maskPhone) },
+      'Attempting parallel pairing code requests'
+    );
+
+    // Create promises for each phone number
+    const promises = phoneNumbers.map(async (phone) => {
+      try {
+        const code = await performPairingCodeRequestForPhone(phone);
+        if (code) {
+          logger.info({ phone: maskPhone(phone) }, 'Got pairing code from phone number');
+          return { code, phone };
+        }
+        return null;
+      } catch (err) {
+        logger.warn({ err, phone: maskPhone(phone) }, 'Failed to request code for phone');
+        return null;
+      }
+    });
+
+    // Race all requests with timeout, return first successful one
+    const racePromise = Promise.race([
+      ...promises,
+      new Promise<null>((resolve) =>
+        setTimeout(() => {
+          logger.warn({ timeout: config.wa.remoteAuth.parallelCheckTimeoutMs }, 'Parallel pairing request timed out');
+          resolve(null);
+        }, config.wa.remoteAuth.parallelCheckTimeoutMs)
+      ),
+    ]);
+
+    const result = await racePromise;
+
+    if (result) {
+      // Track which phone number produced the code
+      await setActivePairingPhone(result.phone);
+      await cachePairingCode(result.phone, result.code);
+      logger.info(
+        { phone: maskPhone(result.phone), count: phoneNumbers.length },
+        'Parallel pairing request succeeded'
+      );
+    } else {
+      logger.warn(
+        { count: phoneNumbers.length },
+        'All parallel pairing requests failed or timed out'
+      );
+    }
+
+    return result;
+  };
+
+  // Perform pairing code request for a specific phone number
+  const performPairingCodeRequestForPhone = async (phone: string): Promise<string | null> => {
+    const pageHandle = getPageHandle(client);
+    if (!pageHandle) {
+      throw new Error('Puppeteer page handle unavailable for pairing');
+    }
+
+    // Record attempt for this specific phone
+    try {
+      lastPairingAttemptMs = Date.now();
+      await recordPairingAttempt(phone, lastPairingAttemptMs);
+    } catch (err) {
+      logger.warn({ err, phoneNumber: maskPhone(phone) }, 'Failed to record pairing attempt');
+    }
+
+    await addHumanBehaviorJitter();
+
+    const interval = Math.max(60000, config.wa.remoteAuth.pairingDelayMs ?? 0);
+    const outcome = await executePairingCodeRequestForPhone(pageHandle, phone, interval);
+
+    return processPairingOutcome(outcome);
+  };
 
   const performPairingCodeRequest = async (): Promise<string | null> => {
     const pageHandle = getPageHandle(client);
@@ -1091,6 +1229,26 @@ async function main() {
         return formatErrorForResponse(err, globalWindow);
       }
     }, remotePhone, true, interval);
+  }
+
+  async function executePairingCodeRequestForPhone(pageHandle: PageHandle, phone: string, interval: number): Promise<unknown> {
+    return await pageHandle.evaluate(async (phoneNumber: string, showNotification: boolean, intervalMs: number) => {
+      const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+      const globalWindow = window as unknown as PairingCodeWindow;
+
+      const utils = await waitForUtils(globalWindow, wait);
+      setupEventHandlers(globalWindow, intervalMs);
+
+      try {
+        const firstCode = await requestCode(utils, phoneNumber, showNotification, wait);
+        if (isValidCode(firstCode)) {
+          return { ok: true, code: firstCode };
+        }
+        return { ok: false, reason: 'empty_code', state: globalWindow.AuthStore?.AppState?.state };
+      } catch (err: unknown) {
+        return formatErrorForResponse(err, globalWindow);
+      }
+    }, phone, true, interval);
   }
 
   async function waitForUtils(globalWindow: PairingCodeWindow, wait: (ms: number) => Promise<unknown>): Promise<PairingCodeUtils> {
@@ -2055,7 +2213,7 @@ async function main() {
           lines.push('This group is still awaiting consent. Please review and run !scanner consent when ready.');
           await chat.setMessagesAdminsOnly(true).catch(() => undefined);
         }
-        await chat.sendMessage(lines.join(' '), { mentions: recipients as unknown as string[] });
+        await chat.sendMessage(lines.join(' '), { mentions: recipients.map(c => c.id?._serialized).filter((id): id is string => !!id) } as any);
         metrics.waGovernanceActions.labels('admin_prompt').inc();
       }
     } catch (err) {
@@ -2170,7 +2328,8 @@ async function main() {
   }
   startPairingFallbackTimer();
 
-  await app.listen({ host: '0.0.0.0', port: 3000 });
+  const port = parseInt(process.env.PORT || '3000', 10);
+  await app.listen({ host: '0.0.0.0', port });
 }
 
 function sha256(s: string) { return createHash('sha256').update(s).digest('hex'); }

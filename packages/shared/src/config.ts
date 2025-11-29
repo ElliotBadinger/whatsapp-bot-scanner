@@ -229,10 +229,29 @@ export const config = {
       backupIntervalMs: parsePositiveInt(process.env.WA_REMOTE_AUTH_BACKUP_INTERVAL_MS, 300000, { minimum: 60000 }),
       dataPath: process.env.WA_REMOTE_AUTH_DATA_PATH || './data/remote-session',
       forceNewSession: (process.env.WA_REMOTE_AUTH_FORCE_NEW_SESSION || 'false') === 'true',
+
+      // Multi-number support (comma-separated list)
+      phoneNumbers: (() => {
+        const raw = (process.env.WA_REMOTE_AUTH_PHONE_NUMBERS || process.env.WA_REMOTE_AUTH_PHONE_NUMBER || '').trim();
+        return raw.split(',')
+          .map(num => num.replace(/\D/g, ''))
+          .filter(num => num.length > 4);
+      })(),
+
+      // Backwards compatibility: single phoneNumber (deprecated)
       phoneNumber: (() => {
         const raw = (process.env.WA_REMOTE_AUTH_PHONE_NUMBER || '').replace(/\D/g, '');
         return raw.length > 4 ? raw : undefined;
       })(),
+
+      // On-demand polling configuration
+      pollingEnabled: (process.env.WA_REMOTE_AUTH_POLLING_ENABLED || 'false') === 'true',
+      pollingIntervalMinutes: parsePositiveInt(process.env.WA_REMOTE_AUTH_POLLING_INTERVAL_MINUTES, 10, { minimum: 5 }),
+      pollingDurationMinutes: parsePositiveInt(process.env.WA_REMOTE_AUTH_POLLING_DURATION_MINUTES, 60, { minimum: 10 }),
+      pollingSchedule: (process.env.WA_REMOTE_AUTH_POLLING_SCHEDULE || '').trim() || undefined,
+
+      // Parallel checking configuration
+      parallelCheckTimeoutMs: parsePositiveInt(process.env.WA_REMOTE_AUTH_PARALLEL_TIMEOUT_MS, 30000, { minimum: 10000 }),
     },
     authStrategy: (() => {
       const raw = (process.env.WA_AUTH_STRATEGY || 'remote').toLowerCase();
