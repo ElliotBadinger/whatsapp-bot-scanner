@@ -410,34 +410,60 @@ function detectCodespaces() {
 }
 
 async function ensureDockerDaemon(output) {
-  // Try to start Docker daemon if not running (for Codespaces)
-  try {
-    await execa('docker', ['info'], { stdio: 'ignore' });
-    return true; // Docker is already running
-  } catch {
-    // Docker daemon not running, try to start it
-    output.info('Docker daemon not running, attempting to start...');
+  // In Codespaces, Docker daemon is pre-installed and managed by the system
+  // It should be running, but might need a moment to become ready
+  // Reference: https://docs.github.com/en/codespaces/developing-in-codespaces/using-docker-in-your-codespace
+
+  const maxRetries = 15; // Try for up to 15 seconds
+  const retryDelay = 1000; // 1 second between retries
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // Try with sudo systemctl
-      await execa('sudo', ['systemctl', 'start', 'docker'], { stdio: 'ignore' });
-      // Wait a moment for daemon to start
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Try to access Docker
       await execa('docker', ['info'], { stdio: 'ignore' });
-      output.success('Docker daemon started successfully.');
-      return true;
-    } catch {
-      // Try with sudo service
-      try {
-        await execa('sudo', ['service', 'docker', 'start'], { stdio: 'ignore' });
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        await execa('docker', ['info'], { stdio: 'ignore' });
-        output.success('Docker daemon started successfully.');
-        return true;
-      } catch {
+      if (attempt > 1) {
+        output.success(`Docker daemon ready (took ${attempt} attempts).`);
+      }
+      return true; // Docker is accessible
+    } catch (error) {
+      // On first failure, provide more context
+      if (attempt === 1) {
+        output.info('Waiting for Docker daemon to be ready...');
+
+        // Check if socket exists as a diagnostic
+        try {
+          await fs.access('/var/run/docker.sock');
+          output.info('Docker socket found, waiting for daemon readiness...');
+        } catch {
+          output.warn('Docker socket not found. Docker may not be configured.');
+          return false;
+        }
+      }
+
+      // If we've exhausted retries, fail
+      if (attempt === maxRetries) {
+        output.warn(`Docker daemon did not become ready after ${maxRetries} seconds.`);
+
+        // Provide diagnostic information
+        try {
+          const groupResult = await execa('groups', []);
+          const groups = groupResult.stdout || '';
+          if (!groups.includes('docker')) {
+            output.warn('User is not in the docker group. Run: sudo usermod -aG docker $USER && newgrp docker');
+          } else {
+            output.info('User is in docker group. Docker daemon may still be starting...');
+          }
+        } catch { }
+
         return false;
       }
+
+      // Wait before next retry
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
     }
   }
+
+  return false;
 }
 
 async function preflightChecks(context, runtime, output) {
