@@ -1,4 +1,3 @@
-
 /*
  * Lightweight HTTP load harness for WhatsApp Scanner services.
  *
@@ -12,22 +11,22 @@
  *   node tests/load/http-load.js
  */
 
-const { performance } = require('node:perf_hooks');
-const { request } = require('undici');
+const { performance } = require("node:perf_hooks");
+const { request } = require("undici");
 
-const target = process.env.LOAD_TARGET_URL || 'http://localhost:3001/healthz';
-const durationSeconds = Number(process.env.LOAD_DURATION_SECONDS || '30');
-const concurrency = Number(process.env.LOAD_CONCURRENCY || '50');
-const method = process.env.LOAD_METHOD || 'GET';
+const target = process.env.LOAD_TARGET_URL || "http://localhost:3001/healthz";
+const durationSeconds = Number(process.env.LOAD_DURATION_SECONDS || "30");
+const concurrency = Number(process.env.LOAD_CONCURRENCY || "50");
+const method = process.env.LOAD_METHOD || "GET";
 const body = process.env.LOAD_BODY || null;
-const headerEnv = process.env.LOAD_HEADERS || '';
+const headerEnv = process.env.LOAD_HEADERS || "";
 
 const headerTuples = headerEnv
-  .split(',')
+  .split(",")
   .map((segment) => segment.trim())
   .filter(Boolean)
   .map((entry) => {
-    const idx = entry.indexOf(':');
+    const idx = entry.indexOf(":");
     if (idx === -1) return null;
     const name = entry.slice(0, idx).trim();
     const value = entry.slice(idx + 1).trim();
@@ -38,12 +37,12 @@ const headerTuples = headerEnv
 const headers = Object.fromEntries(headerTuples);
 
 if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
-  console.error('LOAD_DURATION_SECONDS must be a positive number');
+  console.error("LOAD_DURATION_SECONDS must be a positive number");
   process.exit(1);
 }
 
 if (!Number.isFinite(concurrency) || concurrency <= 0) {
-  console.error('LOAD_CONCURRENCY must be a positive number');
+  console.error("LOAD_CONCURRENCY must be a positive number");
   process.exit(1);
 }
 
@@ -64,9 +63,9 @@ async function worker() {
       });
 
       // Consume body to ensure request completes
-      if (response.body && typeof response.body.text === 'function') {
+      if (response.body && typeof response.body.text === "function") {
         await response.body.text();
-      } else if (response.body && typeof response.body.resume === 'function') {
+      } else if (response.body && typeof response.body.resume === "function") {
         response.body.resume();
       }
 
@@ -83,7 +82,7 @@ async function worker() {
       }
     } catch (err) {
       failures += 1;
-      statusCodes['error'] = (statusCodes['error'] || 0) + 1;
+      statusCodes["error"] = (statusCodes["error"] || 0) + 1;
     }
   }
 }
@@ -91,7 +90,10 @@ async function worker() {
 function percentile(values, percentileValue) {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
-  const index = Math.min(sorted.length - 1, Math.floor((percentileValue / 100) * sorted.length));
+  const index = Math.min(
+    sorted.length - 1,
+    Math.floor((percentileValue / 100) * sorted.length),
+  );
   return sorted[index];
 }
 
@@ -105,11 +107,15 @@ async function main() {
   const statusInterval = setInterval(() => {
     const elapsed = (Date.now() - (endTime - durationSeconds * 1000)) / 1000;
     const remaining = Math.max(0, durationSeconds - elapsed);
-    console.log(`[Status] Elapsed: ${elapsed.toFixed(0)}s, Remaining: ${remaining.toFixed(0)}s, Requests: ${success + failures}`);
+    console.log(
+      `[Status] Elapsed: ${elapsed.toFixed(0)}s, Remaining: ${remaining.toFixed(0)}s, Requests: ${success + failures}`,
+    );
 
     // Suggest docker stats if running locally
     if (elapsed < 10) {
-      console.log('Tip: Run "docker stats" in another terminal to monitor resource usage.');
+      console.log(
+        'Tip: Run "docker stats" in another terminal to monitor resource usage.',
+      );
     }
   }, 5000);
 
@@ -124,9 +130,10 @@ async function main() {
   const p90 = percentile(latencies, 90);
   const p95 = percentile(latencies, 95);
   const p99 = percentile(latencies, 99);
-  const avg = latencies.reduce((sum, v) => sum + v, 0) / (latencies.length || 1);
+  const avg =
+    latencies.reduce((sum, v) => sum + v, 0) / (latencies.length || 1);
 
-  console.log('\n=== Load Test Summary ===');
+  console.log("\n=== Load Test Summary ===");
   console.log(`Target: ${target}`);
   console.log(`Total requests: ${totalRequests}`);
   console.log(`Success: ${success}`);
@@ -137,10 +144,10 @@ async function main() {
   console.log(`P90 latency: ${p90.toFixed(2)} ms`);
   console.log(`P95 latency: ${p95.toFixed(2)} ms`);
   console.log(`P99 latency: ${p99.toFixed(2)} ms`);
-  console.log('Status Codes:', JSON.stringify(statusCodes, null, 2));
+  console.log("Status Codes:", JSON.stringify(statusCodes, null, 2));
 }
 
 main().catch((err) => {
-  console.error('Load test failed:', err);
+  console.error("Load test failed:", err);
   process.exit(1);
 });

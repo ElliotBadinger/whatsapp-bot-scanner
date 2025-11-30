@@ -55,7 +55,7 @@ export class CircuitBreaker {
 
   private trimFailures(now: number) {
     const threshold = now - this.options.windowMs;
-    this.failures = this.failures.filter(ts => ts > threshold);
+    this.failures = this.failures.filter((ts) => ts > threshold);
   }
 
   private recordFailure(now: number) {
@@ -64,14 +64,20 @@ export class CircuitBreaker {
     if (this.state === CircuitState.HALF_OPEN) {
       this.changeState(CircuitState.OPEN);
       this.successes = 0;
-    } else if (this.failures.length >= this.options.failureThreshold && this.state === CircuitState.CLOSED) {
+    } else if (
+      this.failures.length >= this.options.failureThreshold &&
+      this.state === CircuitState.CLOSED
+    ) {
       this.changeState(CircuitState.OPEN);
     }
   }
 
   private recordSuccess() {
     this.successes += 1;
-    if (this.state === CircuitState.HALF_OPEN && this.successes >= this.options.successThreshold) {
+    if (
+      this.state === CircuitState.HALF_OPEN &&
+      this.successes >= this.options.successThreshold
+    ) {
       this.changeState(CircuitState.CLOSED);
       this.successes = 0;
       this.failures = [];
@@ -91,7 +97,12 @@ export class CircuitBreaker {
 
 export async function withRetry<T>(
   task: () => Promise<T>,
-  options: { retries: number; baseDelayMs: number; factor?: number; retryable?: (err: unknown) => boolean } = { retries: 0, baseDelayMs: 0 }
+  options: {
+    retries: number;
+    baseDelayMs: number;
+    factor?: number;
+    retryable?: (err: unknown) => boolean;
+  } = { retries: 0, baseDelayMs: 0 },
 ): Promise<T> {
   const factor = options.factor ?? 2;
   let attempt = 0;
@@ -107,7 +118,7 @@ export async function withRetry<T>(
         throw err;
       }
       const delay = options.baseDelayMs * Math.pow(factor, attempt - 1);
-      await new Promise(resolve => setTimeout(resolve, delay));
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
 }

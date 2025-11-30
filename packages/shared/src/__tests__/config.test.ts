@@ -1,6 +1,6 @@
-const CONFIG_PATH = '../config';
+const CONFIG_PATH = "../config";
 
-describe('queue configuration validation', () => {
+describe("queue configuration validation", () => {
   const originalEnv = { ...process.env };
 
   afterEach(() => {
@@ -8,24 +8,24 @@ describe('queue configuration validation', () => {
     jest.resetModules();
   });
 
-  it('provides hyphenated defaults without colons', () => {
-    process.env.URLSCAN_CALLBACK_SECRET = 'test-secret';
-    process.env.CONTROL_PLANE_API_TOKEN = 'test-token';
+  it("provides hyphenated defaults without colons", () => {
+    process.env.URLSCAN_CALLBACK_SECRET = "test-secret";
+    process.env.CONTROL_PLANE_API_TOKEN = "test-token";
 
     jest.isolateModules(() => {
-      const { config } = require(CONFIG_PATH) as typeof import('../config');
-      expect(config.queues.scanRequest).toBe('scan-request');
-      expect(config.queues.scanVerdict).toBe('scan-verdict');
-      expect(config.queues.urlscan).toBe('scan-urlscan');
+      const { config } = require(CONFIG_PATH) as typeof import("../config");
+      expect(config.queues.scanRequest).toBe("scan-request");
+      expect(config.queues.scanVerdict).toBe("scan-verdict");
+      expect(config.queues.urlscan).toBe("scan-urlscan");
       expect(config.features.attachMediaToVerdicts).toBe(false);
       expect(config.wa.verdictAckTimeoutSeconds).toBeGreaterThan(0);
     });
   });
 
-  it('throws when queue name contains colon characters', () => {
-    process.env.URLSCAN_CALLBACK_SECRET = 'test-secret';
-    process.env.SCAN_REQUEST_QUEUE = 'scan:request';
-    process.env.CONTROL_PLANE_API_TOKEN = 'test-token';
+  it("throws when queue name contains colon characters", () => {
+    process.env.URLSCAN_CALLBACK_SECRET = "test-secret";
+    process.env.SCAN_REQUEST_QUEUE = "scan:request";
+    process.env.CONTROL_PLANE_API_TOKEN = "test-token";
 
     expect(() => {
       jest.isolateModules(() => {
@@ -34,10 +34,10 @@ describe('queue configuration validation', () => {
     }).toThrow(/must not contain ':'/);
   });
 
-  it('throws when urlscan enabled without callback secret', () => {
+  it("throws when urlscan enabled without callback secret", () => {
     delete process.env.URLSCAN_CALLBACK_SECRET;
-    process.env.URLSCAN_ENABLED = 'true';
-    process.env.CONTROL_PLANE_API_TOKEN = 'test-token';
+    process.env.URLSCAN_ENABLED = "true";
+    process.env.CONTROL_PLANE_API_TOKEN = "test-token";
 
     expect(() => {
       jest.isolateModules(() => {
@@ -46,25 +46,25 @@ describe('queue configuration validation', () => {
     }).toThrow(/URLSCAN_CALLBACK_SECRET must be provided/);
   });
 
-  it('allows missing secret when urlscan disabled', () => {
+  it("allows missing secret when urlscan disabled", () => {
     delete process.env.URLSCAN_CALLBACK_SECRET;
-    process.env.URLSCAN_ENABLED = 'false';
-    process.env.CONTROL_PLANE_API_TOKEN = 'test-token';
+    process.env.URLSCAN_ENABLED = "false";
+    process.env.CONTROL_PLANE_API_TOKEN = "test-token";
 
     jest.isolateModules(() => {
-      const { config } = require(CONFIG_PATH) as typeof import('../config');
+      const { config } = require(CONFIG_PATH) as typeof import("../config");
       expect(config.urlscan.enabled).toBe(false);
-      expect(config.urlscan.callbackSecret).toBe('');
+      expect(config.urlscan.callbackSecret).toBe("");
     });
   });
 
-  it('throws when control plane token missing', () => {
-    process.env.URLSCAN_CALLBACK_SECRET = 'test-secret';
+  it("throws when control plane token missing", () => {
+    process.env.URLSCAN_CALLBACK_SECRET = "test-secret";
     delete process.env.CONTROL_PLANE_API_TOKEN;
 
     expect(() => {
       jest.isolateModules(() => {
-        const { config } = require(CONFIG_PATH) as typeof import('../config');
+        const { config } = require(CONFIG_PATH) as typeof import("../config");
         // Access token to trigger validation
         // eslint-disable-next-line @typescript-eslint/no-unused-expressions
         config.controlPlane.token;

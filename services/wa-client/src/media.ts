@@ -1,7 +1,7 @@
-import { existsSync } from 'node:fs';
-import path from 'node:path';
-import { MessageMedia } from 'whatsapp-web.js';
-import type { Logger } from 'pino';
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { MessageMedia } from "whatsapp-web.js";
+import type { Logger } from "pino";
 
 interface VerdictJobData {
   urlHash: string;
@@ -22,7 +22,7 @@ function resolveCandidatePaths(job: VerdictJobData): string[] {
     const pngPath = path.join(mediaDir, `${job.urlHash}.png`);
     const jpgPath = path.join(mediaDir, `${job.urlHash}.jpg`);
     const webpPath = path.join(mediaDir, `${job.urlHash}.webp`);
-    [pngPath, jpgPath, webpPath].forEach(p => candidates.add(p));
+    [pngPath, jpgPath, webpPath].forEach((p) => candidates.add(p));
   }
   return Array.from(candidates);
 }
@@ -35,7 +35,10 @@ async function loadVerdictMedia(file: string): Promise<MessageMedia> {
   );
 }
 
-export async function buildVerdictMedia(job: VerdictJobData, logger: Logger): Promise<{ media: MessageMedia; caption?: string } | null> {
+export async function buildVerdictMedia(
+  job: VerdictJobData,
+  logger: Logger,
+): Promise<{ media: MessageMedia; caption?: string } | null> {
   const files = resolveCandidatePaths(job);
   for (const file of files) {
     if (!existsSync(file)) continue;
@@ -43,7 +46,7 @@ export async function buildVerdictMedia(job: VerdictJobData, logger: Logger): Pr
       const media = await loadVerdictMedia(file);
       return { media };
     } catch (err) {
-      logger.warn({ err, file }, 'Failed to load verdict attachment');
+      logger.warn({ err, file }, "Failed to load verdict attachment");
     }
   }
   return null;

@@ -10,6 +10,7 @@ This document provides instructions for securely configuring the WhatsApp Bot Sc
 ### Database Credentials
 
 **POSTGRES_PASSWORD**
+
 - Generate a strong password for the PostgreSQL database
 - **Generation command**: `openssl rand -hex 32`
 - Set in `.env`: `POSTGRES_PASSWORD=your_generated_password`
@@ -17,12 +18,14 @@ This document provides instructions for securely configuring the WhatsApp Bot Sc
 ### API Keys
 
 #### VirusTotal (VT_API_KEY)
+
 - **Purpose**: URL reputation checking and malware scanning
 - **Get your key**: https://www.virustotal.com/gui/my-apikey
 - **Free tier**: 4 requests/minute
 - Set in `.env`: `VT_API_KEY=your_virustotal_api_key`
 
 #### Google Safe Browsing (GSB_API_KEY)
+
 - **Purpose**: Check URLs against Google's safe browsing database
 - **Get your key**: https://console.cloud.google.com/apis/credentials
   1. Create a new project or select existing
@@ -31,12 +34,14 @@ This document provides instructions for securely configuring the WhatsApp Bot Sc
 - Set in `.env`: `GSB_API_KEY=your_google_safe_browsing_key`
 
 #### WhoisXML API (WHOISXML_API_KEY)
+
 - **Purpose**: Domain WHOIS lookups for reputation analysis
 - **Get your key**: https://whoisxmlapi.com/
 - **Free tier**: 500 queries/month
 - Set in `.env`: `WHOISXML_API_KEY=your_whoisxml_api_key`
 
 #### urlscan.io (URLSCAN_API_KEY)
+
 - **Purpose**: Deep URL scanning and screenshot analysis
 - **Get your key**: https://urlscan.io/user/profile/
 - **Free tier**: Limited scans per day
@@ -46,32 +51,38 @@ This document provides instructions for securely configuring the WhatsApp Bot Sc
 
 All application secrets should be generated using cryptographically secure random generators.
 
-#### Control  Plane API Token (CONTROL_PLANE_API_TOKEN)
+#### Control Plane API Token (CONTROL_PLANE_API_TOKEN)
+
 - **Purpose**: Authentication for the control plane API
 - **Generation command**: `openssl rand -hex 32`
 - Set in `.env`: `CONTROL_PLANE_API_TOKEN=your_generated_token`
 
 #### JWT Secret (JWT_SECRET)
+
 - **Purpose**: Signing JSON Web Tokens for authentication
 - **Generation command**: `openssl rand -hex 32`
 - Set in `.env`: `JWT_SECRET=your_generated_secret`
 
 #### Session Secret (SESSION_SECRET)
+
 - **Purpose**: Encrypting session data
 - **Generation command**: `openssl rand -base64 48`
 - Set in `.env`: `SESSION_SECRET=your_generated_secret`
 
 #### WhatsApp Remote Auth Data Key (WA_REMOTE_AUTH_DATA_KEY)
+
 - **Purpose**: Encrypting WhatsApp authentication data
 - **Generation command**: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`
 - Set in `.env`: `WA_REMOTE_AUTH_DATA_KEY=your_generated_key`
 
 #### WhatsApp Remote Auth Shared Secret (WA_REMOTE_AUTH_SHARED_SECRET)
+
 - **Purpose**: Shared secret for WhatsApp authentication
 - **Generation command**: `openssl rand -hex 32`
 - Set in `.env`: `WA_REMOTE_AUTH_SHARED_SECRET=your_generated_secret`
 
 #### URLScan Callback Secret (URLSCAN_CALLBACK_SECRET)
+
 - **Purpose**: Validating URLScan.io webhook callbacks
 - **Generation command**: `openssl rand -hex 32`
 - Set in `.env`: `URLSCAN_CALLBACK_SECRET=your_generated_secret`
@@ -81,6 +92,7 @@ All application secrets should be generated using cryptographically secure rando
 If you want to use the DeepSource integration scripts for code analysis:
 
 **DEEPSOURCE_API_TOKEN**
+
 - **Purpose**: Programmatic access to DeepSource security reports
 - **Get your token**: https://app.deepsource.com/settings/tokens
 - Set in `.env`: `DEEPSOURCE_API_TOKEN=your_deepsource_token`
@@ -137,21 +149,25 @@ Save as `scripts/generate-secrets.sh`, make executable with `chmod +x scripts/ge
 ### Application won't start
 
 **Error**: `POSTGRES_PASSWORD is required` or similar
+
 - **Solution**: Ensure all required secrets are set in `.env`
 
 ### API rate limiting
 
-**Error**: `Rate limit exceeded` from VirusTotal or other services  
+**Error**: `Rate limit exceeded` from VirusTotal or other services
+
 - **Solution**: Check your API tier limits and consider upgrading or reducing request frequency
 
 ### Invalid API key
 
 **Error**: `401 Unauthorized` or `Invalid API key`
+
 - **Solution**: Verify the API key is correct and hasn't been revoked. Regenerate if necessary.
 
 ## Environment Variable Priority
 
 The application loads environment variables in this order (later sources override earlier):
+
 1. System environment variables
 2. `.env` file in project root
 3. Docker Compose environment variables (when running in containers)
