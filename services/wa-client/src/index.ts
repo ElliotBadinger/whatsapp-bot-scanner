@@ -489,6 +489,7 @@ interface VerdictJobData {
   redirectChain?: string[];
   shortener?: { provider: string; chain: string[] } | null;
   degradedMode?: { providers: Array<{ name: string; reason: string }> } | null;
+  isCorrection?: boolean;
 }
 
 async function collectVerdictMedia(job: VerdictJobData): Promise<Array<{ media: MessageMedia; type: 'screenshot' | 'ioc' }>> {
@@ -647,7 +648,11 @@ async function deliverVerdictMessage(
     });
   }
 
-  const verdictText = formatGroupVerdict(job.verdict, job.reasons, job.url);
+  const baseVerdictText = formatGroupVerdict(job.verdict, job.reasons, job.url);
+  const verdictText = job.isCorrection
+    ? `⚠️ CORRECTION: The link above has been re-evaluated as MALICIOUS.\n\n${baseVerdictText}`
+    : baseVerdictText;
+
   let reply: Message | null = null;
   try {
     if (targetMessage) {

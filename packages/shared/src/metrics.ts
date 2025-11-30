@@ -181,6 +181,31 @@ export const metrics = {
     name: 'wbscanner_verdict_cache_ttl_seconds',
     help: 'Cache TTL assigned to verdict responses',
     buckets: [300, 900, 1800, 3600, 7200, 14400, 28800, 86400],
+
+    registers: [register],
+  }),
+  scanPathCounter: new client.Counter({
+    name: 'wbscanner_scan_path_total',
+    help: 'Scans processed by path type (fast vs deep)',
+    labelNames: ['path', 'verdict'],
+    registers: [register],
+  }),
+  verdictCorrections: new client.Counter({
+    name: 'wbscanner_verdict_corrections_total',
+    help: 'Verdict corrections issued',
+    labelNames: ['from', 'to'],
+    registers: [register],
+  }),
+  fastPathLatency: new client.Histogram({
+    name: 'wbscanner_fast_path_latency_seconds',
+    help: 'Latency of Fast Path scans',
+    buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2],
+    registers: [register],
+  }),
+  deepScanLatency: new client.Histogram({
+    name: 'wbscanner_deep_scan_latency_seconds',
+    help: 'Latency of Deep Scan analysis',
+    buckets: [1, 2, 5, 10, 20, 40, 60],
     registers: [register],
   }),
   verdictEscalations: new client.Counter({
