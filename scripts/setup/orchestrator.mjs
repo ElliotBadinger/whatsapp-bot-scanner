@@ -404,6 +404,42 @@ async function detectDockerCompose(context, runtime, output) {
   }
 }
 
+function detectCodespaces() {
+  // Check if running in GitHub Codespaces
+  return !!(process.env.CODESPACES || process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN);
+}
+
+async function ensureDockerDaemon(output) {
+  // Try to start Docker daemon if not running (for Codespaces)
+  try {
+    await execa('docker', ['info'], { stdio: 'ignore' });
+    return true; // Docker is already running
+  } catch {
+    // Docker daemon not running, try to start it
+    output.info('Docker daemon not running, attempting to start...');
+    try {
+      // Try with sudo systemctl
+      await execa('sudo', ['systemctl', 'start', 'docker'], { stdio: 'ignore' });
+      // Wait a moment for daemon to start
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      await execa('docker', ['info'], { stdio: 'ignore' });
+      output.success('Docker daemon started successfully.');
+      return true;
+    } catch {
+      // Try with sudo service
+      try {
+        await execa('sudo', ['service', 'docker', 'start'], { stdio: 'ignore' });
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        await execa('docker', ['info'], { stdio: 'ignore' });
+        output.success('Docker daemon started successfully.');
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  }
+}
+
 async function preflightChecks(context, runtime, output) {
   output.heading('Preflight Checks');
   if (SKIP_PREREQ_CHECKS) {
@@ -411,8 +447,17 @@ async function preflightChecks(context, runtime, output) {
     output.success('Prerequisite checks skipped by configuration.');
     return;
   }
+
+  const isCodespaces = detectCodespaces();
   const skipDocker = context.flags.dryRun && SKIP_DOCKER_CHECKS;
-  const commandList = skipDocker ? REQUIRED_COMMANDS.filter(cmd => cmd.name !== 'docker') : REQUIRED_COMMANDS;
+
+  // In Codespaces, Docker is pre-installed, so skip the command check for it
+  const commandList = skipDocker
+    ? REQUIRED_COMMANDS.filter(cmd => cmd.name !== 'docker')
+    : (isCodespaces
+      ? REQUIRED_COMMANDS.filter(cmd => cmd.name !== 'docker')
+      : REQUIRED_COMMANDS);
+
   for (const cmd of commandList) {
     try {
       await execa('command', ['-v', cmd.name], { stdio: 'ignore', shell: true });
@@ -420,22 +465,46 @@ async function preflightChecks(context, runtime, output) {
       throw new Error(`Missing required command: ${cmd.name}. Install hint: ${cmd.hint}`);
     }
   }
+
   if (skipDocker) {
     output.warn('Docker availability checks skipped for dry run (SETUP_SKIP_DOCKER=1).');
     output.success('Prerequisite checks complete (Docker skipped).');
     return;
   }
+
+  // For Codespaces, ensure Docker daemon is running instead of just checking command existence
+  if (isCodespaces) {
+    output.info('GitHub Codespaces detected. Verifying Docker daemon...');
+    const dockerRunning = await ensureDockerDaemon(output);
+    if (!dockerRunning) {
+      throw new Error('Docker daemon unavailable in Codespaces. This is unexpected. Please report this issue.');
+    }
+  } else {
+    // For non-Codespaces environments, check if docker command exists
+    try {
+      await execa('command', ['-v', 'docker'], { stdio: 'ignore', shell: true });
+    } catch {
+      throw new Error(`Missing required command: docker. Install hint: Install instructions: https://docs.docker.com/engine/install/`);
+    }
+  }
+
   await detectDockerCompose(context, runtime, output);
   try {
     await execa(runtime.dockerComposeCommand[0], [...runtime.dockerComposeCommand.slice(1), 'version'], { stdio: 'ignore' });
   } catch {
     throw new Error('Docker Compose not responding. Ensure Docker Desktop or the daemon is running.');
   }
+
+  // Final check that Docker daemon is accessible
   try {
     await execa('docker', ['info'], { stdio: 'ignore' });
   } catch {
+    if (isCodespaces) {
+      throw new Error('Docker daemon unavailable in Codespaces after startup attempt. Please check Codespaces configuration.');
+    }
     throw new Error('Docker daemon unavailable. Start Docker and retry.');
   }
+
   if (process.env.HTTP_PROXY || process.env.HTTPS_PROXY) {
     output.info('Proxy settings detected. Docker builds inherit HTTP(S)_PROXY automatically if configured.');
   }
