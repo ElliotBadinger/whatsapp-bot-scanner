@@ -450,12 +450,29 @@ else
       # Check if Docker is accessible (try without sudo first if in docker group)
       if docker info >/dev/null 2>&1; then
         echo "✅ Docker is running and accessible."
+        DOCKER_AVAILABLE=true
       elif groups | grep -q docker && docker ps >/dev/null 2>&1; then
         echo "✅ Docker is running (via docker group)."
+        DOCKER_AVAILABLE=true
       else
-        # Docker daemon might not be running, try to check status
-        echo "Docker daemon not responding. This is expected in Codespaces."
-        echo "Codespaces manages Docker automatically. Continuing..."
+        # Docker daemon not running in Codespaces, try to start it
+        echo "Docker daemon not responding. Attempting to start..."
+        
+        # Try to start Docker daemon
+        if sudo systemctl start docker 2>/dev/null || sudo service docker start 2>/dev/null; then
+          if wait_for_docker; then
+            echo "✅ Docker daemon started successfully."
+            DOCKER_AVAILABLE=true
+          else
+            echo "⚠️  Docker daemon started but not responding. Continuing anyway..."
+            echo "   The Node.js setup wizard will attempt to start it again if needed."
+            DOCKER_AVAILABLE=true
+          fi
+        else
+          echo "⚠️  Could not start Docker daemon automatically."
+          echo "   The Node.js setup wizard will handle Docker initialization."
+          DOCKER_AVAILABLE=true
+        fi
       fi
     # Check if we're in a regular container
     elif detect_container_env; then
