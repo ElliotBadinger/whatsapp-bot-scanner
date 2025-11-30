@@ -195,7 +195,7 @@ const TROUBLESHOOTING_LINES = [
   'Unexpected crashes: inspect docker compose logs <service> and node scripts/validate-config.js.'
 ];
 
-const DEFAULT_REMOTE_AUTH_PHONE = 'REDACTED_PHONE_NUMBER';
+const DEFAULT_REMOTE_AUTH_PHONE = process.env.DEFAULT_REMOTE_AUTH_PHONE || '';
 
 const API_INTEGRATIONS = [
   {
