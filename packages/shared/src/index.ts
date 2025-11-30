@@ -6,6 +6,7 @@ export * from './ssrf';
 export * from './scoring';
 export * from './reputation/virustotal';
 export * from './reputation/gsb';
+export * from './reputation/gsb-local';
 export * from './reputation/rdap';
 export * from './reputation/urlhaus';
 export * from './reputation/phishtank';
