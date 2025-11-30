@@ -1,16 +1,16 @@
-const PHASE_NOT_FOUND = id => new Error(`Phase ${id} is not registered.`);
+const PHASE_NOT_FOUND = (id) => new Error(`Phase ${id} is not registered.`);
 
 function createEditor(phase) {
   return {
     addStep(step) {
-      if (typeof step !== 'function') {
-        throw new Error('Phase step must be a function.');
+      if (typeof step !== "function") {
+        throw new Error("Phase step must be a function.");
       }
       phase.steps.push(step);
     },
     wrapRun(wrapper) {
-      if (typeof wrapper !== 'function') {
-        throw new Error('Phase run wrapper must be a function.');
+      if (typeof wrapper !== "function") {
+        throw new Error("Phase run wrapper must be a function.");
       }
       const previous = phase.run.bind(phase);
       phase.run = async (api) => wrapper(api, previous);
@@ -27,28 +27,38 @@ function createEditor(phase) {
     },
     setTitle(title) {
       phase.title = title;
-    }
+    },
   };
 }
 
 function normalizePhase(definition) {
   if (!definition?.id) {
-    throw new Error('Phase requires an id.');
+    throw new Error("Phase requires an id.");
   }
-  if (typeof definition.run !== 'function' && !Array.isArray(definition.steps)) {
-    throw new Error(`Phase ${definition.id} must provide a run function or steps.`);
+  if (
+    typeof definition.run !== "function" &&
+    !Array.isArray(definition.steps)
+  ) {
+    throw new Error(
+      `Phase ${definition.id} must provide a run function or steps.`,
+    );
   }
   const steps = Array.isArray(definition.steps) ? [...definition.steps] : [];
   const phase = {
     id: definition.id,
     title: definition.title || definition.id,
-    prerequisites: definition.prerequisites ? [...definition.prerequisites] : [],
+    prerequisites: definition.prerequisites
+      ? [...definition.prerequisites]
+      : [],
     copy: { ...(definition.copy || {}) },
-    isVisible: typeof definition.isVisible === 'function' ? definition.isVisible : () => true,
+    isVisible:
+      typeof definition.isVisible === "function"
+        ? definition.isVisible
+        : () => true,
     steps,
-    run: () => Promise.resolve()
+    run: () => Promise.resolve(),
   };
-  if (typeof definition.run === 'function') {
+  if (typeof definition.run === "function") {
     phase.run = definition.run;
   } else {
     phase.run = async (api) => {
@@ -102,9 +112,9 @@ export class PhaseRegistry {
 
   list(context) {
     return this.order
-      .map(id => this.phases.get(id))
+      .map((id) => this.phases.get(id))
       .filter(Boolean)
-      .filter(phase => phase.isVisible?.(context) !== false);
+      .filter((phase) => phase.isVisible?.(context) !== false);
   }
 }
 
@@ -119,7 +129,7 @@ export async function runPhases({
   startAt,
   stopAfter,
   plugins = [],
-  runtime = context.runtime
+  runtime = context.runtime,
 }) {
   const phases = registry.list(context);
   let started = !startAt;
@@ -132,9 +142,13 @@ export async function runPhases({
       }
     }
     if (phase.prerequisites?.length) {
-      const missing = phase.prerequisites.filter(req => !phases.some(p => p.id === req));
+      const missing = phase.prerequisites.filter(
+        (req) => !phases.some((p) => p.id === req),
+      );
       if (missing.length > 0) {
-        throw new Error(`Phase ${phase.id} has unknown prerequisites: ${missing.join(', ')}`);
+        throw new Error(
+          `Phase ${phase.id} has unknown prerequisites: ${missing.join(", ")}`,
+        );
       }
     }
     const copy = phase.copy?.[context.mode] || phase.copy?.default;
@@ -147,7 +161,7 @@ export async function runPhases({
     }
     const api = { context, runtime, output, phase, registry };
     for (const plugin of plugins) {
-      if (plugin?.enabled && typeof plugin?.hooks?.beforePhase === 'function') {
+      if (plugin?.enabled && typeof plugin?.hooks?.beforePhase === "function") {
         await plugin.hooks.beforePhase({ ...api, plugin });
       }
     }
@@ -155,13 +169,17 @@ export async function runPhases({
     const startedAt = Date.now();
     await phase.run(api);
     for (const plugin of plugins) {
-      if (plugin?.enabled && typeof plugin?.hooks?.afterPhase === 'function') {
+      if (plugin?.enabled && typeof plugin?.hooks?.afterPhase === "function") {
         await plugin.hooks.afterPhase({ ...api, plugin });
       }
     }
     const took = Date.now() - startedAt;
-    context.log('phaseResult', { id: phase.id, durationMs: took, mode: context.mode });
-    context.markCheckpoint(phase.id, 'completed');
+    context.log("phaseResult", {
+      id: phase.id,
+      durationMs: took,
+      mode: context.mode,
+    });
+    context.markCheckpoint(phase.id, "completed");
     if (stopAfter && phase.id === stopAfter) {
       break;
     }

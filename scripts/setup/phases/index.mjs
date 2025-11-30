@@ -1,12 +1,12 @@
 const BUILTIN_PHASES = [
-  './preflight.mjs',
-  './cleanup.mjs',
-  './environment.mjs',
-  './config-validation.mjs',
-  './api-validation.mjs',
-  './docker.mjs',
-  './stabilize.mjs',
-  './smoke.mjs'
+  "./preflight.mjs",
+  "./cleanup.mjs",
+  "./environment.mjs",
+  "./config-validation.mjs",
+  "./api-validation.mjs",
+  "./docker.mjs",
+  "./stabilize.mjs",
+  "./smoke.mjs",
 ];
 
 export async function registerBuiltinPhases(registry) {

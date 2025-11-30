@@ -1,11 +1,11 @@
-import { cleanDigits } from './runtime.mjs';
+import { cleanDigits } from "./runtime.mjs";
 
 function ensureRemoteAuthState(runtime) {
   if (!runtime.remoteAuthState) {
     runtime.remoteAuthState = {
       lastQrAt: 0,
       lastHintAt: 0,
-      lastCode: null
+      lastCode: null,
     };
   }
   return runtime.remoteAuthState;
@@ -18,11 +18,16 @@ function shouldThrottle(state, key, intervalMs) {
   return false;
 }
 
-export function announcePairingCode(context, output, runtime, { code, attempt, phone }) {
+export function announcePairingCode(
+  context,
+  output,
+  runtime,
+  { code, attempt, phone },
+) {
   const state = ensureRemoteAuthState(runtime);
   if (state.lastCode === code) return;
   state.lastCode = code;
-  output.heading('Phone Number Pairing Code');
+  output.heading("Phone Number Pairing Code");
   output.success(`Code: ${code}`);
   if (Number.isFinite(attempt)) {
     output.info(`Attempt: ${attempt}`);
@@ -30,35 +35,43 @@ export function announcePairingCode(context, output, runtime, { code, attempt, p
   if (phone) {
     output.info(`Phone: ${phone}`);
   }
-  context.log('remoteAuthCode', { code, attempt, phone });
+  context.log("remoteAuthCode", { code, attempt, phone });
 }
 
 export function handleRemoteAuthLog(context, runtime, output, event) {
   const state = ensureRemoteAuthState(runtime);
-  const message = event.msg || '';
+  const message = event.msg || "";
   if (/Using raw RemoteAuth data key/i.test(message)) {
-    output.note('Detected RemoteAuth data key in environment. Ensure device secrets stay secure.');
+    output.note(
+      "Detected RemoteAuth data key in environment. Ensure device secrets stay secure.",
+    );
     return;
   }
   if (/Initialising RemoteAuth strategy/i.test(message)) {
-    output.info('Initialising RemoteAuth session…');
+    output.info("Initialising RemoteAuth session…");
     return;
   }
   if (/Auto pairing enabled/i.test(message)) {
-    if (!shouldThrottle(state, 'lastHintAt', 5_000)) {
-      output.info('Auto pairing enabled; keep WhatsApp open on the target device.');
+    if (!shouldThrottle(state, "lastHintAt", 5_000)) {
+      output.info(
+        "Auto pairing enabled; keep WhatsApp open on the target device.",
+      );
     }
     return;
   }
   if (/RemoteAuth session not found/i.test(message)) {
-    if (!shouldThrottle(state, 'lastHintAt', 5_000)) {
-      output.info('No existing RemoteAuth session found. Waiting for the phone-number pairing code.');
+    if (!shouldThrottle(state, "lastHintAt", 5_000)) {
+      output.info(
+        "No existing RemoteAuth session found. Waiting for the phone-number pairing code.",
+      );
     }
     return;
   }
   if (/QR code generated/i.test(message)) {
-    if (!shouldThrottle(state, 'lastQrAt', 30_000)) {
-      output.warn('QR code suppressed while phone-number pairing is in progress. Disable auto pairing if you prefer the QR flow.');
+    if (!shouldThrottle(state, "lastQrAt", 30_000)) {
+      output.warn(
+        "QR code suppressed while phone-number pairing is in progress. Disable auto pairing if you prefer the QR flow.",
+      );
     }
     return;
   }
@@ -66,12 +79,12 @@ export function handleRemoteAuthLog(context, runtime, output, event) {
     announcePairingCode(context, output, runtime, {
       code: event.code,
       attempt: event.attempt,
-      phone: event.phoneNumber
+      phone: event.phoneNumber,
     });
     return;
   }
   if (/WhatsApp client ready/i.test(message)) {
-    output.success('WhatsApp client reports ready.');
+    output.success("WhatsApp client reports ready.");
     return;
   }
   output.note(message);
@@ -86,20 +99,24 @@ export function handleRemoteAuthLine(context, runtime, output, line) {
       announcePairingCode(context, output, runtime, {
         code: codeMatch[1].toUpperCase(),
         attempt: null,
-        phone: phoneMatch ? phoneMatch[1] : null
+        phone: phoneMatch ? phoneMatch[1] : null,
       });
       return true;
     }
   }
   if (/Open WhatsApp > Linked Devices/i.test(line)) {
-    if (!shouldThrottle(state, 'lastHintAt', 5_000)) {
-      output.info('Open WhatsApp → Linked Devices → follow the on-screen prompt to finish linking.');
+    if (!shouldThrottle(state, "lastHintAt", 5_000)) {
+      output.info(
+        "Open WhatsApp → Linked Devices → follow the on-screen prompt to finish linking.",
+      );
     }
     return true;
   }
   if (/QR code ready for scanning/i.test(line)) {
-    if (!shouldThrottle(state, 'lastQrAt', 30_000)) {
-      output.warn('QR code available for scanning. If you expected phone-number pairing, wait for the SMS or disable auto pairing.');
+    if (!shouldThrottle(state, "lastQrAt", 30_000)) {
+      output.warn(
+        "QR code available for scanning. If you expected phone-number pairing, wait for the SMS or disable auto pairing.",
+      );
     }
     return true;
   }
@@ -109,6 +126,6 @@ export function handleRemoteAuthLine(context, runtime, output, line) {
 export function parseRemoteAuthPhone(runtime) {
   const state = ensureRemoteAuthState(runtime);
   if (!runtime.envFile) return null;
-  const phone = runtime.envFile.get('WA_REMOTE_AUTH_PHONE_NUMBER');
-  return cleanDigits(phone || state.lastPhone || '');
+  const phone = runtime.envFile.get("WA_REMOTE_AUTH_PHONE_NUMBER");
+  return cleanDigits(phone || state.lastPhone || "");
 }

@@ -1,10 +1,10 @@
-import { PhaseRegistry } from '../phases/registry.mjs';
+import { PhaseRegistry } from "../phases/registry.mjs";
 
 const plugins = new Map();
 
 export function registerPlugin(plugin) {
   if (!plugin?.id) {
-    throw new Error('Plugin requires an id.');
+    throw new Error("Plugin requires an id.");
   }
   if (plugins.has(plugin.id)) {
     throw new Error(`Plugin ${plugin.id} already registered.`);
@@ -12,7 +12,7 @@ export function registerPlugin(plugin) {
   plugins.set(plugin.id, {
     optional: true,
     hooks: {},
-    ...plugin
+    ...plugin,
   });
 }
 
@@ -26,7 +26,7 @@ export function clearPlugins() {
 
 function createPluginApi({ registry, context, plugin }) {
   if (!(registry instanceof PhaseRegistry)) {
-    throw new Error('Plugin API requires a PhaseRegistry instance.');
+    throw new Error("Plugin API requires a PhaseRegistry instance.");
   }
   return {
     context,
@@ -35,16 +35,18 @@ function createPluginApi({ registry, context, plugin }) {
     },
     extendPhase(id, extender) {
       registry.extend(id, extender);
-    }
+    },
   };
 }
 
 export function activatePlugins({ context, registry }) {
   const active = [];
   for (const plugin of listPlugins()) {
-    const enabled = plugin.isEnabled ? plugin.isEnabled(context) !== false : true;
+    const enabled = plugin.isEnabled
+      ? plugin.isEnabled(context) !== false
+      : true;
     const instance = { ...plugin, enabled };
-    if (enabled && typeof plugin.register === 'function') {
+    if (enabled && typeof plugin.register === "function") {
       const api = createPluginApi({ registry, context, plugin: instance });
       plugin.register(api);
     }
