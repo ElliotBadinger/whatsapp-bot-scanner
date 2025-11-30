@@ -206,6 +206,7 @@ const redis = createRedisConnection();
 const scanRequestQueue = createQueue(config.queues.scanRequest, { connection: redis });
 const scanVerdictQueue = createQueue(config.queues.scanVerdict, { connection: redis });
 const urlscanQueue = createQueue(config.queues.urlscan, { connection: redis });
+const deepScanQueue = createQueue('deep-scan', { connection: redis });
 
 function createQueue(name: string, options: { connection: Redis }): Queue {
   if (typeof globalThis !== 'undefined') {
@@ -224,6 +225,7 @@ const queueMetricsInterval = setInterval(() => {
   refreshQueueMetrics(scanRequestQueue, config.queues.scanRequest).catch(() => undefined);
   refreshQueueMetrics(scanVerdictQueue, config.queues.scanVerdict).catch(() => undefined);
   refreshQueueMetrics(urlscanQueue, config.queues.urlscan).catch(() => undefined);
+  refreshQueueMetrics(deepScanQueue, 'deep-scan').catch(() => undefined);
 }, 10_000);
 queueMetricsInterval.unref();
 
@@ -1092,8 +1094,8 @@ interface ExternalCheckResults {
   urlhausConsulted: boolean;
 }
 
-async function performExternalChecks(finalUrl: string, finalUrlObj: URL, h: string, dbClient: IDatabaseConnection): Promise<ExternalCheckResults> {
-  const [blocklistResult, domainIntel, manualOverride] = await Promise.all([
+async function performBlocklistChecks(finalUrl: string, finalUrlObj: URL, h: string, dbClient: IDatabaseConnection): Promise<Partial<ExternalCheckResults>> {
+  const [blocklistResult, manualOverride] = await Promise.all([
     checkBlocklistsWithRedundancy({
       finalUrl,
       hash: h,
@@ -1103,7 +1105,6 @@ async function performExternalChecks(finalUrl: string, finalUrlObj: URL, h: stri
       fetchGsbAnalysis,
       fetchPhishtank,
     }),
-    fetchDomainIntel(finalUrlObj.hostname, h),
     loadManualOverride(dbClient, h, finalUrlObj.hostname),
   ]);
 
@@ -1115,32 +1116,13 @@ async function performExternalChecks(finalUrl: string, finalUrlObj: URL, h: stri
   const gsbHit = gsbMatches.length > 0;
   if (gsbHit) metrics.gsbHits.inc();
 
-  const phishtankResult = blocklistResult.phishtankResult;
-  const phishtankHit = Boolean(phishtankResult?.verified);
-
-  let vtStats: VtStats | undefined;
-  let vtQuotaExceeded = false;
-  let vtError: Error | null = null;
-  if (!gsbHit && !phishtankHit) {
-    const vtResponse = await fetchVirusTotal(finalUrl, h);
-    vtStats = vtResponse.stats;
-    vtQuotaExceeded = vtResponse.quotaExceeded;
-    vtError = vtResponse.error;
-    if (!vtResponse.fromCache && !vtResponse.error) {
-      metrics.vtSubmissions.inc();
-    }
-  }
-
   let urlhausResult: UrlhausResult | null = null;
   let urlhausError: Error | null = null;
   let urlhausConsulted = false;
-  const shouldQueryUrlhaus =
-    !gsbHit && (
-      !config.vt.apiKey ||
-      vtQuotaExceeded ||
-      vtError !== null ||
-      !vtStats
-    );
+
+  // Check URLhaus in fast path if GSB/Phishtank missed
+  const shouldQueryUrlhaus = !gsbHit && !blocklistResult.phishtankResult?.verified;
+
   if (shouldQueryUrlhaus) {
     urlhausConsulted = true;
     const urlhausResponse = await fetchUrlhaus(finalUrl, h);
@@ -1150,14 +1132,32 @@ async function performExternalChecks(finalUrl: string, finalUrlObj: URL, h: stri
 
   return {
     blocklistResult,
-    domainIntel,
     manualOverride,
-    vtStats,
-    vtQuotaExceeded,
-    vtError,
     urlhausResult,
     urlhausError,
     urlhausConsulted
+  };
+}
+
+async function performDeepAnalysis(finalUrl: string, finalUrlObj: URL, h: string): Promise<Partial<ExternalCheckResults>> {
+  const [domainIntel, vtResponse] = await Promise.all([
+    fetchDomainIntel(finalUrlObj.hostname, h),
+    fetchVirusTotal(finalUrl, h)
+  ]);
+
+  let vtStats: VtStats | undefined = vtResponse.stats;
+  let vtQuotaExceeded = vtResponse.quotaExceeded;
+  let vtError = vtResponse.error;
+
+  if (!vtResponse.fromCache && !vtResponse.error) {
+    metrics.vtSubmissions.inc();
+  }
+
+  return {
+    domainIntel,
+    vtStats,
+    vtQuotaExceeded,
+    vtError
   };
 }
 
@@ -1165,13 +1165,13 @@ interface VerdictResult {
   level: string;
   score: number;
   reasons: string[];
-  cacheTtl?: number;
+  cacheTtl: number;
   verdict: string;
   ttl: number;
   enqueuedUrlscan: boolean;
-  degradedMode?: {
-    providers: Array<{ name: string; reason: string }>;
-  };
+  degradedMode?: { providers: Array<{ name: string; reason: string }> };
+  isCorrection?: boolean;
+  suppressMessage?: boolean;
 }
 
 type ProviderState = {
@@ -1461,7 +1461,7 @@ async function storeAndDispatchResults(
   dbClient: IDatabaseConnection,
   enhancedSecurity: EnhancedSecurityAnalyzer
 ): Promise<void> {
-  const { verdict, score, reasons, ttl, enqueuedUrlscan, degradedMode } = verdictResult;
+  const { verdict, score, reasons, ttl, enqueuedUrlscan, degradedMode, isCorrection, suppressMessage } = verdictResult;
   const h = urlHash(finalUrl);
   const cacheKey = `scan:${h}`;
 
@@ -1488,6 +1488,7 @@ async function storeAndDispatchResults(
     finalUrlMismatch: false, // Will be filled in by the caller
     decidedAt: Date.now(),
     degradedMode,
+    isCorrection,
   };
 
   await setJsonCache(CACHE_LABELS.verdict, cacheKey, res, ttl);
@@ -1543,10 +1544,10 @@ async function storeAndDispatchResults(
     logger.warn({ err, chatId, messageId }, 'failed to persist message metadata for scan');
   }
 
-  if (chatId && messageId) {
+  if (chatId && messageId && !suppressMessage) {
     await scanVerdictQueue.add('verdict', { ...res, chatId, messageId }, { removeOnComplete: true });
   } else {
-    logger.info({ url: finalUrl }, 'Completed scan without chat context; skipping messaging flow');
+    logger.info({ url: finalUrl, suppressMessage }, 'Completed scan without dispatching message (no context or suppressed)');
   }
 
   await enhancedSecurity.recordVerdict(
@@ -1761,20 +1762,41 @@ async function main() {
         return;
       }
 
-      // External API checks
-      const externalResults = await performExternalChecks(finalUrl, finalUrlObj, h, dbClient);
+      // External API checks (Blocklists only for Fast Path)
+      const blocklistResults = await performBlocklistChecks(finalUrl, finalUrlObj, h, dbClient);
 
-      // Generate verdict
-      const verdictResult = await generateVerdict(
-        externalResults, finalUrl, h, redirectChain, wasShortened, finalUrlMismatch,
-        homoglyphResult, heurSignals, { verdict: enhancedSecurityResult.verdict || "unknown", confidence: enhancedSecurityResult.confidence || "unknown", score: enhancedSecurityResult.score, reasons: enhancedSecurityResult.reasons, skipExternalAPIs: enhancedSecurityResult.skipExternalAPIs }, shortenerInfo
+      // Generate Fast Verdict
+      const fastVerdictResult = await generateVerdict(
+        { ...blocklistResults, domainIntel: { source: 'none' } } as ExternalCheckResults,
+        finalUrl, h, redirectChain, wasShortened, finalUrlMismatch,
+        homoglyphResult, heurSignals,
+        { verdict: enhancedSecurityResult.verdict || "unknown", confidence: enhancedSecurityResult.confidence || "unknown", score: enhancedSecurityResult.score, reasons: enhancedSecurityResult.reasons, skipExternalAPIs: enhancedSecurityResult.skipExternalAPIs },
+        shortenerInfo
       );
 
-      // Store results and dispatch
+      // Store and Dispatch Fast Verdict
       await storeAndDispatchResults(
-        verdictResult, chatId, messageId, hasChatContext, queueName, started,
-        job.attemptsMade, ingestionTimestamp, finalUrl, { verdict: enhancedSecurityResult.verdict || "unknown", confidence: enhancedSecurityResult.confidence || "unknown", score: enhancedSecurityResult.score, reasons: enhancedSecurityResult.reasons, skipExternalAPIs: enhancedSecurityResult.skipExternalAPIs }, dbClient, enhancedSecurity
+        fastVerdictResult, chatId, messageId, hasChatContext, queueName, started,
+        job.attemptsMade, ingestionTimestamp, finalUrl,
+        { verdict: enhancedSecurityResult.verdict || "unknown", confidence: enhancedSecurityResult.confidence || "unknown", score: enhancedSecurityResult.score, reasons: enhancedSecurityResult.reasons, skipExternalAPIs: enhancedSecurityResult.skipExternalAPIs },
+        dbClient, enhancedSecurity
       );
+
+      // Record Fast Path Metrics
+      metrics.fastPathLatency.observe((Date.now() - started) / 1000);
+      metrics.scanPathCounter.labels('fast', fastVerdictResult.verdict).inc();
+
+      // If Fast Verdict is NOT Malicious, queue Deep Scan
+      if (fastVerdictResult.verdict !== 'malicious') {
+        await deepScanQueue.add('deep-scan', {
+          ...job.data,
+          fastVerdict: fastVerdictResult.verdict,
+          blocklistResults,
+          urlAnalysis: { finalUrl, finalUrlObj, redirectChain, heurSignals, wasShortened, finalUrlMismatch, shortenerInfo },
+          homoglyphResult,
+          enhancedSecurityResult
+        }, { removeOnComplete: true });
+      }
 
     } catch (e) {
       metrics.queueFailures.labels(queueName).inc();
@@ -1785,12 +1807,65 @@ async function main() {
     }
   }, { connection: redis, concurrency: config.orchestrator.concurrency });
 
+  // Deep Scan Worker
+  new Worker('deep-scan', async (job) => {
+    const queueName = 'deep-scan';
+    const started = Date.now();
+    const { chatId, messageId, fastVerdict, blocklistResults, urlAnalysis, homoglyphResult, enhancedSecurityResult } = job.data;
+    const { finalUrl, finalUrlObj, redirectChain, heurSignals, wasShortened, finalUrlMismatch, shortenerInfo } = urlAnalysis;
+    const h = urlHash(normalizeUrl(finalUrl) || finalUrl);
+    const hasChatContext = typeof chatId === 'string' && typeof messageId === 'string';
+
+    try {
+      // Perform Deep Analysis (VT, Whois)
+      const deepResults = await performDeepAnalysis(finalUrl, finalUrlObj, h);
+
+      // Merge results
+      const allResults: ExternalCheckResults = {
+        ...blocklistResults,
+        ...deepResults,
+      } as ExternalCheckResults;
+
+      // Generate Final Verdict
+      const finalVerdictResult = await generateVerdict(
+        allResults, finalUrl, h, redirectChain, wasShortened, finalUrlMismatch,
+        homoglyphResult, heurSignals, enhancedSecurityResult, shortenerInfo
+      );
+
+      // If verdict changed to Malicious (Correction needed)
+      if (finalVerdictResult.verdict === 'malicious' && fastVerdict !== 'malicious') {
+        logger.info({ url: finalUrl, old: fastVerdict, new: 'malicious' }, 'Verdict correction: Benign -> Malicious');
+
+        metrics.verdictCorrections.labels(fastVerdict, 'malicious').inc();
+
+        // Dispatch Correction
+        await storeAndDispatchResults(
+          { ...finalVerdictResult, isCorrection: true },
+          chatId, messageId, hasChatContext, queueName, started,
+          job.attemptsMade, Date.now(), finalUrl, enhancedSecurityResult, dbClient, enhancedSecurity
+        );
+      } else {
+        // Just update DB/Cache, don't spam user if verdict is same or still benign
+        await storeAndDispatchResults(
+          { ...finalVerdictResult, suppressMessage: true },
+          chatId, messageId, hasChatContext, queueName, started,
+          job.attemptsMade, Date.now(), finalUrl, enhancedSecurityResult, dbClient, enhancedSecurity
+        );
+      }
+
+      // Record Deep Scan Metrics
+      metrics.deepScanLatency.observe((Date.now() - started) / 1000);
+      metrics.scanPathCounter.labels('deep', finalVerdictResult.verdict).inc();
+
+    } catch (e) {
+      logger.error(e, 'deep scan worker error');
+    }
+  }, { connection: redis, concurrency: config.orchestrator.concurrency });
+
   if (config.urlscan.enabled && config.urlscan.apiKey) {
     new Worker(config.queues.urlscan, async (job) => {
       const queueName = config.queues.urlscan;
       const started = Date.now();
-      const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
-      metrics.queueJobWait.labels(queueName).observe(waitSeconds);
       const { url, urlHash: urlHashValue } = job.data as { url: string; urlHash: string };
       try {
         const submission: UrlscanSubmissionResponse = await urlscanCircuit.execute(() =>
