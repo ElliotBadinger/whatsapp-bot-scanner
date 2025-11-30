@@ -1,6 +1,7 @@
 # Setup Wizard Overhaul Design
 
 ## Goals
+
 - Provide a narrative, confidence-building setup journey for first-time operators.
 - Replace linear bash prompts with a guided wizard featuring menus, inline help, and visible progress.
 - Preserve non-interactive and CI compatibility by supporting `--noninteractive` and environment fallbacks.
@@ -8,6 +9,7 @@
 - Reduce repeated container tear-down/start cycles by orchestrating Docker work in grouped phases.
 
 ## Key Decisions
+
 - **Runtime:** Migrate orchestration to a Node.js CLI (`scripts/setup-wizard.mjs`) that drives tasks via `execa`. Bash wrapper (`setup.sh`) remains as an entry point for portability.
 - **CLI Libraries:** Adopt
   - `enquirer` for accessible prompts, checkboxes, and contextual help text.
@@ -20,6 +22,7 @@
 - **Testing Hooks:** Introduce a dry-run flag plus skip toggles (`--skip-preflight`, `--skip-api-validation`) so CI or air-gapped reviews can cover env mutations without Docker/network dependencies. Task-level unit exercises (`npm run test --workspace tests/setup-wizard` TBD) remain a follow-up.
 
 ## Flow Outline
+
 1. **Welcome & Mode Selection:** Boxed introduction, explain estimated duration, confirm readiness.
 2. **Plan Builder:** Checkbox selector for pull/clean/reset + branch override; show computed summary before execution.
 3. **Preflight:** Validate command prerequisites, optionally install Docker Compose plugin hints, confirm daemon availability.
@@ -31,11 +34,13 @@
 9. **Postrun Dashboard:** Summaries for observability URLs, missing keys, disabled integrations, troubleshooting FAQ, and exportable transcript.
 
 ## Accessibility Considerations
+
 - Default to high-contrast chalk palette; detect `NO_COLOR`/`--no-color`.
 - Provide textual progress updates beyond spinner glyphs (percentage/step counts).
 - Allow skipping sound-based cues; maintain plain-text alternatives for transcripts/non-TTYs.
 - Respect `CI=true` and `SETUP_NONINTERACTIVE` to bypass interactive UI entirely.
 
 ## Open Implementation Questions
+
 - Should we persist the execution transcript to `./logs/setup-YYYYMMDDHHMM.log` for support sharing?
 - How do we expose “dry run” without altering production environment (e.g., `--dry-run` that stops after plan + preflight)?
