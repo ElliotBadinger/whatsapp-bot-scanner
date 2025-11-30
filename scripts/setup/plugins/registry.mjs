@@ -2,7 +2,7 @@ const plugins = new Map();
 
 export function registerPlugin(plugin) {
   if (!plugin?.id) {
-    throw new Error('Plugin requires an id.');
+    throw new Error("Plugin requires an id.");
   }
   if (plugins.has(plugin.id)) {
     throw new Error(`Plugin ${plugin.id} already registered.`);
@@ -10,7 +10,7 @@ export function registerPlugin(plugin) {
   plugins.set(plugin.id, {
     optional: true,
     stages: [],
-    ...plugin
+    ...plugin,
   });
 }
 
@@ -19,7 +19,10 @@ export function listPlugins() {
 }
 
 export function pluginsForStage(stage, context) {
-  return listPlugins().filter(plugin => plugin.stages.includes(stage) && plugin.isEnabled?.(context) !== false);
+  return listPlugins().filter(
+    (plugin) =>
+      plugin.stages.includes(stage) && plugin.isEnabled?.(context) !== false,
+  );
 }
 
 export function clearPlugins() {

@@ -1,8 +1,8 @@
-import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
-import { PairingOrchestrator } from '../../services/wa-client/src/pairingOrchestrator';
+import { PairingOrchestrator } from "../../services/wa-client/src/pairingOrchestrator";
 
-describe('RemoteAuth pairing orchestrator', () => {
+describe("RemoteAuth pairing orchestrator", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
@@ -12,16 +12,18 @@ describe('RemoteAuth pairing orchestrator', () => {
     vi.useRealTimers();
   });
 
-  it('backs off to 60 seconds after rate limit errors to avoid hammering WhatsApp', async () => {
+  it("backs off to 60 seconds after rate limit errors to avoid hammering WhatsApp", async () => {
     const callTimestamps: number[] = [];
     let attemptCounter = 0;
     const requestCode = vi.fn(async () => {
       callTimestamps.push(Date.now());
       attemptCounter += 1;
       if (attemptCounter < 3) {
-        throw new Error('pairing_code_request_failed:{"type":"IQErrorRateOverlimit","value":{"code":429}}');
+        throw new Error(
+          'pairing_code_request_failed:{"type":"IQErrorRateOverlimit","value":{"code":429}}',
+        );
       }
-      return '123456';
+      return "123456";
     });
     const orchestrator = new PairingOrchestrator({
       enabled: true,
@@ -54,7 +56,7 @@ describe('RemoteAuth pairing orchestrator', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('invokes fallback and stops retrying after exhausting attempts', async () => {
+  it("invokes fallback and stops retrying after exhausting attempts", async () => {
     const fallback = vi.fn();
     const requestCode = vi.fn(async () => {
       throw new Error('pairing_code_request_failed:{"reason":"other"}');

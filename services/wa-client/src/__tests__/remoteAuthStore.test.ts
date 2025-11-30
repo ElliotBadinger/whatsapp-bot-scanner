@@ -1,17 +1,17 @@
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
-import { createHash } from 'node:crypto';
-import type { Logger } from 'pino';
-import type Redis from 'ioredis';
-import { createRemoteAuthStore } from '../remoteAuthStore';
-import type { EncryptionMaterials } from '../crypto/dataKeyProvider';
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import { createHash } from "node:crypto";
+import type { Logger } from "pino";
+import type Redis from "ioredis";
+import { createRemoteAuthStore } from "../remoteAuthStore";
+import type { EncryptionMaterials } from "../crypto/dataKeyProvider";
 
 class MemoryRedis {
   private store = new Map<string, string>();
 
   async set(key: string, value: string) {
     this.store.set(key, value);
-    return 'OK';
+    return "OK";
   }
 
   async get(key: string) {
@@ -36,32 +36,32 @@ const noopLogger: Logger = {
   debug: () => undefined,
   trace: () => undefined,
   child: () => noopLogger,
-  level: 'info',
+  level: "info",
   silent: false,
 } as unknown as Logger;
 
 function materialFromSecret(secret: string): EncryptionMaterials {
-  const base = Buffer.from(secret, 'utf8');
-  const enc = createHash('sha256').update(base).update('enc').digest();
-  const hmac = createHash('sha256').update(base).update('mac').digest();
-  return { encryptionKey: enc, hmacKey: hmac, keySource: 'test' };
+  const base = Buffer.from(secret, "utf8");
+  const enc = createHash("sha256").update(base).update("enc").digest();
+  const hmac = createHash("sha256").update(base).update("mac").digest();
+  return { encryptionKey: enc, hmacKey: hmac, keySource: "test" };
 }
 
-describe('RedisRemoteAuthStore', () => {
+describe("RedisRemoteAuthStore", () => {
   jest.setTimeout(15000);
-  const session = 'RemoteAuth-test';
+  const session = "RemoteAuth-test";
   const zipPath = path.resolve(`${session}.zip`);
-  const clientId = 'test-client';
-  const prefix = 'remoteauth:v1:test-client';
-  const materials = materialFromSecret('super-secret');
+  const clientId = "test-client";
+  const prefix = "remoteauth:v1:test-client";
+  const materials = materialFromSecret("super-secret");
   const redis = new MemoryRedis() as unknown as Redis;
 
   afterEach(async () => {
     await fs.rm(zipPath, { force: true });
   });
 
-  it('persists, extracts, and deletes session payloads', async () => {
-    const fixture = Buffer.from('zip-contents');
+  it("persists, extracts, and deletes session payloads", async () => {
+    const fixture = Buffer.from("zip-contents");
     await fs.writeFile(zipPath, fixture);
     const store = createRemoteAuthStore({
       redis,

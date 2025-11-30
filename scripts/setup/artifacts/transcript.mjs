@@ -1,14 +1,14 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import os from 'node:os';
-import { scrubObject } from '../utils/redact.mjs';
+import fs from "node:fs/promises";
+import path from "node:path";
+import os from "node:os";
+import { scrubObject } from "../utils/redact.mjs";
 
 function timestamp() {
   return new Date().toISOString();
 }
 
 function formatDuration(ms) {
-  if (!Number.isFinite(ms)) return 'n/a';
+  if (!Number.isFinite(ms)) return "n/a";
   const sec = Math.round(ms / 100) / 10;
   if (sec < 60) return `${sec.toFixed(1)}s`;
   const minutes = Math.floor(sec / 60);
@@ -19,16 +19,18 @@ function formatDuration(ms) {
 export class Transcript {
   constructor(rootDir) {
     this.rootDir = rootDir;
-    this.logsDir = process.env.SETUP_LOGS_DIR ? path.resolve(process.env.SETUP_LOGS_DIR) : path.join(rootDir, 'logs');
+    this.logsDir = process.env.SETUP_LOGS_DIR
+      ? path.resolve(process.env.SETUP_LOGS_DIR)
+      : path.join(rootDir, "logs");
     this.events = [];
     this.metadata = {
       modeChanges: [],
       checkpoints: [],
       glossaryOpened: false,
       accessibility: {
-        noColor: process.env.NO_COLOR === '1',
-        highContrast: process.env.FORCE_HIGH_CONTRAST === '1'
-      }
+        noColor: process.env.NO_COLOR === "1",
+        highContrast: process.env.FORCE_HIGH_CONTRAST === "1",
+      },
     };
     this.startedAt = Date.now();
   }
@@ -37,7 +39,7 @@ export class Transcript {
     this.events.push({
       type,
       at: timestamp(),
-      ...scrubObject(payload)
+      ...scrubObject(payload),
     });
   }
 
@@ -57,11 +59,16 @@ export class Transcript {
     this.metadata = { ...this.metadata, ...scrubObject(meta) };
   }
 
-  async finalize({ status, errors = [], decisions = {}, resumeHint = null } = {}) {
+  async finalize({
+    status,
+    errors = [],
+    decisions = {},
+    resumeHint = null,
+  } = {}) {
     const endedAt = Date.now();
     const duration = endedAt - this.startedAt;
     await fs.mkdir(this.logsDir, { recursive: true });
-    const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15);
+    const stamp = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15);
     const baseName = `setup-${stamp}`;
     const transcriptPath = path.join(this.logsDir, `${baseName}.md`);
     const jsonPath = path.join(this.logsDir, `${baseName}.json`);
@@ -73,14 +80,14 @@ export class Transcript {
       `- Duration: ${formatDuration(duration)}`,
       `- Final status: ${status}`,
       resumeHint ? `- Resume hint: ${resumeHint}` : null,
-      `- Mode changes: ${this.metadata.modeChanges.map(c => `${c.mode} @ ${c.at}`).join(', ') || 'Guided only'}`,
-      ``
+      `- Mode changes: ${this.metadata.modeChanges.map((c) => `${c.mode} @ ${c.at}`).join(", ") || "Guided only"}`,
+      ``,
     ]
       .filter(Boolean)
       .join(os.EOL);
     const body = this.events
-      .map(event => {
-        const label = event.type.padEnd(12, ' ');
+      .map((event) => {
+        const label = event.type.padEnd(12, " ");
         const payload = { ...event };
         delete payload.type;
         delete payload.at;
@@ -90,21 +97,27 @@ export class Transcript {
     const footer = [
       ``,
       `## Decisions`,
-      '```json',
+      "```json",
       JSON.stringify(scrubObject(decisions), null, 2),
-      '```',
+      "```",
       ``,
       `## Errors`,
-      errors.length ? errors.map(err => `- ${err}`).join(os.EOL) : '- None recorded',
+      errors.length
+        ? errors.map((err) => `- ${err}`).join(os.EOL)
+        : "- None recorded",
       ``,
       `## Metadata`,
-      '```json',
+      "```json",
       JSON.stringify(this.metadata, null, 2),
-      '```',
-      ``
+      "```",
+      ``,
     ].join(os.EOL);
 
-    await fs.writeFile(transcriptPath, header + os.EOL + body + os.EOL + footer, 'utf8');
+    await fs.writeFile(
+      transcriptPath,
+      header + os.EOL + body + os.EOL + footer,
+      "utf8",
+    );
     await fs.writeFile(
       jsonPath,
       JSON.stringify(
@@ -117,12 +130,12 @@ export class Transcript {
           decisions: scrubObject(decisions),
           errors,
           metadata: this.metadata,
-          resumeHint
+          resumeHint,
         },
         null,
-        2
+        2,
       ) + os.EOL,
-      'utf8'
+      "utf8",
     );
     return { transcriptPath, jsonPath };
   }
