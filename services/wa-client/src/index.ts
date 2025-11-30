@@ -648,6 +648,29 @@ async function deliverVerdictMessage(
     });
   }
 
+  // Handle Correction: Edit or Delete Previous Verdict Message
+  if (job.isCorrection) {
+    try {
+      // Retrieve the previous verdict message ID from the message store
+      const previousVerdictRecord = await messageStore.getVerdictRecord(context);
+      if (previousVerdictRecord?.verdictMessageId) {
+        try {
+          const previousVerdictMessage = await client.getMessageById(previousVerdictRecord.verdictMessageId);
+          if (previousVerdictMessage) {
+            // Try to delete the previous benign verdict message
+            await previousVerdictMessage.delete(true);
+            logger.info({ originalMessageId: job.messageId, verdictMessageId: previousVerdictRecord.verdictMessageId }, 'Deleted previous benign verdict message');
+            metrics.waMessageEdits.labels('correction_delete').inc();
+          }
+        } catch (err) {
+          logger.warn({ err, verdictMessageId: previousVerdictRecord.verdictMessageId }, 'Failed to delete previous verdict message, will send correction as new message');
+        }
+      }
+    } catch (err) {
+      logger.warn({ err, context }, 'Failed to retrieve previous verdict for correction editing');
+    }
+  }
+
   const baseVerdictText = formatGroupVerdict(job.verdict, job.reasons, job.url);
   const verdictText = job.isCorrection
     ? `⚠️ CORRECTION: The link above has been re-evaluated as MALICIOUS.\n\n${baseVerdictText}`

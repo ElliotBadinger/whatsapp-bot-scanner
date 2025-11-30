@@ -36,6 +36,7 @@ import {
   QuotaExceededError,
   detectHomoglyphs,
   assertEssentialConfig,
+  GsbLocalDatabase,
 } from '@wbscanner/shared';
 import { EnhancedSecurityAnalyzer } from './enhanced-security';
 import {
@@ -549,31 +550,47 @@ async function fetchGsbAnalysis(finalUrl: string, hash: string): Promise<GsbFetc
     return { matches: [], fromCache: true, durationMs: 0, error: null };
   }
   const cacheKey = `url:analysis:${hash}:gsb`;
-  const cached = await getJsonCache<GsbMatch[]>(CACHE_LABELS.gsb, cacheKey, ANALYSIS_TTLS.gsb);
+  const cached = await getJsonCache<{ matches: GsbThreatMatch[]; cached: true }>(CACHE_LABELS.gsb, cacheKey, ANALYSIS_TTLS.gsb);
   if (cached) {
-    return { matches: cached, fromCache: true, durationMs: 0, error: null };
+    recordCacheOutcome('gsb', 'hit');
+    return { matches: cached.matches, error: null, fromCache: true, durationMs: 0 };
   }
+  recordCacheOutcome('gsb', 'miss');
   try {
-    const result = await gsbCircuit.execute(() =>
-      withRetry(() => gsbLookup([finalUrl]), {
-        retries: 3,
-        baseDelayMs: 1000,
-        factor: 2,
-        retryable: shouldRetry,
-      })
-    );
-    recordLatency(CIRCUIT_LABELS.gsb, result.latencyMs);
-    await setJsonCache(CACHE_LABELS.gsb, cacheKey, result.matches, ANALYSIS_TTLS.gsb);
-    return {
-      matches: result.matches,
-      fromCache: false,
-      durationMs: result.latencyMs ?? 0,
-      error: null,
-    };
+    const start = Date.now();
+
+    // Use local GSB if available, fallback to remote API
+    let result;
+    if (gsbLocal) {
+      result = await gsbLocal.lookup([finalUrl]);
+      recordLatency(CIRCUIT_LABELS.gsb, Date.now() - start);
+
+      // Track whether we used local or remote
+      if (result.source === 'local') {
+        logger.debug({ url: finalUrl, latency: result.latencyMs }, 'GSB local lookup (no API call)');
+      } else {
+        logger.debug({ url: finalUrl, latency: result.latencyMs }, 'GSB local lookup with remote verification');
+      }
+    } else {
+      // Fallback to traditional API
+      result = await gsbCircuit.execute(() =>
+        withRetry(() => gsbLookup([finalUrl]), {
+          retries: 2,
+          baseDelayMs: 500,
+          factor: 2,
+          retryable: shouldRetry,
+        })
+      );
+      recordLatency(CIRCUIT_LABELS.gsb, Date.now() - start);
+    }
+
+    const matches = result.matches || [];
+    await setJsonCache(CACHE_LABELS.gsb, cacheKey, { matches, cached: true }, ANALYSIS_TTLS.gsb);
+    return { matches, error: null, fromCache: false, durationMs: result.latencyMs ?? 0 };
   } catch (err) {
     recordError(CIRCUIT_LABELS.gsb, err);
-    logger.warn({ err, url: finalUrl }, 'Google Safe Browsing lookup failed');
-    return { matches: [], fromCache: false, durationMs: 0, error: err as Error };
+    logger.warn({ err, url: finalUrl }, 'GSB analysis failed');
+    return { matches: [], error: err as Error, fromCache: false, durationMs: 0 };
   }
 }
 
@@ -1684,6 +1701,27 @@ async function main() {
   const dbClient = getSharedConnection();
 
   const enhancedSecurity = new EnhancedSecurityAnalyzer(redis);
+
+  // Initialize GSB Local Database
+  const gsbLocal = config.gsb.apiKey ? new GsbLocalDatabase(redis, config.gsb.apiKey) : null;
+
+  // Schedule GSB database updates (every hour)
+  if (gsbLocal) {
+    // Initial update on startup
+    gsbLocal.updateDatabase().catch(err => {
+      logger.error({ err }, 'Failed initial GSB local database update');
+    });
+
+    // Update every hour
+    const gsbUpdateInterval = setInterval(() => {
+      gsbLocal.updateDatabase().catch(err => {
+        logger.error({ err }, 'Failed scheduled GSB local database update');
+      });
+    }, 3600000); // 1 hour
+    gsbUpdateInterval.unref();
+
+    logger.info('GSB local database initialized with hourly updates');
+  }
   await enhancedSecurity.start();
 
   const app = Fastify();
