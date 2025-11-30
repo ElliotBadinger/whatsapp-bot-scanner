@@ -4,8 +4,7 @@ import { createReadStream } from 'node:fs';
 import path from 'node:path';
 import Redis from 'ioredis';
 import { Queue } from 'bullmq';
-import { register, metrics, config, logger, assertControlPlaneToken, normalizeUrl, urlHash, assertEssentialConfig } from '@wbscanner/shared';
-import { Client as PgClient } from 'pg';
+import { register, metrics, config, logger, assertControlPlaneToken, normalizeUrl, urlHash, assertEssentialConfig, createDatabase, MigrationRunner } from '@wbscanner/shared';
 
 const artifactRoot = path.resolve(process.env.URLSCAN_ARTIFACT_DIR || 'storage/urlscan-artifacts');
 
@@ -164,7 +163,6 @@ function createAuthHook(expectedToken: string) {
   };
 }
 export interface BuildOptions {
-  pgClient?: PgClient;
   redisClient?: Redis;
   queue?: Queue;
 }
@@ -172,15 +170,9 @@ export interface BuildOptions {
 export async function buildServer(options: BuildOptions = {}) {
   assertEssentialConfig('control-plane');
   const requiredToken = assertControlPlaneToken();
-  const pgClient = options.pgClient ?? new PgClient({
-    host: config.postgres.host,
-    port: config.postgres.port,
-    database: config.postgres.db,
-    user: config.postgres.user,
-    password: config.postgres.password
-  });
-  const ownsClient = !options.pgClient;
-  if (ownsClient) await pgClient.connect();
+  const db = createDatabase(config.sqlite);
+  const migrationRunner = new MigrationRunner(db);
+  migrationRunner.runMigrations(config.sqlite.migrationsDir);
   const redisClient = options.redisClient ?? getSharedRedis();
   const queue = options.queue ?? getSharedQueue();
 
@@ -192,32 +184,32 @@ export async function buildServer(options: BuildOptions = {}) {
   app.addHook('preHandler', createAuthHook(requiredToken));
 
   app.get('/status', async () => {
-    const { rows } = await pgClient.query('SELECT COUNT(*) AS scans, SUM((verdict = $1)::int) AS malicious FROM scans', ['malicious']);
-    return { scans: Number(rows[0].scans), malicious: Number(rows[0].malicious || 0) };
+    const row = db.get<{ scans: number; malicious: number }>('SELECT COUNT(*) AS scans, SUM(CASE WHEN verdict = ? THEN 1 ELSE 0 END) AS malicious FROM scans', ['malicious']);
+    return { scans: Number(row?.scans || 0), malicious: Number(row?.malicious || 0) };
   });
 
   app.post('/overrides', async (req, reply) => {
     const body = req.body as any;
-    await pgClient.query(`INSERT INTO overrides (url_hash, pattern, status, scope, scope_id, created_by, reason, expires_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, [body.url_hash || null, body.pattern || null, body.status, body.scope || 'global', body.scope_id || null, 'admin', body.reason || null, body.expires_at || null]);
+    db.run(`INSERT INTO overrides (url_hash, pattern, status, scope, scope_id, created_by, reason, expires_at)
+      VALUES (?,?,?,?,?,?,?,?)`, [body.url_hash || null, body.pattern || null, body.status, body.scope || 'global', body.scope_id || null, 'admin', body.reason || null, body.expires_at || null]);
     reply.code(201).send({ ok: true });
   });
 
   app.get('/overrides', async () => {
-    const { rows } = await pgClient.query('SELECT * FROM overrides ORDER BY created_at DESC LIMIT 100');
+    const rows = db.query('SELECT * FROM overrides ORDER BY created_at DESC LIMIT 100');
     return rows;
   });
 
   app.post('/groups/:chatId/mute', async (req, reply) => {
     const { chatId } = req.params as any;
-    const until = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-    await pgClient.query('UPDATE groups SET muted_until=$1 WHERE chat_id=$2', [until, chatId]);
-    reply.send({ ok: true, muted_until: until });
+    const until = Date.now() + 60 * 60 * 1000;
+    db.run('UPDATE groups SET muted_until=? WHERE chat_id=?', [until, chatId]);
+    reply.send({ ok: true, muted_until: new Date(until).toISOString() });
   });
 
   app.post('/groups/:chatId/unmute', async (req, reply) => {
     const { chatId } = req.params as any;
-    await pgClient.query('UPDATE groups SET muted_until=NULL WHERE chat_id=$1', [chatId]);
+    db.run('UPDATE groups SET muted_until=NULL WHERE chat_id=?', [chatId]);
     reply.send({ ok: true });
   });
 
@@ -245,11 +237,10 @@ export async function buildServer(options: BuildOptions = {}) {
     ];
     await Promise.all(keys.map((key) => redisClient.del(key)));
 
-    const { rows: messageRows } = await pgClient.query<{ chat_id: string; message_id: string }>(
-      'SELECT chat_id, message_id FROM messages WHERE url_hash=$1 ORDER BY posted_at DESC LIMIT 1',
+    const latestMessage = db.get<{ chat_id: string; message_id: string }>(
+      'SELECT chat_id, message_id FROM messages WHERE url_hash=? ORDER BY posted_at DESC LIMIT 1',
       [hash]
     );
-    const latestMessage = messageRows[0];
 
     const rescanJob = {
       url: normalized,
@@ -284,11 +275,11 @@ export async function buildServer(options: BuildOptions = {}) {
     }
 
     const column = type === 'screenshot' ? 'urlscan_screenshot_path' : 'urlscan_dom_path';
-    const { rows } = await pgClient.query(
-      `SELECT ${column} FROM scans WHERE url_hash=$1 LIMIT 1`,
+    const row = db.get<{ [key: string]: string }>(
+      `SELECT ${column} FROM scans WHERE url_hash=? LIMIT 1`,
       [hash]
     );
-    const filePath = rows[0]?.[column as 'urlscan_screenshot_path' | 'urlscan_dom_path'];
+    const filePath = row?.[column];
     if (!filePath) {
       reply.code(404).send({ error: `${type}_not_found` });
       return;
@@ -333,13 +324,13 @@ export async function buildServer(options: BuildOptions = {}) {
   if (process.env.NODE_ENV !== 'test') {
     setInterval(async () => {
       try {
-        await pgClient.query("DELETE FROM scans WHERE last_seen_at < now() - interval '30 days'");
-        await pgClient.query("DELETE FROM messages WHERE posted_at < now() - interval '30 days'");
+        db.run("DELETE FROM scans WHERE last_seen_at < strftime('%s', 'now', '-30 days') * 1000");
+        db.run("DELETE FROM messages WHERE posted_at < strftime('%s', 'now', '-30 days') * 1000");
       } catch (e) { logger.error(e, 'purge job failed'); }
     }, 24 * 60 * 60 * 1000);
   }
 
-  return { app, pgClient, ownsClient };
+  return { app };
 }
 
 async function main() {
