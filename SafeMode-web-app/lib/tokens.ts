@@ -24,7 +24,7 @@ export const colors = {
   "neutral-100": "var(--color-neutral-100)",
   "neutral-600": "var(--color-neutral-600)",
   "neutral-900": "var(--color-neutral-900)",
-} as const
+} as const;
 
 export const spacing = {
   1: "var(--space-1)",
@@ -38,7 +38,7 @@ export const spacing = {
   12: "var(--space-12)",
   16: "var(--space-16)",
   20: "var(--space-20)",
-} as const
+} as const;
 
-export type ColorToken = keyof typeof colors
-export type SpacingToken = keyof typeof spacing
+export type ColorToken = keyof typeof colors;
+export type SpacingToken = keyof typeof spacing;

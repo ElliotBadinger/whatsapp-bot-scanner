@@ -200,10 +200,12 @@
 @keyframes glow {
   0%,
   100% {
-    filter: drop-shadow(0 0 10px var(--color-primary)) drop-shadow(0 0 20px var(--color-primary));
+    filter: drop-shadow(0 0 10px var(--color-primary))
+      drop-shadow(0 0 20px var(--color-primary));
   }
   50% {
-    filter: drop-shadow(0 0 5px var(--color-primary)) drop-shadow(0 0 15px var(--color-primary));
+    filter: drop-shadow(0 0 5px var(--color-primary))
+      drop-shadow(0 0 15px var(--color-primary));
   }
 }
 
