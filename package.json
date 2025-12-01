@@ -20,7 +20,8 @@
   "workspaces": [
     "packages/*",
     "services/*",
-    "apps/*"
+    "apps/*",
+    "SafeMode-web-app"
   ],
   "devDependencies": {
     "boxen": "^7.1.1",
