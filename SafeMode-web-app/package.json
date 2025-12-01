@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "npx next build",
-    "dev": "npx next dev",
+    "build": "next build",
+    "dev": "next dev",
     "lint": "eslint .",
     "start": "next start"
   },
