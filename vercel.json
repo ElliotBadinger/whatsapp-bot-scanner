@@ -1,6 +1,6 @@
 {
-  "buildCommand": "npm run build --workspace=my-v0-project",
-  "devCommand": "npm run dev --workspace=my-v0-project",
+  "buildCommand": "npm exec next build SafeMode-web-app",
+  "devCommand": "npm exec next dev SafeMode-web-app",
   "installCommand": "npm install --include=dev --include=prod --no-optional",
   "outputDirectory": "SafeMode-web-app/.next"
 }
