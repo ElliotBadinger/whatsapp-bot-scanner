@@ -1,6 +1,6 @@
 {
-  "buildCommand": "npm exec next build SafeMode-web-app",
-  "devCommand": "npm exec next dev SafeMode-web-app",
+  "buildCommand": "ls -la node_modules/.bin && ./node_modules/.bin/next build SafeMode-web-app",
+  "devCommand": "./node_modules/.bin/next dev SafeMode-web-app",
   "installCommand": "npm install --include=dev --include=prod --no-optional",
   "outputDirectory": "SafeMode-web-app/.next"
 }
