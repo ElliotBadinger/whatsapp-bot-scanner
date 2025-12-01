@@ -2,6 +2,9 @@
   "name": "whatsapp-bot-scanner",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "validate": "./scripts/validate-types.sh",
     "validate:quick": "npm run build --workspaces && npm test --workspaces -- --passWithNoTests",
@@ -16,7 +19,8 @@
   },
   "workspaces": [
     "packages/*",
-    "services/*"
+    "services/*",
+    "apps/*"
   ],
   "devDependencies": {
     "boxen": "^7.1.1",
