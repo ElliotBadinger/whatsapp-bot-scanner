@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "../node_modules/.bin/next build",
-    "dev": "../node_modules/.bin/next dev",
+    "build": "npm exec next build",
+    "dev": "npm exec next dev",
     "lint": "eslint .",
     "start": "next start"
   },
