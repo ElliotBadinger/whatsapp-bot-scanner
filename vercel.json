@@ -1,6 +1,6 @@
 {
-  "buildCommand": "cd SafeMode-web-app && npm run build",
-  "devCommand": "cd SafeMode-web-app && npm run dev",
+  "buildCommand": "npm run build --workspace=my-v0-project",
+  "devCommand": "npm run dev --workspace=my-v0-project",
   "installCommand": "npm install --include=dev --include=prod --no-optional",
   "outputDirectory": "SafeMode-web-app/.next"
 }
