@@ -2,5 +2,6 @@
   "buildCommand": "npm run build",
   "devCommand": "npm run dev",
   "installCommand": "npm install --include=dev --include=prod --no-optional",
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "rootDirectory": "SafeMode-web-app"
 }
