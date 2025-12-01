@@ -1,39 +1,39 @@
-"use client"
+"use client";
 
-import type React from "react"
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { NavBar } from "./nav-bar"
-import { TerminalCard } from "./terminal-card"
+import type React from "react";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NavBar } from "./nav-bar";
+import { TerminalCard } from "./terminal-card";
 
 interface AdminAuthProps {
-  onAuthenticated: () => void
+  onAuthenticated: () => void;
 }
 
 // Demo token for proof of concept
-const DEMO_TOKEN = "safemode-admin-demo"
+const DEMO_TOKEN = "safemode-admin-demo";
 
 export function AdminAuth({ onAuthenticated }: AdminAuthProps) {
-  const [token, setToken] = useState("")
-  const [error, setError] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [token, setToken] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsLoading(true)
-    setError(null)
+    e.preventDefault();
+    setIsLoading(true);
+    setError(null);
 
     // Simulate auth check
-    await new Promise((resolve) => setTimeout(resolve, 800))
+    await new Promise((resolve) => setTimeout(resolve, 800));
 
     if (token === DEMO_TOKEN || token === "demo") {
-      onAuthenticated()
+      onAuthenticated();
     } else {
-      setError("ACCESS_DENIED: Invalid token")
+      setError("ACCESS_DENIED: Invalid token");
     }
-    setIsLoading(false)
-  }
+    setIsLoading(false);
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -69,7 +69,9 @@ export function AdminAuth({ onAuthenticated }: AdminAuthProps) {
                 </div>
 
                 {error && (
-                  <div className="font-mono text-xs text-danger bg-danger/10 border border-danger/30 p-3">{error}</div>
+                  <div className="font-mono text-xs text-danger bg-danger/10 border border-danger/30 p-3">
+                    {error}
+                  </div>
                 )}
 
                 <Button
@@ -89,5 +91,5 @@ export function AdminAuth({ onAuthenticated }: AdminAuthProps) {
         </div>
       </div>
     </div>
-  )
+  );
 }

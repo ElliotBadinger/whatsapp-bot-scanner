@@ -1,24 +1,24 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { NavBar } from "@/components/safemode/nav-bar"
-import { TerminalCard } from "@/components/safemode/terminal-card"
-import { StatsDisplay } from "@/components/safemode/stats-display"
-import { LiveFeed } from "@/components/safemode/live-feed"
-import { RescanForm } from "@/components/safemode/rescan-form"
-import { OverridesTable } from "@/components/safemode/overrides-table"
-import { GroupsManager } from "@/components/safemode/groups-manager"
-import { AdminAuth } from "@/components/safemode/admin-auth"
-import { cn } from "@/lib/utils"
+import { useState } from "react";
+import { NavBar } from "@/components/safemode/nav-bar";
+import { TerminalCard } from "@/components/safemode/terminal-card";
+import { StatsDisplay } from "@/components/safemode/stats-display";
+import { LiveFeed } from "@/components/safemode/live-feed";
+import { RescanForm } from "@/components/safemode/rescan-form";
+import { OverridesTable } from "@/components/safemode/overrides-table";
+import { GroupsManager } from "@/components/safemode/groups-manager";
+import { AdminAuth } from "@/components/safemode/admin-auth";
+import { cn } from "@/lib/utils";
 
-type Tab = "overview" | "rescan" | "overrides" | "groups"
+type Tab = "overview" | "rescan" | "overrides" | "groups";
 
 export default function AdminPage() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [activeTab, setActiveTab] = useState<Tab>("overview")
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [activeTab, setActiveTab] = useState<Tab>("overview");
 
   if (!isAuthenticated) {
-    return <AdminAuth onAuthenticated={() => setIsAuthenticated(true)} />
+    return <AdminAuth onAuthenticated={() => setIsAuthenticated(true)} />;
   }
 
   const tabs: { id: Tab; label: string }[] = [
@@ -26,7 +26,7 @@ export default function AdminPage() {
     { id: "rescan", label: "RESCAN" },
     { id: "overrides", label: "OVERRIDES" },
     { id: "groups", label: "GROUPS" },
-  ]
+  ];
 
   return (
     <div className="min-h-screen bg-background">
@@ -36,7 +36,9 @@ export default function AdminPage() {
         {/* Header */}
         <div className="mb-8 flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h1 className="font-mono text-2xl md:text-3xl text-primary terminal-glow">ADMIN CONTROL PANEL</h1>
+            <h1 className="font-mono text-2xl md:text-3xl text-primary terminal-glow">
+              ADMIN CONTROL PANEL
+            </h1>
           </div>
           <button
             onClick={() => setIsAuthenticated(false)}
@@ -79,7 +81,10 @@ export default function AdminPage() {
                   <div className="space-y-3">
                     {[
                       { tab: "rescan" as Tab, label: "Force rescan a URL" },
-                      { tab: "overrides" as Tab, label: "Manage URL overrides" },
+                      {
+                        tab: "overrides" as Tab,
+                        label: "Manage URL overrides",
+                      },
                       { tab: "groups" as Tab, label: "View protected groups" },
                     ].map((action) => (
                       <button
@@ -88,7 +93,9 @@ export default function AdminPage() {
                         className="w-full text-left px-4 py-3 border border-border hover:border-primary/40 hover:bg-primary/5 transition-all font-mono text-sm focus-ring"
                       >
                         <span className="text-primary">{`>`}</span>
-                        <span className="text-muted-foreground ml-2">{action.label}</span>
+                        <span className="text-muted-foreground ml-2">
+                          {action.label}
+                        </span>
                       </button>
                     ))}
                   </div>
@@ -103,7 +110,8 @@ export default function AdminPage() {
             <TerminalCard title="FORCE URL RESCAN" variant="solid">
               <div className="space-y-4">
                 <p className="font-mono text-sm text-muted-foreground">
-                  Force a fresh scan of any URL, bypassing cache. Results will be updated immediately.
+                  Force a fresh scan of any URL, bypassing cache. Results will
+                  be updated immediately.
                 </p>
                 <RescanForm />
               </div>
@@ -114,7 +122,8 @@ export default function AdminPage() {
             <TerminalCard title="URL PATTERN OVERRIDES" variant="solid">
               <div className="space-y-4">
                 <p className="font-mono text-sm text-muted-foreground">
-                  Configure manual allow/block rules that override automatic scanning results.
+                  Configure manual allow/block rules that override automatic
+                  scanning results.
                 </p>
                 <OverridesTable />
               </div>
@@ -125,7 +134,8 @@ export default function AdminPage() {
             <TerminalCard title="PROTECTED GROUPS" variant="solid">
               <div className="space-y-4">
                 <p className="font-mono text-sm text-muted-foreground">
-                  Manage WhatsApp groups protected by SafeMode. Muted groups will not receive bot messages.
+                  Manage WhatsApp groups protected by SafeMode. Muted groups
+                  will not receive bot messages.
                 </p>
                 <GroupsManager />
               </div>
@@ -139,5 +149,5 @@ export default function AdminPage() {
         </footer>
       </main>
     </div>
-  )
+  );
 }

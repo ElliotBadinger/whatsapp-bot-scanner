@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server"
-import type { SystemStatus } from "@/lib/api"
+import { NextResponse } from "next/server";
+import type { SystemStatus } from "@/lib/api";
 
 // Mock status data - in production this would proxy to control-plane
 export async function GET() {
@@ -10,7 +10,7 @@ export async function GET() {
     groupsProtected: Math.floor(Math.random() * 100) + 300,
     uptime: "99.97%",
     version: "1.0.0",
-  }
+  };
 
-  return NextResponse.json(status)
+  return NextResponse.json(status);
 }

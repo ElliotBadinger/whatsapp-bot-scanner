@@ -1,9 +1,10 @@
-import * as React from "react"
-import { cn } from "@/lib/utils"
+import * as React from "react";
+import { cn } from "@/lib/utils";
 
-export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "secondary"
-  asChild?: boolean
+export interface ButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: "primary" | "secondary";
+  asChild?: boolean;
 }
 
 export const SafeModeButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
@@ -24,7 +25,10 @@ export const SafeModeButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
             "hover:-translate-y-0.5",
             "active:translate-y-0 active:shadow-[0_0_5px_var(--color-primary-glow)]",
           ],
-          variant === "secondary" && ["border-border text-muted-foreground", "hover:border-primary hover:text-primary"],
+          variant === "secondary" && [
+            "border-border text-muted-foreground",
+            "hover:border-primary hover:text-primary",
+          ],
           className,
         )}
         {...props}
@@ -35,7 +39,7 @@ export const SafeModeButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
           <span>→]</span>
         </span>
       </button>
-    )
+    );
   },
-)
-SafeModeButton.displayName = "SafeModeButton"
+);
+SafeModeButton.displayName = "SafeModeButton";
