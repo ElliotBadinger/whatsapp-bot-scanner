@@ -1,5 +1,5 @@
 {
-  "buildCommand": "ls -la node_modules/.bin && ./node_modules/.bin/next build SafeMode-web-app",
+  "buildCommand": "npm install next react react-dom && ./node_modules/.bin/next build SafeMode-web-app",
   "devCommand": "./node_modules/.bin/next dev SafeMode-web-app",
   "installCommand": "npm install --include=dev --include=prod --no-optional",
   "outputDirectory": "SafeMode-web-app/.next"
