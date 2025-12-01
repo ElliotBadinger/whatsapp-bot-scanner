@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "npm exec next build",
+    "build": "ls -la ../node_modules && npm exec next build",
     "dev": "npm exec next dev",
     "lint": "eslint .",
     "start": "next start"
