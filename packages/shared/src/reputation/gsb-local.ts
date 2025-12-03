@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 import { request } from 'undici';
-import { _config } from '../config';
+import { config as _config } from '../config';
 import { logger } from '../log';
 import { Redis } from 'ioredis';
 
