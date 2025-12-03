@@ -29,7 +29,10 @@ jobs:
           git clone https://x-access-token:${{ secrets.SAFEMODE_SYNC_TOKEN || secrets.GITHUB_TOKEN }}@github.com/ElliotBadinger/SafeMode-web-app.git /tmp/safemode-standalone
       
       - name: Sync files
+        id: sync
         run: |
+          set -e
+          
           # Remove everything except .git from standalone repo
           cd /tmp/safemode-standalone
           find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
@@ -41,11 +44,22 @@ jobs:
           if [[ -n $(git status -s) ]]; then
             git add .
             
-            # Get the commit message from the monorepo
-            COMMIT_MSG=$(cd $GITHUB_WORKSPACE && git log -1 --pretty=format:"%s")
-            COMMIT_BODY=$(cd $GITHUB_WORKSPACE && git log -1 --pretty=format:"%b")
+            # Get the commit message from the monorepo safely
+            # Write to file using printf to prevent shell injection from commit messages
+            # containing $(cmd) or backticks
+            cd $GITHUB_WORKSPACE
+            COMMIT_MSG=$(git log -1 --pretty=format:"%s")
+            COMMIT_BODY=$(git log -1 --pretty=format:"%b")
+            cd /tmp/safemode-standalone
             
-            git commit -m "sync: $COMMIT_MSG" -m "$COMMIT_BODY" -m "Synced from whatsapp-bot-scanner monorepo"
+            # Use printf '%s' to safely write commit message (prevents shell expansion)
+            {
+              printf 'sync: %s\n\n' "$COMMIT_MSG"
+              printf '%s\n\n' "$COMMIT_BODY"
+              printf 'Synced from whatsapp-bot-scanner monorepo\n'
+            } > /tmp/commit-msg.txt
+            
+            git commit -F /tmp/commit-msg.txt
             git push origin main
             echo "✅ Changes synced to standalone repo"
           else
@@ -55,9 +69,9 @@ jobs:
       - name: Report status
         if: always()
         run: |
-          if [ $? -eq 0 ]; then
+          if [ "${{ steps.sync.outcome }}" == "success" ]; then
             echo "::notice::SafeMode-web-app successfully synced to standalone repository"
           else
             echo "::error::Failed to sync SafeMode-web-app to standalone repository"
+            exit 1
           fi
-

@@ -29,7 +29,10 @@ jobs:
           git clone https://github.com/ElliotBadinger/SafeMode-web-app.git /tmp/safemode-standalone
       
       - name: Sync files back to monorepo
+        id: sync
         run: |
+          set -e
+          
           # Get the last commit hash from standalone repo
           STANDALONE_COMMIT=$(cd /tmp/safemode-standalone && git rev-parse HEAD)
           
@@ -46,11 +49,20 @@ jobs:
           if [[ -n $(git status -s SafeMode-web-app) ]]; then
             git add SafeMode-web-app
             
-            # Get the commit message from standalone repo
+            # Get the commit message from standalone repo safely
+            # Write to file using printf to prevent shell injection from commit messages
+            # containing $(cmd) or backticks
             COMMIT_MSG=$(cd /tmp/safemode-standalone && git log -1 --pretty=format:"%s")
             COMMIT_BODY=$(cd /tmp/safemode-standalone && git log -1 --pretty=format:"%b")
             
-            git commit -m "sync(SafeMode-web-app): $COMMIT_MSG" -m "$COMMIT_BODY" -m "Synced from standalone repo (commit: $STANDALONE_COMMIT)"
+            # Use printf '%s' to safely write commit message (prevents shell expansion)
+            {
+              printf 'sync(SafeMode-web-app): %s\n\n' "$COMMIT_MSG"
+              printf '%s\n\n' "$COMMIT_BODY"
+              printf 'Synced from standalone repo (commit: %s)\n' "$STANDALONE_COMMIT"
+            } > /tmp/commit-msg.txt
+            
+            git commit -F /tmp/commit-msg.txt
             git push origin main
             echo "✅ Changes synced from standalone repo"
           else
@@ -60,9 +72,10 @@ jobs:
       - name: Report status
         if: always()
         run: |
-          if [ $? -eq 0 ]; then
+          if [ "${{ steps.sync.outcome }}" == "success" ]; then
             echo "::notice::SafeMode-web-app successfully synced from standalone repository"
           else
             echo "::error::Failed to sync SafeMode-web-app from standalone repository"
+            exit 1
           fi
 
