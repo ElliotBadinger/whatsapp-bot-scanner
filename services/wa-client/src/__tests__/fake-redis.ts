@@ -5,6 +5,10 @@ export default class FakeRedis {
   private lists = new Map<string, string[]>();
   private sortedSets = new Map<string, Map<string, number>>();
 
+  async ping() {
+    return 'PONG';
+  }
+
   private cleanup(key: string) {
     const entry = this.store.get(key);
     if (entry?.expiresAt && entry.expiresAt < Date.now()) {

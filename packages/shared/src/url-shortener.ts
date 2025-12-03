@@ -42,7 +42,7 @@ export type ExpansionFailureReason =
 
 export interface ShortenerResolution {
   finalUrl: string;
-  provider: 'unshorten_me' | 'direct' | 'urlexpander' | 'original';
+  provider: 'unshorten_me' | 'direct' | 'original';
   chain: string[];
   wasShortened: boolean;
   expanded: boolean;
