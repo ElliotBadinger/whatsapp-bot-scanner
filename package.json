@@ -28,17 +28,20 @@
     "next": "16.0.7"
   },
   "devDependencies": {
+    "@types/jest": "^29.5.12",
     "boxen": "^7.1.1",
     "chalk": "^5.3.0",
-    "inquirer": "^9.2.12",
-    "humanize-duration": "^3.31.0",
-    "ora": "^7.0.1",
     "cli-spinners": "^2.9.2",
-    "nanospinner": "^1.1.0",
     "cli-table3": "^0.6.3",
+    "enquirer": "^2.4.1",
     "execa": "^8.0.1",
+    "humanize-duration": "^3.31.0",
+    "inquirer": "^9.2.12",
+    "jest": "^29.7.0",
     "log-symbols": "^6.0.0",
-    "enquirer": "^2.4.1"
+    "nanospinner": "^1.1.0",
+    "ora": "^7.0.1",
+    "ts-jest": "^29.1.2"
   },
   "overrides": {
     "tar-fs": "^3.1.1",

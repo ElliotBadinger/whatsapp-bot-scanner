@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+// Jest globals are available without import
 import { VerdictCache, type CachedVerdict } from '../src/verdict-cache';
 
 describe('VerdictCache', () => {

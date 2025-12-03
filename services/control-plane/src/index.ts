@@ -286,6 +286,13 @@ export async function buildServer(options: BuildOptions = {}) {
 
   app.get('/scans/:urlHash/urlscan-artifacts/:type', async (req, reply) => {
     const { urlHash: hash, type } = req.params as { urlHash: string; type: string };
+    
+    // Validate urlHash format to prevent path traversal (SHA-256 hex string)
+    if (typeof hash !== 'string' || !/^[a-fA-F0-9]{64}$/.test(hash)) {
+      reply.code(400).send({ error: 'invalid_url_hash' });
+      return;
+    }
+    
     if (type !== 'screenshot' && type !== 'dom') {
       reply.code(400).send({ error: 'invalid_artifact_type' });
       return;

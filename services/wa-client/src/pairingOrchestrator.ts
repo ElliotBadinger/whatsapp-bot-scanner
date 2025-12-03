@@ -122,24 +122,24 @@ export class PairingOrchestrator {
     }
   }
 
-  setEnabled(enabled: boolean): void {
+  async setEnabled(enabled: boolean): Promise<void> {
     this.enabled = enabled;
     if (!enabled) {
-      this.cancel();
+      await this.cancel();
     }
   }
 
-  setSessionActive(active: boolean): void {
+  async setSessionActive(active: boolean): Promise<void> {
     this.sessionActive = active;
     if (active) {
-      this.cancel();
+      await this.cancel();
     }
   }
 
-  setCodeDelivered(delivered: boolean): void {
+  async setCodeDelivered(delivered: boolean): Promise<void> {
     this.codeDelivered = delivered;
     if (delivered) {
-      this.cancel();
+      await this.cancel();
     }
   }
 
@@ -229,6 +229,7 @@ export class PairingOrchestrator {
         this.onSuccess?.(code, this.attempts);
         this.attempts = 0;
         this.consecutiveRateLimit = 0;
+        await this.saveState(); // Clear backoff on success
       } catch (err) {
         const attempt = this.attempts;
         const { rateLimited, delay } = this.classifyError(err, attempt);
@@ -253,7 +254,7 @@ export class PairingOrchestrator {
           return;
         }
         if (!this.forcePhonePairing && attempt >= this.maxAttempts) {
-          this.cancel();
+          await this.cancel();
           this.onFallback?.(err, attempt);
           return;
         }
@@ -269,7 +270,7 @@ export class PairingOrchestrator {
     }, Math.max(0, delayMs));
   }
 
-  cancel(): void {
+  async cancel(): Promise<void> {
     if (this.timer) {
       this.clearer(this.timer);
       this.timer = null;
@@ -277,7 +278,7 @@ export class PairingOrchestrator {
     this.attempts = 0;
     this.consecutiveRateLimit = 0;
     this.nextAllowedAttemptAt = null;
-    void this.saveState();
+    await this.saveState();
   }
 
   private classifyError(err: unknown, attempt: number): { rateLimited: boolean; delay: number } {

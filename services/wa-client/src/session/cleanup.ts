@@ -2,9 +2,11 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { Logger } from 'pino';
 import type { RedisRemoteAuthStore } from '../remoteAuthStore';
+import { resetRuntimeSessionState } from '../state/runtimeSession';
 
 export interface RemoteSessionCleanupOptions {
-  store: Pick<RedisRemoteAuthStore, 'delete'>;
+  deleteRemoteSession: (sessionName: string) => Promise<void>;
+  clearAckWatchers?: () => void;
   sessionName: string;
   dataPath: string;
   logger: Logger;
@@ -22,12 +24,20 @@ async function removeIfExists(targetPath: string, options?: { recursive?: boolea
 }
 
 export async function resetRemoteSessionArtifacts(options: RemoteSessionCleanupOptions): Promise<void> {
-  const { store, sessionName, dataPath, logger } = options;
+  const { deleteRemoteSession, clearAckWatchers, sessionName, dataPath, logger } = options;
   try {
-    await store.delete({ session: sessionName });
+    await deleteRemoteSession(sessionName);
   } catch (err) {
     logger.warn({ err, session: sessionName }, 'Failed to delete RemoteAuth session record from Redis');
   }
+
+  // Clear runtime state
+  if (clearAckWatchers) {
+    clearAckWatchers();
+  }
+  
+  // Reset in-memory session state
+  resetRuntimeSessionState();
 
   const resolvedDataPath = path.resolve(dataPath || './data/remote-session');
   const zipPath = resolveZipPath(sessionName);

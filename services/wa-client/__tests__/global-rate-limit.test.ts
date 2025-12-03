@@ -2,8 +2,6 @@ import { describe, expect, it } from '@jest/globals';
 import type { Redis } from 'ioredis';
 import { createGlobalTokenBucket, GLOBAL_TOKEN_BUCKET_ID } from '../src/limiters';
 
-jest.setTimeout(20000);
-
 describe('global token bucket limiter', () => {
   it('throttles the 1001st send within an hour', async () => {
     const fakeRedis = {} as unknown as Redis;

@@ -32,7 +32,8 @@ export class SessionManager {
             const sessionName = config.wa.remoteAuth.clientId ? `RemoteAuth-${config.wa.remoteAuth.clientId}` : 'RemoteAuth';
 
             await resetRemoteSessionArtifacts({
-                store,
+                deleteRemoteSession: (session) => store.delete({ session }),
+                clearAckWatchers: () => {}, // No ack watchers to clear in this context
                 sessionName,
                 dataPath: config.wa.remoteAuth.dataPath || './data/remote-session',
                 logger: this.logger,
