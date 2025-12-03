@@ -3,12 +3,14 @@
 ## ✅ What Has Been Set Up
 
 Your monorepo now has **perpetual bidirectional synchronization** between:
+
 - **Source**: `SafeMode-web-app/` folder in this monorepo
 - **Target**: https://github.com/ElliotBadinger/SafeMode-web-app (standalone repo)
 
 ## 📋 Files Created
 
 ### GitHub Actions Workflows
+
 1. **`.github/workflows/sync-safemode-push.yml`**
    - Syncs changes FROM monorepo TO standalone repo
    - Triggers: Push to `main` branch that modifies `SafeMode-web-app/**`
@@ -20,6 +22,7 @@ Your monorepo now has **perpetual bidirectional synchronization** between:
    - Speed: Up to 15 minutes (or instant with webhook)
 
 ### Documentation
+
 3. **`docs/SAFEMODE_SYNC_SETUP.md`** (Comprehensive Guide)
    - Complete setup instructions
    - Token configuration
@@ -37,12 +40,14 @@ Your monorepo now has **perpetual bidirectional synchronization** between:
    - Placed in the synced folder for visibility
 
 ### Setup Scripts
+
 6. **`scripts/sync-safemode-initial.sh`** (Executable)
    - Performs the first sync to standalone repo
    - Sets up workflows in standalone repo
    - Handles both empty and existing repos
 
 ### Configuration
+
 7. **`SafeMode-web-app/.github-standalone/workflows/notify-monorepo.yml`**
    - Webhook workflow for standalone repo
    - Will be moved to standalone's `.github/` during first sync
@@ -89,6 +94,7 @@ export GITHUB_TOKEN="your_token_here"
 ```
 
 This will:
+
 - Clone the standalone repo
 - Copy all files from `SafeMode-web-app/`
 - Set up workflows in the standalone repo
@@ -142,12 +148,14 @@ SafeMode-web-app/                        SafeMode-web-app
 ### Sync Behavior
 
 **Push Sync (Monorepo → Standalone):**
+
 - Triggered by commits to `main` that modify `SafeMode-web-app/**`
 - Copies entire folder contents to standalone repo
 - Preserves commit messages with "sync:" prefix
 - Adds note: "Synced from whatsapp-bot-scanner monorepo"
 
 **Pull Sync (Standalone → Monorepo):**
+
 - Triggered every 15 minutes by cron schedule
 - Also triggered by webhook (instant)
 - Copies standalone repo contents to `SafeMode-web-app/` folder
@@ -196,11 +204,13 @@ If you need to trigger sync manually:
 ## ⚠️ Important Notes
 
 ### Conflict Prevention
+
 - **Work in one repo at a time** for a given feature
 - **Always pull latest** before starting work
 - **Don't make simultaneous changes** in both repos
 
 ### What Gets Synced
+
 - ✅ All source files (`.ts`, `.tsx`, `.js`, `.jsx`)
 - ✅ Configuration files (`package.json`, `tsconfig.json`, etc.)
 - ✅ Public assets
@@ -211,6 +221,7 @@ If you need to trigger sync manually:
 - ❌ `.git/` directories
 
 ### Branch Configuration
+
 - Syncs only happen on `main` branch
 - Feature branches are not synced
 - This prevents sync noise during development
@@ -225,16 +236,19 @@ If you need to trigger sync manually:
 ## 🐛 Troubleshooting
 
 ### "Workflow not running"
+
 - Check you're pushing to `main` branch
 - Verify `SAFEMODE_SYNC_TOKEN` is set correctly
 - Check token hasn't expired
 
 ### "Sync failed"
+
 - Review workflow logs in Actions tab
 - Check for merge conflicts
 - Verify token has `repo` and `workflow` scopes
 
 ### "Changes not syncing"
+
 - Check `.gitignore` in both repos
 - Verify file paths are correct
 - Look for errors in Actions logs
@@ -244,6 +258,7 @@ If you need to trigger sync manually:
 For detailed troubleshooting, see `docs/SAFEMODE_SYNC_SETUP.md`.
 
 For questions or issues, check the workflow logs:
+
 - Monorepo: https://github.com/ElliotBadinger/whatsapp-bot-scanner/actions
 - Standalone: https://github.com/ElliotBadinger/SafeMode-web-app/actions
 
@@ -253,7 +268,8 @@ For questions or issues, check the workflow logs:
 
 You now have a fully configured bidirectional sync system! Once you complete the setup steps above, any changes you make in either repository will automatically sync to the other.
 
-**Status**: 
+**Status**:
+
 - ✅ Workflows created
 - ✅ Documentation complete
 - ✅ Setup script ready
@@ -264,4 +280,3 @@ You now have a fully configured bidirectional sync system! Once you complete the
 **Next Action**: Follow Steps 1-5 above to complete setup
 
 Enjoy your synchronized SafeMode-web-app! 🚀
-

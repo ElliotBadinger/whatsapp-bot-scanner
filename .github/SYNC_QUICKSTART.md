@@ -48,6 +48,7 @@ For instant syncs from standalone → monorepo:
 ## 📝 Daily Usage
 
 ### Working in Monorepo
+
 ```bash
 cd SafeMode-web-app
 # Make changes
@@ -58,6 +59,7 @@ git push origin main
 ```
 
 ### Working in Standalone Repo
+
 ```bash
 git clone https://github.com/ElliotBadinger/SafeMode-web-app.git
 cd SafeMode-web-app
@@ -71,6 +73,7 @@ git push origin main
 ## 🔧 Manual Sync
 
 Trigger manually via GitHub Actions UI:
+
 1. Go to: https://github.com/ElliotBadinger/whatsapp-bot-scanner/actions
 2. Select workflow: "Sync SafeMode to Standalone Repo (Push)" or "(Pull)"
 3. Click "Run workflow" → Select `main` → "Run workflow"
@@ -78,6 +81,7 @@ Trigger manually via GitHub Actions UI:
 ## 📚 Full Documentation
 
 See [`docs/SAFEMODE_SYNC_SETUP.md`](../docs/SAFEMODE_SYNC_SETUP.md) for:
+
 - Detailed troubleshooting
 - Conflict resolution
 - Architecture notes
@@ -86,6 +90,7 @@ See [`docs/SAFEMODE_SYNC_SETUP.md`](../docs/SAFEMODE_SYNC_SETUP.md) for:
 ## ❓ Quick Troubleshooting
 
 **Sync not working?**
+
 - Check token is set correctly
 - Verify token hasn't expired
 - Check Actions logs for errors
@@ -93,4 +98,3 @@ See [`docs/SAFEMODE_SYNC_SETUP.md`](../docs/SAFEMODE_SYNC_SETUP.md) for:
 
 **Need help?**
 Check workflow logs or open an issue!
-

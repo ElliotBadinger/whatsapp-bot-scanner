@@ -15,6 +15,7 @@ Changes made in either location will be automatically synced:
 You can work in either repository:
 
 ### Option 1: Work in Monorepo (Recommended)
+
 ```bash
 cd SafeMode-web-app
 # Make changes
@@ -26,6 +27,7 @@ git push origin main
 Changes automatically sync to the standalone repo within ~1 minute.
 
 ### Option 2: Work in Standalone Repo
+
 ```bash
 git clone https://github.com/ElliotBadinger/SafeMode-web-app.git
 cd SafeMode-web-app
@@ -50,6 +52,6 @@ Full setup and troubleshooting guide:
 ## Status
 
 Check sync status:
+
 - [Monorepo Actions](https://github.com/ElliotBadinger/whatsapp-bot-scanner/actions)
 - [Standalone Actions](https://github.com/ElliotBadinger/SafeMode-web-app/actions)
-
