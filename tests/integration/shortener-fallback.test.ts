@@ -6,29 +6,6 @@ vi.mock('undici', () => ({
   fetch: vi.fn(),
 }));
 
-const legacyExpandMock = vi.fn();
-const modernExpandMock = vi.fn();
-let useModernExpand = false;
-
-vi.mock('url-expand', () => {
-  const legacyWrapper = (shortUrl: string, callback: (error: unknown, expanded?: string | null) => void) =>
-    legacyExpandMock(shortUrl, callback);
-
-  Object.defineProperty(legacyWrapper, 'expand', {
-    get() {
-      return useModernExpand ? modernExpandMock : undefined;
-    },
-  });
-
-  return {
-    __esModule: true,
-    default: legacyWrapper,
-    get expand() {
-      return useModernExpand ? modernExpandMock : undefined;
-    },
-  };
-});
-
 const dnsLookup = vi.fn().mockResolvedValue([{ address: '93.184.216.34' }]);
 vi.mock('node:dns/promises', () => ({
   __esModule: true,
@@ -50,136 +27,55 @@ const buildResponse = (status: number, headers: Record<string, string> = {}) => 
 
 beforeEach(() => {
   dnsLookup.mockResolvedValue([{ address: '93.184.216.34' }]);
-  useModernExpand = false;
 });
 
 afterEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
-  legacyExpandMock.mockReset();
-  modernExpandMock.mockReset();
   dnsLookup.mockReset();
   dnsLookup.mockResolvedValue([{ address: '93.184.216.34' }]);
-  useModernExpand = false;
 });
 
-describe('Shortener fallback chain (legacy url-expand API)', () => {
-  it('returns original URL when Unshorten and url-expand fail', async () => {
+describe('Shortener fallback chain (direct expansion)', () => {
+  it('returns original URL when Unshorten and direct expansion fail', async () => {
     const undici = await import('undici');
 
     vi.mocked(undici.request).mockResolvedValue({ statusCode: 500 } as any);
     vi.mocked(undici.fetch).mockResolvedValue(buildResponse(404) as any);
-    legacyExpandMock.mockImplementation((_shortUrl: string, callback: (error: Error) => void) => {
-      callback(new Error('Service unavailable'));
-    });
 
     const { resolveShortener } = await import('@wbscanner/shared');
 
     const result = await resolveShortener('http://bit.ly/down');
     expect(result.provider).toBe('original');
     expect(result.expanded).toBe(false);
-    expect(result.reason).toBe('library-error');
-    expect(result.error).toContain('Service unavailable');
+    expect(result.reason).toBe('expansion-failed');
+    expect(result.error).toBe('Service unavailable');
   });
 
-  it('uses url-expand when Unshorten fails', async () => {
+  it('uses direct expansion when Unshorten fails', async () => {
     const undici = await import('undici');
 
     vi.mocked(undici.request).mockResolvedValue({ statusCode: 500 } as any);
-    vi.mocked(undici.fetch).mockResolvedValue(buildResponse(500) as any);
-    legacyExpandMock.mockImplementation((_shortUrl: string, callback: (error: null, expanded: string) => void) => {
-      callback(null, 'https://expanded.example/path');
-    });
+    vi.mocked(undici.fetch)
+      .mockResolvedValueOnce(buildResponse(301, { location: 'https://expanded.example/path' }) as any)
+      .mockResolvedValueOnce(buildResponse(200) as any);
 
     const { resolveShortener } = await import('@wbscanner/shared');
 
     const result = await resolveShortener('http://bit.ly/demo');
-    expect(result.provider).toBe('urlexpander');
+    expect(result.provider).toBe('direct');
     expect(result.finalUrl).toBe('https://expanded.example/path');
     expect(result.chain).toContain('https://expanded.example/path');
     expect(result.expanded).toBe(true);
     expect(result.reason).toBeUndefined();
   });
 
-  it('blocks url-expand results that resolve to private addresses', async () => {
-    const undici = await import('undici');
-
-    vi.mocked(undici.request).mockResolvedValue({ statusCode: 500 } as any);
-    vi.mocked(undici.fetch).mockResolvedValue(buildResponse(500) as any);
-    legacyExpandMock.mockImplementation((_shortUrl: string, callback: (error: null, expanded: string) => void) => {
-      callback(null, 'http://127.0.0.1/admin');
-    });
-
-    dnsLookup.mockResolvedValueOnce([{ address: '93.184.216.34' }]);
-    dnsLookup.mockResolvedValueOnce([{ address: '127.0.0.1' }]);
-
-    const { resolveShortener } = await import('@wbscanner/shared');
-
-    const result = await resolveShortener('http://bit.ly/private');
-    expect(result.provider).toBe('original');
-    expect(result.expanded).toBe(false);
-    expect(result.reason).toBe('ssrf-blocked');
-    expect(result.error).toContain('SSRF protection');
-  });
-});
-
-describe('Shortener fallback chain (modern url-expand API)', () => {
-  beforeEach(() => {
-    useModernExpand = true;
-  });
-
-  it('uses url-expand modern API when available', async () => {
+  it('blocks direct expansion results that resolve to private addresses', async () => {
     const undici = await import('undici');
 
     vi.mocked(undici.request).mockResolvedValue({ statusCode: 500 } as any);
     vi.mocked(undici.fetch)
-      .mockResolvedValueOnce(buildResponse(500) as any)
-      .mockResolvedValueOnce(buildResponse(301, { location: 'https://expanded.example/path' }) as any)
-      .mockResolvedValueOnce(buildResponse(200) as any);
-
-    modernExpandMock.mockImplementation(async (shortUrl: string, options: any) => {
-      await options.fetch(shortUrl);
-      await options.fetch('https://expanded.example/path');
-      return {
-        url: 'https://expanded.example/path',
-        redirects: [shortUrl, 'https://expanded.example/path'],
-      };
-    });
-
-    legacyExpandMock.mockImplementation(() => {
-      throw new Error('legacy API should not be used when modern expand exists');
-    });
-
-    const { resolveShortener } = await import('@wbscanner/shared');
-
-    const result = await resolveShortener('http://bit.ly/demo');
-    expect(result.provider).toBe('urlexpander');
-    expect(result.finalUrl).toBe('https://expanded.example/path');
-    expect(result.chain).toContain('https://expanded.example/path');
-    expect(result.expanded).toBe(true);
-    expect(modernExpandMock).toHaveBeenCalled();
-  });
-
-  it('blocks modern url-expand results that resolve to private addresses', async () => {
-    const undici = await import('undici');
-
-    vi.mocked(undici.request).mockResolvedValue({ statusCode: 500 } as any);
-    vi.mocked(undici.fetch)
-      .mockResolvedValueOnce(buildResponse(500) as any)
       .mockResolvedValueOnce(buildResponse(301, { location: 'http://127.0.0.1/admin' }) as any);
-
-    modernExpandMock.mockImplementation(async (shortUrl: string, options: any) => {
-      await options.fetch(shortUrl);
-      await options.fetch('http://127.0.0.1/admin');
-      return {
-        url: 'http://127.0.0.1/admin',
-        redirects: [shortUrl, 'http://127.0.0.1/admin'],
-      };
-    });
-
-    legacyExpandMock.mockImplementation(() => {
-      throw new Error('legacy API should not be used when modern expand exists');
-    });
 
     dnsLookup.mockResolvedValueOnce([{ address: '93.184.216.34' }]);
     dnsLookup.mockResolvedValueOnce([{ address: '127.0.0.1' }]);
@@ -198,12 +94,7 @@ describe('Shortener fallback chain (modern url-expand API)', () => {
 
     vi.mocked(undici.request).mockResolvedValue({ statusCode: 500 } as any);
     vi.mocked(undici.fetch)
-      .mockResolvedValueOnce(buildResponse(200, { 'content-length': '2097152' }) as any)
       .mockResolvedValueOnce(buildResponse(200, { 'content-length': '2097152' }) as any);
-    modernExpandMock.mockImplementation((_shortUrl: string, options: any) => options.fetch('http://bit.ly/oversized'));
-    legacyExpandMock.mockImplementation((_shortUrl: string, callback: (error: Error) => void) => {
-      callback(new Error('library failure'));
-    });
 
     const { resolveShortener } = await import('@wbscanner/shared');
 
@@ -221,10 +112,6 @@ describe('Shortener fallback chain (modern url-expand API)', () => {
     const abortError = new Error('Aborted');
     abortError.name = 'AbortError';
     vi.mocked(undici.fetch).mockRejectedValue(abortError);
-    modernExpandMock.mockImplementation((_shortUrl: string, options: any) => options.fetch('http://bit.ly/timeout'));
-    legacyExpandMock.mockImplementation((_shortUrl: string, callback: (error: Error) => void) => {
-      callback(new Error('library failure'));
-    });
 
     const { resolveShortener } = await import('@wbscanner/shared');
 

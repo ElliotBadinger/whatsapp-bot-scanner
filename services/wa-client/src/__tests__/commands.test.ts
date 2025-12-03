@@ -12,7 +12,6 @@ jest.mock('rate-limiter-flexible', () => ({
 import type { Client, Message, GroupChat } from 'whatsapp-web.js';
 import { handleAdminCommand, formatGroupVerdict } from '../index';
 
-jest.mock('url-expand', () => ({ __esModule: true, default: jest.fn(async (url: string) => url) }), { virtual: true });
 jest.mock('confusables', () => ({ __esModule: true, default: (input: string) => input }), { virtual: true });
 jest.mock('bottleneck', () => ({
   __esModule: true,

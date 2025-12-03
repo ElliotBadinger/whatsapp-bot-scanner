@@ -46,9 +46,36 @@ async function downloadToFile(artifactType: ArtifactType, url: string, targetPat
   }
 }
 
+/**
+ * Sanitize input to prevent path traversal attacks.
+ * Only allows alphanumeric characters, hyphens, and underscores.
+ */
+function sanitizePathComponent(input: string): string {
+  // Remove any path separators and special characters that could enable traversal
+  const sanitized = input.replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!sanitized || sanitized !== input) {
+    throw new Error(`Invalid path component: contains disallowed characters`);
+  }
+  return sanitized;
+}
+
 export async function downloadUrlscanArtifacts(scanId: string, urlHash: string): Promise<ArtifactPaths> {
-  const screenshotPath = path.join(ARTIFACT_DIR, `${urlHash}_${scanId}.png`);
-  const domPath = path.join(ARTIFACT_DIR, `${urlHash}_${scanId}.html`);
+  // Sanitize inputs to prevent path traversal (e.g., "../../../etc/passwd")
+  const safeScanId = sanitizePathComponent(scanId);
+  const safeUrlHash = sanitizePathComponent(urlHash);
+  
+  const screenshotPath = path.join(ARTIFACT_DIR, `${safeUrlHash}_${safeScanId}.png`);
+  const domPath = path.join(ARTIFACT_DIR, `${safeUrlHash}_${safeScanId}.html`);
+  
+  // Additional safety: ensure resolved paths are within ARTIFACT_DIR
+  const resolvedScreenshot = path.resolve(screenshotPath);
+  const resolvedDom = path.resolve(domPath);
+  const resolvedArtifactDir = path.resolve(ARTIFACT_DIR);
+  
+  if (!resolvedScreenshot.startsWith(resolvedArtifactDir) || !resolvedDom.startsWith(resolvedArtifactDir)) {
+    throw new Error('Path traversal detected: artifact path escapes artifact directory');
+  }
+  
   const baseUrl = (config.urlscan.baseUrl || 'https://urlscan.io').replace(/\/+$/, '');
   const screenshotUrl = `${baseUrl}/screenshots/${scanId}.png`;
   const domUrl = `${baseUrl}/dom/${scanId}/`;

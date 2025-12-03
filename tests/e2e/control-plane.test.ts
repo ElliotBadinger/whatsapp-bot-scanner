@@ -14,7 +14,6 @@ vi.mock('bullmq', () => ({
   Queue: vi.fn().mockImplementation(() => ({ add: vi.fn(), on: vi.fn() })),
 }));
 
-vi.mock('url-expand', () => ({ __esModule: true, default: vi.fn(async (url: string) => url) }));
 vi.mock('confusables', () => ({ __esModule: true, default: (input: string) => input }));
 vi.mock('bottleneck', () => ({
 __esModule: true,

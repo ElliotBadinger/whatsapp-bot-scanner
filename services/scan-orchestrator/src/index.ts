@@ -52,6 +52,9 @@ import { getSharedConnection, type IDatabaseConnection } from './database';
 const TEST_REDIS_KEY = '__WBSCANNER_TEST_REDIS__';
 const TEST_QUEUE_FACTORY_KEY = '__WBSCANNER_TEST_QUEUE_FACTORY__';
 
+// Global GSB Local instance (initialized in main())
+let gsbLocal: GsbLocalDatabase | null = null;
+
 class InMemoryRedis {
   private store = new Map<string, string>();
   private ttlStore = new Map<string, number>();
@@ -584,7 +587,17 @@ async function fetchGsbAnalysis(finalUrl: string, hash: string): Promise<GsbFetc
       recordLatency(CIRCUIT_LABELS.gsb, Date.now() - start);
     }
 
-    const matches = result.matches || [];
+    const rawMatches = result.matches || [];
+    // Normalize GsbLocalThreatMatch to GsbThreatMatch format
+    const matches: GsbThreatMatch[] = rawMatches.map((m: any) => {
+      if ('platformType' in m) return m as GsbThreatMatch;
+      return {
+        threatType: m.threatType,
+        platformType: 'ANY_PLATFORM',
+        threatEntryType: 'URL',
+        threat: finalUrl
+      } as GsbThreatMatch;
+    });
     await setJsonCache(CACHE_LABELS.gsb, cacheKey, { matches, cached: true }, ANALYSIS_TTLS.gsb);
     return { matches, error: null, fromCache: false, durationMs: result.latencyMs ?? 0 };
   } catch (err) {
@@ -1616,6 +1629,12 @@ async function handleUrlscanCallback(req: FastifyRequest, reply: FastifyReply, d
     reply.code(400).send({ ok: false, error: 'missing uuid' });
     return;
   }
+  
+  // Validate and sanitize uuid to prevent path traversal
+  if (typeof uuid !== 'string' || !/^[a-fA-F0-9-]{36}$/.test(uuid)) {
+    reply.code(400).send({ ok: false, error: 'invalid uuid format' });
+    return;
+  }
 
   const urlscanBaseUrl = (config.urlscan.baseUrl || 'https://urlscan.io').replace(/\/+$/, '');
   const artifactSources = [
@@ -1702,8 +1721,8 @@ async function main() {
 
   const enhancedSecurity = new EnhancedSecurityAnalyzer(redis);
 
-  // Initialize GSB Local Database
-  const gsbLocal = config.gsb.apiKey ? new GsbLocalDatabase(redis, config.gsb.apiKey) : null;
+  // Initialize GSB Local Database (assigns to module-level variable)
+  gsbLocal = config.gsb.apiKey ? new GsbLocalDatabase(redis, config.gsb.apiKey) : null;
 
   // Schedule GSB database updates (every hour)
   if (gsbLocal) {
@@ -1712,9 +1731,10 @@ async function main() {
       logger.error({ err }, 'Failed initial GSB local database update');
     });
 
-    // Update every hour
+    // Update every hour - capture reference to avoid null check issues in closure
+    const gsbInstance = gsbLocal;
     const gsbUpdateInterval = setInterval(() => {
-      gsbLocal.updateDatabase().catch(err => {
+      gsbInstance.updateDatabase().catch(err => {
         logger.error({ err }, 'Failed scheduled GSB local database update');
       });
     }, 3600000); // 1 hour

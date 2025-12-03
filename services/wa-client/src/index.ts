@@ -279,7 +279,7 @@ async function resolveAuthStrategy(redisInstance: Redis): Promise<AuthResolution
       } catch (err) {
         logger.warn({ err }, 'Failed to backup session during force-new-session reset; proceeding with deletion.');
         await resetRemoteSessionArtifacts({
-          store,
+          deleteRemoteSession: (name: string) => store.delete({ session: name }),
           sessionName,
           dataPath: config.wa.remoteAuth.dataPath || './data/remote-session',
           logger,

@@ -1,7 +1,3 @@
-declare module 'url-expand' {
-  export default function expand(url: string): Promise<string>;
-}
-
 declare module 'bottleneck' {
   export default class Bottleneck {
     constructor(...args: any[]);

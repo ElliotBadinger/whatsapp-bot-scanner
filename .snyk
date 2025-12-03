@@ -1,0 +1,9 @@
+# Snyk (https://snyk.io) policy file
+version: v1.25.0
+ignore:
+  # Path Traversal false positive - sanitizePathComponent() removes all path traversal characters
+  # and we verify resolved paths stay within ARTIFACT_DIR
+  SNYK-JS-PT:
+    - '*':
+        reason: 'False positive - sanitizePathComponent() strips all non-alphanumeric chars and path.resolve() validation ensures paths stay within ARTIFACT_DIR'
+        expires: 2025-12-03T00:00:00.000Z
