@@ -1,15 +1,20 @@
 #!/usr/bin/env node
 
 import { program } from 'commander';
-import enquirer from 'enquirer';
 import ora from 'ora';
 import boxen from 'boxen';
 import chalk from 'chalk';
-import figlet from 'figlet';
 import { execa } from 'execa';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { UnifiedCLI } from './cli/core/unified-cli.mjs';
+import { PairingManager } from './cli/core/pairing.mjs';
+import { UserInterface } from './cli/ui/prompts.mjs';
+import { NotificationManager } from './cli/ui/notifications.mjs';
+import { DockerOrchestrator } from './cli/core/docker.mjs';
+import figlet from 'figlet';
+import enquirer from 'enquirer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -422,11 +427,26 @@ program
   .option('--noninteractive', 'Run CLI in non-interactive mode');
 
 program.command('setup')
-  .description('Run interactive setup wizard')
+  .description('Run interactive setup wizard (deprecated: use "unified-cli setup" instead)')
   .option('--skip-pairing', 'Skip WhatsApp pairing step')
   .action(async (options) => {
-    const cli = new SetupWizardEntry(program.opts());
-    await cli.runSetup(options);
+    // Emit deprecation warning
+    console.log(chalk.yellow('\n⚠️  DEPRECATION WARNING:'));
+    console.log(chalk.yellow('This command is deprecated. Please use:'));
+    console.log(chalk.cyan('  npx whatsapp-bot-scanner unified-cli setup\n'));
+    
+    // Instantiate UnifiedCLI with proper configuration
+    const argv = process.argv.slice(2);
+    const unifiedCli = new UnifiedCLI(argv);
+    
+    try {
+      // Create and run setup wizard with unified infrastructure
+      const wizard = unifiedCli.createSetupWizard({ skipPairing: options.skipPairing });
+      await wizard.run();
+    } catch (error) {
+      console.error(chalk.red(`Setup failed: ${error.message}`));
+      process.exit(1);
+    }
   });
 
 class SetupWizardEntry {
@@ -597,70 +617,40 @@ program.command('test')
   });
 
 program.command('pair')
-  .description('Request WhatsApp pairing code')
+  .description('Request WhatsApp pairing code (deprecated: use "unified-cli pair" instead)')
   .option('-f, --force', 'Force pairing request (clears rate limit state)')
   .action(async (options) => {
-    console.log(chalk.bold.cyan('\n📱 WhatsApp Pairing\n'));
-    const spinner = ora('Requesting pairing code...').start();
-
+    // Emit deprecation warning
+    console.log(chalk.yellow('\n⚠️  DEPRECATION WARNING:'));
+    console.log(chalk.yellow('This command is deprecated. Please use:'));
+    console.log(chalk.cyan('  npx whatsapp-bot-scanner unified-cli pair\n'));
+    
+    // Instantiate UnifiedCLI and PairingManager with proper configuration
+    const argv = process.argv.slice(2);
+    const unifiedCli = new UnifiedCLI(argv);
+    const pairingManager = unifiedCli.getPairingManager();
+    
     try {
-      const response = await fetch('http://127.0.0.1:3005/pair', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ force: options.force })
-      });
-
-      if (!response.ok) {
-        const text = await response.text();
-        let errorData;
-        try {
-          errorData = JSON.parse(text);
-        } catch {
-          errorData = { error: text };
+      // Use PairingManager for enhanced pairing with countdown and auto-detection
+      await pairingManager.requestManualPairing();
+      
+      // Set up monitoring for pairing success with countdown hooks
+      await pairingManager.monitorForPairingSuccess(
+        (successData) => {
+          console.log(chalk.green('✅ Pairing completed successfully!'));
+          console.log(chalk.dim(`Timestamp: ${successData.timestamp}`));
+          if (successData.sessionInfo) {
+            console.log(chalk.dim(`Session: ${successData.sessionInfo}`));
+          }
+        },
+        (errorData) => {
+          console.error(chalk.red(`❌ Pairing failed: ${errorData.errorDetails || 'Unknown error'}`));
+          console.error(chalk.dim(`Timestamp: ${errorData.timestamp}`));
         }
-
-        if (response.status === 429) {
-          spinner.fail(chalk.yellow('Rate Limit Detected'));
-          const ms = errorData.nextAttemptIn || 0;
-          const minutes = Math.ceil(ms / 60000);
-          const timeStr = ms > 60000 ? `${minutes} minute(s)` : `${Math.ceil(ms / 1000)} seconds`;
-
-          console.log(boxen(
-            chalk.yellow(`⚠️  WhatsApp has rate-limited this phone number.\n\n`) +
-            chalk.white(`You must wait approximately `) + chalk.bold.cyan(timeStr) + chalk.white(` before trying again.\n\n`) +
-            chalk.dim(`To force a retry (risky, may extend ban): `) + chalk.cyan(`npx whatsapp-bot-scanner pair --force`),
-            { padding: 1, borderStyle: 'round', borderColor: 'yellow' }
-          ));
-          process.exit(1);
-        }
-
-        spinner.fail(`Failed: ${response.status} ${response.statusText}`);
-        console.error(chalk.red(errorData.error || text));
-        if (errorData.details) {
-          console.error(chalk.dim(errorData.details));
-        }
-        process.exit(1);
-      }
-
-      const data = await response.json();
-      spinner.stop();
-
-      if (data.code) {
-        console.log(boxen(
-          chalk.bold(`Your Pairing Code:\n\n${chalk.green(data.code.split('').join(' '))}`),
-          { padding: 1, margin: 1, borderStyle: 'double', borderColor: 'green' }
-        ));
-        console.log(chalk.yellow('\n1. Open WhatsApp on your phone'));
-        console.log(chalk.yellow('2. Go to Settings > Linked Devices > Link a Device'));
-        console.log(chalk.yellow('3. Select "Link with phone number"'));
-        console.log(chalk.yellow('4. Enter the code above\n'));
-      } else {
-        console.log(chalk.red('No pairing code received'));
-        process.exit(1);
-      }
+      );
+      
     } catch (error) {
-      spinner.fail('Pairing request failed');
-      console.error(chalk.red(error.message));
+      console.error(chalk.red(`Pairing failed: ${error.message}`));
       console.log(chalk.yellow('Ensure wa-client is running: docker compose up -d wa-client'));
       process.exit(1);
     }
