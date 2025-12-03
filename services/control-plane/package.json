@@ -16,7 +16,7 @@
     "@wbscanner/shared": "file:../../packages/shared",
     "fastify": "^4.27.0",
     "ioredis": "^5.4.1",
-    "ioredis-mock": "^4.7.0",
+    "ioredis-mock": "^8.0.0",
     "pg": "^8.16.3",
     "pino": "^9.4.0",
     "prom-client": "^15.1.3",

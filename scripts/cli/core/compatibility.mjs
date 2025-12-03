@@ -12,7 +12,7 @@ import { UserInterface } from '../ui/prompts.mjs';
 import { NotificationManager } from '../ui/notifications.mjs';
 import { FileManager } from '../utils/file.mjs';
 import { handleError } from './errors.mjs';
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -220,13 +220,29 @@ export class CompatibilityManager {
 
       // Handle different script types
       if (scriptName.endsWith('.sh')) {
-        // Bash script
-        const command = `bash ${scriptPath} ${args.join(' ')}`;
-        execSync(command, { stdio: 'inherit' });
+        // Bash script - use execFile with proper argument array to prevent injection
+        const sanitizedArgs = args.filter(arg => 
+          typeof arg === 'string' && 
+          !arg.includes(';') && 
+          !arg.includes('&&') && 
+          !arg.includes('||') && 
+          !arg.includes('|') &&
+          !arg.includes('>') &&
+          !arg.includes('<') &&
+          !arg.includes('`') &&
+          !arg.includes('$')
+        );
+        execFileSync('bash', [scriptPath, ...sanitizedArgs], { stdio: 'inherit' });
       } else if (scriptName.endsWith('.mjs') || scriptName.endsWith('.js')) {
-        // Node script
-        const command = `node ${scriptPath} ${args.join(' ')}`;
-        execSync(command, { stdio: 'inherit' });
+        // Node script - use execFile with proper argument array to prevent injection
+        const sanitizedArgs = args.filter(arg => 
+          typeof arg === 'string' && 
+          !arg.includes('--eval') &&
+          !arg.includes('-e') &&
+          !arg.includes('--require') &&
+          !arg.includes('-r')
+        );
+        execFileSync('node', [scriptPath, ...sanitizedArgs], { stdio: 'inherit' });
       } else {
         throw new Error(`Unsupported script type: ${scriptName}`);
       }

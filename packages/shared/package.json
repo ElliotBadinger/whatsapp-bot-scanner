@@ -1,7 +1,6 @@
 {
   "name": "@wbscanner/shared",
   "version": "0.1.0",
-  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -18,7 +17,7 @@
     "confusables": "^1.1.1",
     "dotenv": "^17.2.3",
     "fastify": "^4.27.0",
-    "ioredis": "^5.4.1",
+    "ioredis-mock": "^8.0.0",
     "ipaddr.js": "^2.2.0",
     "node-cache": "^5.1.2",
     "object-hash": "^3.0.0",
