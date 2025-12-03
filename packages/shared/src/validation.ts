@@ -141,7 +141,7 @@ export class UrlValidator {
         normalizedUrl,
         riskLevel
       };
-    } catch (error) {
+    } catch (_error) {
       errors.push('Invalid URL format');
       return {
         isValid: false,
