@@ -1,3 +1,269 @@
-module.exports=[72288,(a,b,c)=>{"use strict";b.exports=a.r(80326).vendored["react-ssr"].ReactJsxRuntime},63414,(a,b,c)=>{"use strict";b.exports=a.r(80326).vendored["react-ssr"].ReactServerDOMTurbopackClient},70383,a=>{"use strict";var b=a.i(72288),c=a.i(54869);function d({title:a,children:d,className:e,variant:f="default"}){return(0,b.jsxs)("div",{className:(0,c.cn)("relative overflow-hidden font-mono","glass"===f&&"bg-background/80 backdrop-blur-md border border-border","solid"===f&&"bg-background border border-primary/40","default"===f&&"bg-background/90 border border-border",e),style:{boxShadow:"inset 0 0 20px rgba(0, 255, 65, 0.05), 0 0 10px rgba(0, 255, 65, 0.1)"},children:[a&&(0,b.jsx)("div",{className:"border-b border-border bg-primary/5 px-4 py-2",children:(0,b.jsx)("span",{className:"text-primary text-sm",children:`┌─ ${a} ─`})}),(0,b.jsx)("div",{className:"p-4",children:d}),a&&(0,b.jsx)("div",{className:"border-t border-border bg-primary/5 px-4 py-1",children:(0,b.jsx)("span",{className:"text-primary/50 text-xs",children:"└───────────────────────────────────────┘"})})]})}a.s(["TerminalCard",()=>d])},8300,a=>{"use strict";var b=a.i(72288),c=a.i(56637),d=a.i(54869);let e=[{url:"github.com/vercel/next.js",verdict:"SAFE"},{url:"bit.ly/3xYz123",verdict:"SCAN"},{url:"phishing-site.xyz/login",verdict:"DENY"},{url:"docs.google.com/d/abc",verdict:"SAFE"},{url:"suspicious-link.ru/click",verdict:"WARN"},{url:"linkedin.com/post/456",verdict:"SAFE"},{url:"malware-host.net/payload",verdict:"DENY"},{url:"youtube.com/watch?v=xyz",verdict:"SAFE"},{url:"dropbox.com/s/abc123",verdict:"SAFE"},{url:"free-prize.win/claim",verdict:"DENY"}];function f({maxItems:a=8}){let[f,g]=(0,c.useState)([]),[h,i]=(0,c.useState)(!1),[j,k]=(0,c.useState)(!1);return(0,c.useEffect)(()=>{g(Array.from({length:5},()=>{let a=e[Math.floor(Math.random()*e.length)];return{id:Math.random().toString(36).substring(7),timestamp:new Date(Date.now()-6e4*Math.random()).toISOString(),url:a.url,verdict:a.verdict}}).sort((a,b)=>new Date(b.timestamp).getTime()-new Date(a.timestamp).getTime())),i(!0);let b=setInterval(()=>{if(j)return;let b=e[Math.floor(Math.random()*e.length)],c={id:Math.random().toString(36).substring(7),timestamp:new Date().toISOString(),url:b.url,verdict:b.verdict};g(b=>[c,...b.slice(0,a-1)])},3e3+2e3*Math.random()),c=new EventSource("/api/feed");return c.onmessage=b=>{if(!j)try{let c=JSON.parse(b.data);g(b=>[c,...b.slice(0,a-1)])}catch{}},c.onerror=()=>{},()=>{clearInterval(b),c.close()}},[a,j]),(0,b.jsxs)("div",{className:"font-mono",role:"log","aria-live":"polite","aria-atomic":"false",children:[(0,b.jsxs)("div",{className:"flex items-center justify-between mb-2 flex-wrap gap-2",children:[(0,b.jsx)("span",{className:"text-primary text-sm",children:`┌─ REAL-TIME SCAN LOG ─────────────────┐`}),(0,b.jsxs)("div",{className:"flex items-center gap-3",children:[(0,b.jsx)("button",{onClick:()=>k(!j),className:"px-2 py-1 text-xs border border-border text-primary hover:bg-primary/10 transition-colors focus-ring","aria-label":j?"Resume feed":"Pause feed",children:j?"▶ RESUME":"⏸ PAUSE"}),(0,b.jsxs)("div",{className:"flex items-center gap-2",children:[(0,b.jsx)("span",{className:(0,d.cn)("h-2 w-2 rounded-full",h&&!j?"bg-success pulse-led":"bg-danger")}),(0,b.jsx)("span",{className:"text-primary/60 text-xs",children:j?"PAUSED":h?"LIVE":"OFFLINE"})]})]})]}),(0,b.jsx)("div",{className:"border border-border bg-background/80 overflow-hidden max-h-96 overflow-y-auto",children:(0,b.jsx)("div",{className:"divide-y divide-border",children:f.map((a,c)=>(0,b.jsxs)("div",{className:(0,d.cn)("flex items-center gap-2 px-3 py-2 text-xs transition-all",0===c&&"animate-[fadeIn_0.3s_ease-out]"),children:[(0,b.jsx)("span",{className:"text-primary/50 w-16 shrink-0",children:new Date(a.timestamp).toLocaleTimeString("en-US",{hour12:!1,hour:"2-digit",minute:"2-digit",second:"2-digit"})}),(0,b.jsx)("span",{className:"text-primary/30",children:"│"}),(0,b.jsx)("span",{className:(0,d.cn)("w-14 shrink-0 font-bold",function(a){switch(a){case"SAFE":return"text-success";case"DENY":return"text-danger";case"WARN":return"text-warning";case"SCAN":return"text-muted-foreground";default:return"text-primary/60"}}(a.verdict)),children:(0,b.jsx)("span",{className:(0,d.cn)("px-1.5 py-0.5 rounded",function(a){switch(a){case"SAFE":return"bg-success/10";case"DENY":return"bg-danger/10";case"WARN":return"bg-warning/10";case"SCAN":return"bg-muted/30";default:return"bg-primary/5"}}(a.verdict)),children:a.verdict})}),(0,b.jsx)("span",{className:"text-primary/30",children:"│"}),(0,b.jsx)("span",{className:"text-muted-foreground truncate flex-1",children:a.url})]},a.id))})}),(0,b.jsx)("div",{className:"text-primary/40 text-xs mt-1",children:`└───────────────────────────────────────┘`})]})}a.s(["LiveFeed",()=>f])}];
+module.exports = [
+  72288,
+  (a, b, c) => {
+    "use strict";
+    b.exports = a.r(80326).vendored["react-ssr"].ReactJsxRuntime;
+  },
+  63414,
+  (a, b, c) => {
+    "use strict";
+    b.exports = a.r(80326).vendored["react-ssr"].ReactServerDOMTurbopackClient;
+  },
+  70383,
+  (a) => {
+    "use strict";
+    var b = a.i(72288),
+      c = a.i(54869);
+    function d({
+      title: a,
+      children: d,
+      className: e,
+      variant: f = "default",
+    }) {
+      return (0, b.jsxs)("div", {
+        className: (0, c.cn)(
+          "relative overflow-hidden font-mono",
+          "glass" === f &&
+            "bg-background/80 backdrop-blur-md border border-border",
+          "solid" === f && "bg-background border border-primary/40",
+          "default" === f && "bg-background/90 border border-border",
+          e,
+        ),
+        style: {
+          boxShadow:
+            "inset 0 0 20px rgba(0, 255, 65, 0.05), 0 0 10px rgba(0, 255, 65, 0.1)",
+        },
+        children: [
+          a &&
+            (0, b.jsx)("div", {
+              className: "border-b border-border bg-primary/5 px-4 py-2",
+              children: (0, b.jsx)("span", {
+                className: "text-primary text-sm",
+                children: `┌─ ${a} ─`,
+              }),
+            }),
+          (0, b.jsx)("div", { className: "p-4", children: d }),
+          a &&
+            (0, b.jsx)("div", {
+              className: "border-t border-border bg-primary/5 px-4 py-1",
+              children: (0, b.jsx)("span", {
+                className: "text-primary/50 text-xs",
+                children: "└───────────────────────────────────────┘",
+              }),
+            }),
+        ],
+      });
+    }
+    a.s(["TerminalCard", () => d]);
+  },
+  8300,
+  (a) => {
+    "use strict";
+    var b = a.i(72288),
+      c = a.i(56637),
+      d = a.i(54869);
+    let e = [
+      { url: "github.com/vercel/next.js", verdict: "SAFE" },
+      { url: "bit.ly/3xYz123", verdict: "SCAN" },
+      { url: "phishing-site.xyz/login", verdict: "DENY" },
+      { url: "docs.google.com/d/abc", verdict: "SAFE" },
+      { url: "suspicious-link.ru/click", verdict: "WARN" },
+      { url: "linkedin.com/post/456", verdict: "SAFE" },
+      { url: "malware-host.net/payload", verdict: "DENY" },
+      { url: "youtube.com/watch?v=xyz", verdict: "SAFE" },
+      { url: "dropbox.com/s/abc123", verdict: "SAFE" },
+      { url: "free-prize.win/claim", verdict: "DENY" },
+    ];
+    function f({ maxItems: a = 8 }) {
+      let [f, g] = (0, c.useState)([]),
+        [h, i] = (0, c.useState)(!1),
+        [j, k] = (0, c.useState)(!1);
+      return (
+        (0, c.useEffect)(() => {
+          (g(
+            Array.from({ length: 5 }, () => {
+              let a = e[Math.floor(Math.random() * e.length)];
+              return {
+                id: Math.random().toString(36).substring(7),
+                timestamp: new Date(
+                  Date.now() - 6e4 * Math.random(),
+                ).toISOString(),
+                url: a.url,
+                verdict: a.verdict,
+              };
+            }).sort(
+              (a, b) =>
+                new Date(b.timestamp).getTime() -
+                new Date(a.timestamp).getTime(),
+            ),
+          ),
+            i(!0));
+          let b = setInterval(
+              () => {
+                if (j) return;
+                let b = e[Math.floor(Math.random() * e.length)],
+                  c = {
+                    id: Math.random().toString(36).substring(7),
+                    timestamp: new Date().toISOString(),
+                    url: b.url,
+                    verdict: b.verdict,
+                  };
+                g((b) => [c, ...b.slice(0, a - 1)]);
+              },
+              3e3 + 2e3 * Math.random(),
+            ),
+            c = new EventSource("/api/feed");
+          return (
+            (c.onmessage = (b) => {
+              if (!j)
+                try {
+                  let c = JSON.parse(b.data);
+                  g((b) => [c, ...b.slice(0, a - 1)]);
+                } catch {}
+            }),
+            (c.onerror = () => {}),
+            () => {
+              (clearInterval(b), c.close());
+            }
+          );
+        }, [a, j]),
+        (0, b.jsxs)("div", {
+          className: "font-mono",
+          role: "log",
+          "aria-live": "polite",
+          "aria-atomic": "false",
+          children: [
+            (0, b.jsxs)("div", {
+              className:
+                "flex items-center justify-between mb-2 flex-wrap gap-2",
+              children: [
+                (0, b.jsx)("span", {
+                  className: "text-primary text-sm",
+                  children: `┌─ REAL-TIME SCAN LOG ─────────────────┐`,
+                }),
+                (0, b.jsxs)("div", {
+                  className: "flex items-center gap-3",
+                  children: [
+                    (0, b.jsx)("button", {
+                      onClick: () => k(!j),
+                      className:
+                        "px-2 py-1 text-xs border border-border text-primary hover:bg-primary/10 transition-colors focus-ring",
+                      "aria-label": j ? "Resume feed" : "Pause feed",
+                      children: j ? "▶ RESUME" : "⏸ PAUSE",
+                    }),
+                    (0, b.jsxs)("div", {
+                      className: "flex items-center gap-2",
+                      children: [
+                        (0, b.jsx)("span", {
+                          className: (0, d.cn)(
+                            "h-2 w-2 rounded-full",
+                            h && !j ? "bg-success pulse-led" : "bg-danger",
+                          ),
+                        }),
+                        (0, b.jsx)("span", {
+                          className: "text-primary/60 text-xs",
+                          children: j ? "PAUSED" : h ? "LIVE" : "OFFLINE",
+                        }),
+                      ],
+                    }),
+                  ],
+                }),
+              ],
+            }),
+            (0, b.jsx)("div", {
+              className:
+                "border border-border bg-background/80 overflow-hidden max-h-96 overflow-y-auto",
+              children: (0, b.jsx)("div", {
+                className: "divide-y divide-border",
+                children: f.map((a, c) =>
+                  (0, b.jsxs)(
+                    "div",
+                    {
+                      className: (0, d.cn)(
+                        "flex items-center gap-2 px-3 py-2 text-xs transition-all",
+                        0 === c && "animate-[fadeIn_0.3s_ease-out]",
+                      ),
+                      children: [
+                        (0, b.jsx)("span", {
+                          className: "text-primary/50 w-16 shrink-0",
+                          children: new Date(a.timestamp).toLocaleTimeString(
+                            "en-US",
+                            {
+                              hour12: !1,
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              second: "2-digit",
+                            },
+                          ),
+                        }),
+                        (0, b.jsx)("span", {
+                          className: "text-primary/30",
+                          children: "│",
+                        }),
+                        (0, b.jsx)("span", {
+                          className: (0, d.cn)(
+                            "w-14 shrink-0 font-bold",
+                            (function (a) {
+                              switch (a) {
+                                case "SAFE":
+                                  return "text-success";
+                                case "DENY":
+                                  return "text-danger";
+                                case "WARN":
+                                  return "text-warning";
+                                case "SCAN":
+                                  return "text-muted-foreground";
+                                default:
+                                  return "text-primary/60";
+                              }
+                            })(a.verdict),
+                          ),
+                          children: (0, b.jsx)("span", {
+                            className: (0, d.cn)(
+                              "px-1.5 py-0.5 rounded",
+                              (function (a) {
+                                switch (a) {
+                                  case "SAFE":
+                                    return "bg-success/10";
+                                  case "DENY":
+                                    return "bg-danger/10";
+                                  case "WARN":
+                                    return "bg-warning/10";
+                                  case "SCAN":
+                                    return "bg-muted/30";
+                                  default:
+                                    return "bg-primary/5";
+                                }
+                              })(a.verdict),
+                            ),
+                            children: a.verdict,
+                          }),
+                        }),
+                        (0, b.jsx)("span", {
+                          className: "text-primary/30",
+                          children: "│",
+                        }),
+                        (0, b.jsx)("span", {
+                          className: "text-muted-foreground truncate flex-1",
+                          children: a.url,
+                        }),
+                      ],
+                    },
+                    a.id,
+                  ),
+                ),
+              }),
+            }),
+            (0, b.jsx)("div", {
+              className: "text-primary/40 text-xs mt-1",
+              children: `└───────────────────────────────────────┘`,
+            }),
+          ],
+        })
+      );
+    }
+    a.s(["LiveFeed", () => f]);
+  },
+];
 
 //# sourceMappingURL=Development_whatsapp-bot-scanner_1d0edfd7._.js.map

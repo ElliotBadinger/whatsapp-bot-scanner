@@ -1,4 +1,943 @@
-(globalThis.TURBOPACK||(globalThis.TURBOPACK=[])).push(["object"==typeof document?document.currentScript:void 0,83661,(e,r,t)=>{"use strict";Object.defineProperty(t,"__esModule",{value:!0}),Object.defineProperty(t,"warnOnce",{enumerable:!0,get:function(){return s}});let s=e=>{}},66404,e=>{"use strict";var r=e.i(66808),t=e.i(97202);function s({title:e,children:s,className:a,variant:n="default"}){return(0,r.jsxs)("div",{className:(0,t.cn)("relative overflow-hidden font-mono","glass"===n&&"bg-background/80 backdrop-blur-md border border-border","solid"===n&&"bg-background border border-primary/40","default"===n&&"bg-background/90 border border-border",a),style:{boxShadow:"inset 0 0 20px rgba(0, 255, 65, 0.05), 0 0 10px rgba(0, 255, 65, 0.1)"},children:[e&&(0,r.jsx)("div",{className:"border-b border-border bg-primary/5 px-4 py-2",children:(0,r.jsx)("span",{className:"text-primary text-sm",children:`┌─ ${e} ─`})}),(0,r.jsx)("div",{className:"p-4",children:s}),e&&(0,r.jsx)("div",{className:"border-t border-border bg-primary/5 px-4 py-1",children:(0,r.jsx)("span",{className:"text-primary/50 text-xs",children:"└───────────────────────────────────────┘"})})]})}e.s(["TerminalCard",()=>s])},61113,e=>{"use strict";var r=e.i(66808),t=e.i(16371),s=e.i(97202);let a=[{url:"github.com/vercel/next.js",verdict:"SAFE"},{url:"bit.ly/3xYz123",verdict:"SCAN"},{url:"phishing-site.xyz/login",verdict:"DENY"},{url:"docs.google.com/d/abc",verdict:"SAFE"},{url:"suspicious-link.ru/click",verdict:"WARN"},{url:"linkedin.com/post/456",verdict:"SAFE"},{url:"malware-host.net/payload",verdict:"DENY"},{url:"youtube.com/watch?v=xyz",verdict:"SAFE"},{url:"dropbox.com/s/abc123",verdict:"SAFE"},{url:"free-prize.win/claim",verdict:"DENY"}];function n({maxItems:e=8}){let[n,i]=(0,t.useState)([]),[l,o]=(0,t.useState)(!1),[d,c]=(0,t.useState)(!1);return(0,t.useEffect)(()=>{i(Array.from({length:5},()=>{let e=a[Math.floor(Math.random()*a.length)];return{id:Math.random().toString(36).substring(7),timestamp:new Date(Date.now()-6e4*Math.random()).toISOString(),url:e.url,verdict:e.verdict}}).sort((e,r)=>new Date(r.timestamp).getTime()-new Date(e.timestamp).getTime())),o(!0);let r=setInterval(()=>{if(d)return;let r=a[Math.floor(Math.random()*a.length)],t={id:Math.random().toString(36).substring(7),timestamp:new Date().toISOString(),url:r.url,verdict:r.verdict};i(r=>[t,...r.slice(0,e-1)])},3e3+2e3*Math.random()),t=new EventSource("/api/feed");return t.onmessage=r=>{if(!d)try{let t=JSON.parse(r.data);i(r=>[t,...r.slice(0,e-1)])}catch{}},t.onerror=()=>{},()=>{clearInterval(r),t.close()}},[e,d]),(0,r.jsxs)("div",{className:"font-mono",role:"log","aria-live":"polite","aria-atomic":"false",children:[(0,r.jsxs)("div",{className:"flex items-center justify-between mb-2 flex-wrap gap-2",children:[(0,r.jsx)("span",{className:"text-primary text-sm",children:`┌─ REAL-TIME SCAN LOG ─────────────────┐`}),(0,r.jsxs)("div",{className:"flex items-center gap-3",children:[(0,r.jsx)("button",{onClick:()=>c(!d),className:"px-2 py-1 text-xs border border-border text-primary hover:bg-primary/10 transition-colors focus-ring","aria-label":d?"Resume feed":"Pause feed",children:d?"▶ RESUME":"⏸ PAUSE"}),(0,r.jsxs)("div",{className:"flex items-center gap-2",children:[(0,r.jsx)("span",{className:(0,s.cn)("h-2 w-2 rounded-full",l&&!d?"bg-success pulse-led":"bg-danger")}),(0,r.jsx)("span",{className:"text-primary/60 text-xs",children:d?"PAUSED":l?"LIVE":"OFFLINE"})]})]})]}),(0,r.jsx)("div",{className:"border border-border bg-background/80 overflow-hidden max-h-96 overflow-y-auto",children:(0,r.jsx)("div",{className:"divide-y divide-border",children:n.map((e,t)=>(0,r.jsxs)("div",{className:(0,s.cn)("flex items-center gap-2 px-3 py-2 text-xs transition-all",0===t&&"animate-[fadeIn_0.3s_ease-out]"),children:[(0,r.jsx)("span",{className:"text-primary/50 w-16 shrink-0",children:new Date(e.timestamp).toLocaleTimeString("en-US",{hour12:!1,hour:"2-digit",minute:"2-digit",second:"2-digit"})}),(0,r.jsx)("span",{className:"text-primary/30",children:"│"}),(0,r.jsx)("span",{className:(0,s.cn)("w-14 shrink-0 font-bold",function(e){switch(e){case"SAFE":return"text-success";case"DENY":return"text-danger";case"WARN":return"text-warning";case"SCAN":return"text-muted-foreground";default:return"text-primary/60"}}(e.verdict)),children:(0,r.jsx)("span",{className:(0,s.cn)("px-1.5 py-0.5 rounded",function(e){switch(e){case"SAFE":return"bg-success/10";case"DENY":return"bg-danger/10";case"WARN":return"bg-warning/10";case"SCAN":return"bg-muted/30";default:return"bg-primary/5"}}(e.verdict)),children:e.verdict})}),(0,r.jsx)("span",{className:"text-primary/30",children:"│"}),(0,r.jsx)("span",{className:"text-muted-foreground truncate flex-1",children:e.url})]},e.id))})}),(0,r.jsx)("div",{className:"text-primary/40 text-xs mt-1",children:`└───────────────────────────────────────┘`})]})}e.s(["LiveFeed",()=>n])},97983,e=>{"use strict";let r,t,s,a,n;var i=e.i(66808),l=e.i(16371),o=e.i(92240),d=e.i(66404),c=e.i(67457),m=e.i(61113);function u(e,r){if("function"==typeof e)return e(r);null!=e&&(e.current=r)}var x=Symbol.for("react.lazy"),p=l[" use ".trim().toString()];function b(e){var r;return null!=e&&"object"==typeof e&&"$$typeof"in e&&e.$$typeof===x&&"_payload"in e&&"object"==typeof(r=e._payload)&&null!==r&&"then"in r}var g=((n=l.forwardRef((e,r)=>{let{children:t,...s}=e;if(b(t)&&"function"==typeof p&&(t=p(t._payload)),l.isValidElement(t)){var a;let e,n,i=(a=t,(n=(e=Object.getOwnPropertyDescriptor(a.props,"ref")?.get)&&"isReactWarning"in e&&e.isReactWarning)?a.ref:(n=(e=Object.getOwnPropertyDescriptor(a,"ref")?.get)&&"isReactWarning"in e&&e.isReactWarning)?a.props.ref:a.props.ref||a.ref),o=function(e,r){let t={...r};for(let s in r){let a=e[s],n=r[s];/^on[A-Z]/.test(s)?a&&n?t[s]=(...e)=>{let r=n(...e);return a(...e),r}:a&&(t[s]=a):"style"===s?t[s]={...a,...n}:"className"===s&&(t[s]=[a,n].filter(Boolean).join(" "))}return{...e,...t}}(s,t.props);return t.type!==l.Fragment&&(o.ref=r?function(...e){return r=>{let t=!1,s=e.map(e=>{let s=u(e,r);return t||"function"!=typeof s||(t=!0),s});if(t)return()=>{for(let r=0;r<s.length;r++){let t=s[r];"function"==typeof t?t():u(e[r],null)}}}}(r,i):i),l.cloneElement(t,o)}return l.Children.count(t)>1?l.Children.only(null):null})).displayName="Slot.SlotClone",r=n,(t=l.forwardRef((e,t)=>{let{children:s,...a}=e;b(s)&&"function"==typeof p&&(s=p(s._payload));let n=l.Children.toArray(s),o=n.find(h);if(o){let e=o.props.children,s=n.map(r=>r!==o?r:l.Children.count(e)>1?l.Children.only(null):l.isValidElement(e)?e.props.children:null);return(0,i.jsx)(r,{...a,ref:t,children:l.isValidElement(e)?l.cloneElement(e,void 0,s):null})}return(0,i.jsx)(r,{...a,ref:t,children:s})})).displayName="Slot.Slot",t),f=Symbol("radix.slottable");function h(e){return l.isValidElement(e)&&"function"==typeof e.type&&"__radixId"in e.type&&e.type.__radixId===f}var v=e.i(10266);let y=e=>"boolean"==typeof e?`${e}`:0===e?"0":e,N=v.clsx;var j=e.i(97202);let S=(s="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",a={variants:{variant:{default:"bg-primary text-primary-foreground hover:bg-primary/90",destructive:"bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",outline:"border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50",secondary:"bg-secondary text-secondary-foreground hover:bg-secondary/80",ghost:"hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",link:"text-primary underline-offset-4 hover:underline"},size:{default:"h-9 px-4 py-2 has-[>svg]:px-3",sm:"h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5",lg:"h-10 rounded-md px-6 has-[>svg]:px-4",icon:"size-9","icon-sm":"size-8","icon-lg":"size-10"}},defaultVariants:{variant:"default",size:"default"}},e=>{var r;if((null==a?void 0:a.variants)==null)return N(s,null==e?void 0:e.class,null==e?void 0:e.className);let{variants:t,defaultVariants:n}=a,i=Object.keys(t).map(r=>{let s=null==e?void 0:e[r],a=null==n?void 0:n[r];if(null===s)return null;let i=y(s)||y(a);return t[r][i]}),l=e&&Object.entries(e).reduce((e,r)=>{let[t,s]=r;return void 0===s||(e[t]=s),e},{});return N(s,i,null==a||null==(r=a.compoundVariants)?void 0:r.reduce((e,r)=>{let{class:t,className:s,...a}=r;return Object.entries(a).every(e=>{let[r,t]=e;return Array.isArray(t)?t.includes({...n,...l}[r]):({...n,...l})[r]===t})?[...e,t,s]:e},[]),null==e?void 0:e.class,null==e?void 0:e.className)});function w({className:e,variant:r,size:t,asChild:s=!1,...a}){return(0,i.jsx)(s?g:"button",{"data-slot":"button",className:(0,j.cn)(S({variant:r,size:t,className:e})),...a})}function E({className:e,type:r,...t}){return(0,i.jsx)("input",{type:r,"data-slot":"input",className:(0,j.cn)("file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 border-input h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm","focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]","aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",e),...t})}var A=e.i(63607);function k(){let[e,r]=(0,l.useState)(""),[t,s]=(0,l.useState)(!1),[a,n]=(0,l.useState)(null),[o,d]=(0,l.useState)(null),c=async r=>{if(r.preventDefault(),e.trim()){s(!0),d(null),n(null);try{let r=await (0,A.rescanUrl)(e);n(r)}catch{d("SCAN_FAILED: Unable to process URL")}finally{s(!1)}}};return(0,i.jsxs)("div",{className:"space-y-4",children:[(0,i.jsxs)("form",{onSubmit:c,className:"flex gap-2",children:[(0,i.jsx)(E,{type:"url",placeholder:"https://example.com/suspicious-link",value:e,onChange:e=>r(e.target.value),className:"flex-1 bg-background border-border text-secondary placeholder:text-muted-foreground/30 font-mono text-sm focus:border-primary focus:ring-primary/20 focus-ring"}),(0,i.jsx)(w,{type:"submit",disabled:t||!e.trim(),className:"bg-primary text-background hover:bg-primary/80 font-mono font-bold disabled:opacity-50",children:t?"SCANNING...":"[ RESCAN ]"})]}),a&&(0,i.jsxs)("div",{className:(0,j.cn)("border p-4 font-mono text-sm",(e=>{switch(e){case"SAFE":return"text-success bg-success/10 border-success/40";case"DENY":return"text-danger bg-danger/10 border-danger/40";case"WARN":return"text-warning bg-warning/10 border-warning/40";default:return"text-muted-foreground bg-muted/10 border-border"}})(a.verdict)),children:[(0,i.jsxs)("div",{className:"flex items-center justify-between mb-2",children:[(0,i.jsxs)("span",{className:"font-bold",children:["VERDICT: ",a.verdict]}),(0,i.jsx)("span",{className:"text-xs opacity-60",children:new Date(a.timestamp).toLocaleString()})]}),(0,i.jsxs)("div",{className:"text-xs opacity-70 break-all",children:["URL: ",a.url]}),a.category&&(0,i.jsxs)("div",{className:"text-xs opacity-70 mt-1",children:["CATEGORY: ",a.category]})]}),o&&(0,i.jsx)("div",{className:"border border-danger/40 bg-danger/10 p-4 font-mono text-sm text-danger",children:o})]})}var C=e.i(45375);function T(){let{data:e,mutate:r}=(0,C.default)("overrides",A.getOverrides),[t,s]=(0,l.useState)(!1),[a,n]=(0,l.useState)(""),[o,d]=(0,l.useState)("block"),[c,m]=(0,l.useState)(""),u=async t=>{t.preventDefault(),a.trim()&&(r([...e||[],await (0,A.addOverride)(a,o,c)]),n(""),m(""),s(!1))};return(0,i.jsxs)("div",{className:"space-y-4",children:[(0,i.jsxs)("div",{className:"flex items-center justify-between",children:[(0,i.jsxs)("span",{className:"font-mono text-primary text-sm",children:["ACTIVE OVERRIDES: ",e?.length||0]}),(0,i.jsx)(w,{onClick:()=>s(!t),variant:"outline",size:"sm",className:"border-primary/40 text-primary hover:bg-primary/10 font-mono text-xs focus-ring",children:t?"[ CANCEL ]":"[ + ADD ]"})]}),t&&(0,i.jsxs)("form",{onSubmit:u,className:"border border-border bg-background/50 p-4 space-y-3",children:[(0,i.jsxs)("div",{className:"grid grid-cols-1 md:grid-cols-3 gap-3",children:[(0,i.jsx)(E,{placeholder:"Pattern (e.g., *.example.com)",value:a,onChange:e=>n(e.target.value),className:"bg-background border-border text-secondary placeholder:text-muted-foreground/30 font-mono text-xs focus-ring"}),(0,i.jsxs)("select",{value:o,onChange:e=>d(e.target.value),className:"bg-background border border-border text-secondary font-mono text-xs px-3 py-2 rounded-md focus-ring",children:[(0,i.jsx)("option",{value:"block",children:"BLOCK"}),(0,i.jsx)("option",{value:"allow",children:"ALLOW"})]}),(0,i.jsx)(E,{placeholder:"Reason",value:c,onChange:e=>m(e.target.value),className:"bg-background border-border text-secondary placeholder:text-muted-foreground/30 font-mono text-xs focus-ring"})]}),(0,i.jsx)(w,{type:"submit",size:"sm",className:"bg-primary text-background hover:bg-primary/80 font-mono text-xs",children:"[ SAVE OVERRIDE ]"})]}),(0,i.jsxs)("div",{className:"border border-border overflow-hidden",children:[(0,i.jsxs)("div",{className:"grid grid-cols-4 gap-2 bg-primary/5 px-4 py-2 font-mono text-xs text-primary/70 border-b border-border",children:[(0,i.jsx)("span",{children:"PATTERN"}),(0,i.jsx)("span",{children:"ACTION"}),(0,i.jsx)("span",{children:"REASON"}),(0,i.jsx)("span",{children:"CREATED"})]}),(0,i.jsxs)("div",{className:"divide-y divide-border",children:[e?.map(e=>(0,i.jsxs)("div",{className:"grid grid-cols-4 gap-2 px-4 py-3 font-mono text-xs hover:bg-primary/5 transition-colors",children:[(0,i.jsx)("span",{className:"text-secondary truncate",children:e.pattern}),(0,i.jsx)("span",{className:(0,j.cn)("allow"===e.action?"text-success":"text-danger"),children:e.action.toUpperCase()}),(0,i.jsx)("span",{className:"text-muted-foreground truncate",children:e.reason}),(0,i.jsx)("span",{className:"text-muted-foreground/60",children:new Date(e.createdAt).toLocaleDateString()})]},e.id)),(!e||0===e.length)&&(0,i.jsx)("div",{className:"px-4 py-8 text-center font-mono text-sm text-muted-foreground/60",children:"No overrides configured"})]})]})]})}let R=[{id:"1",name:"Family Chat",members:12,scansTotal:156,threatsBlocked:3,isMuted:!1},{id:"2",name:"Work Team",members:45,scansTotal:892,threatsBlocked:15,isMuted:!1},{id:"3",name:"Gaming Squad",members:8,scansTotal:234,threatsBlocked:7,isMuted:!0},{id:"4",name:"Crypto Traders",members:128,scansTotal:2341,threatsBlocked:89,isMuted:!1},{id:"5",name:"School Group",members:67,scansTotal:445,threatsBlocked:12,isMuted:!1}];function O(){let[e,r]=(0,l.useState)(R),[t,s]=(0,l.useState)(null),a=async e=>{s(e);try{await (0,A.muteGroup)(e),r(r=>r.map(r=>r.id===e?{...r,isMuted:!r.isMuted}:r))}finally{s(null)}};return(0,i.jsxs)("div",{className:"space-y-4",children:[(0,i.jsxs)("div",{className:"grid grid-cols-3 gap-4 mb-4",children:[(0,i.jsxs)("div",{className:"text-center",children:[(0,i.jsx)("div",{className:"font-mono text-2xl text-primary font-bold",children:e.length}),(0,i.jsx)("div",{className:"font-mono text-xs text-primary/60",children:"GROUPS"})]}),(0,i.jsxs)("div",{className:"text-center",children:[(0,i.jsx)("div",{className:"font-mono text-2xl text-primary font-bold",children:e.reduce((e,r)=>e+r.members,0)}),(0,i.jsx)("div",{className:"font-mono text-xs text-primary/60",children:"MEMBERS"})]}),(0,i.jsxs)("div",{className:"text-center",children:[(0,i.jsx)("div",{className:"font-mono text-2xl text-danger font-bold",children:e.reduce((e,r)=>e+r.threatsBlocked,0)}),(0,i.jsx)("div",{className:"font-mono text-xs text-danger/60",children:"THREATS"})]})]}),(0,i.jsx)("div",{className:"border border-border divide-y divide-border",children:e.map(e=>(0,i.jsxs)("div",{className:"flex items-center justify-between px-4 py-3 hover:bg-primary/5 transition-colors",children:[(0,i.jsxs)("div",{className:"flex-1",children:[(0,i.jsxs)("div",{className:"flex items-center gap-2",children:[(0,i.jsx)("span",{className:"font-mono text-sm text-secondary",children:e.name}),e.isMuted&&(0,i.jsx)("span",{className:"px-2 py-0.5 bg-warning/10 text-warning text-xs font-mono",children:"MUTED"})]}),(0,i.jsxs)("div",{className:"font-mono text-xs text-muted-foreground/60 mt-1",children:[e.members," members • ",e.scansTotal," scans • ",e.threatsBlocked," threats"]})]}),(0,i.jsx)(w,{onClick:()=>a(e.id),disabled:t===e.id,variant:"outline",size:"sm",className:(0,j.cn)("font-mono text-xs focus-ring",e.isMuted?"border-primary/40 text-primary hover:bg-primary/10":"border-warning/40 text-warning hover:bg-warning/10"),children:t===e.id?"...":e.isMuted?"[ UNMUTE ]":"[ MUTE ]"})]},e.id))})]})}function D({onAuthenticated:e}){let[r,t]=(0,l.useState)(""),[s,a]=(0,l.useState)(null),[n,c]=(0,l.useState)(!1),m=async t=>{t.preventDefault(),c(!0),a(null),await new Promise(e=>setTimeout(e,800)),"safemode-admin-demo"===r||"demo"===r?e():a("ACCESS_DENIED: Invalid token"),c(!1)};return(0,i.jsxs)("div",{className:"min-h-screen bg-background",children:[(0,i.jsx)(o.NavBar,{}),(0,i.jsx)("div",{className:"flex items-center justify-center p-4 py-20",children:(0,i.jsx)("div",{className:"w-full max-w-md",children:(0,i.jsx)(d.TerminalCard,{title:"ADMIN AUTHENTICATION",variant:"solid",children:(0,i.jsxs)("div",{className:"space-y-6",children:[(0,i.jsx)("pre",{className:"font-mono text-primary/60 text-xs text-center",children:`    ██████
+(globalThis.TURBOPACK || (globalThis.TURBOPACK = [])).push([
+  "object" == typeof document ? document.currentScript : void 0,
+  83661,
+  (e, r, t) => {
+    "use strict";
+    (Object.defineProperty(t, "__esModule", { value: !0 }),
+      Object.defineProperty(t, "warnOnce", {
+        enumerable: !0,
+        get: function () {
+          return s;
+        },
+      }));
+    let s = (e) => {};
+  },
+  66404,
+  (e) => {
+    "use strict";
+    var r = e.i(66808),
+      t = e.i(97202);
+    function s({
+      title: e,
+      children: s,
+      className: a,
+      variant: n = "default",
+    }) {
+      return (0, r.jsxs)("div", {
+        className: (0, t.cn)(
+          "relative overflow-hidden font-mono",
+          "glass" === n &&
+            "bg-background/80 backdrop-blur-md border border-border",
+          "solid" === n && "bg-background border border-primary/40",
+          "default" === n && "bg-background/90 border border-border",
+          a,
+        ),
+        style: {
+          boxShadow:
+            "inset 0 0 20px rgba(0, 255, 65, 0.05), 0 0 10px rgba(0, 255, 65, 0.1)",
+        },
+        children: [
+          e &&
+            (0, r.jsx)("div", {
+              className: "border-b border-border bg-primary/5 px-4 py-2",
+              children: (0, r.jsx)("span", {
+                className: "text-primary text-sm",
+                children: `┌─ ${e} ─`,
+              }),
+            }),
+          (0, r.jsx)("div", { className: "p-4", children: s }),
+          e &&
+            (0, r.jsx)("div", {
+              className: "border-t border-border bg-primary/5 px-4 py-1",
+              children: (0, r.jsx)("span", {
+                className: "text-primary/50 text-xs",
+                children: "└───────────────────────────────────────┘",
+              }),
+            }),
+        ],
+      });
+    }
+    e.s(["TerminalCard", () => s]);
+  },
+  61113,
+  (e) => {
+    "use strict";
+    var r = e.i(66808),
+      t = e.i(16371),
+      s = e.i(97202);
+    let a = [
+      { url: "github.com/vercel/next.js", verdict: "SAFE" },
+      { url: "bit.ly/3xYz123", verdict: "SCAN" },
+      { url: "phishing-site.xyz/login", verdict: "DENY" },
+      { url: "docs.google.com/d/abc", verdict: "SAFE" },
+      { url: "suspicious-link.ru/click", verdict: "WARN" },
+      { url: "linkedin.com/post/456", verdict: "SAFE" },
+      { url: "malware-host.net/payload", verdict: "DENY" },
+      { url: "youtube.com/watch?v=xyz", verdict: "SAFE" },
+      { url: "dropbox.com/s/abc123", verdict: "SAFE" },
+      { url: "free-prize.win/claim", verdict: "DENY" },
+    ];
+    function n({ maxItems: e = 8 }) {
+      let [n, i] = (0, t.useState)([]),
+        [l, o] = (0, t.useState)(!1),
+        [d, c] = (0, t.useState)(!1);
+      return (
+        (0, t.useEffect)(() => {
+          (i(
+            Array.from({ length: 5 }, () => {
+              let e = a[Math.floor(Math.random() * a.length)];
+              return {
+                id: Math.random().toString(36).substring(7),
+                timestamp: new Date(
+                  Date.now() - 6e4 * Math.random(),
+                ).toISOString(),
+                url: e.url,
+                verdict: e.verdict,
+              };
+            }).sort(
+              (e, r) =>
+                new Date(r.timestamp).getTime() -
+                new Date(e.timestamp).getTime(),
+            ),
+          ),
+            o(!0));
+          let r = setInterval(
+              () => {
+                if (d) return;
+                let r = a[Math.floor(Math.random() * a.length)],
+                  t = {
+                    id: Math.random().toString(36).substring(7),
+                    timestamp: new Date().toISOString(),
+                    url: r.url,
+                    verdict: r.verdict,
+                  };
+                i((r) => [t, ...r.slice(0, e - 1)]);
+              },
+              3e3 + 2e3 * Math.random(),
+            ),
+            t = new EventSource("/api/feed");
+          return (
+            (t.onmessage = (r) => {
+              if (!d)
+                try {
+                  let t = JSON.parse(r.data);
+                  i((r) => [t, ...r.slice(0, e - 1)]);
+                } catch {}
+            }),
+            (t.onerror = () => {}),
+            () => {
+              (clearInterval(r), t.close());
+            }
+          );
+        }, [e, d]),
+        (0, r.jsxs)("div", {
+          className: "font-mono",
+          role: "log",
+          "aria-live": "polite",
+          "aria-atomic": "false",
+          children: [
+            (0, r.jsxs)("div", {
+              className:
+                "flex items-center justify-between mb-2 flex-wrap gap-2",
+              children: [
+                (0, r.jsx)("span", {
+                  className: "text-primary text-sm",
+                  children: `┌─ REAL-TIME SCAN LOG ─────────────────┐`,
+                }),
+                (0, r.jsxs)("div", {
+                  className: "flex items-center gap-3",
+                  children: [
+                    (0, r.jsx)("button", {
+                      onClick: () => c(!d),
+                      className:
+                        "px-2 py-1 text-xs border border-border text-primary hover:bg-primary/10 transition-colors focus-ring",
+                      "aria-label": d ? "Resume feed" : "Pause feed",
+                      children: d ? "▶ RESUME" : "⏸ PAUSE",
+                    }),
+                    (0, r.jsxs)("div", {
+                      className: "flex items-center gap-2",
+                      children: [
+                        (0, r.jsx)("span", {
+                          className: (0, s.cn)(
+                            "h-2 w-2 rounded-full",
+                            l && !d ? "bg-success pulse-led" : "bg-danger",
+                          ),
+                        }),
+                        (0, r.jsx)("span", {
+                          className: "text-primary/60 text-xs",
+                          children: d ? "PAUSED" : l ? "LIVE" : "OFFLINE",
+                        }),
+                      ],
+                    }),
+                  ],
+                }),
+              ],
+            }),
+            (0, r.jsx)("div", {
+              className:
+                "border border-border bg-background/80 overflow-hidden max-h-96 overflow-y-auto",
+              children: (0, r.jsx)("div", {
+                className: "divide-y divide-border",
+                children: n.map((e, t) =>
+                  (0, r.jsxs)(
+                    "div",
+                    {
+                      className: (0, s.cn)(
+                        "flex items-center gap-2 px-3 py-2 text-xs transition-all",
+                        0 === t && "animate-[fadeIn_0.3s_ease-out]",
+                      ),
+                      children: [
+                        (0, r.jsx)("span", {
+                          className: "text-primary/50 w-16 shrink-0",
+                          children: new Date(e.timestamp).toLocaleTimeString(
+                            "en-US",
+                            {
+                              hour12: !1,
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              second: "2-digit",
+                            },
+                          ),
+                        }),
+                        (0, r.jsx)("span", {
+                          className: "text-primary/30",
+                          children: "│",
+                        }),
+                        (0, r.jsx)("span", {
+                          className: (0, s.cn)(
+                            "w-14 shrink-0 font-bold",
+                            (function (e) {
+                              switch (e) {
+                                case "SAFE":
+                                  return "text-success";
+                                case "DENY":
+                                  return "text-danger";
+                                case "WARN":
+                                  return "text-warning";
+                                case "SCAN":
+                                  return "text-muted-foreground";
+                                default:
+                                  return "text-primary/60";
+                              }
+                            })(e.verdict),
+                          ),
+                          children: (0, r.jsx)("span", {
+                            className: (0, s.cn)(
+                              "px-1.5 py-0.5 rounded",
+                              (function (e) {
+                                switch (e) {
+                                  case "SAFE":
+                                    return "bg-success/10";
+                                  case "DENY":
+                                    return "bg-danger/10";
+                                  case "WARN":
+                                    return "bg-warning/10";
+                                  case "SCAN":
+                                    return "bg-muted/30";
+                                  default:
+                                    return "bg-primary/5";
+                                }
+                              })(e.verdict),
+                            ),
+                            children: e.verdict,
+                          }),
+                        }),
+                        (0, r.jsx)("span", {
+                          className: "text-primary/30",
+                          children: "│",
+                        }),
+                        (0, r.jsx)("span", {
+                          className: "text-muted-foreground truncate flex-1",
+                          children: e.url,
+                        }),
+                      ],
+                    },
+                    e.id,
+                  ),
+                ),
+              }),
+            }),
+            (0, r.jsx)("div", {
+              className: "text-primary/40 text-xs mt-1",
+              children: `└───────────────────────────────────────┘`,
+            }),
+          ],
+        })
+      );
+    }
+    e.s(["LiveFeed", () => n]);
+  },
+  97983,
+  (e) => {
+    "use strict";
+    let r, t, s, a, n;
+    var i = e.i(66808),
+      l = e.i(16371),
+      o = e.i(92240),
+      d = e.i(66404),
+      c = e.i(67457),
+      m = e.i(61113);
+    function u(e, r) {
+      if ("function" == typeof e) return e(r);
+      null != e && (e.current = r);
+    }
+    var x = Symbol.for("react.lazy"),
+      p = l[" use ".trim().toString()];
+    function b(e) {
+      var r;
+      return (
+        null != e &&
+        "object" == typeof e &&
+        "$$typeof" in e &&
+        e.$$typeof === x &&
+        "_payload" in e &&
+        "object" == typeof (r = e._payload) &&
+        null !== r &&
+        "then" in r
+      );
+    }
+    var g =
+        (((n = l.forwardRef((e, r) => {
+          let { children: t, ...s } = e;
+          if (
+            (b(t) && "function" == typeof p && (t = p(t._payload)),
+            l.isValidElement(t))
+          ) {
+            var a;
+            let e,
+              n,
+              i =
+                ((a = t),
+                (n =
+                  (e = Object.getOwnPropertyDescriptor(a.props, "ref")?.get) &&
+                  "isReactWarning" in e &&
+                  e.isReactWarning)
+                  ? a.ref
+                  : (n =
+                        (e = Object.getOwnPropertyDescriptor(a, "ref")?.get) &&
+                        "isReactWarning" in e &&
+                        e.isReactWarning)
+                    ? a.props.ref
+                    : a.props.ref || a.ref),
+              o = (function (e, r) {
+                let t = { ...r };
+                for (let s in r) {
+                  let a = e[s],
+                    n = r[s];
+                  /^on[A-Z]/.test(s)
+                    ? a && n
+                      ? (t[s] = (...e) => {
+                          let r = n(...e);
+                          return (a(...e), r);
+                        })
+                      : a && (t[s] = a)
+                    : "style" === s
+                      ? (t[s] = { ...a, ...n })
+                      : "className" === s &&
+                        (t[s] = [a, n].filter(Boolean).join(" "));
+                }
+                return { ...e, ...t };
+              })(s, t.props);
+            return (
+              t.type !== l.Fragment &&
+                (o.ref = r
+                  ? (function (...e) {
+                      return (r) => {
+                        let t = !1,
+                          s = e.map((e) => {
+                            let s = u(e, r);
+                            return (t || "function" != typeof s || (t = !0), s);
+                          });
+                        if (t)
+                          return () => {
+                            for (let r = 0; r < s.length; r++) {
+                              let t = s[r];
+                              "function" == typeof t ? t() : u(e[r], null);
+                            }
+                          };
+                      };
+                    })(r, i)
+                  : i),
+              l.cloneElement(t, o)
+            );
+          }
+          return l.Children.count(t) > 1 ? l.Children.only(null) : null;
+        })).displayName = "Slot.SlotClone"),
+        (r = n),
+        ((t = l.forwardRef((e, t) => {
+          let { children: s, ...a } = e;
+          b(s) && "function" == typeof p && (s = p(s._payload));
+          let n = l.Children.toArray(s),
+            o = n.find(h);
+          if (o) {
+            let e = o.props.children,
+              s = n.map((r) =>
+                r !== o
+                  ? r
+                  : l.Children.count(e) > 1
+                    ? l.Children.only(null)
+                    : l.isValidElement(e)
+                      ? e.props.children
+                      : null,
+              );
+            return (0, i.jsx)(r, {
+              ...a,
+              ref: t,
+              children: l.isValidElement(e)
+                ? l.cloneElement(e, void 0, s)
+                : null,
+            });
+          }
+          return (0, i.jsx)(r, { ...a, ref: t, children: s });
+        })).displayName = "Slot.Slot"),
+        t),
+      f = Symbol("radix.slottable");
+    function h(e) {
+      return (
+        l.isValidElement(e) &&
+        "function" == typeof e.type &&
+        "__radixId" in e.type &&
+        e.type.__radixId === f
+      );
+    }
+    var v = e.i(10266);
+    let y = (e) => ("boolean" == typeof e ? `${e}` : 0 === e ? "0" : e),
+      N = v.clsx;
+    var j = e.i(97202);
+    let S =
+      ((s =
+        "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive"),
+      (a = {
+        variants: {
+          variant: {
+            default: "bg-primary text-primary-foreground hover:bg-primary/90",
+            destructive:
+              "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
+            outline:
+              "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50",
+            secondary:
+              "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+            ghost:
+              "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
+            link: "text-primary underline-offset-4 hover:underline",
+          },
+          size: {
+            default: "h-9 px-4 py-2 has-[>svg]:px-3",
+            sm: "h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5",
+            lg: "h-10 rounded-md px-6 has-[>svg]:px-4",
+            icon: "size-9",
+            "icon-sm": "size-8",
+            "icon-lg": "size-10",
+          },
+        },
+        defaultVariants: { variant: "default", size: "default" },
+      }),
+      (e) => {
+        var r;
+        if ((null == a ? void 0 : a.variants) == null)
+          return N(
+            s,
+            null == e ? void 0 : e.class,
+            null == e ? void 0 : e.className,
+          );
+        let { variants: t, defaultVariants: n } = a,
+          i = Object.keys(t).map((r) => {
+            let s = null == e ? void 0 : e[r],
+              a = null == n ? void 0 : n[r];
+            if (null === s) return null;
+            let i = y(s) || y(a);
+            return t[r][i];
+          }),
+          l =
+            e &&
+            Object.entries(e).reduce((e, r) => {
+              let [t, s] = r;
+              return (void 0 === s || (e[t] = s), e);
+            }, {});
+        return N(
+          s,
+          i,
+          null == a || null == (r = a.compoundVariants)
+            ? void 0
+            : r.reduce((e, r) => {
+                let { class: t, className: s, ...a } = r;
+                return Object.entries(a).every((e) => {
+                  let [r, t] = e;
+                  return Array.isArray(t)
+                    ? t.includes({ ...n, ...l }[r])
+                    : { ...n, ...l }[r] === t;
+                })
+                  ? [...e, t, s]
+                  : e;
+              }, []),
+          null == e ? void 0 : e.class,
+          null == e ? void 0 : e.className,
+        );
+      });
+    function w({ className: e, variant: r, size: t, asChild: s = !1, ...a }) {
+      return (0, i.jsx)(s ? g : "button", {
+        "data-slot": "button",
+        className: (0, j.cn)(S({ variant: r, size: t, className: e })),
+        ...a,
+      });
+    }
+    function E({ className: e, type: r, ...t }) {
+      return (0, i.jsx)("input", {
+        type: r,
+        "data-slot": "input",
+        className: (0, j.cn)(
+          "file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 border-input h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+          "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
+          "aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+          e,
+        ),
+        ...t,
+      });
+    }
+    var A = e.i(63607);
+    function k() {
+      let [e, r] = (0, l.useState)(""),
+        [t, s] = (0, l.useState)(!1),
+        [a, n] = (0, l.useState)(null),
+        [o, d] = (0, l.useState)(null),
+        c = async (r) => {
+          if ((r.preventDefault(), e.trim())) {
+            (s(!0), d(null), n(null));
+            try {
+              let r = await (0, A.rescanUrl)(e);
+              n(r);
+            } catch {
+              d("SCAN_FAILED: Unable to process URL");
+            } finally {
+              s(!1);
+            }
+          }
+        };
+      return (0, i.jsxs)("div", {
+        className: "space-y-4",
+        children: [
+          (0, i.jsxs)("form", {
+            onSubmit: c,
+            className: "flex gap-2",
+            children: [
+              (0, i.jsx)(E, {
+                type: "url",
+                placeholder: "https://example.com/suspicious-link",
+                value: e,
+                onChange: (e) => r(e.target.value),
+                className:
+                  "flex-1 bg-background border-border text-secondary placeholder:text-muted-foreground/30 font-mono text-sm focus:border-primary focus:ring-primary/20 focus-ring",
+              }),
+              (0, i.jsx)(w, {
+                type: "submit",
+                disabled: t || !e.trim(),
+                className:
+                  "bg-primary text-background hover:bg-primary/80 font-mono font-bold disabled:opacity-50",
+                children: t ? "SCANNING..." : "[ RESCAN ]",
+              }),
+            ],
+          }),
+          a &&
+            (0, i.jsxs)("div", {
+              className: (0, j.cn)(
+                "border p-4 font-mono text-sm",
+                ((e) => {
+                  switch (e) {
+                    case "SAFE":
+                      return "text-success bg-success/10 border-success/40";
+                    case "DENY":
+                      return "text-danger bg-danger/10 border-danger/40";
+                    case "WARN":
+                      return "text-warning bg-warning/10 border-warning/40";
+                    default:
+                      return "text-muted-foreground bg-muted/10 border-border";
+                  }
+                })(a.verdict),
+              ),
+              children: [
+                (0, i.jsxs)("div", {
+                  className: "flex items-center justify-between mb-2",
+                  children: [
+                    (0, i.jsxs)("span", {
+                      className: "font-bold",
+                      children: ["VERDICT: ", a.verdict],
+                    }),
+                    (0, i.jsx)("span", {
+                      className: "text-xs opacity-60",
+                      children: new Date(a.timestamp).toLocaleString(),
+                    }),
+                  ],
+                }),
+                (0, i.jsxs)("div", {
+                  className: "text-xs opacity-70 break-all",
+                  children: ["URL: ", a.url],
+                }),
+                a.category &&
+                  (0, i.jsxs)("div", {
+                    className: "text-xs opacity-70 mt-1",
+                    children: ["CATEGORY: ", a.category],
+                  }),
+              ],
+            }),
+          o &&
+            (0, i.jsx)("div", {
+              className:
+                "border border-danger/40 bg-danger/10 p-4 font-mono text-sm text-danger",
+              children: o,
+            }),
+        ],
+      });
+    }
+    var C = e.i(45375);
+    function T() {
+      let { data: e, mutate: r } = (0, C.default)("overrides", A.getOverrides),
+        [t, s] = (0, l.useState)(!1),
+        [a, n] = (0, l.useState)(""),
+        [o, d] = (0, l.useState)("block"),
+        [c, m] = (0, l.useState)(""),
+        u = async (t) => {
+          (t.preventDefault(),
+            a.trim() &&
+              (r([...(e || []), await (0, A.addOverride)(a, o, c)]),
+              n(""),
+              m(""),
+              s(!1)));
+        };
+      return (0, i.jsxs)("div", {
+        className: "space-y-4",
+        children: [
+          (0, i.jsxs)("div", {
+            className: "flex items-center justify-between",
+            children: [
+              (0, i.jsxs)("span", {
+                className: "font-mono text-primary text-sm",
+                children: ["ACTIVE OVERRIDES: ", e?.length || 0],
+              }),
+              (0, i.jsx)(w, {
+                onClick: () => s(!t),
+                variant: "outline",
+                size: "sm",
+                className:
+                  "border-primary/40 text-primary hover:bg-primary/10 font-mono text-xs focus-ring",
+                children: t ? "[ CANCEL ]" : "[ + ADD ]",
+              }),
+            ],
+          }),
+          t &&
+            (0, i.jsxs)("form", {
+              onSubmit: u,
+              className: "border border-border bg-background/50 p-4 space-y-3",
+              children: [
+                (0, i.jsxs)("div", {
+                  className: "grid grid-cols-1 md:grid-cols-3 gap-3",
+                  children: [
+                    (0, i.jsx)(E, {
+                      placeholder: "Pattern (e.g., *.example.com)",
+                      value: a,
+                      onChange: (e) => n(e.target.value),
+                      className:
+                        "bg-background border-border text-secondary placeholder:text-muted-foreground/30 font-mono text-xs focus-ring",
+                    }),
+                    (0, i.jsxs)("select", {
+                      value: o,
+                      onChange: (e) => d(e.target.value),
+                      className:
+                        "bg-background border border-border text-secondary font-mono text-xs px-3 py-2 rounded-md focus-ring",
+                      children: [
+                        (0, i.jsx)("option", {
+                          value: "block",
+                          children: "BLOCK",
+                        }),
+                        (0, i.jsx)("option", {
+                          value: "allow",
+                          children: "ALLOW",
+                        }),
+                      ],
+                    }),
+                    (0, i.jsx)(E, {
+                      placeholder: "Reason",
+                      value: c,
+                      onChange: (e) => m(e.target.value),
+                      className:
+                        "bg-background border-border text-secondary placeholder:text-muted-foreground/30 font-mono text-xs focus-ring",
+                    }),
+                  ],
+                }),
+                (0, i.jsx)(w, {
+                  type: "submit",
+                  size: "sm",
+                  className:
+                    "bg-primary text-background hover:bg-primary/80 font-mono text-xs",
+                  children: "[ SAVE OVERRIDE ]",
+                }),
+              ],
+            }),
+          (0, i.jsxs)("div", {
+            className: "border border-border overflow-hidden",
+            children: [
+              (0, i.jsxs)("div", {
+                className:
+                  "grid grid-cols-4 gap-2 bg-primary/5 px-4 py-2 font-mono text-xs text-primary/70 border-b border-border",
+                children: [
+                  (0, i.jsx)("span", { children: "PATTERN" }),
+                  (0, i.jsx)("span", { children: "ACTION" }),
+                  (0, i.jsx)("span", { children: "REASON" }),
+                  (0, i.jsx)("span", { children: "CREATED" }),
+                ],
+              }),
+              (0, i.jsxs)("div", {
+                className: "divide-y divide-border",
+                children: [
+                  e?.map((e) =>
+                    (0, i.jsxs)(
+                      "div",
+                      {
+                        className:
+                          "grid grid-cols-4 gap-2 px-4 py-3 font-mono text-xs hover:bg-primary/5 transition-colors",
+                        children: [
+                          (0, i.jsx)("span", {
+                            className: "text-secondary truncate",
+                            children: e.pattern,
+                          }),
+                          (0, i.jsx)("span", {
+                            className: (0, j.cn)(
+                              "allow" === e.action
+                                ? "text-success"
+                                : "text-danger",
+                            ),
+                            children: e.action.toUpperCase(),
+                          }),
+                          (0, i.jsx)("span", {
+                            className: "text-muted-foreground truncate",
+                            children: e.reason,
+                          }),
+                          (0, i.jsx)("span", {
+                            className: "text-muted-foreground/60",
+                            children: new Date(
+                              e.createdAt,
+                            ).toLocaleDateString(),
+                          }),
+                        ],
+                      },
+                      e.id,
+                    ),
+                  ),
+                  (!e || 0 === e.length) &&
+                    (0, i.jsx)("div", {
+                      className:
+                        "px-4 py-8 text-center font-mono text-sm text-muted-foreground/60",
+                      children: "No overrides configured",
+                    }),
+                ],
+              }),
+            ],
+          }),
+        ],
+      });
+    }
+    let R = [
+      {
+        id: "1",
+        name: "Family Chat",
+        members: 12,
+        scansTotal: 156,
+        threatsBlocked: 3,
+        isMuted: !1,
+      },
+      {
+        id: "2",
+        name: "Work Team",
+        members: 45,
+        scansTotal: 892,
+        threatsBlocked: 15,
+        isMuted: !1,
+      },
+      {
+        id: "3",
+        name: "Gaming Squad",
+        members: 8,
+        scansTotal: 234,
+        threatsBlocked: 7,
+        isMuted: !0,
+      },
+      {
+        id: "4",
+        name: "Crypto Traders",
+        members: 128,
+        scansTotal: 2341,
+        threatsBlocked: 89,
+        isMuted: !1,
+      },
+      {
+        id: "5",
+        name: "School Group",
+        members: 67,
+        scansTotal: 445,
+        threatsBlocked: 12,
+        isMuted: !1,
+      },
+    ];
+    function O() {
+      let [e, r] = (0, l.useState)(R),
+        [t, s] = (0, l.useState)(null),
+        a = async (e) => {
+          s(e);
+          try {
+            (await (0, A.muteGroup)(e),
+              r((r) =>
+                r.map((r) => (r.id === e ? { ...r, isMuted: !r.isMuted } : r)),
+              ));
+          } finally {
+            s(null);
+          }
+        };
+      return (0, i.jsxs)("div", {
+        className: "space-y-4",
+        children: [
+          (0, i.jsxs)("div", {
+            className: "grid grid-cols-3 gap-4 mb-4",
+            children: [
+              (0, i.jsxs)("div", {
+                className: "text-center",
+                children: [
+                  (0, i.jsx)("div", {
+                    className: "font-mono text-2xl text-primary font-bold",
+                    children: e.length,
+                  }),
+                  (0, i.jsx)("div", {
+                    className: "font-mono text-xs text-primary/60",
+                    children: "GROUPS",
+                  }),
+                ],
+              }),
+              (0, i.jsxs)("div", {
+                className: "text-center",
+                children: [
+                  (0, i.jsx)("div", {
+                    className: "font-mono text-2xl text-primary font-bold",
+                    children: e.reduce((e, r) => e + r.members, 0),
+                  }),
+                  (0, i.jsx)("div", {
+                    className: "font-mono text-xs text-primary/60",
+                    children: "MEMBERS",
+                  }),
+                ],
+              }),
+              (0, i.jsxs)("div", {
+                className: "text-center",
+                children: [
+                  (0, i.jsx)("div", {
+                    className: "font-mono text-2xl text-danger font-bold",
+                    children: e.reduce((e, r) => e + r.threatsBlocked, 0),
+                  }),
+                  (0, i.jsx)("div", {
+                    className: "font-mono text-xs text-danger/60",
+                    children: "THREATS",
+                  }),
+                ],
+              }),
+            ],
+          }),
+          (0, i.jsx)("div", {
+            className: "border border-border divide-y divide-border",
+            children: e.map((e) =>
+              (0, i.jsxs)(
+                "div",
+                {
+                  className:
+                    "flex items-center justify-between px-4 py-3 hover:bg-primary/5 transition-colors",
+                  children: [
+                    (0, i.jsxs)("div", {
+                      className: "flex-1",
+                      children: [
+                        (0, i.jsxs)("div", {
+                          className: "flex items-center gap-2",
+                          children: [
+                            (0, i.jsx)("span", {
+                              className: "font-mono text-sm text-secondary",
+                              children: e.name,
+                            }),
+                            e.isMuted &&
+                              (0, i.jsx)("span", {
+                                className:
+                                  "px-2 py-0.5 bg-warning/10 text-warning text-xs font-mono",
+                                children: "MUTED",
+                              }),
+                          ],
+                        }),
+                        (0, i.jsxs)("div", {
+                          className:
+                            "font-mono text-xs text-muted-foreground/60 mt-1",
+                          children: [
+                            e.members,
+                            " members • ",
+                            e.scansTotal,
+                            " scans • ",
+                            e.threatsBlocked,
+                            " threats",
+                          ],
+                        }),
+                      ],
+                    }),
+                    (0, i.jsx)(w, {
+                      onClick: () => a(e.id),
+                      disabled: t === e.id,
+                      variant: "outline",
+                      size: "sm",
+                      className: (0, j.cn)(
+                        "font-mono text-xs focus-ring",
+                        e.isMuted
+                          ? "border-primary/40 text-primary hover:bg-primary/10"
+                          : "border-warning/40 text-warning hover:bg-warning/10",
+                      ),
+                      children:
+                        t === e.id
+                          ? "..."
+                          : e.isMuted
+                            ? "[ UNMUTE ]"
+                            : "[ MUTE ]",
+                    }),
+                  ],
+                },
+                e.id,
+              ),
+            ),
+          }),
+        ],
+      });
+    }
+    function D({ onAuthenticated: e }) {
+      let [r, t] = (0, l.useState)(""),
+        [s, a] = (0, l.useState)(null),
+        [n, c] = (0, l.useState)(!1),
+        m = async (t) => {
+          (t.preventDefault(),
+            c(!0),
+            a(null),
+            await new Promise((e) => setTimeout(e, 800)),
+            "safemode-admin-demo" === r || "demo" === r
+              ? e()
+              : a("ACCESS_DENIED: Invalid token"),
+            c(!1));
+        };
+      return (0, i.jsxs)("div", {
+        className: "min-h-screen bg-background",
+        children: [
+          (0, i.jsx)(o.NavBar, {}),
+          (0, i.jsx)("div", {
+            className: "flex items-center justify-center p-4 py-20",
+            children: (0, i.jsx)("div", {
+              className: "w-full max-w-md",
+              children: (0, i.jsx)(d.TerminalCard, {
+                title: "ADMIN AUTHENTICATION",
+                variant: "solid",
+                children: (0, i.jsxs)("div", {
+                  className: "space-y-6",
+                  children: [
+                    (0, i.jsx)("pre", {
+                      className:
+                        "font-mono text-primary/60 text-xs text-center",
+                      children: `    ██████
    ██    ██
    ██    ██
  ████████████
@@ -6,4 +945,247 @@
  ██  ████  ██
  ██  ████  ██
  ██        ██
- ████████████`}),(0,i.jsxs)("form",{onSubmit:m,className:"space-y-4",children:[(0,i.jsxs)("div",{children:[(0,i.jsx)("label",{className:"block font-mono text-xs text-primary/60 mb-2",children:"> ENTER API TOKEN"}),(0,i.jsx)(E,{type:"password",placeholder:"••••••••••••••••",value:r,onChange:e=>t(e.target.value),className:"bg-background border-border text-secondary placeholder:text-muted-foreground/40 font-mono focus-ring"})]}),s&&(0,i.jsx)("div",{className:"font-mono text-xs text-danger bg-danger/10 border border-danger/30 p-3",children:s}),(0,i.jsx)(w,{type:"submit",disabled:n||!r.trim(),className:"w-full bg-primary text-background hover:bg-primary/80 font-mono font-bold",children:n?"AUTHENTICATING...":"[ AUTHENTICATE ]"})]}),(0,i.jsx)("div",{className:"text-center font-mono text-xs text-primary/40",children:(0,i.jsx)("p",{children:'Demo token: "demo"'})})]})})})})]})}function M(){let[e,r]=(0,l.useState)(!1),[t,s]=(0,l.useState)("overview");return e?(0,i.jsxs)("div",{className:"min-h-screen bg-background",children:[(0,i.jsx)(o.NavBar,{}),(0,i.jsxs)("main",{className:"container mx-auto px-6 lg:px-10 py-8",children:[(0,i.jsxs)("div",{className:"mb-8 flex items-center justify-between flex-wrap gap-4",children:[(0,i.jsx)("div",{children:(0,i.jsx)("h1",{className:"font-mono text-2xl md:text-3xl text-primary terminal-glow",children:"ADMIN CONTROL PANEL"})}),(0,i.jsx)("button",{onClick:()=>r(!1),className:"font-mono text-xs text-danger/60 hover:text-danger transition-colors focus-ring px-3 py-1.5 border border-danger/30 hover:border-danger/60",children:"[ LOGOUT ]"})]}),(0,i.jsx)("div",{className:"flex gap-2 mb-6 overflow-x-auto pb-2",role:"tablist",children:[{id:"overview",label:"OVERVIEW"},{id:"rescan",label:"RESCAN"},{id:"overrides",label:"OVERRIDES"},{id:"groups",label:"GROUPS"}].map(e=>(0,i.jsxs)("button",{onClick:()=>s(e.id),role:"tab","aria-selected":t===e.id,className:(0,j.cn)("px-4 py-2 font-mono text-sm whitespace-nowrap transition-all focus-ring",t===e.id?"bg-primary text-background font-bold":"border border-border text-primary/60 hover:border-primary/60 hover:text-primary"),children:["[ ",e.label," ]"]},e.id))}),(0,i.jsxs)("div",{className:"space-y-6",role:"tabpanel",children:["overview"===t&&(0,i.jsxs)(i.Fragment,{children:[(0,i.jsxs)("div",{className:"grid grid-cols-1 lg:grid-cols-2 gap-6",children:[(0,i.jsx)(d.TerminalCard,{title:"SYSTEM METRICS",variant:"solid",children:(0,i.jsx)(c.StatsDisplay,{})}),(0,i.jsx)(d.TerminalCard,{title:"QUICK ACTIONS",variant:"solid",children:(0,i.jsx)("div",{className:"space-y-3",children:[{tab:"rescan",label:"Force rescan a URL"},{tab:"overrides",label:"Manage URL overrides"},{tab:"groups",label:"View protected groups"}].map(e=>(0,i.jsxs)("button",{onClick:()=>s(e.tab),className:"w-full text-left px-4 py-3 border border-border hover:border-primary/40 hover:bg-primary/5 transition-all font-mono text-sm focus-ring",children:[(0,i.jsx)("span",{className:"text-primary",children:">"}),(0,i.jsx)("span",{className:"text-muted-foreground ml-2",children:e.label})]},e.tab))})})]}),(0,i.jsx)(m.LiveFeed,{maxItems:6})]}),"rescan"===t&&(0,i.jsx)(d.TerminalCard,{title:"FORCE URL RESCAN",variant:"solid",children:(0,i.jsxs)("div",{className:"space-y-4",children:[(0,i.jsx)("p",{className:"font-mono text-sm text-muted-foreground",children:"Force a fresh scan of any URL, bypassing cache. Results will be updated immediately."}),(0,i.jsx)(k,{})]})}),"overrides"===t&&(0,i.jsx)(d.TerminalCard,{title:"URL PATTERN OVERRIDES",variant:"solid",children:(0,i.jsxs)("div",{className:"space-y-4",children:[(0,i.jsx)("p",{className:"font-mono text-sm text-muted-foreground",children:"Configure manual allow/block rules that override automatic scanning results."}),(0,i.jsx)(T,{})]})}),"groups"===t&&(0,i.jsx)(d.TerminalCard,{title:"PROTECTED GROUPS",variant:"solid",children:(0,i.jsxs)("div",{className:"space-y-4",children:[(0,i.jsx)("p",{className:"font-mono text-sm text-muted-foreground",children:"Manage WhatsApp groups protected by SafeMode. Muted groups will not receive bot messages."}),(0,i.jsx)(O,{})]})})]}),(0,i.jsx)("footer",{className:"mt-12 text-center font-mono text-primary/40 text-xs",children:(0,i.jsx)("p",{children:"SafeMode Admin Panel v1.0.0"})})]})]}):(0,i.jsx)(D,{onAuthenticated:()=>r(!0)})}e.s(["default",()=>M],97983)}]);
+ ████████████`,
+                    }),
+                    (0, i.jsxs)("form", {
+                      onSubmit: m,
+                      className: "space-y-4",
+                      children: [
+                        (0, i.jsxs)("div", {
+                          children: [
+                            (0, i.jsx)("label", {
+                              className:
+                                "block font-mono text-xs text-primary/60 mb-2",
+                              children: "> ENTER API TOKEN",
+                            }),
+                            (0, i.jsx)(E, {
+                              type: "password",
+                              placeholder: "••••••••••••••••",
+                              value: r,
+                              onChange: (e) => t(e.target.value),
+                              className:
+                                "bg-background border-border text-secondary placeholder:text-muted-foreground/40 font-mono focus-ring",
+                            }),
+                          ],
+                        }),
+                        s &&
+                          (0, i.jsx)("div", {
+                            className:
+                              "font-mono text-xs text-danger bg-danger/10 border border-danger/30 p-3",
+                            children: s,
+                          }),
+                        (0, i.jsx)(w, {
+                          type: "submit",
+                          disabled: n || !r.trim(),
+                          className:
+                            "w-full bg-primary text-background hover:bg-primary/80 font-mono font-bold",
+                          children: n
+                            ? "AUTHENTICATING..."
+                            : "[ AUTHENTICATE ]",
+                        }),
+                      ],
+                    }),
+                    (0, i.jsx)("div", {
+                      className:
+                        "text-center font-mono text-xs text-primary/40",
+                      children: (0, i.jsx)("p", {
+                        children: 'Demo token: "demo"',
+                      }),
+                    }),
+                  ],
+                }),
+              }),
+            }),
+          }),
+        ],
+      });
+    }
+    function M() {
+      let [e, r] = (0, l.useState)(!1),
+        [t, s] = (0, l.useState)("overview");
+      return e
+        ? (0, i.jsxs)("div", {
+            className: "min-h-screen bg-background",
+            children: [
+              (0, i.jsx)(o.NavBar, {}),
+              (0, i.jsxs)("main", {
+                className: "container mx-auto px-6 lg:px-10 py-8",
+                children: [
+                  (0, i.jsxs)("div", {
+                    className:
+                      "mb-8 flex items-center justify-between flex-wrap gap-4",
+                    children: [
+                      (0, i.jsx)("div", {
+                        children: (0, i.jsx)("h1", {
+                          className:
+                            "font-mono text-2xl md:text-3xl text-primary terminal-glow",
+                          children: "ADMIN CONTROL PANEL",
+                        }),
+                      }),
+                      (0, i.jsx)("button", {
+                        onClick: () => r(!1),
+                        className:
+                          "font-mono text-xs text-danger/60 hover:text-danger transition-colors focus-ring px-3 py-1.5 border border-danger/30 hover:border-danger/60",
+                        children: "[ LOGOUT ]",
+                      }),
+                    ],
+                  }),
+                  (0, i.jsx)("div", {
+                    className: "flex gap-2 mb-6 overflow-x-auto pb-2",
+                    role: "tablist",
+                    children: [
+                      { id: "overview", label: "OVERVIEW" },
+                      { id: "rescan", label: "RESCAN" },
+                      { id: "overrides", label: "OVERRIDES" },
+                      { id: "groups", label: "GROUPS" },
+                    ].map((e) =>
+                      (0, i.jsxs)(
+                        "button",
+                        {
+                          onClick: () => s(e.id),
+                          role: "tab",
+                          "aria-selected": t === e.id,
+                          className: (0, j.cn)(
+                            "px-4 py-2 font-mono text-sm whitespace-nowrap transition-all focus-ring",
+                            t === e.id
+                              ? "bg-primary text-background font-bold"
+                              : "border border-border text-primary/60 hover:border-primary/60 hover:text-primary",
+                          ),
+                          children: ["[ ", e.label, " ]"],
+                        },
+                        e.id,
+                      ),
+                    ),
+                  }),
+                  (0, i.jsxs)("div", {
+                    className: "space-y-6",
+                    role: "tabpanel",
+                    children: [
+                      "overview" === t &&
+                        (0, i.jsxs)(i.Fragment, {
+                          children: [
+                            (0, i.jsxs)("div", {
+                              className:
+                                "grid grid-cols-1 lg:grid-cols-2 gap-6",
+                              children: [
+                                (0, i.jsx)(d.TerminalCard, {
+                                  title: "SYSTEM METRICS",
+                                  variant: "solid",
+                                  children: (0, i.jsx)(c.StatsDisplay, {}),
+                                }),
+                                (0, i.jsx)(d.TerminalCard, {
+                                  title: "QUICK ACTIONS",
+                                  variant: "solid",
+                                  children: (0, i.jsx)("div", {
+                                    className: "space-y-3",
+                                    children: [
+                                      {
+                                        tab: "rescan",
+                                        label: "Force rescan a URL",
+                                      },
+                                      {
+                                        tab: "overrides",
+                                        label: "Manage URL overrides",
+                                      },
+                                      {
+                                        tab: "groups",
+                                        label: "View protected groups",
+                                      },
+                                    ].map((e) =>
+                                      (0, i.jsxs)(
+                                        "button",
+                                        {
+                                          onClick: () => s(e.tab),
+                                          className:
+                                            "w-full text-left px-4 py-3 border border-border hover:border-primary/40 hover:bg-primary/5 transition-all font-mono text-sm focus-ring",
+                                          children: [
+                                            (0, i.jsx)("span", {
+                                              className: "text-primary",
+                                              children: ">",
+                                            }),
+                                            (0, i.jsx)("span", {
+                                              className:
+                                                "text-muted-foreground ml-2",
+                                              children: e.label,
+                                            }),
+                                          ],
+                                        },
+                                        e.tab,
+                                      ),
+                                    ),
+                                  }),
+                                }),
+                              ],
+                            }),
+                            (0, i.jsx)(m.LiveFeed, { maxItems: 6 }),
+                          ],
+                        }),
+                      "rescan" === t &&
+                        (0, i.jsx)(d.TerminalCard, {
+                          title: "FORCE URL RESCAN",
+                          variant: "solid",
+                          children: (0, i.jsxs)("div", {
+                            className: "space-y-4",
+                            children: [
+                              (0, i.jsx)("p", {
+                                className:
+                                  "font-mono text-sm text-muted-foreground",
+                                children:
+                                  "Force a fresh scan of any URL, bypassing cache. Results will be updated immediately.",
+                              }),
+                              (0, i.jsx)(k, {}),
+                            ],
+                          }),
+                        }),
+                      "overrides" === t &&
+                        (0, i.jsx)(d.TerminalCard, {
+                          title: "URL PATTERN OVERRIDES",
+                          variant: "solid",
+                          children: (0, i.jsxs)("div", {
+                            className: "space-y-4",
+                            children: [
+                              (0, i.jsx)("p", {
+                                className:
+                                  "font-mono text-sm text-muted-foreground",
+                                children:
+                                  "Configure manual allow/block rules that override automatic scanning results.",
+                              }),
+                              (0, i.jsx)(T, {}),
+                            ],
+                          }),
+                        }),
+                      "groups" === t &&
+                        (0, i.jsx)(d.TerminalCard, {
+                          title: "PROTECTED GROUPS",
+                          variant: "solid",
+                          children: (0, i.jsxs)("div", {
+                            className: "space-y-4",
+                            children: [
+                              (0, i.jsx)("p", {
+                                className:
+                                  "font-mono text-sm text-muted-foreground",
+                                children:
+                                  "Manage WhatsApp groups protected by SafeMode. Muted groups will not receive bot messages.",
+                              }),
+                              (0, i.jsx)(O, {}),
+                            ],
+                          }),
+                        }),
+                    ],
+                  }),
+                  (0, i.jsx)("footer", {
+                    className:
+                      "mt-12 text-center font-mono text-primary/40 text-xs",
+                    children: (0, i.jsx)("p", {
+                      children: "SafeMode Admin Panel v1.0.0",
+                    }),
+                  }),
+                ],
+              }),
+            ],
+          })
+        : (0, i.jsx)(D, { onAuthenticated: () => r(!0) });
+    }
+    e.s(["default", () => M], 97983);
+  },
+]);

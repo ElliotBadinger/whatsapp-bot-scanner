@@ -3,28 +3,28 @@ module.exports = class MockDatabase {
   constructor(path) {
     this.path = path;
   }
-  
+
   prepare(sql) {
     return {
       run: (...params) => ({ lastInsertRowid: 1, changes: 1 }),
       get: (...params) => null,
       all: (...params) => [],
-      finalize: () => {}
+      finalize: () => {},
     };
   }
-  
+
   exec(sql) {
     return;
   }
-  
+
   close() {
     return;
   }
-  
+
   transaction(fn) {
     return fn;
   }
-  
+
   pragma(sql) {
     return {};
   }
