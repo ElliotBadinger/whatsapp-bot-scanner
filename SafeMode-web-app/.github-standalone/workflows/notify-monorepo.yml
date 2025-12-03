@@ -1,0 +1,25 @@
+name: Notify Monorepo of Changes
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger monorepo sync
+        run: |
+          curl -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.MONOREPO_SYNC_TOKEN }}" \
+            https://api.github.com/repos/ElliotBadinger/whatsapp-bot-scanner/dispatches \
+            -d '{"event_type":"safemode-update"}'
+        continue-on-error: true
+      
+      - name: Notify status
+        run: |
+          echo "✅ Notified monorepo to sync changes"
+          echo "The monorepo will pull these changes within ~1 minute"
+

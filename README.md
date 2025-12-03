@@ -53,6 +53,20 @@ Operational notes:
 - Migrations and seeds run via helper containers.
 - Metrics are Prometheus-compatible under `/metrics` per service.
 
+## SafeMode Web Application
+
+The **SafeMode-web-app** (`SafeMode-web-app/`) is a Next.js web interface providing real-time monitoring, administration, and community features with a retro CRT terminal aesthetic.
+
+This folder is **automatically synchronized** with a standalone repository at [github.com/ElliotBadinger/SafeMode-web-app](https://github.com/ElliotBadinger/SafeMode-web-app). Changes can be made in either location and will sync bidirectionally:
+
+- **Monorepo → Standalone**: Automatic sync on push to `main` (~1 minute)
+- **Standalone → Monorepo**: Automatic sync every 15 minutes (or instant with webhook)
+
+**Setup Documentation:**
+- [`docs/SAFEMODE_SYNC_SETUP.md`](docs/SAFEMODE_SYNC_SETUP.md) - Complete sync setup and troubleshooting
+- [`.github/SYNC_QUICKSTART.md`](.github/SYNC_QUICKSTART.md) - Quick reference guide
+- [`SafeMode-web-app/SYNC_INFO.md`](SafeMode-web-app/SYNC_INFO.md) - Developer info
+
 Documentation located in `docs/` covers architecture, security, operations, and runbooks.
 See [`docs/COST_MODEL.md`](docs/COST_MODEL.md) for VirusTotal quota guidance and observability metrics.
 See [`docs/WHOIS_MIGRATION.md`](docs/WHOIS_MIGRATION.md) for WHOIS service migration details.

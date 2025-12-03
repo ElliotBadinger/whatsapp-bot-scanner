@@ -4,6 +4,14 @@ dist/
 coverage/
 .turbo/
 
+# Next.js (SafeMode-web-app)
+SafeMode-web-app/.next/
+SafeMode-web-app/.vercel/
+SafeMode-web-app/out/
+
+# Next.js build artifacts
+.next/
+
 # Env
 .env
 *.local.env
@@ -47,3 +55,8 @@ docs/security-reports/SECURITY_FINDINGS.md
 test_certificate_validation.js
 services/scan-orchestrator/src/index-original.ts
 SETUP_FIXES_SUMMARY.md
+.vercel
+.env*.local
+
+# Snyk Security Extension - AI Rules (auto-generated)
+.windsurf/rules/snyk_rules.md

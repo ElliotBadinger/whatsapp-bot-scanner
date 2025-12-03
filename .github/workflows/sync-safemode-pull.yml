@@ -1,0 +1,68 @@
+name: Sync SafeMode from Standalone Repo (Pull)
+
+on:
+  schedule:
+    # Run every 15 minutes to check for changes
+    - cron: '*/15 * * * *'
+  workflow_dispatch: # Allow manual trigger
+  repository_dispatch:
+    types: [safemode-update]
+
+jobs:
+  sync-from-standalone:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout monorepo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.SAFEMODE_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+      
+      - name: Configure Git
+        run: |
+          git config --global user.name "SafeMode Sync Bot"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+      
+      - name: Clone standalone repo
+        run: |
+          git clone https://github.com/ElliotBadinger/SafeMode-web-app.git /tmp/safemode-standalone
+      
+      - name: Sync files back to monorepo
+        run: |
+          # Get the last commit hash from standalone repo
+          STANDALONE_COMMIT=$(cd /tmp/safemode-standalone && git rev-parse HEAD)
+          
+          # Remove SafeMode-web-app folder contents (except node_modules and .next for safety)
+          find SafeMode-web-app -mindepth 1 -maxdepth 1 ! -name 'node_modules' ! -name '.next' ! -name '.vercel' -exec rm -rf {} +
+          
+          # Copy from standalone repo
+          cp -r /tmp/safemode-standalone/. SafeMode-web-app/
+          
+          # Remove git-related files that shouldn't be in the monorepo subfolder
+          rm -rf SafeMode-web-app/.git SafeMode-web-app/.github
+          
+          # Check if there are changes
+          if [[ -n $(git status -s SafeMode-web-app) ]]; then
+            git add SafeMode-web-app
+            
+            # Get the commit message from standalone repo
+            COMMIT_MSG=$(cd /tmp/safemode-standalone && git log -1 --pretty=format:"%s")
+            COMMIT_BODY=$(cd /tmp/safemode-standalone && git log -1 --pretty=format:"%b")
+            
+            git commit -m "sync(SafeMode-web-app): $COMMIT_MSG" -m "$COMMIT_BODY" -m "Synced from standalone repo (commit: $STANDALONE_COMMIT)"
+            git push origin main
+            echo "✅ Changes synced from standalone repo"
+          else
+            echo "✅ No changes to sync"
+          fi
+      
+      - name: Report status
+        if: always()
+        run: |
+          if [ $? -eq 0 ]; then
+            echo "::notice::SafeMode-web-app successfully synced from standalone repository"
+          else
+            echo "::error::Failed to sync SafeMode-web-app from standalone repository"
+          fi
+
