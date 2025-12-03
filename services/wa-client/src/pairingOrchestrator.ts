@@ -283,7 +283,61 @@ export class PairingOrchestrator {
 
   private classifyError(err: unknown, attempt: number): { rateLimited: boolean; delay: number } {
     const message = this.extractMessage(err);
-    const rateLimited = message.includes('rate-overlimit') || message.includes('"code":429') || message.includes('429');
+    let rateLimited = message.includes('rate-overlimit') || message.includes('"code":429') || message.includes('429');
+
+    // Check for IQErrorRateOverlimit in structured error objects
+    if (!rateLimited && message.includes('IQErrorRateOverlimit')) {
+      rateLimited = true;
+    }
+
+    // Try to parse JSON error payloads for structured errors
+    if (!rateLimited && (message.includes('{') || message.includes('pairing_code_request_failed:'))) {
+      try {
+        // Extract JSON from error messages like "pairing_code_request_failed:{...json...}"
+        const jsonMatch = message.match(/\{.*\}/s);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+
+          // Handle both formats:
+          // Test format: {"type":"IQErrorRateOverlimit","value":{"code":429}}
+          // Real format: {"type":{"name":"IQErrorRateOverlimit","value":{...}}}
+
+          if (parsed.type) {
+            // Check if type is a string (test format)
+            if (typeof parsed.type === 'string') {
+              if (parsed.type === 'IQErrorRateOverlimit' || parsed.type.includes('RateOverlimit')) {
+                rateLimited = true;
+              }
+            }
+            // Check if type is an object with name property (real format)
+            else if (typeof parsed.type === 'object') {
+              const typeObj = parsed.type as Record<string, unknown>;
+              if (typeObj.name === 'IQErrorRateOverlimit' || String(typeObj.name).includes('RateOverlimit')) {
+                rateLimited = true;
+              }
+              // Check for code: 429 in type.value
+              if (!rateLimited && typeObj.value && typeof typeObj.value === 'object') {
+                const valueObj = typeObj.value as Record<string, unknown>;
+                if (valueObj.code === 429) {
+                  rateLimited = true;
+                }
+              }
+            }
+          }
+
+          // Also check for code: 429 in top-level value (test format)
+          if (!rateLimited && parsed.value && typeof parsed.value === 'object') {
+            const valueObj = parsed.value as Record<string, unknown>;
+            if (valueObj.code === 429) {
+              rateLimited = true;
+            }
+          }
+        }
+      } catch {
+        // Ignore JSON parse errors, fall back to string checks
+      }
+    }
+
     if (rateLimited) {
       const exponent = Math.min(Math.max(0, attempt - 1), 5);
       const multiplier = Math.pow(2, exponent);

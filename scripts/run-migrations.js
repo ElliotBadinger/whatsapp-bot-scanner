@@ -2,7 +2,6 @@
 
 const fs = require('fs');
 const path = require('path');
-const { Client } = require('pg');
 const Database = require('better-sqlite3');
 
 async function main() {
@@ -12,6 +11,8 @@ async function main() {
 
   if (isPostgres) {
     console.log('Running migrations for PostgreSQL...');
+    // Only require pg when actually using PostgreSQL
+    const { Client } = require('pg');
     const client = new Client({
       connectionString: process.env.DATABASE_URL,
     });
@@ -98,9 +99,19 @@ async function main() {
       const sql = fs.readFileSync(path.join(migrationsDir, f), 'utf8');
       console.log(`Applying migration: ${f}`);
 
+      // Transform PostgreSQL SQL to SQLite-compatible SQL
+      const sqliteSQL = sql
+        .replace(/SERIAL PRIMARY KEY/g, 'INTEGER PRIMARY KEY AUTOINCREMENT')
+        .replace(/TIMESTAMP/g, 'TEXT')
+        // Replace DEFAULT NOW() first, then standalone NOW()
+        .replace(/DEFAULT\s+NOW\(\)/gi, "DEFAULT (datetime('now'))")
+        .replace(/NOW\(\)/gi, "datetime('now')")
+        // SQLite doesn't support IF NOT EXISTS with ALTER TABLE ADD COLUMN
+        .replace(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS/gi, 'ADD COLUMN');
+
       const transaction = db.transaction(() => {
         // Execute migration SQL
-        db.exec(sql);
+        db.exec(sqliteSQL);
 
         // Record migration as applied
         db.prepare('INSERT INTO schema_migrations (id) VALUES (?)').run(f);

@@ -38,6 +38,7 @@ describe('RemoteAuth pairing orchestrator', () => {
     expect(requestCode).toHaveBeenCalledTimes(1);
     expect(callTimestamps[0]).toBe(0);
 
+    // First retry after 60 seconds (base rate limit delay)
     await vi.advanceTimersByTimeAsync(59000);
     expect(requestCode).toHaveBeenCalledTimes(1);
 
@@ -45,12 +46,13 @@ describe('RemoteAuth pairing orchestrator', () => {
     expect(requestCode).toHaveBeenCalledTimes(2);
     expect(callTimestamps[1]).toBe(60000);
 
-    await vi.advanceTimersByTimeAsync(59000);
+    // Second retry after 120 seconds (exponential backoff: 60s * 2^1)
+    await vi.advanceTimersByTimeAsync(119000);
     expect(requestCode).toHaveBeenCalledTimes(2);
 
     await vi.advanceTimersByTimeAsync(1000);
     expect(requestCode).toHaveBeenCalledTimes(3);
-    expect(callTimestamps[2]).toBe(120000);
+    expect(callTimestamps[2]).toBe(180000); // 60s + 120s = 180s total
     expect(vi.getTimerCount()).toBe(0);
   });
 

@@ -15,28 +15,6 @@ services:
       timeout: 5s
       retries: 5
 
-  postgres:
-    image: postgres:15-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: wbscanner
-      POSTGRES_USER: wbscanner
-      # SECURITY NOTE: Password is loaded from .env file via ${POSTGRES_PASSWORD}
-      # This is the CORRECT secure practice - not a hardcoded credential.
-      # SonarQube/DeepSource false positive: secrets:S6698
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    networks: [internal]
-    mem_limit: 512m
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U wbscanner -d wbscanner"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   migrate:
     build:
       context: .
@@ -46,11 +24,10 @@ services:
     working_dir: /app
     env_file: [.env]
     mem_limit: 512m
-    environment:
-      # Using env var reference - secure practice
-      - DATABASE_URL=postgres://wbscanner:${POSTGRES_PASSWORD}@postgres:5432/wbscanner
+    volumes:
+      - ./storage:/app/storage
     depends_on:
-      postgres:
+      redis:
         condition: service_healthy
     networks: [internal]
     restart: "no"
@@ -65,18 +42,17 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-      postgres:
-        condition: service_healthy
     mem_limit: 1g
-    network_mode: "host"
+    networks: [internal, public]
+    ports:
+      - "3005:3005"
     environment:
       - PORT=3005
       - NODE_OPTIONS=--max-old-space-size=768
-      - REDIS_URL=redis://localhost:6379/0
-      # Using env var reference - secure practice
-      - DATABASE_URL=postgres://wbscanner:${POSTGRES_PASSWORD}@localhost:5432/wbscanner
+      - REDIS_URL=redis://redis:6379/0
     volumes:
       - wa_session:/app/services/wa-client/data
+      - ./storage:/app/storage
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL","wget -qO- http://localhost:3005/healthz || exit 1"]
@@ -97,17 +73,18 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-      postgres:
-        condition: service_healthy
       migrate:
         condition: service_completed_successfully
     networks: [internal]
     mem_limit: 1g
+    ports:
+      # Scan Orchestrator API (exposed for health checks and debugging)
+      - "${SCAN_ORCHESTRATOR_PORT:-3003}:3001"
     environment:
       - NODE_OPTIONS=--max-old-space-size=768
       - REDIS_URL=redis://redis:6379/0
-      # Using env var reference - secure practice
-      - DATABASE_URL=postgres://wbscanner:${POSTGRES_PASSWORD}@postgres:5432/wbscanner
+    volumes:
+      - ./storage:/app/storage
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL","wget -qO- http://localhost:3001/healthz || exit 1"]
@@ -126,16 +103,14 @@ services:
       network: host
     env_file: [.env]
     depends_on:
-      postgres:
-        condition: service_healthy
       migrate:
         condition: service_completed_successfully
     networks: [internal]
     mem_limit: 512m
     environment:
       - NODE_OPTIONS=--max-old-space-size=384
-      # Using env var reference - secure practice
-      - DATABASE_URL=postgres://wbscanner:${POSTGRES_PASSWORD}@postgres:5432/wbscanner
+    volumes:
+      - ./storage:/app/storage
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL","wget --header=\"Authorization: Bearer ${CONTROL_PLANE_API_TOKEN}\" -qO- http://127.0.0.1:8080/healthz || exit 1"]
@@ -156,6 +131,32 @@ services:
     ports:
       - "${REVERSE_PROXY_PORT:-8088}:8088"
     networks: [internal, public]
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    depends_on:
+      - prometheus
+    ports:
+      - "${GRAFANA_PORT:-3002}:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks: [internal]
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    command: ["--config.file=/etc/prometheus/prometheus.yml"]
+    mem_limit: 1g
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks: [internal]
     restart: unless-stopped
 
   uptime-kuma:
@@ -183,7 +184,8 @@ networks:
     driver: bridge
 
 volumes:
-  pgdata:
   wa_session:
   redisdata:
   uptime_kuma_data:
+  grafana_data:
+  prometheus_data:

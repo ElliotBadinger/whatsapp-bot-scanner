@@ -1,7 +1,12 @@
 import dotenv from 'dotenv';
 import { logger } from './log';
 
-dotenv.config();
+import path from 'path';
+
+// Load .env and .env.local from project root
+const rootDir = path.resolve(__dirname, '../../..');
+dotenv.config({ path: path.join(rootDir, '.env') });
+dotenv.config({ path: path.join(rootDir, '.env.local'), override: true });
 
 const urlscanEnabled = (process.env.URLSCAN_ENABLED || 'true') === 'true';
 const urlscanCallbackSecret = (process.env.URLSCAN_CALLBACK_SECRET || '').trim();

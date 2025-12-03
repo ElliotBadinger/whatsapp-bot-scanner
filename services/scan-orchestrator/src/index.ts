@@ -37,6 +37,7 @@ import {
   detectHomoglyphs,
   assertEssentialConfig,
   GsbLocalDatabase,
+  ScanRequestSchema,
 } from '@wbscanner/shared';
 import { EnhancedSecurityAnalyzer } from './enhanced-security';
 import {
@@ -564,8 +565,9 @@ async function fetchGsbAnalysis(finalUrl: string, hash: string): Promise<GsbFetc
 
     // Use local GSB if available, fallback to remote API
     let result;
-    if (gsbLocal) {
-      result = await gsbLocal.lookup([finalUrl]);
+    const localGsb = gsbLocal;
+    if (localGsb) {
+      result = await localGsb.lookup([finalUrl]);
       recordLatency(CIRCUIT_LABELS.gsb, Date.now() - start);
 
       // Track whether we used local or remote
@@ -1705,6 +1707,9 @@ async function handleUrlscanCallback(req: FastifyRequest, reply: FastifyReply, d
   reply.send({ ok: true });
 }
 
+// Global GSB Local instance
+let gsbLocal: GsbLocalDatabase | null = null;
+
 async function main() {
   assertEssentialConfig('scan-orchestrator');
 
@@ -1719,7 +1724,6 @@ async function main() {
   }
 
   const dbClient = getSharedConnection();
-
   const enhancedSecurity = new EnhancedSecurityAnalyzer(redis);
 
   // Initialize GSB Local Database (assigns to module-level variable)
@@ -1728,7 +1732,7 @@ async function main() {
   // Schedule GSB database updates (every hour)
   if (gsbLocal) {
     // Initial update on startup
-    gsbLocal.updateDatabase().catch(err => {
+    gsbLocal!.updateDatabase().catch(err => {
       logger.error({ err }, 'Failed initial GSB local database update');
     });
 
@@ -1770,13 +1774,18 @@ async function main() {
     const started = Date.now();
     const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
     metrics.queueJobWait.labels(queueName).observe(waitSeconds);
-    const { chatId, messageId, url, timestamp, rescan } = job.data as {
-      chatId?: string;
-      messageId?: string;
-      url: string;
-      timestamp?: number;
-      rescan?: boolean;
-    };
+
+    // Validate job data
+    const validationResult = ScanRequestSchema.safeParse(job.data);
+    if (!validationResult.success) {
+      logger.error({ err: validationResult.error, data: job.data }, 'Invalid scan request job data');
+      recordQueueMetrics(queueName, started, job.attemptsMade);
+      return;
+    }
+
+    const { chatId, messageId, url, timestamp } = validationResult.data;
+    const rescan = (job.data as { rescan?: boolean }).rescan; // rescan is not in ScanRequestSchema yet, but passed by control-plane
+
     const ingestionTimestamp = typeof timestamp === 'number' ? timestamp : job.timestamp ?? started;
     const hasChatContext = typeof chatId === 'string' && typeof messageId === 'string';
 
@@ -1870,7 +1879,20 @@ async function main() {
   new Worker('deep-scan', async (job) => {
     const queueName = 'deep-scan';
     const started = Date.now();
-    const { chatId, messageId, fastVerdict, blocklistResults, urlAnalysis, homoglyphResult, enhancedSecurityResult } = job.data;
+
+    // Validate  async (job) => {
+    const validationResult = ScanRequestSchema.safeParse(job.data);
+    if (!validationResult.success) {
+      metrics.inputValidationFailures.labels('scan-orchestrator', 'ScanRequest').inc();
+      logger.warn({
+        jobId: job.id,
+        errors: validationResult.error.issues,
+        data: job.data,
+      }, 'ScanRequest validation failed in scanRequestQueue');
+      return;
+    }
+    const { chatId, messageId, url, timestamp, senderIdHash } = validationResult.data;
+    const { fastVerdict, blocklistResults, urlAnalysis, homoglyphResult, enhancedSecurityResult } = job.data;
     const { finalUrl, finalUrlObj, redirectChain, heurSignals, wasShortened, finalUrlMismatch, shortenerInfo } = urlAnalysis;
     const h = urlHash(normalizeUrl(finalUrl) || finalUrl);
     const hasChatContext = typeof chatId === 'string' && typeof messageId === 'string';

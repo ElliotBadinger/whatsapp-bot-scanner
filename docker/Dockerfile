@@ -54,6 +54,9 @@ RUN --mount=type=cache,target=/root/.npm \
 FROM base AS control-plane
 WORKDIR /app
 
+# Install build tools for better-sqlite3 native compilation (must be done as root)
+RUN apt-get update && apt-get install -y python3 make g++ wget && rm -rf /var/lib/apt/lists/*
+
 # Copy shared package tarball from builder
 COPY --from=shared-builder /app/packages/shared/wbscanner-shared-0.1.0.tgz /app/packages/shared/
 COPY --from=shared-builder /app/packages/confusable/confusable-0.1.0.tgz /app/packages/confusable/
@@ -64,7 +67,6 @@ RUN --mount=type=cache,target=/root/.npm \
     cd /app/services/control-plane && \
     npm install /app/packages/shared/wbscanner-shared-0.1.0.tgz --include=dev --no-audit --progress=false && \
     npm install /app/packages/confusable/confusable-0.1.0.tgz --include=dev --no-audit --progress=false && \
-    npm install --include=dev --no-audit --progress=false && \
     npm install --include=dev --no-audit --progress=false
 
 # Copy source and build
@@ -73,9 +75,6 @@ COPY types /app/types
 COPY services/control-plane/src /app/services/control-plane/src
 RUN cd /app/services/control-plane && \
     npm run build
-
-# Install wget for healthcheck (must be done as root)
-RUN apt-get update && apt-get install -y wget && rm -rf /var/lib/apt/lists/*
 
 # Setup storage and user
 RUN mkdir -p /app/storage && chown -R node:node /app/storage
@@ -91,6 +90,9 @@ CMD ["node", "dist/index.js"]
 FROM base AS scan-orchestrator
 WORKDIR /app
 
+# Install build tools for better-sqlite3 native compilation (must be done as root)
+RUN apt-get update && apt-get install -y python3 make g++ wget && rm -rf /var/lib/apt/lists/*
+
 # Copy shared package tarball from builder
 COPY --from=shared-builder /app/packages/shared/wbscanner-shared-0.1.0.tgz /app/packages/shared/
 COPY --from=shared-builder /app/packages/confusable/confusable-0.1.0.tgz /app/packages/confusable/
@@ -101,8 +103,7 @@ RUN --mount=type=cache,target=/root/.npm \
     cd /app/services/scan-orchestrator && \
     npm install /app/packages/shared/wbscanner-shared-0.1.0.tgz --include=dev --no-audit --progress=false && \
     npm install /app/packages/confusable/confusable-0.1.0.tgz --include=dev --no-audit --progress=false && \
-    npm install --include=dev --no-audit --progress=false --ignore-scripts && \
-    npm rebuild esbuild
+   npm install --include=dev --no-audit --progress=false
 
 # Copy source and build
 COPY tsconfig.base.json /app/
@@ -110,9 +111,6 @@ COPY types /app/types
 COPY services/scan-orchestrator/src /app/services/scan-orchestrator/src
 RUN cd /app/services/scan-orchestrator && \
     npm run build
-
-# Install wget for healthcheck (must be done as root)
-RUN apt-get update && apt-get install -y wget && rm -rf /var/lib/apt/lists/*
 
 # Setup storage and user
 RUN mkdir -p /app/storage && chown -R node:node /app/storage
@@ -180,20 +178,19 @@ CMD ["node", "dist/index.js"]
 FROM base AS migrate
 WORKDIR /app
 
+# Install build tools for better-sqlite3 native compilation (must be done as root)
+RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+
 # Copy shared package tarball from builder
 COPY --from=shared-builder /app/packages/shared/wbscanner-shared-0.1.0.tgz /app/packages/shared/
 
 # Install dependencies
-# We need to install the shared package to get its dependencies (including better-sqlite3 if needed)
-# But for migration, we might just need pg.
-# Let's replicate the original behavior but optimized.
 COPY package.json /app/
 COPY packages/shared/package.json /app/packages/shared/
 
-# Install dependencies including shared and pg
+# Install dependencies including shared (which has better-sqlite3)
 RUN --mount=type=cache,target=/root/.npm \
-    npm install /app/packages/shared/wbscanner-shared-0.1.0.tgz --omit=dev --no-audit --progress=false --ignore-scripts && \
-    npm install pg --no-audit --progress=false
+    npm install /app/packages/shared/wbscanner-shared-0.1.0.tgz --omit=dev --no-audit --progress=false
 
 # Copy migration script and migrations
 COPY scripts/run-migrations.js /app/scripts/

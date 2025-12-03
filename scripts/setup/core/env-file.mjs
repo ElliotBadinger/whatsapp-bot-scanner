@@ -47,10 +47,20 @@ export class EnvFile {
 
   set(key, value) {
     this.assertLoaded();
-    const existing = this.entries.find(e => e.type === 'pair' && e.key === key);
-    if (existing) {
-      existing.value = value;
-    } else {
+    let found = false;
+    this.entries = this.entries.filter(e => {
+      if (e.type === 'pair' && e.key === key) {
+        if (!found) {
+          e.value = value;
+          found = true;
+          return true;
+        }
+        return false;
+      }
+      return true;
+    });
+
+    if (!found) {
       if (this.entries.length && this.entries.at(-1).type !== 'blank') {
         this.entries.push({ type: 'blank', raw: '' });
       }

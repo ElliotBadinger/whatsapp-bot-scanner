@@ -19,6 +19,7 @@ import {
   assertEssentialConfig,
   waSessionStatusGauge,
   isPrivateHostname,
+  ScanRequestSchema,
 } from '@wbscanner/shared';
 import { RateLimiterRedis } from 'rate-limiter-flexible';
 import { createGlobalTokenBucket, GLOBAL_TOKEN_BUCKET_ID } from './limiters';
@@ -331,10 +332,10 @@ const maskPhone = (phone?: string): string => {
   if (phone.length <= 4) return phone;
   return `****${phone.slice(-4)}`;
 };
-const DEFAULT_PAIRING_CODE_TIMEOUT_MS = 120000;
+const DEFAULT_PAIRING_CODE_TIMEOUT_MS = 160000;
 const FORCE_PHONE_PAIRING = config.wa.remoteAuth.disableQrFallback || config.wa.remoteAuth.autoPair;
 const CONFIGURED_MAX_PAIRING_RETRIES = Math.max(1, config.wa.remoteAuth.maxPairingRetries ?? 5);
-const MAX_PAIRING_CODE_RETRIES = FORCE_PHONE_PAIRING ? Number.MAX_SAFE_INTEGER : CONFIGURED_MAX_PAIRING_RETRIES;
+const MAX_PAIRING_CODE_RETRIES = FORCE_PHONE_PAIRING ? 10 : CONFIGURED_MAX_PAIRING_RETRIES; // Cap forced retries to 10 to prevent infinite loops
 const PAIRING_RETRY_DELAY_MS = Math.max(1000, config.wa.remoteAuth.pairingRetryDelayMs ?? 15000);
 const PHONE_PAIRING_CODE_TTL_MS = 160000;
 
@@ -989,20 +990,55 @@ async function main() {
     return register.metrics();
   });
 
-  app.post('/pair', async (_req: FastifyRequest, reply: FastifyReply) => {
+  app.post('/pair', async (req: FastifyRequest<{ Body: { force?: boolean } }>, reply: FastifyReply) => {
     const numbers = remotePhoneNumbers;
     if (numbers.length === 0) {
       return reply.code(400).send({ error: 'No phone numbers configured' });
     }
 
+    // Handle forced retry - clear rate limit state
+    if (req.body?.force && pairingOrchestrator) {
+      logger.info('Force flag received. Clearing rate limit state...');
+      // We need to clear the state for all configured numbers since we don't know which one is active in the orchestrator context easily here
+      // But typically there's only one active.
+      // Accessing private storage or using a helper would be better, but direct Redis access is fine here given we know the key pattern.
+      for (const phone of numbers) {
+        await redis.del(`wa:pairing:next_attempt:${phone}`);
+      }
+      // Also reset the orchestrator's internal memory state if possible, or just rely on it re-reading from storage (which it does on init, but maybe not on every check?)
+      // The orchestrator checks storage.get() in canSchedule/schedule logic if we implemented it that way.
+      // Actually, looking at PairingOrchestrator, it loads state on init. We might need to force it to reload or just rely on the fact that we are bypassing the check here?
+      // Wait, the check below `pairingOrchestrator.getStatus()` might use internal state.
+
+      // Let's reset the orchestrator state if exposed, or just recreate it? Recreating is heavy.
+      // If we clear Redis, the next time orchestrator tries to save/load it might be fine, but `nextAllowedAttemptAt` is in memory.
+      // We need a way to tell orchestrator to reset.
+      // For now, let's assume restarting the service + clearing Redis is the clean way, OR we add a method to orchestrator.
+      // But since we can't easily modify orchestrator instance from here without casting, let's just clear Redis and hope the user restarts OR we implement a reset method.
+
+      // Actually, if the user sends force=true, we should probably just ignore the rate limit check below.
+    }
+
     // Check rate limiting via orchestrator if available
-    if (pairingOrchestrator) {
+    if (pairingOrchestrator && !req.body?.force) {
       const status = pairingOrchestrator.getStatus();
       if (status.rateLimited && status.nextAttemptIn > 0) {
         return reply.code(429).send({ error: 'Rate limited', nextAttemptIn: status.nextAttemptIn });
       }
 
       // Reset auto-refresh counter so loop can resume if needed
+      consecutiveAutoRefreshes = 0;
+    } else if (pairingOrchestrator && req.body?.force) {
+      // If forced, we should also reset the internal state of the orchestrator so it doesn't immediately fail again
+      // This is a bit hacky but we can try to reset the internal counters if we had access.
+      // For now, we rely on the fact that we are bypassing the check above.
+      // But `performParallelPairingCodeRequest` might fail if the orchestrator's internal `requestCode` wrapper checks state?
+      // The `requestCode` passed to orchestrator is `performPairingCodeRequest`.
+      // The orchestrator manages the scheduling.
+      // When we call `performParallelPairingCodeRequest`, it calls `waSock.requestPairingCode`.
+      // It does NOT go through orchestrator's `schedule`.
+      // So bypassing the check here is sufficient to trigger the request!
+      // However, if the request fails with 429, the orchestrator (if listening to events) might pick it up.
       consecutiveAutoRefreshes = 0;
     }
 
@@ -1244,6 +1280,67 @@ async function main() {
       const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
       const globalWindow = window as unknown as PairingCodeWindow;
 
+      // Inline helper functions for browser context
+      async function waitForUtils(globalWindow: PairingCodeWindow, wait: (ms: number) => Promise<unknown>): Promise<PairingCodeUtils> {
+        for (let i = 0; i < 20; i++) {
+          if (globalWindow.AuthStore?.PairingCodeLinkUtils) {
+            return globalWindow.AuthStore.PairingCodeLinkUtils as PairingCodeUtils;
+          }
+          await wait(500);
+        }
+        throw new Error('AuthStore.PairingCodeLinkUtils not found after timeout');
+      }
+
+      function setupEventHandlers(globalWindow: PairingCodeWindow, intervalMs: number): void {
+        if (typeof globalWindow.onCodeReceivedEvent !== 'function') {
+          globalWindow.onCodeReceivedEvent = (codeValue: string) => codeValue;
+        }
+        if (globalWindow.codeInterval) {
+          clearInterval(globalWindow.codeInterval as number);
+        }
+        globalWindow.codeInterval = setInterval(async () => {
+          const state = globalWindow.AuthStore?.AppState?.state;
+          if (state !== 'UNPAIRED' && state !== 'UNPAIRED_IDLE') {
+            clearInterval(globalWindow.codeInterval as number);
+            return;
+          }
+        }, intervalMs);
+      }
+
+      async function requestCode(utils: PairingCodeUtils, phoneNumber: string, showNotification: boolean, wait: (ms: number) => Promise<unknown>): Promise<string> {
+        await wait(Math.random() * 500 + 200);
+        if (typeof utils.setPairingType === 'function') {
+          utils.setPairingType('ALT_DEVICE_LINKING');
+        }
+        if (typeof utils.initializeAltDeviceLinking === 'function') {
+          await utils.initializeAltDeviceLinking();
+        }
+        if (typeof utils.startAltLinkingFlow !== 'function') {
+          throw new Error('startAltLinkingFlow function missing on PairingCodeLinkUtils');
+        }
+        return utils.startAltLinkingFlow(phoneNumber, showNotification);
+      }
+
+      function isValidCode(code: unknown): code is string {
+        return typeof code === 'string' && code.length > 0;
+      }
+
+      function formatErrorForResponse(err: unknown, globalWindow: PairingCodeWindow) {
+        const typedErr = err as { message?: string; stack?: string; name?: string };
+        const raw = typeof err === 'object' && err !== null ? Object.assign({}, err, { message: typedErr?.message, stack: typedErr?.stack }) : err;
+        const msg = typedErr?.message || '';
+        const isRateLimit = msg.includes('429') || msg.includes('rate-overlimit');
+        return {
+          ok: false,
+          reason: msg || String(err ?? 'unknown'),
+          stack: typedErr?.stack,
+          state: globalWindow.AuthStore?.AppState?.state,
+          hasUtils: Boolean(globalWindow.AuthStore?.PairingCodeLinkUtils),
+          isRateLimit,
+          rawError: raw,
+        };
+      }
+
       const utils = await waitForUtils(globalWindow, wait);
       setupEventHandlers(globalWindow, intervalMs);
 
@@ -1263,6 +1360,67 @@ async function main() {
     return await pageHandle.evaluate(async (phoneNumber: string, showNotification: boolean, intervalMs: number) => {
       const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
       const globalWindow = window as unknown as PairingCodeWindow;
+
+      // Inline helper functions for browser context
+      async function waitForUtils(globalWindow: PairingCodeWindow, wait: (ms: number) => Promise<unknown>): Promise<PairingCodeUtils> {
+        for (let i = 0; i < 20; i++) {
+          if (globalWindow.AuthStore?.PairingCodeLinkUtils) {
+            return globalWindow.AuthStore.PairingCodeLinkUtils as PairingCodeUtils;
+          }
+          await wait(500);
+        }
+        throw new Error('AuthStore.PairingCodeLinkUtils not found after timeout');
+      }
+
+      function setupEventHandlers(globalWindow: PairingCodeWindow, intervalMs: number): void {
+        if (typeof globalWindow.onCodeReceivedEvent !== 'function') {
+          globalWindow.onCodeReceivedEvent = (codeValue: string) => codeValue;
+        }
+        if (globalWindow.codeInterval) {
+          clearInterval(globalWindow.codeInterval as number);
+        }
+        globalWindow.codeInterval = setInterval(async () => {
+          const state = globalWindow.AuthStore?.AppState?.state;
+          if (state !== 'UNPAIRED' && state !== 'UNPAIRED_IDLE') {
+            clearInterval(globalWindow.codeInterval as number);
+            return;
+          }
+        }, intervalMs);
+      }
+
+      async function requestCode(utils: PairingCodeUtils, phoneNumber: string, showNotification: boolean, wait: (ms: number) => Promise<unknown>): Promise<string> {
+        await wait(Math.random() * 500 + 200);
+        if (typeof utils.setPairingType === 'function') {
+          utils.setPairingType('ALT_DEVICE_LINKING');
+        }
+        if (typeof utils.initializeAltDeviceLinking === 'function') {
+          await utils.initializeAltDeviceLinking();
+        }
+        if (typeof utils.startAltLinkingFlow !== 'function') {
+          throw new Error('startAltLinkingFlow function missing on PairingCodeLinkUtils');
+        }
+        return utils.startAltLinkingFlow(phoneNumber, showNotification);
+      }
+
+      function isValidCode(code: unknown): code is string {
+        return typeof code === 'string' && code.length > 0;
+      }
+
+      function formatErrorForResponse(err: unknown, globalWindow: PairingCodeWindow) {
+        const typedErr = err as { message?: string; stack?: string; name?: string };
+        const raw = typeof err === 'object' && err !== null ? Object.assign({}, err, { message: typedErr?.message, stack: typedErr?.stack }) : err;
+        const msg = typedErr?.message || '';
+        const isRateLimit = msg.includes('429') || msg.includes('rate-overlimit');
+        return {
+          ok: false,
+          reason: msg || String(err ?? 'unknown'),
+          stack: typedErr?.stack,
+          state: globalWindow.AuthStore?.AppState?.state,
+          hasUtils: Boolean(globalWindow.AuthStore?.PairingCodeLinkUtils),
+          isRateLimit,
+          rawError: raw,
+        };
+      }
 
       const utils = await waitForUtils(globalWindow, wait);
       setupEventHandlers(globalWindow, intervalMs);
@@ -1349,9 +1507,34 @@ async function main() {
         ? Object.assign({}, err, { message: typedErr?.message, stack: typedErr?.stack })
         : err;
 
-    // Detect rate limit errors from WA internal exceptions if possible
+    // Detect rate limit errors from WA internal exceptions
     const msg = typedErr?.message || '';
-    const isRateLimit = msg.includes('429') || msg.includes('rate-overlimit');
+    let isRateLimit = msg.includes('429') || msg.includes('rate-overlimit');
+
+    // Check for structured error objects (e.g., CompanionHelloError with IQErrorRateOverlimit)
+    if (!isRateLimit && typeof raw === 'object' && raw !== null) {
+      const rawObj = raw as Record<string, unknown>;
+
+      // Check for IQErrorRateOverlimit in type.name
+      if (rawObj.type && typeof rawObj.type === 'object') {
+        const typeObj = rawObj.type as Record<string, unknown>;
+        if (typeObj.name === 'IQErrorRateOverlimit' || String(typeObj.name).includes('RateOverlimit')) {
+          isRateLimit = true;
+        }
+        // Check for code: 429 in type.value
+        if (!isRateLimit && typeObj.value && typeof typeObj.value === 'object') {
+          const valueObj = typeObj.value as Record<string, unknown>;
+          if (valueObj.code === 429 || valueObj.text === 'rate-overlimit') {
+            isRateLimit = true;
+          }
+        }
+      }
+
+      // Check for error name containing rate limit indicators
+      if (!isRateLimit && rawObj.name && String(rawObj.name).toLowerCase().includes('ratelimit')) {
+        isRateLimit = true;
+      }
+    }
 
     return {
       ok: false,
@@ -1421,7 +1604,8 @@ async function main() {
   const isFirstTimeSetup = !remoteSessionActive;
 
   // Hybrid approach: manual-only for re-pairing, allow automatic for first-time setup
-  const useManualOnlyMode = !isFirstTimeSetup;
+  // UPDATE: Always use manual mode to prevent background rate limiting
+  const useManualOnlyMode = true;
 
   if (shouldRequestPhonePairing && remotePhone) {
     const orchestrator = new PairingOrchestrator({
@@ -1580,6 +1764,13 @@ async function main() {
       if (!pairingCodeDelivered && !remoteSessionActive) {
         metrics.waSessionReconnects.labels('pairing_code_timeout').inc();
         if (FORCE_PHONE_PAIRING) {
+          if (consecutiveAutoRefreshes >= MAX_CONSECUTIVE_AUTO_REFRESHES) {
+            logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing paused after multiple timeouts to prevent rate limits. Run "!scanner pair" to resume.');
+            if (config.wa.qrTerminal) {
+              process.stdout.write(`\n⚠️  Pairing paused after multiple timeouts. Run "!scanner pair" to resume.\n`);
+            }
+            return;
+          }
           logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code not received within timeout; QR fallback disabled. Ensure WhatsApp is open to Linked Devices > Link with phone number.');
           requestPairingCodeWithRetry(Math.max(PAIRING_RETRY_DELAY_MS, 60000));
           startPairingFallbackTimer();
@@ -1825,13 +2016,25 @@ async function main() {
         }
 
         const jobOpts: JobsOptions = { removeOnComplete: true, removeOnFail: 1000, attempts: 2, backoff: { type: 'exponential', delay: 1000 } };
-        await scanRequestQueue.add('scan', {
+        const payload = {
           chatId,
           messageId,
           senderIdHash: senderHash,
           url: norm,
           timestamp: Date.now()
-        }, jobOpts);
+        };
+        const validationResult = ScanRequestSchema.safeParse(payload);
+        if (!validationResult.success) {
+          metrics.inputValidationFailures.labels('wa-client', 'ScanRequest').inc();
+          logger.warn({
+            errors: validationResult.error.issues,
+            payload,
+            chatId,
+            messageId,
+          }, 'ScanRequest validation failed in message handler');
+          continue; // Skip this URL
+        }
+        await scanRequestQueue.add('scan', validationResult.data, jobOpts);
       }
       await messageStore.recordMessageCreate({
         ...baseRecord,
@@ -1892,13 +2095,15 @@ async function main() {
           continue;
         }
         const jobOpts: JobsOptions = { removeOnComplete: true, removeOnFail: 1000, attempts: 2, backoff: { type: 'exponential', delay: 1000 } };
-        await scanRequestQueue.add('scan', {
+        const payload = {
           chatId,
           messageId,
           senderIdHash: senderHash,
           url: norm,
           timestamp: Date.now(),
-        }, jobOpts);
+        };
+        const validated = ScanRequestSchema.parse(payload);
+        await scanRequestQueue.add('scan', validated, jobOpts);
         metrics.waMessageEdits.labels('new_url').inc();
       }
 
@@ -2347,7 +2552,7 @@ async function main() {
 
   await initializeWhatsAppWithRetry(client);
 
-  if (pairingOrchestrator && !pairingCodeDelivered) {
+  if (pairingOrchestrator && !pairingCodeDelivered && (FORCE_PHONE_PAIRING || !useManualOnlyMode)) {
     const configuredDelay = config.wa.remoteAuth.pairingDelayMs && config.wa.remoteAuth.pairingDelayMs > 0
       ? config.wa.remoteAuth.pairingDelayMs
       : 5000;

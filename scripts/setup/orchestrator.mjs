@@ -126,9 +126,10 @@ function handleRemoteAuthLog(context, runtime, output, event) {
 
 function handleRemoteAuthLine(context, runtime, output, line) {
   const state = ensureRemoteAuthState(runtime);
-  if (/WhatsApp pairing code for/i.test(line)) {
-    const codeMatch = line.match(/code for .*?:\s*([A-Z0-9]{6,8})/i);
-    const phoneMatch = line.match(/for\s+(\*+[\dA-Z]+)/i);
+  if (/WhatsApp pairing code/i.test(line)) {
+    // Match both old format "code for ...: CODE" and new format "Code: CODE"
+    const codeMatch = line.match(/(?:code for .*?:\s*|Code:\s*)([A-Z0-9]{8})/i);
+    const phoneMatch = line.match(/(?:for|Phone:)\s+(\*+[\dA-Z]+)/i);
     if (codeMatch) {
       announcePairingCode(context, output, runtime, {
         code: codeMatch[1].toUpperCase(),

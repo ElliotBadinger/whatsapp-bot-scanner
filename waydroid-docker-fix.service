@@ -1,0 +1,14 @@
+[Unit]
+Description=Fix Waydroid nftables blocking Docker containers
+After=waydroid-container.service docker.service
+Wants=waydroid-container.service docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/epistemophile/Development/whatsapp-bot-scanner/fix-waydroid-docker-conflict.sh
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

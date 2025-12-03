@@ -24,7 +24,7 @@ These features reduce external API calls by 30-40% while improving scan latency.
 
 > [!IMPORTANT]
 > **Required API Keys and Secrets**: Before running the application, you must configure API keys and generate secure secrets. The `.env` file does not contain any credentials by default.
-> 
+>
 > See [`docs/SECURITY_SETUP.md`](docs/SECURITY_SETUP.md) for detailed instructions on:
 > - Obtaining API keys from VirusTotal, Google Safe Browsing, WhoisXML, and urlscan.io
 > - Generating secure random secrets for authentication and encryption
@@ -32,13 +32,14 @@ These features reduce external API calls by 30-40% while improving scan latency.
 
 Production-ready, containerized system that ingests WhatsApp group messages, detects URLs, evaluates risk via reputation sources and heuristics, and posts verdicts back to the group.
 
-Quick start:
+## Quick start:
 
-- Run `./setup.sh` to launch the guided onboarding wizard (Node.js 18+, Docker, and CLI prerequisites required). See [`docs/getting-started.md`](docs/getting-started.md) for a detailed walkthrough.
+- **New Unified CLI**: Run `npx whatsapp-bot-scanner setup` to launch the guided onboarding wizard (Node.js 20+, Docker, and CLI prerequisites required). See [`docs/CLI_USER_GUIDE.md`](docs/CLI_USER_GUIDE.md) for detailed instructions.
+- **Legacy Setup**: Run `./setup.sh` for the traditional setup wizard. See [`docs/getting-started.md`](docs/getting-started.md) for a detailed walkthrough.
 - After setup completes, open Uptime Kuma at `http://localhost:3001` for GUI monitoring and alerting.
 - (Optional) `make test-load` to exercise `/healthz` endpoints; tune with `LOAD_TARGET_URL`, `LOAD_CONCURRENCY`, and `LOAD_DURATION_SECONDS`.
 
-Services:
+## Services:
 
 - `wa-client`: WhatsApp automation client (whatsapp-web.js) with session persistence.
 - `scan-orchestrator`: Normalization, expansion, reputation checks, scoring, caching, DB writes.
@@ -47,7 +48,7 @@ Services:
 - `who-dat`: Self-hosted WHOIS service (unlimited, quota-free domain lookups).
 - `redis`, `postgres`, `prometheus`, `uptime-kuma`.
 
-Operational notes:
+## Operational notes:
 
 - First run requires scanning QR in wa-client logs.
 - Migrations and seeds run via helper containers.
@@ -67,10 +68,55 @@ This folder is **automatically synchronized** with a standalone repository at [g
 - [`.github/SYNC_QUICKSTART.md`](.github/SYNC_QUICKSTART.md) - Quick reference guide
 - [`SafeMode-web-app/SYNC_INFO.md`](SafeMode-web-app/SYNC_INFO.md) - Developer info
 
-Documentation located in `docs/` covers architecture, security, operations, and runbooks.
-See [`docs/COST_MODEL.md`](docs/COST_MODEL.md) for VirusTotal quota guidance and observability metrics.
-See [`docs/WHOIS_MIGRATION.md`](docs/WHOIS_MIGRATION.md) for WHOIS service migration details.
-See [`docs/MONITORING.md`](docs/MONITORING.md) for monitoring setup with Uptime Kuma.
+## 📚 Documentation
+
+### Unified CLI Documentation
+- **User Guide**: [`docs/CLI_USER_GUIDE.md`](docs/CLI_USER_GUIDE.md) - Getting started, usage examples, and tutorials
+- **Technical Documentation**: [`docs/CLI_TECHNICAL_DOCUMENTATION.md`](docs/CLI_TECHNICAL_DOCUMENTATION.md) - Architecture, components, and API reference
+- **Migration Guide**: [`docs/CLI_MIGRATION_GUIDE.md`](docs/CLI_MIGRATION_GUIDE.md) - Migration instructions and deprecation timeline
+- **Troubleshooting**: [`docs/CLI_TROUBLESHOOTING.md`](docs/CLI_TROUBLESHOOTING.md) - Common issues and solutions
+- **Visual Aids**: [`docs/CLI_VISUAL_AIDS.md`](docs/CLI_VISUAL_AIDS.md) - ASCII diagrams, flowcharts, and reference tables
+
+### Legacy Documentation
+- **Getting Started**: [`docs/getting-started.md`](docs/getting-started.md) - Traditional setup guide
+- **Cost Model**: [`docs/COST_MODEL.md`](docs/COST_MODEL.md) - VirusTotal quota guidance
+- **WHOIS Migration**: [`docs/WHOIS_MIGRATION.md`](docs/WHOIS_MIGRATION.md) - WHOIS service details
+- **Monitoring**: [`docs/MONITORING.md`](docs/MONITORING.md) - Uptime Kuma setup
+
+### CLI Command Reference
+
+```bash
+# Setup and configuration
+npx whatsapp-bot-scanner setup                  # Interactive setup wizard
+npx whatsapp-bot-scanner setup --hobby-mode     # Hobby/personal configuration
+npx whatsapp-bot-scanner setup --noninteractive # Automated CI/CD setup
+
+# Service management
+npx whatsapp-bot-scanner status                 # Check service health
+npx whatsapp-bot-scanner status --monitor       # Continuous health monitoring
+npx whatsapp-bot-scanner logs                   # View all service logs
+npx whatsapp-bot-scanner logs wa-client          # View specific service logs
+
+# WhatsApp pairing
+npx whatsapp-bot-scanner pair                   # Manual pairing request
+npx whatsapp-bot-scanner logs wa-client          # Monitor pairing process
+
+# Migration assistance
+npx whatsapp-bot-scanner compatibility         # Show migration information
+```
+
+### Migration from Legacy Scripts
+
+The unified CLI replaces multiple legacy scripts with a single interface:
+
+| Legacy Script | Unified CLI Equivalent |
+|---------------|-----------------------|
+| `setup.sh` | `npx whatsapp-bot-scanner setup` |
+| `setup-hobby-express.sh` | `npx whatsapp-bot-scanner setup --hobby-mode` |
+| `watch-pairing-code.js` | `npx whatsapp-bot-scanner logs wa-client` |
+| `pair.sh` | `npx whatsapp-bot-scanner pair` |
+
+See [`docs/CLI_MIGRATION_GUIDE.md`](docs/CLI_MIGRATION_GUIDE.md) for complete migration instructions.
 
 ## Deploying with Railway
 

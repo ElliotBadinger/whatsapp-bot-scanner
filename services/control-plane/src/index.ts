@@ -4,7 +4,7 @@ import { createReadStream } from 'node:fs';
 import path from 'node:path';
 import Redis from 'ioredis';
 import { Queue } from 'bullmq';
-import { register, metrics, config, logger, assertControlPlaneToken, normalizeUrl, urlHash, assertEssentialConfig } from '@wbscanner/shared';
+import { register, metrics, config, logger, assertControlPlaneToken, normalizeUrl, urlHash, assertEssentialConfig, OverrideBodySchema, RescanBodySchema, MuteGroupParamsSchema } from '@wbscanner/shared';
 import { getSharedConnection } from './database.js';
 
 const artifactRoot = path.resolve(process.env.URLSCAN_ARTIFACT_DIR || 'storage/urlscan-artifacts');
@@ -205,7 +205,12 @@ export async function buildServer(options: BuildOptions = {}) {
   }
 
   app.post('/overrides', async (req, reply) => {
-    const body = req.body as OverrideBody;
+    const validation = OverrideBodySchema.safeParse(req.body);
+    if (!validation.success) {
+      reply.code(400).send({ error: 'invalid_body', details: validation.error });
+      return;
+    }
+    const body = validation.data;
     await dbClient.query(`INSERT INTO overrides (url_hash, pattern, status, scope, scope_id, created_by, reason, expires_at)
       VALUES (?,?,?,?,?,?,?,?)`, [body.url_hash || null, body.pattern || null, body.status, body.scope || 'global', body.scope_id || null, 'admin', body.reason || null, body.expires_at || null]);
     reply.code(201).send({ ok: true });
@@ -217,24 +222,35 @@ export async function buildServer(options: BuildOptions = {}) {
   });
 
   app.post('/groups/:chatId/mute', async (req, reply) => {
-    const { chatId } = req.params as { chatId: string };
+    const validation = MuteGroupParamsSchema.safeParse(req.params);
+    if (!validation.success) {
+      reply.code(400).send({ error: 'invalid_params', details: validation.error });
+      return;
+    }
+    const { chatId } = validation.data;
     const until = new Date(Date.now() + 60 * 60 * 1000).toISOString();
     await dbClient.query('UPDATE groups SET muted_until=? WHERE chat_id=?', [until, chatId]);
     reply.send({ ok: true, muted_until: until });
   });
 
   app.post('/groups/:chatId/unmute', async (req, reply) => {
-    const { chatId } = req.params as { chatId: string };
+    const validation = MuteGroupParamsSchema.safeParse(req.params);
+    if (!validation.success) {
+      reply.code(400).send({ error: 'invalid_params', details: validation.error });
+      return;
+    }
+    const { chatId } = validation.data;
     await dbClient.query('UPDATE groups SET muted_until=NULL WHERE chat_id=?', [chatId]);
     reply.send({ ok: true });
   });
 
   app.post('/rescan', async (req, reply) => {
-    const { url } = req.body as { url?: string };
-    if (!url) {
-      reply.code(400).send({ error: 'url_required' });
+    const validation = RescanBodySchema.safeParse(req.body);
+    if (!validation.success) {
+      reply.code(400).send({ error: 'invalid_body', details: validation.error });
       return;
     }
+    const { url } = validation.data;
     const normalized = normalizeUrl(url);
     if (!normalized) {
       reply.code(400).send({ error: 'invalid_url' });

@@ -440,6 +440,12 @@ export const metrics = {
     labelNames: ['service'],
     registers: [register],
   }),
+  inputValidationFailures: new client.Counter({
+    name: 'wbscanner_input_validation_failures_total',
+    help: 'Input validation failures by service and schema type',
+    labelNames: ['service', 'schema'],
+    registers: [register],
+  }),
 
 };
 
