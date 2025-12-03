@@ -65,9 +65,9 @@ COPY --from=shared-builder /app/packages/confusable/confusable-0.1.0.tgz /app/pa
 COPY services/control-plane/package.json services/control-plane/tsconfig.json /app/services/control-plane/
 RUN --mount=type=cache,target=/root/.npm \
     cd /app/services/control-plane && \
-    npm install /app/packages/shared/wbscanner-shared-0.1.0.tgz --include=dev --no-audit --progress=false && \
-    npm install /app/packages/confusable/confusable-0.1.0.tgz --include=dev --no-audit --progress=false && \
-    npm install --include=dev --no-audit --progress=false
+    npm install /app/packages/shared/wbscanner-shared-0.1.0.tgz --include=dev --no-audit --progress=false --legacy-peer-deps && \
+    npm install /app/packages/confusable/confusable-0.1.0.tgz --include=dev --no-audit --progress=false --legacy-peer-deps && \
+    npm install --include=dev --no-audit --progress=false --legacy-peer-deps
 
 # Copy source and build
 COPY tsconfig.base.json /app/
@@ -101,9 +101,9 @@ COPY --from=shared-builder /app/packages/confusable/confusable-0.1.0.tgz /app/pa
 COPY services/scan-orchestrator/package.json services/scan-orchestrator/tsconfig.json /app/services/scan-orchestrator/
 RUN --mount=type=cache,target=/root/.npm \
     cd /app/services/scan-orchestrator && \
-    npm install /app/packages/shared/wbscanner-shared-0.1.0.tgz --include=dev --no-audit --progress=false && \
-    npm install /app/packages/confusable/confusable-0.1.0.tgz --include=dev --no-audit --progress=false && \
-   npm install --include=dev --no-audit --progress=false
+    npm install /app/packages/shared/wbscanner-shared-0.1.0.tgz --include=dev --no-audit --progress=false --legacy-peer-deps && \
+    npm install /app/packages/confusable/confusable-0.1.0.tgz --include=dev --no-audit --progress=false --legacy-peer-deps && \
+   npm install --include=dev --no-audit --progress=false --legacy-peer-deps
 
 # Copy source and build
 COPY tsconfig.base.json /app/
@@ -134,9 +134,9 @@ COPY --from=shared-builder /app/packages/confusable/confusable-0.1.0.tgz /app/pa
 COPY services/wa-client/package.json services/wa-client/tsconfig.json /app/services/wa-client/
 RUN --mount=type=cache,target=/root/.npm \
     cd /app/services/wa-client && \
-    npm install /app/packages/shared/wbscanner-shared-0.1.0.tgz --include=dev --no-audit --progress=false && \
-    npm install /app/packages/confusable/confusable-0.1.0.tgz --include=dev --no-audit --progress=false && \
-    npm install --include=dev --no-audit --progress=false
+    npm install /app/packages/shared/wbscanner-shared-0.1.0.tgz --include=dev --no-audit --progress=false --legacy-peer-deps && \
+    npm install /app/packages/confusable/confusable-0.1.0.tgz --include=dev --no-audit --progress=false --legacy-peer-deps && \
+    npm install --include=dev --no-audit --progress=false --legacy-peer-deps
 
 # Copy source and build
 COPY tsconfig.base.json /app/

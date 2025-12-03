@@ -1099,6 +1099,7 @@ async function main() {
   }
   let remoteSessionActive = authResolution.remote?.sessionExists ?? false;
   const shouldRequestPhonePairing = Boolean(
+    false && // DISABLED: Never auto-start pairing - requires explicit user command
     authResolution.remote &&
     remotePhoneNumbers.length > 0 &&
     !remoteSessionActive &&
@@ -1603,95 +1604,204 @@ async function main() {
   const rateLimitDelayMs = Math.max(60000, PAIRING_RETRY_DELAY_MS);
   const isFirstTimeSetup = !remoteSessionActive;
 
-  // Hybrid approach: manual-only for re-pairing, allow automatic for first-time setup
-  // UPDATE: Always use manual mode to prevent background rate limiting
-  const useManualOnlyMode = true;
+  // Hybrid approach: manual-only for re-pairing, allow automatic for first-time setup ONLY
+  // This prevents background rate limiting while allowing smooth initial setup
+  const useManualOnlyMode = !isFirstTimeSetup;
 
   if (shouldRequestPhonePairing && remotePhone) {
-    const orchestrator = new PairingOrchestrator({
-      enabled: true,
-      forcePhonePairing: FORCE_PHONE_PAIRING,
-      maxAttempts: MAX_PAIRING_CODE_RETRIES,
-      baseRetryDelayMs: PAIRING_RETRY_DELAY_MS,
-      rateLimitDelayMs,
-      manualOnly: useManualOnlyMode,
-      storage: {
-        get: async () => {
-          if (!remotePhone) return null;
-          return redis.get(`wa:pairing:next_attempt:${remotePhone}`);
+    // Pre-flight check: warn user if rate limited before attempting
+    const rateLimitKey = `wa:pairing:next_attempt:${remotePhone}`;
+    const nextAttemptTime = await redis.get(rateLimitKey);
+    if (nextAttemptTime) {
+      const nextAttempt = new Date(Number(nextAttemptTime));
+      const remainingMs = nextAttempt.getTime() - Date.now();
+      if (remainingMs > 0) {
+        const remainingMinutes = Math.ceil(remainingMs / 60000);
+        logger.warn({ 
+          phoneNumber: maskPhone(remotePhone), 
+          nextAttemptAt: nextAttempt.toISOString(),
+          remainingMinutes 
+        }, 'Rate limit active: pairing code requests blocked until {{nextAttemptAt}} ({{remainingMinutes}} minutes). Use "!scanner pair-status" to check status.');
+        if (config.wa.qrTerminal) {
+          process.stdout.write(`\n⚠️  Rate limit active for ${maskPhone(remotePhone)}. Next pairing attempt allowed in ${remainingMinutes} minutes at ${nextAttempt.toLocaleTimeString()}.\n`);
+        }
+        // Skip orchestrator creation if rate limited
+        pairingOrchestrator = null;
+      } else {
+        // Rate limit expired, clear it and proceed
+        await redis.del(rateLimitKey);
+        const orchestrator = new PairingOrchestrator({
+          enabled: true,
+          forcePhonePairing: FORCE_PHONE_PAIRING,
+          maxAttempts: MAX_PAIRING_CODE_RETRIES,
+          baseRetryDelayMs: PAIRING_RETRY_DELAY_MS,
+          rateLimitDelayMs,
+          manualOnly: useManualOnlyMode,
+          storage: {
+            get: async () => {
+              if (!remotePhone) return null;
+              return redis.get(`wa:pairing:next_attempt:${remotePhone}`);
+            },
+            set: async (val: string) => {
+              if (!remotePhone) return;
+              await redis.set(`wa:pairing:next_attempt:${remotePhone}`, val);
+            }
+          },
+          requestCode: async () => {
+            const code = await performPairingCodeRequest();
+            if (!code || typeof code !== 'string') {
+              throw new Error('pairing_code_request_failed:empty');
+            }
+            return code;
+          },
+          onSuccess: (code, attempt) => {
+            if (remotePhone) {
+              cachePairingCode(remotePhone, code).catch(err => {
+                logger.warn({ err, phoneNumber: maskPhone(remotePhone!) }, 'Failed to cache pairing code');
+              });
+              schedulePairingCodeRefresh(PHONE_PAIRING_CODE_TTL_MS);
+            }
+            const msg = `\n╔${'═'.repeat(50)}╗\n║  WhatsApp Pairing Code: ${code.padEnd(24)} ║\n║  Phone: ${maskPhone(remotePhone).padEnd(37)} ║\n║  Valid for: ~2:40 minutes${' '.repeat(22)} ║\n╚${'═'.repeat(50)}╝\n`;
+            process.stdout.write(msg);
+            logger.info({ phoneNumber: maskPhone(remotePhone), attempt, code }, 'Phone-number pairing code ready.');
+          },
+          onError: (err, attempt, nextDelayMs, meta, errorInfo) => {
+            if (meta?.rateLimited && errorInfo) {
+              const minutes = Math.ceil(nextDelayMs / 60000);
+              const nextTime = meta.holdUntil ? new Date(meta.holdUntil).toLocaleTimeString() : 'unknown';
+              process.stdout.write(`\n⚠️  WhatsApp rate limit detected. Next retry allowed in ${minutes} minute(s) at ${nextTime}.\n`);
+            }
+
+            // Format error for cleaner logging
+            const formattedError = err instanceof Error
+              ? { name: err.name, message: err.message }
+              : errorInfo?.type === 'rate_limit'
+                ? { type: 'rate_limit', message: 'WhatsApp API rate limit (429)' }
+                : err;
+
+            logger.warn({
+              error: formattedError,
+              phoneNumber: maskPhone(remotePhone),
+              attempt,
+              nextRetryMs: nextDelayMs,
+              nextRetryAt: meta?.holdUntil ? new Date(meta.holdUntil).toISOString() : undefined,
+              rateLimited: meta?.rateLimited ?? false,
+              errorType: errorInfo?.type,
+            }, 'Failed to request pairing code.');
+          },
+          onFallback: () => {
+            pairingOrchestrator?.setEnabled(false);
+            cancelPairingCodeRefresh();
+            allowQrOutput = true;
+            logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code retries exhausted; falling back to QR pairing.');
+            replayCachedQr();
+          },
+          onForcedRetry: (err, attempt, nextDelayMs, meta, errorInfo) => {
+            const minutes = Math.ceil(nextDelayMs / 60000);
+            if (meta?.rateLimited) {
+              process.stdout.write(`\n⚠️  Rate limit continues. Waiting ${minutes} minute(s) before retry. Use !scanner pair-status to check.\n`);
+            }
+            logger.warn({
+              err,
+              phoneNumber: maskPhone(remotePhone),
+              attempt,
+              nextRetryMs: nextDelayMs,
+              nextRetryAt: meta?.holdUntil ? new Date(meta.holdUntil).toISOString() : undefined,
+              rateLimited: meta?.rateLimited ?? false,
+              errorType: errorInfo?.type,
+            }, 'Pairing retries exhausted; QR fallback disabled.');
+          },
+        });
+        await orchestrator.init();
+        pairingOrchestrator = orchestrator;
+      }
+    } else {
+      // No rate limit, create orchestrator normally
+      const orchestrator = new PairingOrchestrator({
+        enabled: true,
+        forcePhonePairing: FORCE_PHONE_PAIRING,
+        maxAttempts: MAX_PAIRING_CODE_RETRIES,
+        baseRetryDelayMs: PAIRING_RETRY_DELAY_MS,
+        rateLimitDelayMs,
+        manualOnly: useManualOnlyMode,
+        storage: {
+          get: async () => {
+            if (!remotePhone) return null;
+            return redis.get(`wa:pairing:next_attempt:${remotePhone}`);
+          },
+          set: async (val: string) => {
+            if (!remotePhone) return;
+            await redis.set(`wa:pairing:next_attempt:${remotePhone}`, val);
+          }
         },
-        set: async (val: string) => {
-          if (!remotePhone) return;
-          await redis.set(`wa:pairing:next_attempt:${remotePhone}`, val);
-        }
-      },
-      requestCode: async () => {
-        const code = await performPairingCodeRequest();
-        if (!code || typeof code !== 'string') {
-          throw new Error('pairing_code_request_failed:empty');
-        }
-        return code;
-      },
-      onSuccess: (code, attempt) => {
-        if (remotePhone) {
-          cachePairingCode(remotePhone, code).catch(err => {
-            logger.warn({ err, phoneNumber: maskPhone(remotePhone!) }, 'Failed to cache pairing code');
-          });
-          schedulePairingCodeRefresh(PHONE_PAIRING_CODE_TTL_MS);
-        }
-        const msg = `\n╔${'═'.repeat(50)}╗\n║  WhatsApp Pairing Code: ${code.padEnd(24)} ║\n║  Phone: ${maskPhone(remotePhone).padEnd(37)} ║\n║  Valid for: ~2:40 minutes${' '.repeat(22)} ║\n╚${'═'.repeat(50)}╝\n`;
-        process.stdout.write(msg);
-        logger.info({ phoneNumber: maskPhone(remotePhone), attempt, code }, 'Phone-number pairing code ready.');
-      },
-      onError: (err, attempt, nextDelayMs, meta, errorInfo) => {
-        if (meta?.rateLimited && errorInfo) {
+        requestCode: async () => {
+          const code = await performPairingCodeRequest();
+          if (!code || typeof code !== 'string') {
+            throw new Error('pairing_code_request_failed:empty');
+          }
+          return code;
+        },
+        onSuccess: (code, attempt) => {
+          if (remotePhone) {
+            cachePairingCode(remotePhone, code).catch(err => {
+              logger.warn({ err, phoneNumber: maskPhone(remotePhone!) }, 'Failed to cache pairing code');
+            });
+            schedulePairingCodeRefresh(PHONE_PAIRING_CODE_TTL_MS);
+          }
+          const msg = `\n╔${'═'.repeat(50)}╗\n║  WhatsApp Pairing Code: ${code.padEnd(24)} ║\n║  Phone: ${maskPhone(remotePhone).padEnd(37)} ║\n║  Valid for: ~2:40 minutes${' '.repeat(22)} ║\n╚${'═'.repeat(50)}╝\n`;
+          process.stdout.write(msg);
+          logger.info({ phoneNumber: maskPhone(remotePhone), attempt, code }, 'Phone-number pairing code ready.');
+        },
+        onError: (err, attempt, nextDelayMs, meta, errorInfo) => {
+          if (meta?.rateLimited && errorInfo) {
+            const minutes = Math.ceil(nextDelayMs / 60000);
+            const nextTime = meta.holdUntil ? new Date(meta.holdUntil).toLocaleTimeString() : 'unknown';
+            process.stdout.write(`\n⚠️  WhatsApp rate limit detected. Next retry allowed in ${minutes} minute(s) at ${nextTime}.\n`);
+          }
+
+          // Format error for cleaner logging
+          const formattedError = err instanceof Error
+            ? { name: err.name, message: err.message }
+            : errorInfo?.type === 'rate_limit'
+              ? { type: 'rate_limit', message: 'WhatsApp API rate limit (429)' }
+              : err;
+
+          logger.warn({
+            error: formattedError,
+            phoneNumber: maskPhone(remotePhone),
+            attempt,
+            nextRetryMs: nextDelayMs,
+            nextRetryAt: meta?.holdUntil ? new Date(meta.holdUntil).toISOString() : undefined,
+            rateLimited: meta?.rateLimited ?? false,
+            errorType: errorInfo?.type,
+          }, 'Failed to request pairing code.');
+        },
+        onFallback: () => {
+          pairingOrchestrator?.setEnabled(false);
+          cancelPairingCodeRefresh();
+          allowQrOutput = true;
+          logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code retries exhausted; falling back to QR pairing.');
+          replayCachedQr();
+        },
+        onForcedRetry: (err, attempt, nextDelayMs, meta, errorInfo) => {
           const minutes = Math.ceil(nextDelayMs / 60000);
-          const nextTime = meta.holdUntil ? new Date(meta.holdUntil).toLocaleTimeString() : 'unknown';
-          process.stdout.write(`\n⚠️  WhatsApp rate limit detected. Next retry allowed in ${minutes} minute(s) at ${nextTime}.\n`);
-        }
-
-        // Format error for cleaner logging
-        const formattedError = err instanceof Error
-          ? { name: err.name, message: err.message }
-          : errorInfo?.type === 'rate_limit'
-            ? { type: 'rate_limit', message: 'WhatsApp API rate limit (429)' }
-            : err;
-
-        logger.warn({
-          error: formattedError,
-          phoneNumber: maskPhone(remotePhone),
-          attempt,
-          nextRetryMs: nextDelayMs,
-          nextRetryAt: meta?.holdUntil ? new Date(meta.holdUntil).toISOString() : undefined,
-          rateLimited: meta?.rateLimited ?? false,
-          errorType: errorInfo?.type,
-        }, 'Failed to request pairing code.');
-      },
-      onFallback: () => {
-        orchestrator.setEnabled(false);
-        cancelPairingCodeRefresh();
-        allowQrOutput = true;
-        logger.warn({ phoneNumber: maskPhone(remotePhone) }, 'Pairing code retries exhausted; falling back to QR pairing.');
-        replayCachedQr();
-      },
-      onForcedRetry: (err, attempt, nextDelayMs, meta, errorInfo) => {
-        const minutes = Math.ceil(nextDelayMs / 60000);
-        if (meta?.rateLimited) {
-          process.stdout.write(`\n⚠️  Rate limit continues. Waiting ${minutes} minute(s) before retry. Use !scanner pair-status to check.\n`);
-        }
-        logger.warn({
-          err,
-          phoneNumber: maskPhone(remotePhone),
-          attempt,
-          nextRetryMs: nextDelayMs,
-          nextRetryAt: meta?.holdUntil ? new Date(meta.holdUntil).toISOString() : undefined,
-          rateLimited: meta?.rateLimited ?? false,
-          errorType: errorInfo?.type,
-        }, 'Pairing retries exhausted; QR fallback disabled.');
-      },
-    });
-    await orchestrator.init();
-    pairingOrchestrator = orchestrator;
+          if (meta?.rateLimited) {
+            process.stdout.write(`\n⚠️  Rate limit continues. Waiting ${minutes} minute(s) before retry. Use !scanner pair-status to check.\n`);
+          }
+          logger.warn({
+            err,
+            phoneNumber: maskPhone(remotePhone),
+            attempt,
+            nextRetryMs: nextDelayMs,
+            nextRetryAt: meta?.holdUntil ? new Date(meta.holdUntil).toISOString() : undefined,
+            rateLimited: meta?.rateLimited ?? false,
+            errorType: errorInfo?.type,
+          }, 'Pairing retries exhausted; QR fallback disabled.');
+        },
+      });
+      await orchestrator.init();
+      pairingOrchestrator = orchestrator;
+    }
   } else {
     pairingOrchestrator = null;
   }

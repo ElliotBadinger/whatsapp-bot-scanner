@@ -12,7 +12,24 @@ const privateCidrs = [
   'fe80::/10'
 ].map(c => ipaddr.parseCIDR(c));
 
+const BLOCKED_HOSTNAMES = [
+  'localhost',
+  '127.0.0.1',
+  '0.0.0.0',
+  '::1',
+  'internal',
+  'metadata',
+  '169.254.169.254'
+];
+
 export async function isPrivateHostname(hostname: string): Promise<boolean> {
+  const lowerHostname = hostname.toLowerCase();
+  
+  // Check blocked hostnames first
+  if (BLOCKED_HOSTNAMES.includes(lowerHostname)) {
+    return true;
+  }
+  
   try {
     const addrs = await dns.lookup(hostname, { all: true, family: 0 });
     return addrs.some(a => isPrivateIp(a.address));
@@ -20,6 +37,7 @@ export async function isPrivateHostname(hostname: string): Promise<boolean> {
     return true; // fail closed
   }
 }
+
 
 export function isPrivateIp(ip: string): boolean {
   try {

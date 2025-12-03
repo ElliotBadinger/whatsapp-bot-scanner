@@ -3,6 +3,7 @@ export * from './metrics';
 export * from './config';
 export * from './url';
 export * from './ssrf';
+export * from './validation';
 export * from './scoring';
 export * from './reputation/virustotal';
 export * from './reputation/gsb';
