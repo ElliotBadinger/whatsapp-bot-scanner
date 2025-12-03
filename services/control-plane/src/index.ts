@@ -183,9 +183,11 @@ export async function buildServer(options: BuildOptions = {}) {
 
   const app = Fastify();
 
+  // Public routes (no auth required) - must be registered before the auth hook
   app.get('/healthz', async () => ({ ok: true }));
   app.get('/metrics', async (_req, reply) => { reply.header('Content-Type', register.contentType); return register.metrics(); });
 
+  // All routes below this point require authentication
   app.addHook('preHandler', createAuthHook(requiredToken));
 
   app.get('/status', async () => {

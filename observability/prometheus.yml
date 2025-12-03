@@ -4,7 +4,7 @@ global:
 scrape_configs:
   - job_name: 'wa-client'
     static_configs:
-      - targets: ['wa-client:3000']
+      - targets: ['wa-client:3005']
         labels:
           service: 'wa-client'
     metrics_path: /metrics

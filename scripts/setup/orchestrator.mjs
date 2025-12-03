@@ -1166,7 +1166,11 @@ async function buildAndLaunch(context, runtime, output) {
 }
 
 async function waitForContainerHealth(context, runtime, service, label) {
-  const maxAttempts = 30;
+  const maxAttempts = 60; // Increased from 30 to 60 (5 minutes total) for cold starts
+  const sleepMs = 5000;
+  let lastProgressLog = 0;
+  const progressIntervalMs = 30000; // Log progress every 30 seconds
+
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const { stdout } = await execa(runtime.dockerComposeCommand[0], [...runtime.dockerComposeCommand.slice(1), 'ps', '-q', service], { cwd: ROOT_DIR });
     const containerId = stdout.trim();
@@ -1184,12 +1188,39 @@ async function waitForContainerHealth(context, runtime, service, label) {
       if (status === 'unhealthy') {
         throw new Error(`${label} container reported unhealthy. See: docker compose logs ${service}`);
       }
-    } catch {
-      // ignore
+
+      // Log progress periodically so users know we're still waiting
+      const now = Date.now();
+      if (now - lastProgressLog > progressIntervalMs && context.mode === 'guided') {
+        const elapsedSecs = Math.round((attempt * sleepMs) / 1000);
+        context.log('healthCheckProgress', { service, status, attempt, elapsedSecs });
+      }
+
+    } catch (err) {
+      // Only ignore if it's an inspect error, not if it's our thrown error
+      if (err.message && err.message.includes('reported unhealthy')) {
+        throw err;
+      }
+      // Otherwise ignore and retry
     }
-    await sleep(5000);
+    await sleep(sleepMs);
   }
-  throw new Error(`${label} container did not reach healthy state. Investigate with docker compose ps ${service}.`);
+
+  // Enhanced error diagnostics when health check fails
+  try {
+    const { stdout: psOutput } = await execa(runtime.dockerComposeCommand[0], [...runtime.dockerComposeCommand.slice(1), 'ps', service], { cwd: ROOT_DIR });
+    const { stdout: logsOutput } = await execa(runtime.dockerComposeCommand[0], [...runtime.dockerComposeCommand.slice(1), 'logs', '--tail=20', service], { cwd: ROOT_DIR });
+
+    context.log('healthCheckFailed', {
+      service,
+      containerState: psOutput.trim(),
+      recentLogs: logsOutput.trim().split('\n').slice(-5).join('\n')
+    });
+  } catch {
+    // Ignore diagnostic errors
+  }
+
+  throw new Error(`${label} container did not reach healthy state after ${Math.round((maxAttempts * sleepMs) / 1000)}s. Investigate with docker compose ps ${service}.`);
 }
 
 async function waitForFoundations(context, runtime, output) {

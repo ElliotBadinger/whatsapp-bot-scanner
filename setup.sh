@@ -161,6 +161,10 @@ install_node() {
     fnm use 20
     fnm default 20
     echo "✅ Node.js installed: $(node -v)"
+    
+    # Export Node.js paths so they persist when exec'ing into subshells
+    # This is critical for Codespaces where npx needs to be available
+    export PATH="$(fnm env --use-on-cd | grep 'export PATH' | cut -d'"' -f2):$PATH"
   else
     echo "❌ Failed to install fnm. Please install Node.js 18+ manually."
     exit 1
