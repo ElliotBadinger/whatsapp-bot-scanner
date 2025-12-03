@@ -3,7 +3,29 @@ version: v1.25.0
 ignore:
   # Path Traversal false positive - sanitizePathComponent() removes all path traversal characters
   # and we verify resolved paths stay within ARTIFACT_DIR
-  SNYK-JS-PT:
-    - '*':
+  # Rule: javascript/PT (CWE-23)
+  javascript/PT:
+    - 'services/scan-orchestrator/src/urlscan-artifacts.ts > downloadUrlscanArtifacts':
         reason: 'False positive - sanitizePathComponent() strips all non-alphanumeric chars and path.resolve() validation ensures paths stay within ARTIFACT_DIR'
-        expires: 2025-12-03T00:00:00.000Z
+        expires: 2026-12-03T00:00:00.000Z
+
+  # HTTP cleartext in fetch-security-reports.js - intentional for local SonarQube instances
+  # The script is a dev-only tool and respects SONARQUBE_URL env var which defaults to HTTPS
+  # Rule: javascript/HttpToHttps (CWE-319)
+  javascript/HttpToHttps:
+    - 'scripts/fetch-security-reports.js':
+        reason: 'Dev-only script supporting local SonarQube instances. Default URL uses HTTPS.'
+        expires: 2026-12-03T00:00:00.000Z
+
+  # Test fixtures with fake API keys - not real secrets
+  javascript/HardcodedNonCryptoSecret:
+    - 'tests/**/*':
+        reason: 'Test fixtures with fake/mock API keys for unit testing'
+        expires: 2026-12-03T00:00:00.000Z
+
+  # inflight is a deprecated transitive dependency of glob@7.x with no fix available
+  # It's only used in dev/test tooling (archiver-utils, rimraf, test-exclude, jest)
+  SNYK-JS-INFLIGHT-6095116:
+    - '*':
+        reason: 'Deprecated transitive dep of glob@7.x in dev tooling. No fix available. Low risk - only affects dev/test.'
+        expires: 2026-12-03T00:00:00.000Z

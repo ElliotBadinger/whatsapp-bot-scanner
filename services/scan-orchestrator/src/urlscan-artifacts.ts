@@ -37,6 +37,7 @@ async function downloadToFile(artifactType: ArtifactType, url: string, targetPat
       return false;
     }
     await ensureDirectory();
+    // deepcode ignore PT: Path traversal mitigated - sanitizePathComponent() strips non-alphanumeric chars, path.resolve() validates containment within ARTIFACT_DIR
     await pipeline(response.body, createWriteStream(targetPath));
     return true;
   } catch (error) {

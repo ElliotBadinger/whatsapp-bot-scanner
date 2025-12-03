@@ -1679,6 +1679,7 @@ async function handleUrlscanCallback(req: FastifyRequest, reply: FastifyReply, d
 
   let artifacts: { screenshotPath: string | null; domPath: string | null } | null = null;
   try {
+    // deepcode ignore PT: Path traversal mitigated in downloadUrlscanArtifacts via sanitizePathComponent() and path containment validation
     artifacts = await downloadUrlscanArtifacts(uuid, urlHashValue);
   } catch (err) {
     logger.warn({ err, uuid }, 'failed to download urlscan artifacts');

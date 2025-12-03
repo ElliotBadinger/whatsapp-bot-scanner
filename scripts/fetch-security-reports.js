@@ -110,6 +110,11 @@ async function sonarqubeRestRequest(endpoint) {
     const url = new URL(endpoint, SONARQUBE_URL);
     const protocol = url.protocol === 'https:' ? https : http;
 
+    // Security warning for non-HTTPS connections (acceptable for local dev instances)
+    if (url.protocol !== 'https:') {
+        console.warn('⚠️  WARNING: Using insecure HTTP connection to SonarQube. Only use for local instances.');
+    }
+
     const options = {
         method: 'GET',
         headers: {
@@ -119,6 +124,7 @@ async function sonarqubeRestRequest(endpoint) {
     };
 
     return new Promise((resolve, reject) => {
+        // deepcode ignore HttpToHttps: Intentional - supports local SonarQube instances. Default URL uses HTTPS.
         const req = protocol.request(url, options, (res) => {
             let body = '';
 

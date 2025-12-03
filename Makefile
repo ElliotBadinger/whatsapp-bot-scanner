@@ -21,13 +21,13 @@ logs:
 	docker compose -f docker-compose.yml -f docker-compose.observability.yml logs -f --tail=200
 
 test:
-	npm test --workspaces
+	bun run test
 
 migrate:
-	npm run migrate
+	bun run migrate
 
 seed:
-	npm run seed
+	bun run seed
 
 test-load:
-	npm run test:load
+	bun run test:load
