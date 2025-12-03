@@ -46,6 +46,9 @@ describe('PairingOrchestrator', () => {
 
         expect(mockRequestCode).toHaveBeenCalledTimes(1);
         expect(mockOnSuccess).toHaveBeenCalledWith('ABC-123', 1);
+        
+        // Wait for async saveState to complete
+        await Promise.resolve();
         expect(mockStorage.get('key')).toBe('0'); // Should clear backoff
     });
 
@@ -58,27 +61,28 @@ describe('PairingOrchestrator', () => {
 
         orchestrator.schedule(0);
 
-        // First attempt
-        await jest.runAllTimersAsync();
+        // First attempt (immediate, delay=0)
+        await jest.advanceTimersByTimeAsync(0);
         expect(mockRequestCode).toHaveBeenCalledTimes(1);
         expect(mockOnError).toHaveBeenCalledTimes(1);
 
-        // Second attempt
-        await jest.runAllTimersAsync();
+        // Second attempt (after baseRetryDelayMs=1000)
+        await jest.advanceTimersByTimeAsync(1000);
         expect(mockRequestCode).toHaveBeenCalledTimes(2);
 
-        // Third attempt (Success)
-        await jest.runAllTimersAsync();
+        // Third attempt (after exponential backoff ~2000ms)
+        await jest.advanceTimersByTimeAsync(2000);
         expect(mockRequestCode).toHaveBeenCalledTimes(3);
         expect(mockOnSuccess).toHaveBeenCalledWith('XYZ-789', 3);
     });
 
     it('Scenario C: Rate Limited', async () => {
         const rateLimitError = new Error('pairing_code_request_failed:rate-overlimit:{}');
-        mockRequestCode.mockRejectedValue(rateLimitError);
+        mockRequestCode.mockRejectedValueOnce(rateLimitError);
 
         orchestrator.schedule(0);
-        await jest.runAllTimersAsync();
+        // Only advance enough for the first attempt
+        await jest.advanceTimersByTimeAsync(0);
 
         expect(mockRequestCode).toHaveBeenCalledTimes(1);
         expect(mockOnError).toHaveBeenCalledTimes(1);
@@ -110,8 +114,8 @@ describe('PairingOrchestrator', () => {
             },
         });
 
-        // Wait for async constructor/loadState (simulated by next tick)
-        await new Promise(process.nextTick);
+        // Must call init() to load persisted state
+        await newOrchestrator.init();
 
         const status = newOrchestrator.getStatus();
         expect(status.nextAttemptIn).toBeGreaterThan(0);

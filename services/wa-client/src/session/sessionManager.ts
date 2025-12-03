@@ -1,7 +1,7 @@
 import { Logger } from 'pino';
 import Redis from 'ioredis';
 import { config } from '@wbscanner/shared';
-import { resetRemoteSessionArtifacts } from './cleanup';
+import { forceRemoteSessionReset } from './cleanup';
 import { createRemoteAuthStore } from '../remoteAuthStore';
 import { loadEncryptionMaterials } from '../crypto/dataKeyProvider';
 
@@ -31,8 +31,8 @@ export class SessionManager {
 
             const sessionName = config.wa.remoteAuth.clientId ? `RemoteAuth-${config.wa.remoteAuth.clientId}` : 'RemoteAuth';
 
-            await resetRemoteSessionArtifacts({
-                deleteRemoteSession: (session) => store.delete({ session }),
+            await forceRemoteSessionReset({
+                deleteRemoteSession: (session: string) => store.delete({ session }),
                 clearAckWatchers: () => {}, // No ack watchers to clear in this context
                 sessionName,
                 dataPath: config.wa.remoteAuth.dataPath || './data/remote-session',

@@ -27,7 +27,7 @@ import { GroupStore } from './group-store';
 import { loadEncryptionMaterials } from './crypto/dataKeyProvider';
 import { createRemoteAuthStore } from './remoteAuthStore';
 import type { RedisRemoteAuthStore } from './remoteAuthStore';
-import { resetRemoteSessionArtifacts, ensureRemoteSessionDirectories } from './session/cleanup';
+import { forceRemoteSessionReset, ensureRemoteSessionDirectories } from './session/cleanup';
 import { describeSession, isSessionReady, type SessionSnapshot } from './session/guards';
 import { enrichEvaluationError } from './session/errors';
 import { safeGetGroupChatById } from './utils/chatLookup';
@@ -278,7 +278,7 @@ async function resolveAuthStrategy(redisInstance: Redis): Promise<AuthResolution
         logger.info({ backupKey }, 'Previous session backed up.');
       } catch (err) {
         logger.warn({ err }, 'Failed to backup session during force-new-session reset; proceeding with deletion.');
-        await resetRemoteSessionArtifacts({
+        await forceRemoteSessionReset({
           deleteRemoteSession: (name: string) => store.delete({ session: name }),
           sessionName,
           dataPath: config.wa.remoteAuth.dataPath || './data/remote-session',

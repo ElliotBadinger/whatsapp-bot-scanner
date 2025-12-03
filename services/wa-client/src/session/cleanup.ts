@@ -5,6 +5,13 @@ import type { RedisRemoteAuthStore } from '../remoteAuthStore';
 import { resetRuntimeSessionState } from '../state/runtimeSession';
 
 export interface RemoteSessionCleanupOptions {
+  store: Pick<RedisRemoteAuthStore, 'delete'>;
+  sessionName: string;
+  dataPath: string;
+  logger: Logger;
+}
+
+export interface ForceRemoteSessionResetOptions {
   deleteRemoteSession: (sessionName: string) => Promise<void>;
   clearAckWatchers?: () => void;
   sessionName: string;
@@ -24,9 +31,45 @@ async function removeIfExists(targetPath: string, options?: { recursive?: boolea
 }
 
 export async function resetRemoteSessionArtifacts(options: RemoteSessionCleanupOptions): Promise<void> {
+  const { store, sessionName, dataPath, logger } = options;
+  try {
+    await store.delete({ session: sessionName });
+  } catch (err) {
+    logger.warn({ err, session: sessionName }, 'Failed to delete RemoteAuth session record from Redis');
+  }
+
+  const resolvedDataPath = path.resolve(dataPath || './data/remote-session');
+  const zipPath = resolveZipPath(sessionName);
+
+  await removeIfExists(zipPath).catch((err) => {
+    logger.warn({ err, zipPath }, 'Failed to delete RemoteAuth snapshot archive during force reset');
+  });
+
+  await removeIfExists(resolvedDataPath, { recursive: true }).catch((err) => {
+    logger.warn({ err, resolvedDataPath }, 'Failed to remove RemoteAuth data directory during force reset');
+  });
+
+  try {
+    await fs.mkdir(resolvedDataPath, { recursive: true });
+    const tempSessionPath = path.join(resolvedDataPath, 'wwebjs_temp_session_default', 'Default');
+    await fs.mkdir(tempSessionPath, { recursive: true });
+  } catch (err) {
+    logger.warn({ err, resolvedDataPath }, 'Failed to recreate RemoteAuth data directories during force reset');
+  }
+}
+
+export interface ForceRemoteSessionResetResult {
+  remoteSessionDeleted: boolean;
+  dataPath: string;
+}
+
+export async function forceRemoteSessionReset(options: ForceRemoteSessionResetOptions): Promise<ForceRemoteSessionResetResult> {
   const { deleteRemoteSession, clearAckWatchers, sessionName, dataPath, logger } = options;
+  
+  let remoteSessionDeleted = false;
   try {
     await deleteRemoteSession(sessionName);
+    remoteSessionDeleted = true;
   } catch (err) {
     logger.warn({ err, session: sessionName }, 'Failed to delete RemoteAuth session record from Redis');
   }
@@ -52,11 +95,14 @@ export async function resetRemoteSessionArtifacts(options: RemoteSessionCleanupO
 
   try {
     await fs.mkdir(resolvedDataPath, { recursive: true });
-    const tempSessionPath = path.join(resolvedDataPath, 'wwebjs_temp_session_default', 'Default');
-    await fs.mkdir(tempSessionPath, { recursive: true });
   } catch (err) {
     logger.warn({ err, resolvedDataPath }, 'Failed to recreate RemoteAuth data directories during force reset');
   }
+
+  return {
+    remoteSessionDeleted,
+    dataPath: resolvedDataPath,
+  };
 }
 
 export async function ensureRemoteSessionDirectories(dataPath: string, logger: Logger): Promise<void> {

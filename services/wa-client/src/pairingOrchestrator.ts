@@ -226,10 +226,10 @@ export class PairingOrchestrator {
       try {
         const code = await this.requestCode();
         this.nextAllowedAttemptAt = null;
+        this.consecutiveRateLimit = 0;
+        void this.saveState(); // Clear backoff on success (fire-and-forget)
         this.onSuccess?.(code, this.attempts);
         this.attempts = 0;
-        this.consecutiveRateLimit = 0;
-        await this.saveState(); // Clear backoff on success
       } catch (err) {
         const attempt = this.attempts;
         const { rateLimited, delay } = this.classifyError(err, attempt);

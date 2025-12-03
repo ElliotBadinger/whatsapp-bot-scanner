@@ -1,10 +1,10 @@
 import os from 'node:os';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { resetRemoteSessionArtifacts } from '../session/cleanup';
+import { forceRemoteSessionReset } from '../session/cleanup';
 import { markClientReady, setCurrentSessionState, setBotWid, isClientReady, getCurrentSessionState, getBotWid, resetRuntimeSessionState } from '../state/runtimeSession';
 
-describe('resetRemoteSessionArtifacts', () => {
+describe('forceRemoteSessionReset', () => {
   const logger = {
     info: jest.fn(),
     warn: jest.fn(),
@@ -29,7 +29,7 @@ describe('resetRemoteSessionArtifacts', () => {
     const clearAckWatchers = jest.fn();
     const deleteRemoteSession = jest.fn(async () => undefined);
 
-    await resetRemoteSessionArtifacts({
+    const result = await forceRemoteSessionReset({
       sessionName: 'RemoteAuth-test',
       dataPath,
       deleteRemoteSession,
@@ -37,13 +37,14 @@ describe('resetRemoteSessionArtifacts', () => {
       logger,
     });
 
+    expect(result.remoteSessionDeleted).toBe(true);
     expect(deleteRemoteSession).toHaveBeenCalledWith('RemoteAuth-test');
     expect(clearAckWatchers).toHaveBeenCalledTimes(1);
     expect(isClientReady()).toBe(false);
     expect(getCurrentSessionState()).toBeNull();
     expect(getBotWid()).toBeNull();
 
-    const entries = await fs.readdir(dataPath);
+    const entries = await fs.readdir(result.dataPath);
     expect(entries).toHaveLength(0);
 
     await fs.rm(tmpRoot, { recursive: true, force: true });

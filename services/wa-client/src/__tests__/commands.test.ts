@@ -53,6 +53,7 @@ describe('handleAdminCommand', () => {
       author: 'user-1',
       id: { id: 'msg-1', _serialized: 'msg-1' },
       getChat: jest.fn().mockResolvedValue(mockChat),
+      getContact: jest.fn().mockResolvedValue({ id: { _serialized: 'user-1' } }),
     } as unknown as Message;
 
     await handleAdminCommand({} as Client, mockMessage, undefined, {} as unknown as Redis);
@@ -80,6 +81,7 @@ describe('handleAdminCommand', () => {
       author: 'user-1',
       id: { id: 'msg-2', _serialized: 'msg-2' },
       getChat: jest.fn().mockResolvedValue(mockChat),
+      getContact: jest.fn().mockResolvedValue({ id: { _serialized: 'user-1' } }),
     } as unknown as Message;
 
     (global.fetch as jest.Mock).mockResolvedValueOnce({
@@ -113,6 +115,7 @@ describe('handleAdminCommand', () => {
       author: 'user-1',
       id: { id: 'msg-3', _serialized: 'msg-3' },
       getChat: jest.fn().mockResolvedValue(mockChat),
+      getContact: jest.fn().mockResolvedValue({ id: { _serialized: 'user-1' } }),
     } as unknown as Message;
 
     await handleAdminCommand({} as Client, mockMessage, undefined, {} as unknown as Redis);
@@ -138,6 +141,7 @@ describe('handleAdminCommand', () => {
       author: 'admin-1',
       id: { id: 'msg-4', _serialized: 'msg-4' },
       getChat: jest.fn().mockResolvedValue(mockChat),
+      getContact: jest.fn().mockResolvedValue({ id: { _serialized: 'admin-1' } }),
     } as unknown as Message;
 
     await handleAdminCommand(
@@ -167,6 +171,7 @@ describe('handleAdminCommand', () => {
       author: 'admin-1',
       id: { id: 'msg-5', _serialized: 'msg-5' },
       getChat: jest.fn().mockResolvedValue(mockChat),
+      getContact: jest.fn().mockResolvedValue({ id: { _serialized: 'admin-1' } }),
     } as unknown as Message;
 
     await handleAdminCommand({} as Client, { ...baseMessage, body: '!scanner consent' }, undefined, {} as unknown as Redis);

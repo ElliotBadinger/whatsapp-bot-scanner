@@ -1,7 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { resetRemoteSessionArtifacts } from '../../session/cleanup';
+import { forceRemoteSessionReset } from '../../session/cleanup';
 import { resolveChatForVerdict } from '../../utils/chatResolver';
 import { handleSelfMessageRevoke } from '../../events/messageRevoke';
 import {
@@ -42,7 +42,7 @@ describe('Functional session flows', () => {
     const clearAckWatchers = jest.fn();
     const deleteRemoteSession = jest.fn(async () => undefined);
 
-    const result = await resetRemoteSessionArtifacts({
+    await forceRemoteSessionReset({
       sessionName: 'RemoteAuth-functional',
       dataPath,
       deleteRemoteSession,
@@ -101,7 +101,7 @@ describe('Functional session flows', () => {
     setCurrentSessionState('ready');
     setBotWid('bot-2');
 
-    await resetRemoteSessionArtifacts({
+    await forceRemoteSessionReset({
       sessionName: 'RemoteAuth-combined',
       dataPath,
       deleteRemoteSession: async () => undefined,
