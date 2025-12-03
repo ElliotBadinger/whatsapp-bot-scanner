@@ -24,8 +24,9 @@ These features reduce external API calls by 30-40% while improving scan latency.
 
 > [!IMPORTANT]
 > **Required API Keys and Secrets**: Before running the application, you must configure API keys and generate secure secrets. The `.env` file does not contain any credentials by default.
-> 
+>
 > See [`docs/SECURITY_SETUP.md`](docs/SECURITY_SETUP.md) for detailed instructions on:
+>
 > - Obtaining API keys from VirusTotal, Google Safe Browsing, WhoisXML, and urlscan.io
 > - Generating secure random secrets for authentication and encryption
 > - Quick setup script to generate all required secrets at once
@@ -63,6 +64,7 @@ This folder is **automatically synchronized** with a standalone repository at [g
 - **Standalone → Monorepo**: Automatic sync every 15 minutes (or instant with webhook)
 
 **Setup Documentation:**
+
 - [`docs/SAFEMODE_SYNC_SETUP.md`](docs/SAFEMODE_SYNC_SETUP.md) - Complete sync setup and troubleshooting
 - [`.github/SYNC_QUICKSTART.md`](.github/SYNC_QUICKSTART.md) - Quick reference guide
 - [`SafeMode-web-app/SYNC_INFO.md`](SafeMode-web-app/SYNC_INFO.md) - Developer info

@@ -14,10 +14,12 @@ The sync system uses GitHub Actions to automatically synchronize changes bidirec
 ### 1. Push Sync (`.github/workflows/sync-safemode-push.yml`)
 
 **Triggers:**
+
 - Automatic: When commits are pushed to `main` branch that modify `SafeMode-web-app/**`
 - Manual: Via GitHub Actions UI (workflow_dispatch)
 
 **What it does:**
+
 1. Checks out the monorepo
 2. Clones the standalone SafeMode-web-app repository
 3. Syncs all files from `SafeMode-web-app/` folder to the standalone repo
@@ -27,11 +29,13 @@ The sync system uses GitHub Actions to automatically synchronize changes bidirec
 ### 2. Pull Sync (`.github/workflows/sync-safemode-pull.yml`)
 
 **Triggers:**
+
 - Automatic: Every 15 minutes (scheduled cron job)
 - Manual: Via GitHub Actions UI (workflow_dispatch)
 - Webhook: Via repository_dispatch event `safemode-update`
 
 **What it does:**
+
 1. Checks out the monorepo
 2. Clones the standalone SafeMode-web-app repository
 3. Syncs all files from the standalone repo back to `SafeMode-web-app/` folder
@@ -134,6 +138,7 @@ If both repos are modified simultaneously:
 
 1. The workflow will fail with merge conflicts
 2. Manually resolve:
+
    ```bash
    # In monorepo
    cd SafeMode-web-app
@@ -226,7 +231,7 @@ To permanently remove sync:
 ### Performance
 
 - Push sync: ~30-60 seconds after commit
-- Pull sync: 
+- Pull sync:
   - With webhook: ~30-60 seconds
   - Without webhook: Up to 15 minutes (cron schedule)
   - Manual trigger: Immediate
@@ -234,4 +239,3 @@ To permanently remove sync:
 ---
 
 **Need help?** Check workflow logs or open an issue in the monorepo.
-
