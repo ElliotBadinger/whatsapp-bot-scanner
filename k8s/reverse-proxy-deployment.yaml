@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml --out k8s/
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: reverse-proxy
+  name: reverse-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: reverse-proxy
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml --out k8s/
+        kompose.version: 1.37.0 (fb0539e64)
+      labels:
+        io.kompose.service: reverse-proxy
+    spec:
+      containers:
+        - image: nginx:alpine
+          imagePullPolicy: Always
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8088
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          name: reverse-proxy
+          ports:
+            - containerPort: 8088
+              protocol: TCP
+          resources:
+            limits:
+              cpu: 100m
+              memory: "268435456"
+            requests:
+              cpu: 50m
+              memory: "134217728"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              add:
+                - CHOWN
+                - SETGID
+                - SETUID
+                - NET_BIND_SERVICE
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          volumeMounts:
+            - mountPath: /etc/nginx/nginx.conf
+              name: reverse-proxy-cm0
+              readOnly: true
+              subPath: nginx.conf
+            - mountPath: /usr/share/nginx/html
+              name: reverse-proxy-cm1
+              readOnly: true
+            - mountPath: /var/cache/nginx
+              name: reverse-proxy-tmpfs0
+            - mountPath: /var/run
+              name: reverse-proxy-tmpfs1
+            - mountPath: /tmp
+              name: reverse-proxy-tmpfs2
+      restartPolicy: Always
+      volumes:
+        - configMap:
+            items:
+              - key: nginx.conf
+                path: nginx.conf
+            name: reverse-proxy-cm0
+          name: reverse-proxy-cm0
+        - configMap:
+            name: reverse-proxy-cm1
+          name: reverse-proxy-cm1
+        - emptyDir:
+            medium: Memory
+          name: reverse-proxy-tmpfs0
+        - emptyDir:
+            medium: Memory
+          name: reverse-proxy-tmpfs1
+        - emptyDir:
+            medium: Memory
+          name: reverse-proxy-tmpfs2

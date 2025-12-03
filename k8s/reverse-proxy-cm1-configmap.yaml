@@ -1,0 +1,246 @@
+apiVersion: v1
+data:
+  index.html: "<!DOCTYPE html>\n<html lang=\"en\">\n\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>WhatsApp Bot Scanner | Getting Started</title>\n    <link rel=\"stylesheet\" href=\"style.css?v=2\">\n    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>\n    <link href=\"https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap\" rel=\"stylesheet\">\n</head>\n\n<body>\n    <div class=\"background-glow\"></div>\n    <div class=\"container\">\n        <header>\n            <div class=\"logo\">\n                <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"40\" viewBox=\"0 0 24 24\" fill=\"currentColor\"\n                    class=\"icon\">\n                    <path\n                        d=\"M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20ZM11 7H13V13H11V7ZM11 15H13V17H11V15Z\" />\n                </svg>\n                <h1>Bot Scanner</h1>\n            </div>\n            <p class=\"subtitle\">Secure your WhatsApp groups with automated link scanning.</p>\n        </header>\n\n        <main>\n            <section class=\"card\">\n                <h2>\U0001F680 First Run Instructions</h2>\n                <p>To start using the bot, you need to pair it with your WhatsApp account and add it to a group.</p>\n\n                <div class=\"step\">\n                    <div class=\"step-number\">1</div>\n                    <div class=\"step-content\">\n                        <h3>Pair Device</h3>\n                        <p>Check the terminal logs for the pairing code or QR code. Go to <strong>WhatsApp > Linked\n                                Devices > Link a Device</strong>.</p>\n                    </div>\n                </div>\n\n                <div class=\"step\">\n                    <div class=\"step-number\">2</div>\n                    <div class=\"step-content\">\n                        <h3>Add to Group</h3>\n                        <p>Add the bot's phone number to any WhatsApp group you want to protect.</p>\n                    </div>\n                </div>\n\n                <div class=\"step\">\n                    <div class=\"step-number\">3</div>\n                    <div class=\"step-content\">\n                        <h3>Grant Consent</h3>\n                        <p>The bot will not scan messages until an admin grants consent. Run this command in the group:\n                        </p>\n                        <div class=\"code-block\">\n                            <code>!scanner consent</code>\n                            <button class=\"copy-btn\" onclick=\"copyToClipboard('!scanner consent')\">Copy</button>\n                        </div>\n                    </div>\n                </div>\n            </section>\n\n            <section class=\"card\">\n                <h2>\U0001F6E0️ Admin Commands</h2>\n                <div class=\"command-list\">\n                    <div class=\"command-item\">\n                        <code>!scanner status</code>\n                        <span>Check system health and scan stats.</span>\n                    </div>\n                    <div class=\"command-item\">\n                        <code>!scanner mute</code>\n                        <span>Pause scanning for 60 minutes.</span>\n                    </div>\n                    <div class=\"command-item\">\n                        <code>!scanner unmute</code>\n                        <span>Resume scanning immediately.</span>\n                    </div>\n                    <div class=\"command-item\">\n                        <code>!scanner rescan &lt;url&gt;</code>\n                        <span>Manually trigger a scan for a specific URL.</span>\n                    </div>\n                    <div class=\"command-item\">\n                        <code>!scanner pair</code>\n                        <span>Request a new pairing code (if disconnected).</span>\n                    </div>\n                </div>\n            </section>\n        </main>\n\n        <footer>\n            <p>\n                <a href=\"/dashboard\" class=\"link\">Uptime Kuma</a> •\n                <a href=\"http://localhost:3002\" class=\"link\">Grafana</a> •\n                <a href=\"/healthz\" class=\"link\">API Health</a>\n            </p>\n        </footer>\n    </div>\n\n    <script>\n        function copyToClipboard(text) {\n            navigator.clipboard.writeText(text);\n            const btn = document.querySelector('.copy-btn');\n            const originalText = btn.innerText;\n            btn.innerText = 'Copied!';\n            setTimeout(() => btn.innerText = originalText, 2000);\n        }\n    </script>\n</body>\n\n</html>"
+  style.css: |-
+    :root {
+        --bg-color: #0f172a;
+        --card-bg: rgba(30, 41, 59, 0.7);
+        --text-primary: #f8fafc;
+        --text-secondary: #94a3b8;
+        --accent: #38bdf8;
+        --accent-glow: rgba(56, 189, 248, 0.3);
+        --border: rgba(255, 255, 255, 0.1);
+        --font-family: 'Outfit', sans-serif;
+    }
+
+    * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+    }
+
+    body {
+        font-family: var(--font-family);
+        background-color: var(--bg-color);
+        color: var(--text-primary);
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        overflow-x: hidden;
+    }
+
+    .background-glow {
+        position: fixed;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: radial-gradient(circle at center, var(--accent-glow) 0%, transparent 60%);
+        z-index: -1;
+        pointer-events: none;
+    }
+
+    .container {
+        width: 100%;
+        max-width: 800px;
+        padding: 2rem;
+    }
+
+    header {
+        text-align: center;
+        margin-bottom: 3rem;
+        animation: fadeInDown 0.8s ease-out;
+    }
+
+    .logo {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .icon {
+        width: 40px;
+        height: 40px;
+        color: var(--accent);
+    }
+
+    h1 {
+        font-size: 2.5rem;
+        font-weight: 700;
+        letter-spacing: -0.05em;
+        background: linear-gradient(to right, #fff, #94a3b8);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    .subtitle {
+        color: var(--text-secondary);
+        font-size: 1.1rem;
+    }
+
+    .card {
+        background: var(--card-bg);
+        backdrop-filter: blur(12px);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        animation: fadeInUp 0.8s ease-out;
+    }
+
+    h2 {
+        font-size: 1.5rem;
+        margin-bottom: 1.5rem;
+        color: var(--accent);
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 0.75rem;
+    }
+
+    .step {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .step-number {
+        background: var(--accent);
+        color: var(--bg-color);
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        flex-shrink: 0;
+    }
+
+    .step-content h3 {
+        font-size: 1.1rem;
+        margin-bottom: 0.25rem;
+    }
+
+    .step-content p {
+        color: var(--text-secondary);
+        line-height: 1.5;
+    }
+
+    .code-block {
+        background: rgba(0, 0, 0, 0.3);
+        padding: 0.75rem 1rem;
+        border-radius: 8px;
+        margin-top: 0.75rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border: 1px solid var(--border);
+    }
+
+    code {
+        font-family: 'Courier New', Courier, monospace;
+        color: #e2e8f0;
+    }
+
+    .copy-btn {
+        background: rgba(255, 255, 255, 0.1);
+        border: none;
+        color: var(--text-secondary);
+        padding: 0.25rem 0.75rem;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.8rem;
+        transition: all 0.2s;
+    }
+
+    .copy-btn:hover {
+        background: var(--accent);
+        color: var(--bg-color);
+    }
+
+    .command-list {
+        display: grid;
+        gap: 1rem;
+    }
+
+    .command-item {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .command-item:last-child {
+        border-bottom: none;
+    }
+
+    .command-item code {
+        color: var(--accent);
+        font-weight: 600;
+    }
+
+    .command-item span {
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+    }
+
+    footer {
+        text-align: center;
+        margin-top: 2rem;
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+    }
+
+    .link {
+        color: var(--text-secondary);
+        text-decoration: none;
+        transition: color 0.2s;
+    }
+
+    .link:hover {
+        color: var(--accent);
+    }
+
+    @keyframes fadeInDown {
+        from {
+            opacity: 0;
+            transform: translateY(-20px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    @media (max-width: 600px) {
+        .container {
+            padding: 1rem;
+        }
+
+        h1 {
+            font-size: 2rem;
+        }
+    }
+kind: ConfigMap
+metadata:
+  labels:
+    io.kompose.service: reverse-proxy
+  name: reverse-proxy-cm1

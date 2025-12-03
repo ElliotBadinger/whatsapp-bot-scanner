@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml --out k8s/
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: redis
+  name: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: redis
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml --out k8s/
+        kompose.version: 1.37.0 (fb0539e64)
+      labels:
+        io.kompose.service: redis
+    spec:
+      containers:
+        - args:
+            - redis-server
+            - --save
+            - "60"
+            - "1"
+            - --appendonly
+            - "yes"
+            - --maxmemory
+            - 256mb
+            - --maxmemory-policy
+            - noeviction
+          image: redis:7-alpine
+          imagePullPolicy: Always
+          livenessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            failureThreshold: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          name: redis
+          ports:
+            - containerPort: 6379
+              protocol: TCP
+          resources:
+            limits:
+              cpu: 200m
+              memory: "536870912"
+            requests:
+              cpu: 100m
+              memory: "268435456"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              add:
+                - CHOWN
+                - SETGID
+                - SETUID
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsGroup: 999
+            runAsNonRoot: true
+            runAsUser: 999
+          volumeMounts:
+            - mountPath: /data
+              name: redisdata
+            - mountPath: /tmp
+              name: redis-tmpfs0
+      restartPolicy: Always
+      volumes:
+        - name: redisdata
+          persistentVolumeClaim:
+            claimName: redisdata
+        - emptyDir:
+            medium: Memory
+          name: redis-tmpfs0

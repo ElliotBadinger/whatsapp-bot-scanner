@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml --out k8s/
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: migrate
+  name: migrate
+spec:
+  containers:
+    - envFrom:
+        - configMapRef:
+            name: env
+      image: migrate
+      imagePullPolicy: Always
+      name: migrate
+      resources:
+        limits:
+          cpu: 200m
+          memory: "536870912"
+        requests:
+          cpu: 100m
+          memory: "268435456"
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          add:
+            - CHOWN
+            - SETGID
+            - SETUID
+          drop:
+            - ALL
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+      volumeMounts:
+        - mountPath: /app/storage
+          name: migrate-cm0
+        - mountPath: /tmp
+          name: migrate-tmpfs0
+      workingDir: /app
+  restartPolicy: Never
+  volumes:
+    - configMap:
+        name: migrate-cm0
+      name: migrate-cm0
+    - emptyDir:
+        medium: Memory
+      name: migrate-tmpfs0

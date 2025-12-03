@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml --out k8s/
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: scan-orchestrator
+  name: scan-orchestrator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: scan-orchestrator
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml --out k8s/
+        kompose.version: 1.37.0 (fb0539e64)
+      labels:
+        io.kompose.service: scan-orchestrator
+    spec:
+      containers:
+        - env:
+            - name: NODE_OPTIONS
+              value: --max-old-space-size=768
+          envFrom:
+            - configMapRef:
+                name: env
+          image: scan-orchestrator
+          imagePullPolicy: Always
+          livenessProbe:
+            exec:
+              command:
+                - wget -qO- http://localhost:3001/healthz || exit 1
+            failureThreshold: 3
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+          name: scan-orchestrator
+          ports:
+            - containerPort: 3001
+              protocol: TCP
+          resources:
+            limits:
+              cpu: 400m
+              memory: "1073741824"
+            requests:
+              cpu: 200m
+              memory: "536870912"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              add:
+                - CHOWN
+                - SETGID
+                - SETUID
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          volumeMounts:
+            - mountPath: /app/storage
+              name: scan-orchestrator-cm0
+            - mountPath: /tmp
+              name: scan-orchestrator-tmpfs0
+      restartPolicy: Always
+      volumes:
+        - configMap:
+            name: scan-orchestrator-cm0
+          name: scan-orchestrator-cm0
+        - emptyDir:
+            medium: Memory
+          name: scan-orchestrator-tmpfs0

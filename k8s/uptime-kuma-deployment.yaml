@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml --out k8s/
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: uptime-kuma
+  name: uptime-kuma
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: uptime-kuma
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml --out k8s/
+        kompose.version: 1.37.0 (fb0539e64)
+      labels:
+        io.kompose.service: uptime-kuma
+    spec:
+      containers:
+        - env:
+            - name: UPTIME_KUMA_PORT
+              value: "3001"
+          image: louislam/uptime-kuma:1
+          imagePullPolicy: Always
+          livenessProbe:
+            exec:
+              command:
+                - wget -qO- http://localhost:3001 || exit 1
+            failureThreshold: 5
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+          name: uptime-kuma
+          ports:
+            - containerPort: 3001
+              protocol: TCP
+          resources:
+            limits:
+              cpu: 100m
+              memory: "268435456"
+            requests:
+              cpu: 50m
+              memory: "134217728"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              add:
+                - CHOWN
+                - SETGID
+                - SETUID
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          volumeMounts:
+            - mountPath: /app/data
+              name: uptime-kuma-data
+            - mountPath: /tmp
+              name: uptime-kuma-tmpfs0
+            - mountPath: /app/data/tmp
+              name: uptime-kuma-tmpfs1
+      restartPolicy: Always
+      volumes:
+        - name: uptime-kuma-data
+          persistentVolumeClaim:
+            claimName: uptime-kuma-data
+        - emptyDir:
+            medium: Memory
+          name: uptime-kuma-tmpfs0
+        - emptyDir:
+            medium: Memory
+          name: uptime-kuma-tmpfs1
