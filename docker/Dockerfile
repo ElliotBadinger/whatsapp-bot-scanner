@@ -17,20 +17,21 @@ WORKDIR /app
 COPY tsconfig.base.json package.json package-lock.json /app/
 COPY types /app/types
 
-# Copy shared package source
+# Copy confusable package (complete)
 COPY packages/confusable /app/packages/confusable
+
+# Copy shared package source
 COPY packages/shared/package.json packages/shared/tsconfig.json /app/packages/shared/
 COPY packages/shared/src /app/packages/shared/src
 
-# Install and build shared package
-# We need dev dependencies to build (tsc), so we use --include=dev
+# Install confusable dependencies first (so confusables.js is available)
+# Then install shared dependencies (which links to confusable via file:../confusable)
+# Finally build shared and pack both
 RUN --mount=type=cache,target=/root/.npm \
-    npm install -w packages/shared --include=dev --ignore-scripts --no-audit --progress=false && \
-    cd packages/shared && \
-    npm run build && \
-    npm pack && \
-    cd ../confusable && \
-    npm pack
+    cd /app/packages/confusable && npm install --no-audit --progress=false && \
+    cd /app && npm install -w packages/shared --include=dev --no-audit --progress=false && \
+    cd /app/packages/shared && npm run build && npm pack && \
+    cd /app/packages/confusable && npm pack
 
 # =============================================================================
 # Service: Control Plane (Builder)
