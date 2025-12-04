@@ -4,16 +4,21 @@ import { IBM_Plex_Mono, VT323 } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
 
+// Optimize font loading with display swap and preload
 const ibmPlexMono = IBM_Plex_Mono({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "600"], // Reduced from 4 weights to 2 (regular + semibold)
   variable: "--font-ibm-plex-mono",
+  display: "swap", // Prevent FOIT (Flash of Invisible Text)
+  preload: true,
 })
 
 const vt323 = VT323({
   subsets: ["latin"],
   weight: "400",
   variable: "--font-vt323",
+  display: "swap",
+  preload: true,
 })
 
 export const metadata: Metadata = {
@@ -53,6 +58,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
+      <head>
+        {/* Preconnect to critical origins for faster resource loading */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        {/* DNS prefetch for API endpoints */}
+        <link rel="dns-prefetch" href="//localhost:8080" />
+      </head>
       <body className={`${ibmPlexMono.variable} ${vt323.variable} font-sans antialiased min-h-screen`}>
         {children}
         <Analytics />

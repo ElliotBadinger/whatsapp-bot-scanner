@@ -1,23 +1,37 @@
 "use client"
 
+import { memo, useMemo } from "react"
 import useSWR from "swr"
 import { getStatus, type SystemStatus } from "@/lib/api"
 import { StatsCard } from "./stats-card"
 
-export function StatsDisplay() {
+const FALLBACK_DATA: SystemStatus = {
+  scansToday: 1247,
+  threatsBlocked: 23,
+  cacheHitRate: 87,
+  groupsProtected: 342,
+  uptime: "99.97%",
+  version: "1.0.0",
+}
+
+export const StatsDisplay = memo(function StatsDisplay() {
   const { data: status } = useSWR<SystemStatus>("status", getStatus, {
     refreshInterval: 10000,
-    fallbackData: {
-      scansToday: 1247,
-      threatsBlocked: 23,
-      cacheHitRate: 87,
-      groupsProtected: 342,
-      uptime: "99.97%",
-      version: "1.0.0",
-    },
+    fallbackData: FALLBACK_DATA,
+    dedupingInterval: 5000, // Dedupe requests within 5 seconds
+    revalidateOnFocus: false, // Don't refetch on window focus
+    revalidateOnReconnect: true,
   })
 
-  const threatPercent = status?.scansToday ? ((status.threatsBlocked / status.scansToday) * 100).toFixed(1) : "0"
+  // Memoize calculations
+  const { formattedScans, threatPercent } = useMemo(() => {
+    const scans = status?.scansToday ?? 0
+    const blocked = status?.threatsBlocked ?? 0
+    return {
+      formattedScans: scans.toLocaleString(),
+      threatPercent: scans > 0 ? ((blocked / scans) * 100).toFixed(1) : "0",
+    }
+  }, [status?.scansToday, status?.threatsBlocked])
 
   return (
     <section className="py-8 lg:py-12" aria-labelledby="stats-heading">
@@ -29,10 +43,22 @@ export function StatsDisplay() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-8">
-        <StatsCard value={status?.scansToday?.toLocaleString() ?? "---"} label="SCANS (24H)" variant="neutral" />
-        <StatsCard value={status?.threatsBlocked ?? "---"} label={`BLOCKED (${threatPercent}%)`} variant="danger" />
-        <StatsCard value={status?.groupsProtected ?? "---"} label="GROUPS PROTECTED" variant="success" />
+        <StatsCard 
+          value={formattedScans} 
+          label="SCANS (24H)" 
+          variant="neutral" 
+        />
+        <StatsCard 
+          value={status?.threatsBlocked ?? "---"} 
+          label={`BLOCKED (${threatPercent}%)`} 
+          variant="danger" 
+        />
+        <StatsCard 
+          value={status?.groupsProtected ?? "---"} 
+          label="GROUPS PROTECTED" 
+          variant="success" 
+        />
       </div>
     </section>
   )
-}
+})
