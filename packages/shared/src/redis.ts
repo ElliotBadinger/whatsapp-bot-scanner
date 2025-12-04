@@ -1,12 +1,12 @@
-import Redis from 'ioredis';
-import { config } from './config';
-import { InMemoryRedis } from './testing/in-memory-redis';
+import Redis from "ioredis";
+import { config } from "./config";
+import { InMemoryRedis } from "./testing/in-memory-redis";
 
 /** Test injection key for custom Redis instances */
-export const TEST_REDIS_KEY = '__WBSCANNER_TEST_REDIS__';
+export const TEST_REDIS_KEY = "__WBSCANNER_TEST_REDIS__";
 
 /** Test injection key for custom Queue factories */
-export const TEST_QUEUE_FACTORY_KEY = '__WBSCANNER_TEST_QUEUE_FACTORY__';
+export const TEST_QUEUE_FACTORY_KEY = "__WBSCANNER_TEST_QUEUE_FACTORY__";
 
 /**
  * Creates a Redis connection based on environment.
@@ -15,12 +15,17 @@ export const TEST_QUEUE_FACTORY_KEY = '__WBSCANNER_TEST_QUEUE_FACTORY__';
  */
 export function createRedisConnection(): Redis {
   // Allow test injection
-  if (typeof globalThis !== 'undefined' && (globalThis as unknown as Record<string, unknown>)[TEST_REDIS_KEY]) {
-    return (globalThis as unknown as Record<string, unknown>)[TEST_REDIS_KEY] as Redis;
+  if (
+    typeof globalThis !== "undefined" &&
+    (globalThis as unknown as Record<string, unknown>)[TEST_REDIS_KEY]
+  ) {
+    return (globalThis as unknown as Record<string, unknown>)[
+      TEST_REDIS_KEY
+    ] as Redis;
   }
 
   // Use in-memory Redis for tests
-  if (process.env.NODE_ENV === 'test') {
+  if (process.env.NODE_ENV === "test") {
     return new InMemoryRedis() as unknown as Redis;
   }
 

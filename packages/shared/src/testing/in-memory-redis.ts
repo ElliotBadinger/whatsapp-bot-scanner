@@ -14,10 +14,16 @@ export class InMemoryRedis {
     return this.store.get(key) ?? null;
   }
 
-  async set(key: string, value: string, mode?: string, ttlArg?: number, nxArg?: string): Promise<'OK' | null> {
-    if (mode === 'EX') {
-      const ttlSeconds = typeof ttlArg === 'number' ? ttlArg : 0;
-      if (nxArg === 'NX' && this.store.has(key)) {
+  async set(
+    key: string,
+    value: string,
+    mode?: string,
+    ttlArg?: number,
+    nxArg?: string,
+  ): Promise<"OK" | null> {
+    if (mode === "EX") {
+      const ttlSeconds = typeof ttlArg === "number" ? ttlArg : 0;
+      if (nxArg === "NX" && this.store.has(key)) {
         return null;
       }
       this.store.set(key, value);
@@ -26,11 +32,11 @@ export class InMemoryRedis {
       } else {
         this.ttlStore.delete(key);
       }
-      return 'OK';
+      return "OK";
     }
     this.store.set(key, value);
     this.ttlStore.delete(key);
-    return 'OK';
+    return "OK";
   }
 
   async del(key: string): Promise<number> {
@@ -126,7 +132,7 @@ export class InMemoryRedis {
   }
 
   async ping(): Promise<string> {
-    return 'PONG';
+    return "PONG";
   }
 
   on(_event: string, _callback?: (...args: unknown[]) => void): void {

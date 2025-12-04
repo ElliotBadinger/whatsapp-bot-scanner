@@ -1,1 +1,1 @@
-export { InMemoryRedis } from './in-memory-redis';
+export { InMemoryRedis } from "./in-memory-redis";
