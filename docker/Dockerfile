@@ -240,7 +240,7 @@ COPY --from=wa-client-builder /app/services/wa-client/dist /app/services/wa-clie
 COPY --from=wa-client-builder /app/services/wa-client/package.json /app/services/wa-client/
 
 # Setup storage and user
-RUN mkdir -p /app/services/wa-client/data && chown -R pptruser:pptruser /app/services/wa-client
+RUN mkdir -p /app/services/wa-client/data /app/storage && chown -R pptruser:pptruser /app/services/wa-client /app/storage
 USER pptruser
 VOLUME ["/app/services/wa-client/data"]
 EXPOSE 3000

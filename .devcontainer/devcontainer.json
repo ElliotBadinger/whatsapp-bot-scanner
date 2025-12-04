@@ -22,7 +22,8 @@
         }
     },
     // Run setup after container is created
-    "postCreateCommand": "npm install && npm run build",
+    // Creates .env from template, generates secrets, and creates storage directory
+    "postCreateCommand": "npm install && npm run build && mkdir -p storage && if [ ! -f .env ]; then cp .env.example .env && node -e \"const crypto = require('crypto'); const fs = require('fs'); let env = fs.readFileSync('.env', 'utf8'); env = env.replace(/CONTROL_PLANE_API_TOKEN=.*/g, 'CONTROL_PLANE_API_TOKEN=' + crypto.randomBytes(32).toString('hex')); env = env.replace(/WA_REMOTE_AUTH_DATA_KEY=.*/g, 'WA_REMOTE_AUTH_DATA_KEY=' + crypto.randomBytes(32).toString('base64')); fs.writeFileSync('.env', env);\"; fi",
     // Forward ports for development
     "forwardPorts": [3000, 3001, 3002, 3003, 3005, 6379, 8080, 8088, 9091],
     // Set environment variables
