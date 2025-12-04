@@ -1863,16 +1863,22 @@ async function main() {
     }
   }
 
-  client.on('authenticated', () => {
-    logger.info('WhatsApp client authenticated - session received from WhatsApp');
-    metrics.waSessionReconnects.labels('authenticated').inc();
-    cancelPairingFallback();
-    clearPairingRetry();
-    pairingOrchestrator?.setSessionActive(true);
-  });
+  // Track if ready event has fired to prevent duplicate handling
+  let readyEventFired = false;
+  let readyFallbackTimer: NodeJS.Timeout | null = null;
 
-  client.on('ready', async () => {
-    logger.info('WhatsApp client ready');
+  // Helper function to execute ready logic (used by both event and fallback)
+  const executeReadyLogic = async (source: string) => {
+    if (readyEventFired) {
+      logger.debug({ source }, 'Ready logic already executed, skipping');
+      return;
+    }
+    readyEventFired = true;
+    if (readyFallbackTimer) {
+      clearInterval(readyFallbackTimer);
+      readyFallbackTimer = null;
+    }
+    logger.info({ source }, 'WhatsApp client ready');
     cancelPairingFallback();
     clearPairingRetry();
     waSessionStatusGauge.labels('ready').set(1);
@@ -1880,12 +1886,68 @@ async function main() {
     metrics.waSessionReconnects.labels('ready').inc();
     updateSessionStateGauge('ready');
     botWid = client.info?.wid?._serialized || null;
-    logger.info({ botWid }, 'Bot WID assigned, now listening for messages');
+    logger.info({ botWid, source }, 'Bot WID assigned, now listening for messages');
     try {
       await rehydrateAckWatchers(client);
     } catch (err) {
       logger.warn({ err }, 'Failed to rehydrate ack watchers on ready');
     }
+  };
+
+  client.on('authenticated', () => {
+    logger.info('WhatsApp client authenticated - session received from WhatsApp');
+    metrics.waSessionReconnects.labels('authenticated').inc();
+    cancelPairingFallback();
+    clearPairingRetry();
+    pairingOrchestrator?.setSessionActive(true);
+
+    // WORKAROUND: Some versions of whatsapp-web.js don't fire 'ready' event
+    // Poll for client.info to detect when the client is actually ready
+    let pollCount = 0;
+    const maxPolls = 60; // 60 * 2s = 120 seconds max wait
+    readyFallbackTimer = setInterval(async () => {
+      pollCount++;
+      if (readyEventFired) {
+        if (readyFallbackTimer) {
+          clearInterval(readyFallbackTimer);
+          readyFallbackTimer = null;
+        }
+        return;
+      }
+      
+      try {
+        // Check if client has info populated (indicates it's ready)
+        if (client.info?.wid) {
+          logger.info({ pollCount }, 'Detected client.info is populated - triggering ready fallback');
+          await executeReadyLogic('authenticated-fallback-poll');
+          return;
+        }
+        
+        // Also try getState() to see if we're connected
+        const state = await client.getState();
+        if (state === 'CONNECTED' && client.info?.wid) {
+          logger.info({ pollCount, state }, 'Client state is CONNECTED - triggering ready fallback');
+          await executeReadyLogic('authenticated-fallback-state');
+          return;
+        }
+        
+        if (pollCount >= maxPolls) {
+          logger.warn({ pollCount }, 'Ready event fallback: Max polls reached without detecting ready state');
+          if (readyFallbackTimer) {
+            clearInterval(readyFallbackTimer);
+            readyFallbackTimer = null;
+          }
+        } else if (pollCount % 10 === 0) {
+          logger.debug({ pollCount, hasInfo: !!client.info, state }, 'Ready fallback: Still waiting for client to be ready');
+        }
+      } catch (err) {
+        logger.debug({ err, pollCount }, 'Ready fallback poll error (may be normal during init)');
+      }
+    }, 2000);
+  });
+
+  client.on('ready', async () => {
+    await executeReadyLogic('ready-event');
   });
   client.on('auth_failure', async (m) => {
     logger.error({ m }, 'Auth failure');
