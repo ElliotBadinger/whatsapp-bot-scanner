@@ -34,8 +34,47 @@ Production-ready, containerized system that ingests WhatsApp group messages, det
 
 ## Quick start:
 
-- **New Unified CLI**: Run `npx whatsapp-bot-scanner setup` to launch the guided onboarding wizard (Node.js 20+, Docker, and CLI prerequisites required). See [`docs/CLI_USER_GUIDE.md`](docs/CLI_USER_GUIDE.md) for detailed instructions.
+### 🚀 One-Liner Install (Fresh Systems - No Prerequisites Required)
+
+**For Linux, macOS, and WSL2** — run this single command:
+```bash
+curl -fsSL https://raw.githubusercontent.com/ElliotBadinger/whatsapp-bot-scanner/main/scripts/remote-bootstrap.sh | bash
+```
+
+**For Windows PowerShell** — run this single command:
+```powershell
+irm https://raw.githubusercontent.com/ElliotBadinger/whatsapp-bot-scanner/main/scripts/remote-bootstrap.ps1 | iex
+```
+
+These scripts automatically:
+- ✅ Install Node.js 20+ (via fnm on Linux/macOS, winget on Windows)
+- ✅ Install Docker (via official script on Linux, guidance on Windows)
+- ✅ Install Git and other system prerequisites
+- ✅ Clone the repository
+- ✅ Install project dependencies
+- ✅ Launch the interactive setup wizard
+
+> **Note**: The one-liner works on completely fresh systems where nothing is installed. It handles the chicken-and-egg problem of needing Node.js to run `npx`.
+
+### Already Cloned the Repository?
+
+**For Linux, macOS, and WSL2:**
+```bash
+./bootstrap.sh
+```
+
+**For Windows PowerShell:**
+```powershell
+.\bootstrap.ps1
+```
+
+### Alternative Setup Methods
+
+- **If prerequisites are already installed**: Run `npx whatsapp-bot-scanner setup` to launch the guided onboarding wizard. See [`docs/CLI_USER_GUIDE.md`](docs/CLI_USER_GUIDE.md) for detailed instructions.
 - **Legacy Setup**: Run `./setup.sh` for the traditional setup wizard. See [`docs/getting-started.md`](docs/getting-started.md) for a detailed walkthrough.
+
+### Post-Setup
+
 - After setup completes, open Uptime Kuma at `http://localhost:3001` for GUI monitoring and alerting.
 - (Optional) `make test-load` to exercise `/healthz` endpoints; tune with `LOAD_TARGET_URL`, `LOAD_CONCURRENCY`, and `LOAD_DURATION_SECONDS`.
 
