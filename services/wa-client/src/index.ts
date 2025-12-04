@@ -1902,48 +1902,64 @@ async function main() {
     pairingOrchestrator?.setSessionActive(true);
 
     // WORKAROUND: Some versions of whatsapp-web.js don't fire 'ready' event
-    // Poll for client.info to detect when the client is actually ready
+    // According to docs, ready is emitted inside onAppStateHasSyncedEvent after:
+    // 1. window.Store is injected (2s delay for non-Comet versions)
+    // 2. client.info is created from window.Store.Conn
+    // 3. Event listeners are attached
+    // 
+    // We poll for these conditions to manually trigger ready if the event doesn't fire
     let pollCount = 0;
-    const maxPolls = 60; // 60 * 2s = 120 seconds max wait
-    readyFallbackTimer = setInterval(async () => {
-      pollCount++;
-      if (readyEventFired) {
-        if (readyFallbackTimer) {
-          clearInterval(readyFallbackTimer);
-          readyFallbackTimer = null;
-        }
-        return;
-      }
-      
-      try {
-        // Check if client has info populated (indicates it's ready)
-        if (client.info?.wid) {
-          logger.info({ pollCount }, 'Detected client.info is populated - triggering ready fallback');
-          await executeReadyLogic('authenticated-fallback-poll');
-          return;
-        }
-        
-        // Also try getState() to see if we're connected
-        const state = await client.getState();
-        if (state === 'CONNECTED' && client.info?.wid) {
-          logger.info({ pollCount, state }, 'Client state is CONNECTED - triggering ready fallback');
-          await executeReadyLogic('authenticated-fallback-state');
-          return;
-        }
-        
-        if (pollCount >= maxPolls) {
-          logger.warn({ pollCount }, 'Ready event fallback: Max polls reached without detecting ready state');
+    const maxPolls = 90; // 90 * 2s = 180 seconds max wait (allows for slow injection)
+    const initialDelay = 3000; // Wait 3s before first poll (allows for 2s Store injection delay)
+    
+    setTimeout(() => {
+      readyFallbackTimer = setInterval(async () => {
+        pollCount++;
+        if (readyEventFired) {
           if (readyFallbackTimer) {
             clearInterval(readyFallbackTimer);
             readyFallbackTimer = null;
           }
-        } else if (pollCount % 10 === 0) {
-          logger.debug({ pollCount, hasInfo: !!client.info, state }, 'Ready fallback: Still waiting for client to be ready');
+          return;
         }
-      } catch (err) {
-        logger.debug({ err, pollCount }, 'Ready fallback poll error (may be normal during init)');
-      }
-    }, 2000);
+        
+        try {
+          // Primary check: client.info.wid is populated (created from window.Store.Conn)
+          // This is the most reliable indicator that ready should have fired
+          if (client.info?.wid) {
+            logger.info({ pollCount, botWid: client.info.wid._serialized }, 'Detected client.info.wid populated - triggering ready fallback');
+            await executeReadyLogic('authenticated-fallback-info');
+            return;
+          }
+          
+          // Secondary check: getState() returns CONNECTED
+          // This indicates the client is connected but info might not be set yet
+          const state = await client.getState();
+          if (state === 'CONNECTED') {
+            // If CONNECTED but no info yet, wait a bit more
+            if (pollCount > 5) {
+              logger.info({ pollCount, state }, 'Client state is CONNECTED but info not set yet - will keep polling');
+            }
+          }
+          
+          if (pollCount >= maxPolls) {
+            logger.error({ pollCount, hasInfo: !!client.info, state }, 'Ready event fallback: Max polls reached without detecting ready state');
+            if (readyFallbackTimer) {
+              clearInterval(readyFallbackTimer);
+              readyFallbackTimer = null;
+            }
+          } else if (pollCount % 15 === 0) {
+            // Log every 30 seconds (15 polls * 2s)
+            logger.info({ pollCount, hasInfo: !!client.info, state }, 'Ready fallback: Still waiting for client.info to be populated');
+          }
+        } catch (err) {
+          // getState() can throw during initialization, which is normal
+          if (pollCount % 15 === 0) {
+            logger.debug({ err: err instanceof Error ? err.message : err, pollCount }, 'Ready fallback poll error (may be normal during init)');
+          }
+        }
+      }, 2000);
+    }, initialDelay);
   });
 
   client.on('ready', async () => {
