@@ -73,8 +73,8 @@ const ICON = {
 
 const SETUP_STEPS = [
   { id: 'prereqs', name: 'Prerequisites Check', estimate: '~10s', icon: ICON.gear },
-  { id: 'config', name: 'Configuration', estimate: '~5s', icon: ICON.gear },
-  { id: 'apikeys', name: 'API Keys', estimate: '~30s', icon: ICON.key },
+  { id: 'config', name: 'Environment Setup', estimate: '~5s', icon: ICON.gear },
+  { id: 'apikeys', name: 'API Keys & Configuration', estimate: '~1min', icon: ICON.key },
   { id: 'services', name: 'Starting Services', estimate: '~2-5min', icon: ICON.docker },
   { id: 'pairing', name: 'WhatsApp Pairing', estimate: '~1min', icon: ICON.phone },
 ];
@@ -302,87 +302,187 @@ ${C.primary('  ╚════════════════════�
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Step 3: API Keys
+  // Step 3: API Keys & Configuration
   // ─────────────────────────────────────────────────────────────────────────────
 
   async step3ApiKeys() {
-    this.displayStepHeader(3, 'API Keys', ICON.key);
+    this.displayStepHeader(3, 'API Keys & Configuration', ICON.key);
     
     const envFile = path.join(ROOT_DIR, '.env');
     let envContent = await fs.readFile(envFile, 'utf-8');
+    let configChanged = false;
     
-    // Check VirusTotal API Key
-    const vtMatch = envContent.match(/VT_API_KEY=(.*)/);
-    let vtKey = vtMatch ? vtMatch[1].trim() : '';
+    // Helper to get env value
+    const getEnvValue = (key) => {
+      const match = envContent.match(new RegExp(`${key}=(.*)`));
+      return match ? match[1].trim() : '';
+    };
     
-    if (!vtKey) {
+    // Helper to set env value
+    const setEnvValue = (key, value) => {
+      if (envContent.includes(`${key}=`)) {
+        envContent = envContent.replace(new RegExp(`${key}=.*`), `${key}=${value}`);
+      } else {
+        envContent += `\n${key}=${value}`;
+      }
+      configChanged = true;
+    };
+    
+    // Helper to mask sensitive values
+    const maskValue = (value, visibleChars = 4) => {
+      if (!value || value.length <= visibleChars) return value || '(empty)';
+      return '*'.repeat(Math.min(value.length - visibleChars, 20)) + value.slice(-visibleChars);
+    };
+    
+    // Helper to prompt for value with keep/change option
+    const promptConfigValue = async (options) => {
+      const { key, label, currentValue, required, type = 'input', hint = null, validate = null } = options;
+      
       if (this.nonInteractive) {
-        throw new Error('VT_API_KEY required. Set it in .env before running with --noninteractive');
+        if (required && !currentValue) {
+          throw new Error(`${key} is required. Set it in .env before running with --noninteractive`);
+        }
+        return currentValue;
       }
       
-      console.log(`\n  ${ICON.info}  ${C.text('VirusTotal API key is required for URL scanning')}`);
-      console.log(`     ${C.muted('Get a free key at:')} ${C.link('https://www.virustotal.com/gui/join-us')}`);
+      const hasValue = !!currentValue;
+      const maskedCurrent = type === 'password' ? maskValue(currentValue) : currentValue;
       
-      const response = await enquirer.prompt({
-        type: 'password',
-        name: 'vtKey',
-        message: C.text('Enter VirusTotal API Key:'),
-        validate: v => v.length > 0 ? true : 'API key is required',
-      });
-      
-      vtKey = response.vtKey;
-      envContent = envContent.replace(/VT_API_KEY=.*/, `VT_API_KEY=${vtKey}`);
-      if (!envContent.includes('VT_API_KEY=')) {
-        envContent += `\nVT_API_KEY=${vtKey}`;
+      if (hasValue) {
+        // Show current value and ask if user wants to change it
+        console.log(`\n  ${ICON.info}  ${C.text(`${label}:`)} ${C.muted(maskedCurrent)}`);
+        
+        const { action } = await enquirer.prompt({
+          type: 'select',
+          name: 'action',
+          message: C.text(`What would you like to do with ${label}?`),
+          choices: [
+            { name: 'keep', message: `${C.success('●')} Keep current value ${C.muted(`(${maskedCurrent})`)}` },
+            { name: 'change', message: `${C.accent('○')} Enter new value` },
+            ...(required ? [] : [{ name: 'clear', message: `${C.muted('○')} Clear/remove value` }]),
+          ],
+          pointer: C.accent('›'),
+        });
+        
+        if (action === 'keep') {
+          console.log(`  ${ICON.success}  ${C.text(`${label} unchanged`)}`);
+          return currentValue;
+        }
+        
+        if (action === 'clear') {
+          setEnvValue(key, '');
+          console.log(`  ${ICON.success}  ${C.text(`${label} cleared`)}`);
+          return '';
+        }
+      } else {
+        // No existing value
+        if (hint) {
+          console.log(`\n  ${ICON.info}  ${C.text(hint)}`);
+        }
       }
-      await fs.writeFile(envFile, envContent);
-      console.log(`  ${ICON.success}  ${C.success('VirusTotal API key saved')}`);
-    } else {
-      console.log(`  ${ICON.success}  ${C.text('VirusTotal API key found')}`);
-    }
+      
+      // Prompt for new value
+      const promptOptions = {
+        type: type,
+        name: 'value',
+        message: C.text(`Enter ${label}:`),
+        validate: validate || (required ? (v => v.trim() ? true : `${label} is required`) : undefined),
+      };
+      
+      const response = await enquirer.prompt(promptOptions);
+      const newValue = response.value.trim();
+      
+      if (newValue || !required) {
+        setEnvValue(key, newValue);
+        console.log(`  ${ICON.success}  ${C.success(`${label} ${hasValue ? 'updated' : 'saved'}`)}`);
+      }
+      
+      return newValue;
+    };
     
+    // ─────────────────────────────────────────────────────────────────────────
+    // Configure VirusTotal API Key (Required)
+    // ─────────────────────────────────────────────────────────────────────────
+    
+    const vtKey = await promptConfigValue({
+      key: 'VT_API_KEY',
+      label: 'VirusTotal API Key',
+      currentValue: getEnvValue('VT_API_KEY'),
+      required: true,
+      type: 'password',
+      hint: `VirusTotal API key is required for URL scanning\n     ${C.muted('Get a free key at:')} ${C.link('https://www.virustotal.com/gui/join-us')}`,
+      validate: (v) => v.length >= 32 ? true : 'API key should be at least 32 characters',
+    });
     this.state.apiKey = vtKey;
     
-    // Check WhatsApp Phone Number
-    const phoneMatch = envContent.match(/WA_REMOTE_AUTH_PHONE_NUMBERS=(.*)/);
-    let phone = phoneMatch ? phoneMatch[1].trim() : '';
+    // ─────────────────────────────────────────────────────────────────────────
+    // Configure WhatsApp Phone Number (Required)
+    // ─────────────────────────────────────────────────────────────────────────
     
-    if (!phone) {
-      if (this.nonInteractive) {
-        throw new Error('WA_REMOTE_AUTH_PHONE_NUMBERS required in non-interactive mode');
-      }
-      
-      console.log(`\n  ${ICON.info}  ${C.text('Enter the WhatsApp phone number to pair with')}`);
-      console.log(`     ${C.muted('Format: country code + number (e.g., 27123456789)')}`);
-      
-      const response = await enquirer.prompt({
-        type: 'input',
-        name: 'phone',
-        message: C.text('Phone number:'),
-        validate: (value) => {
-          if (!value.trim()) return 'Phone number is required';
-          const normalized = value.replace(/[\s\-()]/g, '');
-          if (!/^\+?[1-9]\d{9,14}$/.test(normalized)) {
-            return 'Invalid format. Use: country code + number';
-          }
-          return true;
-        },
+    const phone = await promptConfigValue({
+      key: 'WA_REMOTE_AUTH_PHONE_NUMBERS',
+      label: 'WhatsApp Phone Number',
+      currentValue: getEnvValue('WA_REMOTE_AUTH_PHONE_NUMBERS'),
+      required: true,
+      type: 'input',
+      hint: `Phone number for WhatsApp pairing\n     ${C.muted('Format: country code + number (e.g., 27123456789)')}`,
+      validate: (value) => {
+        if (!value.trim()) return 'Phone number is required';
+        const normalized = value.replace(/[\s\-()]/g, '');
+        if (!/^\+?[1-9]\d{9,14}$/.test(normalized)) {
+          return 'Invalid format. Use: country code + number (e.g., 27123456789)';
+        }
+        return true;
+      },
+    });
+    this.state.phone = phone.replace(/[\s\-()]/g, '');
+    
+    // ─────────────────────────────────────────────────────────────────────────
+    // Optional: Configure Additional API Keys
+    // ─────────────────────────────────────────────────────────────────────────
+    
+    if (!this.nonInteractive) {
+      const { configureOptional } = await enquirer.prompt({
+        type: 'confirm',
+        name: 'configureOptional',
+        message: C.text('Configure optional API keys? (Google Safe Browsing, urlscan.io)'),
+        initial: false,
       });
       
-      phone = response.phone.replace(/[\s\-()]/g, '');
-      envContent = envContent.replace(/WA_REMOTE_AUTH_PHONE_NUMBERS=.*/, `WA_REMOTE_AUTH_PHONE_NUMBERS=${phone}`);
-      if (!envContent.includes('WA_REMOTE_AUTH_PHONE_NUMBERS=')) {
-        envContent += `\nWA_REMOTE_AUTH_PHONE_NUMBERS=${phone}`;
+      if (configureOptional) {
+        // Google Safe Browsing API Key
+        await promptConfigValue({
+          key: 'GSB_API_KEY',
+          label: 'Google Safe Browsing API Key',
+          currentValue: getEnvValue('GSB_API_KEY'),
+          required: false,
+          type: 'password',
+          hint: `Optional: Adds Google Safe Browsing verdicts\n     ${C.muted('Get a key at:')} ${C.link('https://developers.google.com/safe-browsing')}`,
+        });
+        
+        // urlscan.io API Key
+        await promptConfigValue({
+          key: 'URLSCAN_API_KEY',
+          label: 'urlscan.io API Key',
+          currentValue: getEnvValue('URLSCAN_API_KEY'),
+          required: false,
+          type: 'password',
+          hint: `Optional: Enables rich urlscan.io submissions\n     ${C.muted('Get a free key at:')} ${C.link('https://urlscan.io/user/profile')}`,
+        });
+        
+        // Enable urlscan if key was provided
+        if (getEnvValue('URLSCAN_API_KEY')) {
+          setEnvValue('URLSCAN_ENABLED', 'true');
+        }
       }
-      await fs.writeFile(envFile, envContent);
-      console.log(`  ${ICON.success}  ${C.success('Phone number saved')}`);
-    } else {
-      const masked = phone.slice(0, -4).replace(/./g, '*') + phone.slice(-4);
-      console.log(`  ${ICON.success}  ${C.text(`Phone number configured: ${masked}`)}`);
     }
     
-    this.state.phone = phone;
-    this.markStepComplete(3, 'API keys configured');
+    // Save changes if any were made
+    if (configChanged) {
+      await fs.writeFile(envFile, envContent);
+    }
+    
+    this.markStepComplete(3, 'Configuration complete');
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
