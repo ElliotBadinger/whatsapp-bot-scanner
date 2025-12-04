@@ -2,6 +2,7 @@
 source: https://docs.wwebjs.dev/PrivateContact.html
 captured_at: 2025-10-23T16:01:26.530Z
 ---
+
 [whatsapp-web.js 1.34.1](index.html)
 
 class

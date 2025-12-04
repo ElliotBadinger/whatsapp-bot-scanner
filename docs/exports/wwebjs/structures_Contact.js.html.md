@@ -2,6 +2,7 @@
 source: https://docs.wwebjs.dev/structures_Contact.js.html
 captured_at: 2025-10-23T16:01:34.756Z
 ---
+
 [whatsapp-web.js 1.34.1](index.html)
 
 # Source: structures/Contact.js
@@ -117,7 +118,7 @@ class Contact extends Base {
          * @type {boolean}
          */
         this.isBlocked = data.isBlocked;
-        
+
         return super._patch(data);
     }
 
@@ -136,7 +137,7 @@ class Contact extends Base {
     async getFormattedNumber() {
         return await this.client.getFormattedNumber(this.id._serialized);
     }
-    
+
     /**
      * Returns the contact's countrycode, ([email protected]) => (1)
      * @returns {Promise&lt;string>}
@@ -144,9 +145,9 @@ class Contact extends Base {
     async getCountryCode() {
         return await this.client.getCountryCode(this.id._serialized);
     }
-    
+
     /**
-     * Returns the Chat that corresponds to this Contact. 
+     * Returns the Chat that corresponds to this Contact.
      * Will return null when getting chat for currently logged in user.
      * @returns {Promise&lt;Chat>}
      */
@@ -211,7 +212,7 @@ class Contact extends Base {
     async getCommonGroups() {
         return await this.client.getCommonGroups(this.id._serialized);
     }
-    
+
 }
 
 module.exports = Contact;

@@ -2,6 +2,7 @@
 source: https://docs.wwebjs.dev/authStrategies_RemoteAuth.js.html
 captured_at: 2025-10-23T16:01:30.238Z
 ---
+
 [whatsapp-web.js 1.34.1](index.html)
 
 # Source: authStrategies/RemoteAuth.js
@@ -29,7 +30,7 @@ const BaseAuthStrategy = require('./BaseAuthStrategy');
  * @param {object} options - options
  * @param {object} options.store - Remote database store instance
  * @param {string} options.clientId - Client id to distinguish instances if you are using multiple, otherwise keep null if you are using only one instance
- * @param {string} options.dataPath - Change the default path for saving session files, default is: "./.wwebjs_auth/" 
+ * @param {string} options.dataPath - Change the default path for saving session files, default is: "./.wwebjs_auth/"
  * @param {number} options.backupSyncIntervalMs - Sets the time interval for periodic session backups. Accepts values starting from 60000ms {1 minute}
  * @param {number} options.rmMaxRetries - Sets the maximum number of retries for removing the session directory
  */
@@ -187,7 +188,7 @@ class RemoteAuth extends BaseAuthStrategy {
                 if (!this.requiredDirs.includes(element)) {
                     const dirElement = path.join(dir, element);
                     const stats = await fs.promises.lstat(dirElement);
-    
+
                     if (stats.isDirectory()) {
                         await fs.promises.rm(dirElement, {
                             recursive: true,

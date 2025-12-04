@@ -2,6 +2,7 @@
 source: https://docs.wwebjs.dev/webCache_RemoteWebCache.js.html
 captured_at: 2025-10-23T16:01:41.437Z
 ---
+
 [whatsapp-web.js 1.34.1](index.html)
 
 # Source: webCache/RemoteWebCache.js
@@ -38,7 +39,7 @@ class RemoteWebCache extends WebCache {
         }
 
         if (this.strict) throw new VersionResolveError(`Couldn't load version ${version} from the archive`);
-        return null;         
+        return null;
     }
 
     async persist() {

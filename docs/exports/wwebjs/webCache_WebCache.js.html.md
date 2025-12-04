@@ -2,6 +2,7 @@
 source: https://docs.wwebjs.dev/webCache_WebCache.js.html
 captured_at: 2025-10-23T16:01:41.823Z
 ---
+
 [whatsapp-web.js 1.34.1](index.html)
 
 # Source: webCache/WebCache.js

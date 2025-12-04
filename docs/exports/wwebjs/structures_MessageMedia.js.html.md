@@ -2,6 +2,7 @@
 source: https://docs.wwebjs.dev/structures_MessageMedia.js.html
 captured_at: 2025-10-23T16:01:37.830Z
 ---
+
 [whatsapp-web.js 1.34.1](index.html)
 
 # Source: structures/MessageMedia.js
@@ -41,7 +42,7 @@ class MessageMedia {
          * @type {?string}
          */
         this.filename = filename;
-        
+
         /**
          * Document file size in bytes. Value can be null
          * @type {?number}
@@ -51,12 +52,12 @@ class MessageMedia {
 
     /**
      * Creates a MessageMedia instance from a local file path
-     * @param {string} filePath 
+     * @param {string} filePath
      * @returns {MessageMedia}
      */
     static fromFilePath(filePath) {
         const b64data = fs.readFileSync(filePath, {encoding: 'base64'});
-        const mimetype = mime.getType(filePath); 
+        const mimetype = mime.getType(filePath);
         const filename = path.basename(filePath);
 
         return new MessageMedia(mimetype, b64data, filename);
@@ -99,7 +100,7 @@ class MessageMedia {
                 });
                 data = btoa(data);
             }
-            
+
             return { data, mime, name, size };
         }
 
@@ -109,7 +110,7 @@ class MessageMedia {
 
         const filename = options.filename ||
             (res.name ? res.name[0] : (pUrl.pathname.split('/').pop() || 'file'));
-        
+
         if (!mimetype)
             mimetype = res.mime;
 

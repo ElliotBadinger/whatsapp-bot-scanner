@@ -2,6 +2,7 @@
 source: https://docs.wwebjs.dev/structures_Channel.js.html
 captured_at: 2025-10-23T16:01:33.819Z
 ---
+
 [whatsapp-web.js 1.34.1](index.html)
 
 # Source: structures/Channel.js
@@ -46,7 +47,7 @@ class Channel extends Base {
          */
         this.name = data.name;
 
-        /** 
+        /**
          * The channel description
          * @type {string}
          */
@@ -124,7 +125,7 @@ class Channel extends Base {
 
     /**
      * Updates the channel subject
-     * @param {string} newSubject 
+     * @param {string} newSubject
      * @returns {Promise&lt;boolean>} Returns true if the subject was properly updated. This can return false if the user does not have the necessary permissions.
      */
     async setSubject(newSubject) {
@@ -135,7 +136,7 @@ class Channel extends Base {
 
     /**
      * Updates the channel description
-     * @param {string} newDescription 
+     * @param {string} newDescription
      * @returns {Promise&lt;boolean>} Returns true if the operation completed successfully, false otherwise
      */
     async setDescription(newDescription) {
@@ -146,7 +147,7 @@ class Channel extends Base {
 
     /**
      * Updates the channel profile picture
-     * @param {MessageMedia} newProfilePicture 
+     * @param {MessageMedia} newProfilePicture
      * @returns {Promise&lt;boolean>} Returns true if the operation completed successfully, false otherwise
      */
     async setProfilePicture(newProfilePicture) {
@@ -155,12 +156,12 @@ class Channel extends Base {
 
     /**
      * Updates available reactions to use in the channel
-     * 
+     *
      * Valid values for passing to the method are:
      * 0 for NONE reactions to be avaliable
      * 1 for BASIC reactions to be available: 👍, ❤️, 😂, 😮, 😢, 🙏
      * 2 for ALL reactions to be available
-     * @param {number} reactionCode 
+     * @param {number} reactionCode
      * @returns {Promise&lt;boolean>} Returns true if the operation completed successfully, false otherwise
      */
     async setReactionSetting(reactionCode) {
@@ -190,7 +191,7 @@ class Channel extends Base {
         }
         return success;
     }
-    
+
     /**
      * Unmutes the channel
      * @returns {Promise&lt;boolean>} Returns true if the operation completed successfully, false otherwise
@@ -238,7 +239,7 @@ class Channel extends Base {
     /**
      * Sends a channel admin invitation to a user, allowing them to become an admin of the channel
      * @param {string} chatId The ID of a user to send the channel admin invitation to
-     * @param {SendChannelAdminInviteOptions} options 
+     * @param {SendChannelAdminInviteOptions} options
      * @returns {Promise&lt;boolean>} Returns true if an invitation was sent successfully, false otherwise
      */
     async sendChannelAdminInvite(chatId, options = {}) {
@@ -316,7 +317,7 @@ class Channel extends Base {
                     if (!loadedMessages || !loadedMessages.length) break;
                     msgs = [...loadedMessages.filter(msgFilter), ...msgs];
                 }
-                
+
                 if (msgs.length > searchOptions.limit) {
                     msgs.sort((a, b) => (a.t > b.t) ? 1 : -1);
                     msgs = msgs.splice(msgs.length - searchOptions.limit);

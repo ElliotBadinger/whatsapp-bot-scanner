@@ -2,6 +2,7 @@
 source: https://docs.wwebjs.dev/Client.html
 captured_at: 2025-10-23T16:01:17.932Z
 ---
+
 [whatsapp-web.js 1.34.1](index.html)
 
 class
@@ -174,59 +175,59 @@ Starting point for interacting with the WhatsApp Web API
 
 ## Events
 
-[auth\_failure](Client.html#event:auth_failure)
+[auth_failure](Client.html#event:auth_failure)
 
 [authenticated](Client.html#event:authenticated)
 
-[change\_battery](Client.html#event:change_battery)
+[change_battery](Client.html#event:change_battery)
 
-[change\_state](Client.html#event:change_state)
+[change_state](Client.html#event:change_state)
 
-[chat\_archived](Client.html#event:chat_archived)
+[chat_archived](Client.html#event:chat_archived)
 
-[chat\_removed](Client.html#event:chat_removed)
+[chat_removed](Client.html#event:chat_removed)
 
 [code](Client.html#event:code)
 
-[contact\_changed](Client.html#event:contact_changed)
+[contact_changed](Client.html#event:contact_changed)
 
 [disconnected](Client.html#event:disconnected)
 
-[group\_admin\_changed](Client.html#event:group_admin_changed)
+[group_admin_changed](Client.html#event:group_admin_changed)
 
-[group\_join](Client.html#event:group_join)
+[group_join](Client.html#event:group_join)
 
-[group\_leave](Client.html#event:group_leave)
+[group_leave](Client.html#event:group_leave)
 
-[group\_membership\_request](Client.html#event:group_membership_request)
+[group_membership_request](Client.html#event:group_membership_request)
 
-[group\_update](Client.html#event:group_update)
+[group_update](Client.html#event:group_update)
 
-[incoming\_call](Client.html#event:incoming_call)
+[incoming_call](Client.html#event:incoming_call)
 
-[media\_uploaded](Client.html#event:media_uploaded)
+[media_uploaded](Client.html#event:media_uploaded)
 
 [message](Client.html#event:message)
 
-[message\_ack](Client.html#event:message_ack)
+[message_ack](Client.html#event:message_ack)
 
-[message\_ciphertext](Client.html#event:message_ciphertext)
+[message_ciphertext](Client.html#event:message_ciphertext)
 
-[message\_create](Client.html#event:message_create)
+[message_create](Client.html#event:message_create)
 
-[message\_edit](Client.html#event:message_edit)
+[message_edit](Client.html#event:message_edit)
 
-[message\_reaction](Client.html#event:message_reaction)
+[message_reaction](Client.html#event:message_reaction)
 
-[message\_revoke\_everyone](Client.html#event:message_revoke_everyone)
+[message_revoke_everyone](Client.html#event:message_revoke_everyone)
 
-[message\_revoke\_me](Client.html#event:message_revoke_me)
+[message_revoke_me](Client.html#event:message_revoke_me)
 
 [qr](Client.html#event:qr)
 
 [ready](Client.html#event:ready)
 
-[vote\_update](Client.html#event:vote_update)
+[vote_update](Client.html#event:vote_update)
 
 ## new Client(options)
 
@@ -328,43 +329,43 @@ Fires
 
 [Client#event:authenticated](Client.html#event:authenticated)
 
-[Client#event:auth\_failure](Client.html#event:auth_failure)
+[Client#event:auth_failure](Client.html#event:auth_failure)
 
 [Client#event:ready](Client.html#event:ready)
 
 [Client#event:message](Client.html#event:message)
 
-[Client#event:message\_ack](Client.html#event:message_ack)
+[Client#event:message_ack](Client.html#event:message_ack)
 
-[Client#event:message\_create](Client.html#event:message_create)
+[Client#event:message_create](Client.html#event:message_create)
 
-[Client#event:message\_revoke\_me](Client.html#event:message_revoke_me)
+[Client#event:message_revoke_me](Client.html#event:message_revoke_me)
 
-[Client#event:message\_revoke\_everyone](Client.html#event:message_revoke_everyone)
+[Client#event:message_revoke_everyone](Client.html#event:message_revoke_everyone)
 
-[Client#event:message\_ciphertext](Client.html#event:message_ciphertext)
+[Client#event:message_ciphertext](Client.html#event:message_ciphertext)
 
-[Client#event:message\_edit](Client.html#event:message_edit)
+[Client#event:message_edit](Client.html#event:message_edit)
 
-[Client#event:media\_uploaded](Client.html#event:media_uploaded)
+[Client#event:media_uploaded](Client.html#event:media_uploaded)
 
-[Client#event:group\_join](Client.html#event:group_join)
+[Client#event:group_join](Client.html#event:group_join)
 
-[Client#event:group\_leave](Client.html#event:group_leave)
+[Client#event:group_leave](Client.html#event:group_leave)
 
-[Client#event:group\_update](Client.html#event:group_update)
+[Client#event:group_update](Client.html#event:group_update)
 
 [Client#event:disconnected](Client.html#event:disconnected)
 
-[Client#event:change\_state](Client.html#event:change_state)
+[Client#event:change_state](Client.html#event:change_state)
 
-[Client#event:contact\_changed](Client.html#event:contact_changed)
+[Client#event:contact_changed](Client.html#event:contact_changed)
 
-[Client#event:group\_admin\_changed](Client.html#event:group_admin_changed)
+[Client#event:group_admin_changed](Client.html#event:group_admin_changed)
 
-[Client#event:group\_membership\_request](Client.html#event:group_membership_request)
+[Client#event:group_membership_request](Client.html#event:group_membership_request)
 
-[Client#event:vote\_update](Client.html#event:vote_update)
+[Client#event:vote_update](Client.html#event:vote_update)
 
 ## Properties
 
@@ -1480,7 +1481,7 @@ Returns
 
 `Promise containing string` 
 
-*   Returns a pairing code in format "ABCDEFGH"
+- Returns a pairing code in format "ABCDEFGH"
 
 async
 
@@ -2213,7 +2214,7 @@ Returns true if the operation completed successfully, false otherwise
 
 ## Events
 
-### auth\_failure
+### auth_failure
 
 Emitted when there has been an error while trying to restore an existing session
 
@@ -2235,7 +2236,7 @@ string
 
 Emitted when authentication is successful
 
-### change\_battery
+### change_battery
 
 Emitted when the battery percentage for the attached device changes. Will not be sent if using multi-device.
 
@@ -2277,7 +2278,7 @@ Indicates if the phone is plugged in (true) or not (false)
 
 Deprecated
 
-### change\_state
+### change_state
 
 Emitted when the connection state changes
 
@@ -2297,7 +2298,7 @@ state
 
 the new connection state
 
-### chat\_archived
+### chat_archived
 
 Emitted when a chat is archived/unarchived
 
@@ -2323,7 +2324,7 @@ prevState
 
 boolean
 
-### chat\_removed
+### chat_removed
 
 Emitted when a chat is removed
 
@@ -2367,7 +2368,7 @@ Returns
 
 Code that was just received
 
-### contact\_changed
+### contact_changed
 
 Emitted when a contact or a group participant changes their phone number.
 
@@ -2425,7 +2426,7 @@ reason
 
 reason that caused the disconnect
 
-### group\_admin\_changed
+### group_admin_changed
 
 Emitted when a current user is promoted to an admin or demoted to a regular user.
 
@@ -2445,7 +2446,7 @@ notification
 
 GroupNotification with more information about the action
 
-### group\_join
+### group_join
 
 Emitted when a user joins the chat via invite link or is added by an admin.
 
@@ -2465,7 +2466,7 @@ notification
 
 GroupNotification with more information about the action
 
-### group\_leave
+### group_leave
 
 Emitted when a user leaves the chat or is removed by an admin.
 
@@ -2485,7 +2486,7 @@ notification
 
 GroupNotification with more information about the action
 
-### group\_membership\_request
+### group_membership_request
 
 Emitted when some user requested to join the group that has the membership approval mode turned on
 
@@ -2533,7 +2534,7 @@ number
 
 The timestamp the request was made at
 
-### group\_update
+### group_update
 
 Emitted when group settings are updated, such as subject, description or picture.
 
@@ -2553,7 +2554,7 @@ notification
 
 GroupNotification with more information about the action
 
-### incoming\_call
+### incoming_call
 
 Emitted when a call is received
 
@@ -2629,7 +2630,7 @@ object
 
 Participants
 
-### media\_uploaded
+### media_uploaded
 
 Emitted when media has been uploaded for a message sent by the client.
 
@@ -2669,7 +2670,7 @@ message
 
 The message that was received
 
-### message\_ack
+### message_ack
 
 Emitted when an ack event occurrs on message type.
 
@@ -2695,7 +2696,7 @@ ack
 
 The new ACK value
 
-### message\_ciphertext
+### message_ciphertext
 
 Emitted when messages are edited
 
@@ -2713,7 +2714,7 @@ message
 
 [Message](Message.html)
 
-### message\_create
+### message_create
 
 Emitted when a new message is created, which may include the current user's own messages.
 
@@ -2733,7 +2734,7 @@ message
 
 The message that was created
 
-### message\_edit
+### message_edit
 
 Emitted when messages are edited
 
@@ -2759,7 +2760,7 @@ prevBody
 
 string
 
-### message\_reaction
+### message_reaction
 
 Emitted when a reaction is sent, received, updated or removed
 
@@ -2845,7 +2846,7 @@ Ack
 
 Value can be null.
 
-### message\_revoke\_everyone
+### message_revoke_everyone
 
 Emitted when a message is deleted for everyone in the chat.
 
@@ -2865,7 +2866,7 @@ message
 
 The message that was revoked, in its current state. It will not contain the original message's data.
 
-revoked\_msg
+revoked_msg
 
 [Message](Message.html)
 
@@ -2873,7 +2874,7 @@ The message that was revoked, before it was revoked. It will contain the message
 
 Value can be null.
 
-### message\_revoke\_me
+### message_revoke_me
 
 Emitted when a message is deleted by the current user.
 
@@ -2917,7 +2918,7 @@ QR Code
 
 Emitted when the client has initialized and is ready to receive messages.
 
-### vote\_update
+### vote_update
 
 Emitted when some poll option is selected or deselected, shows a user's current selected option(s) on the poll
 

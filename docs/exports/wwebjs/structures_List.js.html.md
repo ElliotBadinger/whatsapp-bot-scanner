@@ -2,6 +2,7 @@
 source: https://docs.wwebjs.dev/structures_List.js.html
 captured_at: 2025-10-23T16:01:36.893Z
 ---
+
 [whatsapp-web.js 1.34.1](index.html)
 
 # Source: structures/List.js
@@ -34,13 +35,13 @@ class List {
          * @type {string}
          */
         this.buttonText = buttonText;
-        
+
         /**
          * title of message
          * @type {string}
          */
         this.title = title;
-        
+
 
         /**
          * footer of message
@@ -53,9 +54,9 @@ class List {
          * @type {Array&lt;any>}
          */
         this.sections = this._format(sections);
-        
+
     }
-    
+
     /**
      * Creates section array from simple array
      * @param {Array&lt;any>} sections
@@ -82,7 +83,7 @@ class List {
             };
         });
     }
-    
+
 }
 
 module.exports = List;

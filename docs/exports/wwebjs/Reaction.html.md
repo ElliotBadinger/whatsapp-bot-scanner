@@ -2,6 +2,7 @@
 source: https://docs.wwebjs.dev/Reaction.html
 captured_at: 2025-10-23T16:01:27.198Z
 ---
+
 [whatsapp-web.js 1.34.1](index.html)
 
 class

@@ -2,6 +2,7 @@
 source: https://docs.wwebjs.dev/LocalWebCache.html
 captured_at: 2025-10-23T16:01:23.345Z
 ---
+
 [whatsapp-web.js 1.34.1](index.html)
 
 class
@@ -40,7 +41,7 @@ Description
 
 path
 
-Path to the directory where cached versions are saved, default is: "./.wwebjs\_cache/"
+Path to the directory where cached versions are saved, default is: "./.wwebjs_cache/"
 
 strict
 

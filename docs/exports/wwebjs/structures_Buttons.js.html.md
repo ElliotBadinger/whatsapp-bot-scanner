@@ -2,6 +2,7 @@
 source: https://docs.wwebjs.dev/structures_Buttons.js.html
 captured_at: 2025-10-23T16:01:33.101Z
 ---
+
 [whatsapp-web.js 1.34.1](index.html)
 
 # Source: structures/Buttons.js
@@ -48,7 +49,7 @@ class Buttons {
          * @type {string}
          */
         this.title = title;
-        
+
         /**
          * footer of message
          * @type {string}
@@ -68,14 +69,14 @@ class Buttons {
          */
         this.buttons = this._format(buttons);
         if(!this.buttons.length){ throw '[BT01] No buttons';}
-                
+
     }
 
     /**
      * Creates button array from simple array
      * @param {ButtonSpec[]} buttons
      * @returns {FormattedButtonSpec[]}
-     * @example 
+     * @example
      * Input: [{id:'customId',body:'button1'},{body:'button2'},{body:'button3'},{body:'button4'}]
      * Returns: [{ buttonId:'customId',buttonText:{'displayText':'button1'},type: 1 },{buttonId:'n3XKsL',buttonText:{'displayText':'button2'},type:1},{buttonId:'NDJk0a',buttonText:{'displayText':'button3'},type:1}]
      */
@@ -85,7 +86,7 @@ class Buttons {
             return {'buttonId':btn.id ? String(btn.id) : Util.generateHash(6),'buttonText':{'displayText':btn.body},'type':1};
         });
     }
-    
+
 }
 
 module.exports = Buttons;

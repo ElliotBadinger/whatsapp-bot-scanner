@@ -2,6 +2,7 @@
 source: https://docs.wwebjs.dev/BaseAuthStrategy.html
 captured_at: 2025-10-23T16:01:14.591Z
 ---
+
 [whatsapp-web.js 1.34.1](index.html)
 
 class

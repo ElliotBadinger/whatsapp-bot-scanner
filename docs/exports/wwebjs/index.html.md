@@ -2,19 +2,14 @@
 source: https://docs.wwebjs.dev/index.html
 captured_at: 2025-10-23T16:01:31.746Z
 ---
+
 [whatsapp-web.js 1.34.1](index.html)
 
 # whatsapp-web.js 1.34.1
 
-  
-
 [![WWebJS Website](https://github.com/wwebjs/logos/blob/main/4_Full%20Logo%20Lockup_Small/small_banner_blue.png?raw=true "whatsapp-web.js")](https://wwebjs.dev)
 
-  
-
 [![npm](https://img.shields.io/npm/v/whatsapp-web.js.svg)](https://www.npmjs.com/package/whatsapp-web.js) [![Depfu](https://badges.depfu.com/badges/4a65a0de96ece65fdf39e294e0c8dcba/overview.svg)](https://depfu.com/github/pedroslopez/whatsapp-web.js?project_id=9765) ![WhatsApp_Web 2.2346.52](https://img.shields.io/badge/WhatsApp_Web-2.3000.1017054665-brightgreen.svg) [![Discord server](https://img.shields.io/discord/698610475432411196.svg?logo=discord)](https://discord.gg/H7DqQs4)
-
-  
 
 ## About
 
@@ -26,12 +21,12 @@ The library works by launching the WhatsApp Web browser application and managing
 
 ## Links
 
-*   [Website](https://wwebjs.dev)
-*   [Guide](https://guide.wwebjs.dev/guide) ([source](https://github.com/wwebjs/wwebjs.dev/tree/main)) *(work in progress)*
-*   [Documentation](https://docs.wwebjs.dev/) ([source](https://github.com/pedroslopez/whatsapp-web.js/tree/main/docs))
-*   [WWebJS Discord](https://discord.gg/H7DqQs4)
-*   [GitHub](https://github.com/pedroslopez/whatsapp-web.js)
-*   [npm](https://npmjs.org/package/whatsapp-web.js)
+- [Website](https://wwebjs.dev)
+- [Guide](https://guide.wwebjs.dev/guide) ([source](https://github.com/wwebjs/wwebjs.dev/tree/main)) _(work in progress)_
+- [Documentation](https://docs.wwebjs.dev/) ([source](https://github.com/pedroslopez/whatsapp-web.js/tree/main/docs))
+- [WWebJS Discord](https://discord.gg/H7DqQs4)
+- [GitHub](https://github.com/pedroslopez/whatsapp-web.js)
+- [npm](https://npmjs.org/package/whatsapp-web.js)
 
 ## Installation
 
@@ -245,9 +240,9 @@ Feel free to open pull requests; we welcome contributions! However, for signific
 
 You can support the maintainer of this project through the links below
 
-*   [Support via GitHub Sponsors](https://github.com/sponsors/pedroslopez)
-*   [Support via PayPal](https://www.paypal.me/psla/)
-*   [Sign up for DigitalOcean](https://m.do.co/c/73f906a36ed4) and get $200 in credit when you sign up (Referral)
+- [Support via GitHub Sponsors](https://github.com/sponsors/pedroslopez)
+- [Support via PayPal](https://www.paypal.me/psla/)
+- [Sign up for DigitalOcean](https://m.do.co/c/73f906a36ed4) and get $200 in credit when you sign up (Referral)
 
 ## Disclaimer
 
@@ -551,59 +546,59 @@ limitations under the License.
 
 [Client#destroy()](Client.html#destroy)
 
-[Client#event:auth\_failure](Client.html#event:auth_failure)
+[Client#event:auth_failure](Client.html#event:auth_failure)
 
 [Client#event:authenticated](Client.html#event:authenticated)
 
-[Client#event:change\_battery](Client.html#event:change_battery)
+[Client#event:change_battery](Client.html#event:change_battery)
 
-[Client#event:change\_state](Client.html#event:change_state)
+[Client#event:change_state](Client.html#event:change_state)
 
-[Client#event:chat\_archived](Client.html#event:chat_archived)
+[Client#event:chat_archived](Client.html#event:chat_archived)
 
-[Client#event:chat\_removed](Client.html#event:chat_removed)
+[Client#event:chat_removed](Client.html#event:chat_removed)
 
 [Client#event:code](Client.html#event:code)
 
-[Client#event:contact\_changed](Client.html#event:contact_changed)
+[Client#event:contact_changed](Client.html#event:contact_changed)
 
 [Client#event:disconnected](Client.html#event:disconnected)
 
-[Client#event:group\_admin\_changed](Client.html#event:group_admin_changed)
+[Client#event:group_admin_changed](Client.html#event:group_admin_changed)
 
-[Client#event:group\_join](Client.html#event:group_join)
+[Client#event:group_join](Client.html#event:group_join)
 
-[Client#event:group\_leave](Client.html#event:group_leave)
+[Client#event:group_leave](Client.html#event:group_leave)
 
-[Client#event:group\_membership\_request](Client.html#event:group_membership_request)
+[Client#event:group_membership_request](Client.html#event:group_membership_request)
 
-[Client#event:group\_update](Client.html#event:group_update)
+[Client#event:group_update](Client.html#event:group_update)
 
-[Client#event:incoming\_call](Client.html#event:incoming_call)
+[Client#event:incoming_call](Client.html#event:incoming_call)
 
-[Client#event:media\_uploaded](Client.html#event:media_uploaded)
+[Client#event:media_uploaded](Client.html#event:media_uploaded)
 
 [Client#event:message](Client.html#event:message)
 
-[Client#event:message\_ack](Client.html#event:message_ack)
+[Client#event:message_ack](Client.html#event:message_ack)
 
-[Client#event:message\_ciphertext](Client.html#event:message_ciphertext)
+[Client#event:message_ciphertext](Client.html#event:message_ciphertext)
 
-[Client#event:message\_create](Client.html#event:message_create)
+[Client#event:message_create](Client.html#event:message_create)
 
-[Client#event:message\_edit](Client.html#event:message_edit)
+[Client#event:message_edit](Client.html#event:message_edit)
 
-[Client#event:message\_reaction](Client.html#event:message_reaction)
+[Client#event:message_reaction](Client.html#event:message_reaction)
 
-[Client#event:message\_revoke\_everyone](Client.html#event:message_revoke_everyone)
+[Client#event:message_revoke_everyone](Client.html#event:message_revoke_everyone)
 
-[Client#event:message\_revoke\_me](Client.html#event:message_revoke_me)
+[Client#event:message_revoke_me](Client.html#event:message_revoke_me)
 
 [Client#event:qr](Client.html#event:qr)
 
 [Client#event:ready](Client.html#event:ready)
 
-[Client#event:vote\_update](Client.html#event:vote_update)
+[Client#event:vote_update](Client.html#event:vote_update)
 
 [Client#getBlockedContacts()](Client.html#getBlockedContacts)
 
@@ -795,63 +790,63 @@ limitations under the License.
 
 [Events.AUTHENTICATED](global.html#Events#.AUTHENTICATED)
 
-[Events.AUTHENTICATION\_FAILURE](global.html#Events#.AUTHENTICATION_FAILURE)
+[Events.AUTHENTICATION_FAILURE](global.html#Events#.AUTHENTICATION_FAILURE)
 
-[Events.BATTERY\_CHANGED](global.html#Events#.BATTERY_CHANGED)
+[Events.BATTERY_CHANGED](global.html#Events#.BATTERY_CHANGED)
 
-[Events.CHAT\_ARCHIVED](global.html#Events#.CHAT_ARCHIVED)
+[Events.CHAT_ARCHIVED](global.html#Events#.CHAT_ARCHIVED)
 
-[Events.CHAT\_REMOVED](global.html#Events#.CHAT_REMOVED)
+[Events.CHAT_REMOVED](global.html#Events#.CHAT_REMOVED)
 
-[Events.CODE\_RECEIVED](global.html#Events#.CODE_RECEIVED)
+[Events.CODE_RECEIVED](global.html#Events#.CODE_RECEIVED)
 
-[Events.CONTACT\_CHANGED](global.html#Events#.CONTACT_CHANGED)
+[Events.CONTACT_CHANGED](global.html#Events#.CONTACT_CHANGED)
 
 [Events.DISCONNECTED](global.html#Events#.DISCONNECTED)
 
-[Events.GROUP\_ADMIN\_CHANGED](global.html#Events#.GROUP_ADMIN_CHANGED)
+[Events.GROUP_ADMIN_CHANGED](global.html#Events#.GROUP_ADMIN_CHANGED)
 
-[Events.GROUP\_JOIN](global.html#Events#.GROUP_JOIN)
+[Events.GROUP_JOIN](global.html#Events#.GROUP_JOIN)
 
-[Events.GROUP\_LEAVE](global.html#Events#.GROUP_LEAVE)
+[Events.GROUP_LEAVE](global.html#Events#.GROUP_LEAVE)
 
-[Events.GROUP\_MEMBERSHIP\_REQUEST](global.html#Events#.GROUP_MEMBERSHIP_REQUEST)
+[Events.GROUP_MEMBERSHIP_REQUEST](global.html#Events#.GROUP_MEMBERSHIP_REQUEST)
 
-[Events.GROUP\_UPDATE](global.html#Events#.GROUP_UPDATE)
+[Events.GROUP_UPDATE](global.html#Events#.GROUP_UPDATE)
 
-[Events.INCOMING\_CALL](global.html#Events#.INCOMING_CALL)
+[Events.INCOMING_CALL](global.html#Events#.INCOMING_CALL)
 
-[Events.LOADING\_SCREEN](global.html#Events#.LOADING_SCREEN)
+[Events.LOADING_SCREEN](global.html#Events#.LOADING_SCREEN)
 
-[Events.MEDIA\_UPLOADED](global.html#Events#.MEDIA_UPLOADED)
+[Events.MEDIA_UPLOADED](global.html#Events#.MEDIA_UPLOADED)
 
-[Events.MESSAGE\_ACK](global.html#Events#.MESSAGE_ACK)
+[Events.MESSAGE_ACK](global.html#Events#.MESSAGE_ACK)
 
-[Events.MESSAGE\_CIPHERTEXT](global.html#Events#.MESSAGE_CIPHERTEXT)
+[Events.MESSAGE_CIPHERTEXT](global.html#Events#.MESSAGE_CIPHERTEXT)
 
-[Events.MESSAGE\_CREATE](global.html#Events#.MESSAGE_CREATE)
+[Events.MESSAGE_CREATE](global.html#Events#.MESSAGE_CREATE)
 
-[Events.MESSAGE\_EDIT](global.html#Events#.MESSAGE_EDIT)
+[Events.MESSAGE_EDIT](global.html#Events#.MESSAGE_EDIT)
 
-[Events.MESSAGE\_REACTION](global.html#Events#.MESSAGE_REACTION)
+[Events.MESSAGE_REACTION](global.html#Events#.MESSAGE_REACTION)
 
-[Events.MESSAGE\_RECEIVED](global.html#Events#.MESSAGE_RECEIVED)
+[Events.MESSAGE_RECEIVED](global.html#Events#.MESSAGE_RECEIVED)
 
-[Events.MESSAGE\_REVOKED\_EVERYONE](global.html#Events#.MESSAGE_REVOKED_EVERYONE)
+[Events.MESSAGE_REVOKED_EVERYONE](global.html#Events#.MESSAGE_REVOKED_EVERYONE)
 
-[Events.MESSAGE\_REVOKED\_ME](global.html#Events#.MESSAGE_REVOKED_ME)
+[Events.MESSAGE_REVOKED_ME](global.html#Events#.MESSAGE_REVOKED_ME)
 
-[Events.QR\_RECEIVED](global.html#Events#.QR_RECEIVED)
+[Events.QR_RECEIVED](global.html#Events#.QR_RECEIVED)
 
 [Events.READY](global.html#Events#.READY)
 
-[Events.REMOTE\_SESSION\_SAVED](global.html#Events#.REMOTE_SESSION_SAVED)
+[Events.REMOTE_SESSION_SAVED](global.html#Events#.REMOTE_SESSION_SAVED)
 
-[Events.STATE\_CHANGED](global.html#Events#.STATE_CHANGED)
+[Events.STATE_CHANGED](global.html#Events#.STATE_CHANGED)
 
-[Events.UNREAD\_COUNT](global.html#Events#.UNREAD_COUNT)
+[Events.UNREAD_COUNT](global.html#Events#.UNREAD_COUNT)
 
-[Events.VOTE\_UPDATE](global.html#Events#.VOTE_UPDATE)
+[Events.VOTE_UPDATE](global.html#Events#.VOTE_UPDATE)
 
 ## GroupChat
 
@@ -1195,17 +1190,17 @@ limitations under the License.
 
 ## MessageAck
 
-[MessageAck.ACK\_DEVICE](global.html#MessageAck#.ACK_DEVICE)
+[MessageAck.ACK_DEVICE](global.html#MessageAck#.ACK_DEVICE)
 
-[MessageAck.ACK\_ERROR](global.html#MessageAck#.ACK_ERROR)
+[MessageAck.ACK_ERROR](global.html#MessageAck#.ACK_ERROR)
 
-[MessageAck.ACK\_PENDING](global.html#MessageAck#.ACK_PENDING)
+[MessageAck.ACK_PENDING](global.html#MessageAck#.ACK_PENDING)
 
-[MessageAck.ACK\_PLAYED](global.html#MessageAck#.ACK_PLAYED)
+[MessageAck.ACK_PLAYED](global.html#MessageAck#.ACK_PLAYED)
 
-[MessageAck.ACK\_READ](global.html#MessageAck#.ACK_READ)
+[MessageAck.ACK_READ](global.html#MessageAck#.ACK_READ)
 
-[MessageAck.ACK\_SERVER](global.html#MessageAck#.ACK_SERVER)
+[MessageAck.ACK_SERVER](global.html#MessageAck#.ACK_SERVER)
 
 ## MessageMedia
 
@@ -1227,29 +1222,29 @@ limitations under the License.
 
 [MessageTypes.AUDIO](global.html#MessageTypes#.AUDIO)
 
-[MessageTypes.BROADCAST\_NOTIFICATION](global.html#MessageTypes#.BROADCAST_NOTIFICATION)
+[MessageTypes.BROADCAST_NOTIFICATION](global.html#MessageTypes#.BROADCAST_NOTIFICATION)
 
-[MessageTypes.BUTTONS\_RESPONSE](global.html#MessageTypes#.BUTTONS_RESPONSE)
+[MessageTypes.BUTTONS_RESPONSE](global.html#MessageTypes#.BUTTONS_RESPONSE)
 
-[MessageTypes.CALL\_LOG](global.html#MessageTypes#.CALL_LOG)
+[MessageTypes.CALL_LOG](global.html#MessageTypes#.CALL_LOG)
 
 [MessageTypes.CIPHERTEXT](global.html#MessageTypes#.CIPHERTEXT)
 
-[MessageTypes.CONTACT\_CARD](global.html#MessageTypes#.CONTACT_CARD)
+[MessageTypes.CONTACT_CARD](global.html#MessageTypes#.CONTACT_CARD)
 
-[MessageTypes.CONTACT\_CARD\_MULTI](global.html#MessageTypes#.CONTACT_CARD_MULTI)
+[MessageTypes.CONTACT_CARD_MULTI](global.html#MessageTypes#.CONTACT_CARD_MULTI)
 
 [MessageTypes.DEBUG](global.html#MessageTypes#.DEBUG)
 
 [MessageTypes.DOCUMENT](global.html#MessageTypes#.DOCUMENT)
 
-[MessageTypes.E2E\_NOTIFICATION](global.html#MessageTypes#.E2E_NOTIFICATION)
+[MessageTypes.E2E_NOTIFICATION](global.html#MessageTypes#.E2E_NOTIFICATION)
 
 [MessageTypes.GP2](global.html#MessageTypes#.GP2)
 
-[MessageTypes.GROUP\_INVITE](global.html#MessageTypes#.GROUP_INVITE)
+[MessageTypes.GROUP_INVITE](global.html#MessageTypes#.GROUP_INVITE)
 
-[MessageTypes.GROUP\_NOTIFICATION](global.html#MessageTypes#.GROUP_NOTIFICATION)
+[MessageTypes.GROUP_NOTIFICATION](global.html#MessageTypes#.GROUP_NOTIFICATION)
 
 [MessageTypes.HSM](global.html#MessageTypes#.HSM)
 
@@ -1259,15 +1254,15 @@ limitations under the License.
 
 [MessageTypes.LIST](global.html#MessageTypes#.LIST)
 
-[MessageTypes.LIST\_RESPONSE](global.html#MessageTypes#.LIST_RESPONSE)
+[MessageTypes.LIST_RESPONSE](global.html#MessageTypes#.LIST_RESPONSE)
 
 [MessageTypes.LOCATION](global.html#MessageTypes#.LOCATION)
 
-[MessageTypes.NATIVE\_FLOW](global.html#MessageTypes#.NATIVE_FLOW)
+[MessageTypes.NATIVE_FLOW](global.html#MessageTypes#.NATIVE_FLOW)
 
 [MessageTypes.NOTIFICATION](global.html#MessageTypes#.NOTIFICATION)
 
-[MessageTypes.NOTIFICATION\_TEMPLATE](global.html#MessageTypes#.NOTIFICATION_TEMPLATE)
+[MessageTypes.NOTIFICATION_TEMPLATE](global.html#MessageTypes#.NOTIFICATION_TEMPLATE)
 
 [MessageTypes.ORDER](global.html#MessageTypes#.ORDER)
 
@@ -1275,7 +1270,7 @@ limitations under the License.
 
 [MessageTypes.PAYMENT](global.html#MessageTypes#.PAYMENT)
 
-[MessageTypes.POLL\_CREATION](global.html#MessageTypes#.POLL_CREATION)
+[MessageTypes.POLL_CREATION](global.html#MessageTypes#.POLL_CREATION)
 
 [MessageTypes.PRODUCT](global.html#MessageTypes#.PRODUCT)
 
@@ -1285,11 +1280,11 @@ limitations under the License.
 
 [MessageTypes.REVOKED](global.html#MessageTypes#.REVOKED)
 
-[MessageTypes.SCHEDULED\_EVENT\_CREATION](global.html#MessageTypes#.SCHEDULED_EVENT_CREATION)
+[MessageTypes.SCHEDULED_EVENT_CREATION](global.html#MessageTypes#.SCHEDULED_EVENT_CREATION)
 
 [MessageTypes.STICKER](global.html#MessageTypes#.STICKER)
 
-[MessageTypes.TEMPLATE\_BUTTON\_REPLY](global.html#MessageTypes#.TEMPLATE_BUTTON_REPLY)
+[MessageTypes.TEMPLATE_BUTTON_REPLY](global.html#MessageTypes#.TEMPLATE_BUTTON_REPLY)
 
 [MessageTypes.TEXT](global.html#MessageTypes#.TEXT)
 
@@ -1493,7 +1488,7 @@ limitations under the License.
 
 [ProductMetadata#name](ProductMetadata.html#name)
 
-[ProductMetadata#retailer\_id](ProductMetadata.html#retailer_id)
+[ProductMetadata#retailer_id](ProductMetadata.html#retailer_id)
 
 ## Reaction
 
@@ -1563,7 +1558,7 @@ limitations under the License.
 
 [WAState.CONNECTED](global.html#WAState#.CONNECTED)
 
-[WAState.DEPRECATED\_VERSION](global.html#WAState#.DEPRECATED_VERSION)
+[WAState.DEPRECATED_VERSION](global.html#WAState#.DEPRECATED_VERSION)
 
 [WAState.OPENING](global.html#WAState#.OPENING)
 
@@ -1571,17 +1566,17 @@ limitations under the License.
 
 [WAState.PROXYBLOCK](global.html#WAState#.PROXYBLOCK)
 
-[WAState.SMB\_TOS\_BLOCK](global.html#WAState#.SMB_TOS_BLOCK)
+[WAState.SMB_TOS_BLOCK](global.html#WAState#.SMB_TOS_BLOCK)
 
 [WAState.TIMEOUT](global.html#WAState#.TIMEOUT)
 
-[WAState.TOS\_BLOCK](global.html#WAState#.TOS_BLOCK)
+[WAState.TOS_BLOCK](global.html#WAState#.TOS_BLOCK)
 
 [WAState.UNLAUNCHED](global.html#WAState#.UNLAUNCHED)
 
 [WAState.UNPAIRED](global.html#WAState#.UNPAIRED)
 
-[WAState.UNPAIRED\_IDLE](global.html#WAState#.UNPAIRED_IDLE)
+[WAState.UNPAIRED_IDLE](global.html#WAState#.UNPAIRED_IDLE)
 
 ## WebCache
 
