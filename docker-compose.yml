@@ -336,7 +336,6 @@ services:
 networks:
   internal:
     driver: bridge
-    internal: true
     ipam:
       config:
         - subnet: 172.30.0.0/16
@@ -344,8 +343,6 @@ networks:
           gateway: 172.30.1.1
     driver_opts:
       com.docker.network.bridge.enable_icc: "true"
-      com.docker.network.bridge.enable_ip_masquerade: "false"
-      com.docker.network.bridge.host_binding_ipv4: "127.0.0.1"
   public:
     driver: bridge
     ipam:
