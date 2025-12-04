@@ -12,6 +12,9 @@ SafeMode-web-app/out/
 # Next.js build artifacts
 .next/
 
+# TypeScript build info
+*.tsbuildinfo
+
 # Env
 .env
 *.local.env
