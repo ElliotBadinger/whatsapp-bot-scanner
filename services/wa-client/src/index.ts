@@ -1091,12 +1091,8 @@ async function main() {
   };
 
   // Perform pairing code request for a specific phone number
+  // Uses the library's built-in requestPairingCode method for proper auth handling
   const performPairingCodeRequestForPhone = async (phone: string): Promise<string | null> => {
-    const pageHandle = getPageHandle(client);
-    if (!pageHandle) {
-      throw new Error('Puppeteer page handle unavailable for pairing');
-    }
-
     // Record attempt for this specific phone
     try {
       lastPairingAttemptMs = Date.now();
@@ -1107,25 +1103,37 @@ async function main() {
 
     await addHumanBehaviorJitter();
 
-    const interval = Math.max(60000, config.wa.remoteAuth.pairingDelayMs ?? 0);
-    const outcome = await executePairingCodeRequestForPhone(pageHandle, phone, interval);
-
-    return processPairingOutcome(outcome);
+    try {
+      // Use the library's official requestPairingCode method
+      // This properly sets up the auth flow and emits events correctly
+      logger.info({ phoneNumber: maskPhone(phone) }, 'Requesting pairing code via library method');
+      const code = await client.requestPairingCode(phone, true);
+      if (code && typeof code === 'string') {
+        logger.info({ phoneNumber: maskPhone(phone), codeLength: code.length }, 'Pairing code received from library');
+        return code;
+      }
+      logger.warn({ phoneNumber: maskPhone(phone), code }, 'Invalid pairing code response from library');
+      return null;
+    } catch (err) {
+      logger.error({ err, phoneNumber: maskPhone(phone) }, 'Failed to request pairing code via library');
+      
+      // Fall back to Puppeteer method if library method fails
+      logger.info({ phoneNumber: maskPhone(phone) }, 'Falling back to Puppeteer pairing code request');
+      const pageHandle = getPageHandle(client);
+      if (!pageHandle) {
+        throw new Error('Puppeteer page handle unavailable for pairing fallback');
+      }
+      const interval = Math.max(60000, config.wa.remoteAuth.pairingDelayMs ?? 0);
+      const outcome = await executePairingCodeRequestForPhone(pageHandle, phone, interval);
+      return processPairingOutcome(outcome);
+    }
   };
 
   const performPairingCodeRequest = async (): Promise<string | null> => {
-    const pageHandle = getPageHandle(client);
-    if (!pageHandle) {
-      throw new Error('Puppeteer page handle unavailable for pairing');
+    if (!remotePhone) {
+      throw new Error('No phone number configured for pairing');
     }
-
-    recordPairingAttemptIfNeeded();
-    await addHumanBehaviorJitter();
-
-    const interval = Math.max(60000, config.wa.remoteAuth.pairingDelayMs ?? 0);
-    const outcome = await executePairingCodeRequest(pageHandle, interval);
-
-    return processPairingOutcome(outcome);
+    return performPairingCodeRequestForPhone(remotePhone);
   };
 
   function getPageHandle(client: Client): PageHandle | null {
