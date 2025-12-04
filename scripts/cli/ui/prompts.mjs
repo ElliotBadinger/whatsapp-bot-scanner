@@ -3,36 +3,36 @@
  * Clean, consistent, and visually appealing prompts
  */
 
-import enquirer from 'enquirer';
-import chalk from 'chalk';
+import enquirer from "enquirer";
+import chalk from "chalk";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Color Palette (matches theme.mjs)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const COLORS = {
-  primary: chalk.hex('#00D9FF'),
-  primaryBold: chalk.hex('#00D9FF').bold,
-  accent: chalk.hex('#FFB347'),
-  accentBold: chalk.hex('#FFB347').bold,
-  success: chalk.hex('#00E676'),
-  warning: chalk.hex('#FFD54F'),
-  error: chalk.hex('#FF5252'),
-  muted: chalk.hex('#6B7280'),
+  primary: chalk.hex("#00D9FF"),
+  primaryBold: chalk.hex("#00D9FF").bold,
+  accent: chalk.hex("#FFB347"),
+  accentBold: chalk.hex("#FFB347").bold,
+  success: chalk.hex("#00E676"),
+  warning: chalk.hex("#FFD54F"),
+  error: chalk.hex("#FF5252"),
+  muted: chalk.hex("#6B7280"),
   text: chalk.white,
   textBold: chalk.white.bold,
-  code: chalk.hex('#A78BFA'),
-  link: chalk.hex('#60A5FA').underline,
+  code: chalk.hex("#A78BFA"),
+  link: chalk.hex("#60A5FA").underline,
 };
 
 const ICONS = {
-  success: COLORS.success('✓'),
-  error: COLORS.error('✗'),
-  warning: COLORS.warning('⚠'),
-  info: COLORS.primary('ℹ'),
-  arrow: COLORS.primary('→'),
-  chevron: COLORS.muted('›'),
-  bullet: COLORS.muted('•'),
+  success: COLORS.success("✓"),
+  error: COLORS.error("✗"),
+  warning: COLORS.warning("⚠"),
+  info: COLORS.primary("ℹ"),
+  arrow: COLORS.primary("→"),
+  chevron: COLORS.muted("›"),
+  bullet: COLORS.muted("•"),
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -65,7 +65,7 @@ export class UserInterface {
   }
 
   getIndent() {
-    return '  '.repeat(this.indentLevel);
+    return "  ".repeat(this.indentLevel);
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -77,13 +77,13 @@ export class UserInterface {
    */
   async prompt(options) {
     if (!this.interactive) {
-      return options.initialValue || '';
+      return options.initialValue || "";
     }
 
     try {
       const response = await enquirer.prompt({
-        type: options.type || 'input',
-        name: 'value',
+        type: options.type || "input",
+        name: "value",
         message: COLORS.text(options.message),
         initial: options.initialValue,
         validate: options.validate,
@@ -102,7 +102,7 @@ export class UserInterface {
 
       return response.value;
     } catch (error) {
-      if (error.message === 'canceled' || error.message === 'cancelled') {
+      if (error.message === "canceled" || error.message === "cancelled") {
         process.exit(0);
       }
       throw error;
@@ -114,21 +114,21 @@ export class UserInterface {
    */
   async password(options) {
     if (!this.interactive) {
-      return options.initial || '';
+      return options.initial || "";
     }
 
     try {
       const response = await enquirer.prompt({
-        type: 'password',
-        name: 'value',
+        type: "password",
+        name: "value",
         message: COLORS.text(options.message),
         validate: options.validate,
-        mask: COLORS.muted('•'),
+        mask: COLORS.muted("•"),
       });
 
       return response.value;
     } catch (error) {
-      if (error.message === 'canceled' || error.message === 'cancelled') {
+      if (error.message === "canceled" || error.message === "cancelled") {
         process.exit(0);
       }
       throw error;
@@ -145,15 +145,15 @@ export class UserInterface {
 
     try {
       const response = await enquirer.prompt({
-        type: 'confirm',
-        name: 'value',
+        type: "confirm",
+        name: "value",
         message: COLORS.text(options.message),
         initial: options.initial,
       });
 
       return response.value;
     } catch (error) {
-      if (error.message === 'canceled' || error.message === 'cancelled') {
+      if (error.message === "canceled" || error.message === "cancelled") {
         process.exit(0);
       }
       throw error;
@@ -170,8 +170,8 @@ export class UserInterface {
 
     try {
       // Format choices with icons
-      const formattedChoices = options.choices.map(choice => {
-        if (typeof choice === 'string') {
+      const formattedChoices = options.choices.map((choice) => {
+        if (typeof choice === "string") {
           return { name: choice, message: choice, value: choice };
         }
         return {
@@ -183,18 +183,18 @@ export class UserInterface {
       });
 
       const response = await enquirer.prompt({
-        type: 'select',
-        name: 'value',
+        type: "select",
+        name: "value",
         message: COLORS.text(options.message),
         choices: formattedChoices,
         initial: options.initial,
-        pointer: COLORS.accent('›'),
-        indicator: COLORS.success('●'),
+        pointer: COLORS.accent("›"),
+        indicator: COLORS.success("●"),
       });
 
       return response.value;
     } catch (error) {
-      if (error.message === 'canceled' || error.message === 'cancelled') {
+      if (error.message === "canceled" || error.message === "cancelled") {
         process.exit(0);
       }
       throw error;
@@ -210,7 +210,7 @@ export class UserInterface {
     }
 
     try {
-      const formattedChoices = options.choices.map(choice => ({
+      const formattedChoices = options.choices.map((choice) => ({
         name: choice.value || choice.name,
         message: choice.message || choice.name,
         value: choice.value || choice.name,
@@ -218,18 +218,20 @@ export class UserInterface {
       }));
 
       const response = await enquirer.prompt({
-        type: 'multiselect',
-        name: 'value',
+        type: "multiselect",
+        name: "value",
         message: COLORS.text(options.message),
         choices: formattedChoices,
-        hint: options.hint ? COLORS.muted(options.hint) : COLORS.muted('Space to toggle, Enter to confirm'),
-        pointer: COLORS.accent('›'),
-        indicator: COLORS.success('●'),
+        hint: options.hint
+          ? COLORS.muted(options.hint)
+          : COLORS.muted("Space to toggle, Enter to confirm"),
+        pointer: COLORS.accent("›"),
+        indicator: COLORS.success("●"),
       });
 
       return response.value;
     } catch (error) {
-      if (error.message === 'canceled' || error.message === 'cancelled') {
+      if (error.message === "canceled" || error.message === "cancelled") {
         process.exit(0);
       }
       throw error;
@@ -252,7 +254,9 @@ export class UserInterface {
    * Success message
    */
   success(message) {
-    console.log(`${this.getIndent()}${ICONS.success}  ${COLORS.success(message)}`);
+    console.log(
+      `${this.getIndent()}${ICONS.success}  ${COLORS.success(message)}`,
+    );
     return this;
   }
 
@@ -260,7 +264,9 @@ export class UserInterface {
    * Warning message
    */
   warn(message) {
-    console.log(`${this.getIndent()}${ICONS.warning}  ${COLORS.warning(message)}`);
+    console.log(
+      `${this.getIndent()}${ICONS.warning}  ${COLORS.warning(message)}`,
+    );
     return this;
   }
 
@@ -284,14 +290,16 @@ export class UserInterface {
    * Hint/detail message (muted)
    */
   hint(message) {
-    console.log(`${this.getIndent()}   ${COLORS.muted(ICONS.chevron + ' ' + message)}`);
+    console.log(
+      `${this.getIndent()}   ${COLORS.muted(ICONS.chevron + " " + message)}`,
+    );
     return this;
   }
 
   /**
    * Plain log
    */
-  log(message = '') {
+  log(message = "") {
     console.log(`${this.getIndent()}${message}`);
     return this;
   }
@@ -316,7 +324,7 @@ export class UserInterface {
    * Code/command display
    */
   code(command) {
-    console.log(`${this.getIndent()}   ${COLORS.code('$ ' + command)}`);
+    console.log(`${this.getIndent()}   ${COLORS.code("$ " + command)}`);
     return this;
   }
 
@@ -333,7 +341,9 @@ export class UserInterface {
    * Progress indicator (static)
    */
   progress(message) {
-    console.log(`${this.getIndent()}${COLORS.accent('⟳')}  ${COLORS.text(message)}`);
+    console.log(
+      `${this.getIndent()}${COLORS.accent("⟳")}  ${COLORS.text(message)}`,
+    );
     return this;
   }
 
@@ -346,7 +356,7 @@ export class UserInterface {
    */
   newline(count = 1) {
     for (let i = 0; i < count; i++) {
-      console.log('');
+      console.log("");
     }
     return this;
   }
@@ -354,7 +364,7 @@ export class UserInterface {
   /**
    * Horizontal divider
    */
-  divider(char = '─', width = 50) {
+  divider(char = "─", width = 50) {
     console.log(`${this.getIndent()}${COLORS.muted(char.repeat(width))}`);
     return this;
   }
@@ -364,22 +374,22 @@ export class UserInterface {
    */
   section(title, options = {}) {
     const { icon = null, step = null, total = null } = options;
-    
-    console.log('');
-    console.log(`${this.getIndent()}${COLORS.muted('─'.repeat(50))}`);
-    
-    let header = '';
+
+    console.log("");
+    console.log(`${this.getIndent()}${COLORS.muted("─".repeat(50))}`);
+
+    let header = "";
     if (step && total) {
       header += COLORS.accent(`Step ${step}/${total}: `);
     }
     if (icon) {
-      header += icon + ' ';
+      header += icon + " ";
     }
     header += COLORS.textBold(title);
-    
+
     console.log(`${this.getIndent()}${header}`);
-    console.log(`${this.getIndent()}${COLORS.muted('─'.repeat(50))}`);
-    
+    console.log(`${this.getIndent()}${COLORS.muted("─".repeat(50))}`);
+
     return this;
   }
 
@@ -387,9 +397,11 @@ export class UserInterface {
    * Key-value display
    */
   keyValue(key, value, options = {}) {
-    const { keyWidth = 20, separator = ':' } = options;
+    const { keyWidth = 20, separator = ":" } = options;
     const paddedKey = key.padEnd(keyWidth);
-    console.log(`${this.getIndent()}${COLORS.muted(paddedKey)}${COLORS.muted(separator)} ${COLORS.text(value)}`);
+    console.log(
+      `${this.getIndent()}${COLORS.muted(paddedKey)}${COLORS.muted(separator)} ${COLORS.text(value)}`,
+    );
     return this;
   }
 
@@ -418,38 +430,52 @@ export class UserInterface {
    * Display a box with content
    */
   box(content, options = {}) {
-    const { title = null, style = 'rounded', borderColor = COLORS.primary } = options;
-    
-    const lines = Array.isArray(content) ? content : content.split('\n');
-    const maxWidth = Math.max(...lines.map(l => stripAnsi(l).length));
+    const {
+      title = null,
+      style = "rounded",
+      borderColor = COLORS.primary,
+    } = options;
+
+    const lines = Array.isArray(content) ? content : content.split("\n");
+    const maxWidth = Math.max(...lines.map((l) => stripAnsi(l).length));
     const innerWidth = Math.max(maxWidth + 2, 40);
-    
-    const chars = style === 'double'
-      ? { tl: '╔', tr: '╗', bl: '╚', br: '╝', h: '═', v: '║' }
-      : { tl: '╭', tr: '╮', bl: '╰', br: '╯', h: '─', v: '│' };
-    
+
+    const chars =
+      style === "double"
+        ? { tl: "╔", tr: "╗", bl: "╚", br: "╝", h: "═", v: "║" }
+        : { tl: "╭", tr: "╮", bl: "╰", br: "╯", h: "─", v: "│" };
+
     // Top border with optional title
-    let topBorder = borderColor(chars.tl + chars.h.repeat(innerWidth) + chars.tr);
+    let topBorder = borderColor(
+      chars.tl + chars.h.repeat(innerWidth) + chars.tr,
+    );
     if (title) {
       const titleText = ` ${title} `;
       const titleStart = Math.floor((innerWidth - titleText.length) / 2);
-      topBorder = borderColor(chars.tl + chars.h.repeat(titleStart)) + 
-                  COLORS.textBold(titleText) + 
-                  borderColor(chars.h.repeat(innerWidth - titleStart - titleText.length) + chars.tr);
+      topBorder =
+        borderColor(chars.tl + chars.h.repeat(titleStart)) +
+        COLORS.textBold(titleText) +
+        borderColor(
+          chars.h.repeat(innerWidth - titleStart - titleText.length) + chars.tr,
+        );
     }
-    
+
     console.log(`${this.getIndent()}${topBorder}`);
-    
+
     // Content
     for (const line of lines) {
       const strippedLen = stripAnsi(line).length;
-      const padding = ' '.repeat(Math.max(0, innerWidth - strippedLen - 1));
-      console.log(`${this.getIndent()}${borderColor(chars.v)} ${line}${padding}${borderColor(chars.v)}`);
+      const padding = " ".repeat(Math.max(0, innerWidth - strippedLen - 1));
+      console.log(
+        `${this.getIndent()}${borderColor(chars.v)} ${line}${padding}${borderColor(chars.v)}`,
+      );
     }
-    
+
     // Bottom border
-    console.log(`${this.getIndent()}${borderColor(chars.bl + chars.h.repeat(innerWidth) + chars.br)}`);
-    
+    console.log(
+      `${this.getIndent()}${borderColor(chars.bl + chars.h.repeat(innerWidth) + chars.br)}`,
+    );
+
     return this;
   }
 
@@ -458,28 +484,36 @@ export class UserInterface {
    */
   table(headers, rows, options = {}) {
     const { columnWidths = null } = options;
-    
+
     // Calculate column widths
-    const widths = columnWidths || headers.map((h, i) => {
-      const headerLen = stripAnsi(h).length;
-      const maxRowLen = Math.max(...rows.map(r => stripAnsi(String(r[i] || '')).length));
-      return Math.max(headerLen, maxRowLen) + 2;
-    });
-    
+    const widths =
+      columnWidths ||
+      headers.map((h, i) => {
+        const headerLen = stripAnsi(h).length;
+        const maxRowLen = Math.max(
+          ...rows.map((r) => stripAnsi(String(r[i] || "")).length),
+        );
+        return Math.max(headerLen, maxRowLen) + 2;
+      });
+
     // Header
-    const headerRow = headers.map((h, i) => padText(COLORS.textBold(h), widths[i])).join(COLORS.muted(' │ '));
+    const headerRow = headers
+      .map((h, i) => padText(COLORS.textBold(h), widths[i]))
+      .join(COLORS.muted(" │ "));
     console.log(`${this.getIndent()}${headerRow}`);
-    
+
     // Separator
-    const separator = widths.map(w => '─'.repeat(w)).join('─┼─');
+    const separator = widths.map((w) => "─".repeat(w)).join("─┼─");
     console.log(`${this.getIndent()}${COLORS.muted(separator)}`);
-    
+
     // Rows
     for (const row of rows) {
-      const rowText = row.map((cell, i) => padText(String(cell || ''), widths[i])).join(COLORS.muted(' │ '));
+      const rowText = row
+        .map((cell, i) => padText(String(cell || ""), widths[i]))
+        .join(COLORS.muted(" │ "));
       console.log(`${this.getIndent()}${rowText}`);
     }
-    
+
     return this;
   }
 
@@ -500,24 +534,24 @@ export class UserInterface {
  * Strip ANSI codes for length calculation
  */
 function stripAnsi(str) {
-  return String(str).replace(/\x1b\[[0-9;]*m/g, '');
+  return String(str).replace(/\x1b\[[0-9;]*m/g, "");
 }
 
 /**
  * Pad text to width
  */
-function padText(text, width, align = 'left') {
+function padText(text, width, align = "left") {
   const stripped = stripAnsi(text);
   const diff = width - stripped.length;
   if (diff <= 0) return text;
-  
-  if (align === 'center') {
+
+  if (align === "center") {
     const left = Math.floor(diff / 2);
-    return ' '.repeat(left) + text + ' '.repeat(diff - left);
-  } else if (align === 'right') {
-    return ' '.repeat(diff) + text;
+    return " ".repeat(left) + text + " ".repeat(diff - left);
+  } else if (align === "right") {
+    return " ".repeat(diff) + text;
   }
-  return text + ' '.repeat(diff);
+  return text + " ".repeat(diff);
 }
 
 export default UserInterface;

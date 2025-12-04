@@ -3,38 +3,38 @@
  * Beautiful, informative progress visualization for terminal
  */
 
-import ora from 'ora';
-import chalk from 'chalk';
+import ora from "ora";
+import chalk from "chalk";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Color Scheme (matches theme.mjs)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const COLORS = {
-  primary: chalk.hex('#00D9FF'),
-  accent: chalk.hex('#FFB347'),
-  success: chalk.hex('#00E676'),
-  warning: chalk.hex('#FFD54F'),
-  error: chalk.hex('#FF5252'),
-  muted: chalk.hex('#6B7280'),
+  primary: chalk.hex("#00D9FF"),
+  accent: chalk.hex("#FFB347"),
+  success: chalk.hex("#00E676"),
+  warning: chalk.hex("#FFD54F"),
+  error: chalk.hex("#FF5252"),
+  muted: chalk.hex("#6B7280"),
   text: chalk.white,
 };
 
 const ICONS = {
-  success: COLORS.success('✓'),
-  error: COLORS.error('✗'),
-  warning: COLORS.warning('⚠'),
-  info: COLORS.primary('ℹ'),
-  pending: COLORS.muted('○'),
-  active: COLORS.accent('◉'),
-  complete: COLORS.success('●'),
+  success: COLORS.success("✓"),
+  error: COLORS.error("✗"),
+  warning: COLORS.warning("⚠"),
+  info: COLORS.primary("ℹ"),
+  pending: COLORS.muted("○"),
+  active: COLORS.accent("◉"),
+  complete: COLORS.success("●"),
 };
 
 const BOX = {
-  filled: '█',
-  partial: '▓',
-  empty: '░',
-  horizontal: '─',
+  filled: "█",
+  partial: "▓",
+  empty: "░",
+  horizontal: "─",
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -71,7 +71,7 @@ export class ProgressManager {
    * Begin a step
    */
   beginStep(stepId) {
-    const index = this.steps.findIndex(s => s.id === stepId);
+    const index = this.steps.findIndex((s) => s.id === stepId);
     if (index !== -1) {
       this.currentStepIndex = index;
       this.startTimes.set(stepId, Date.now());
@@ -94,14 +94,14 @@ export class ProgressManager {
   renderSteps(options = {}) {
     const { showEstimates = true, showDurations = true } = options;
     const lines = [];
-    
+
     for (let i = 0; i < this.steps.length; i++) {
       const step = this.steps[i];
       const isComplete = this.completedSteps.has(step.id);
       const isCurrent = i === this.currentStepIndex;
-      
+
       let icon, textStyle;
-      
+
       if (isComplete) {
         icon = ICONS.complete;
         textStyle = COLORS.muted;
@@ -112,9 +112,9 @@ export class ProgressManager {
         icon = ICONS.pending;
         textStyle = COLORS.muted;
       }
-      
+
       let line = `  ${icon}  ${textStyle(step.name)}`;
-      
+
       // Add timing info
       if (isComplete && showDurations) {
         const startTime = this.startTimes.get(step.id);
@@ -125,17 +125,17 @@ export class ProgressManager {
       } else if (!isComplete && showEstimates && step.estimate) {
         line += COLORS.muted(` ~${step.estimate}`);
       }
-      
+
       lines.push(line);
-      
+
       // Connector (except for last step)
       if (i < this.steps.length - 1) {
         const connectorColor = isComplete ? COLORS.success : COLORS.muted;
-        lines.push(`  ${connectorColor('│')}`);
+        lines.push(`  ${connectorColor("│")}`);
       }
     }
-    
-    return lines.join('\n');
+
+    return lines.join("\n");
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -146,11 +146,11 @@ export class ProgressManager {
    * Start a spinner for a task
    */
   start(task, message, options = {}) {
-    const { 
-      color = 'cyan',
-      spinner = 'dots12'  // Modern, smooth spinner
+    const {
+      color = "cyan",
+      spinner = "dots12", // Modern, smooth spinner
     } = options;
-    
+
     if (this.spinners.has(task)) {
       this.spinners.get(task).text = formatSpinnerText(message);
       return;
@@ -160,7 +160,7 @@ export class ProgressManager {
       text: formatSpinnerText(message),
       color: color,
       spinner: spinner,
-      prefixText: '',
+      prefixText: "",
     }).start();
 
     this.spinners.set(task, spinnerInstance);
@@ -184,7 +184,9 @@ export class ProgressManager {
     const spinner = this.spinners.get(task);
     if (spinner) {
       const duration = this.getDuration(task);
-      const durationText = duration ? COLORS.muted(` (${formatDuration(duration)})`) : '';
+      const durationText = duration
+        ? COLORS.muted(` (${formatDuration(duration)})`)
+        : "";
       spinner.stopAndPersist({
         symbol: ICONS.success,
         text: COLORS.text(message) + durationText,
@@ -276,7 +278,7 @@ export class ProgressManager {
       width = 30,
       showPercent = true,
       showETA = false,
-      label = '',
+      label = "",
       filled = BOX.filled,
       empty = BOX.empty,
     } = options;
@@ -285,18 +287,18 @@ export class ProgressManager {
     const filledCount = Math.round((percent / 100) * width);
     const emptyCount = width - filledCount;
 
-    const bar = 
-      COLORS.success(filled.repeat(filledCount)) + 
+    const bar =
+      COLORS.success(filled.repeat(filledCount)) +
       COLORS.muted(empty.repeat(emptyCount));
 
     let result = bar;
-    
+
     if (showPercent) {
       result += COLORS.muted(` ${percent.toString().padStart(3)}%`);
     }
-    
+
     if (label) {
-      result = COLORS.text(label + ' ') + result;
+      result = COLORS.text(label + " ") + result;
     }
 
     return result;
@@ -307,7 +309,7 @@ export class ProgressManager {
    */
   renderInlineProgress(currentStep, totalSteps, stepName) {
     const bar = this.renderProgressBar(currentStep, totalSteps, { width: 20 });
-    return `${bar} ${COLORS.muted('│')} ${COLORS.text(stepName)}`;
+    return `${bar} ${COLORS.muted("│")} ${COLORS.text(stepName)}`;
   }
 }
 
