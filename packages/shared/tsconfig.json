@@ -4,7 +4,11 @@
     "rootDir": "src",
     "outDir": "dist",
     "declaration": true,
-    "emitDeclarationOnly": false
+    "emitDeclarationOnly": false,
+    "baseUrl": ".",
+    "paths": {
+      "confusable": ["../confusable"]
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["src/__tests__/**"]

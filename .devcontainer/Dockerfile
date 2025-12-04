@@ -1,5 +1,6 @@
 FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04
 
-# use this Dockerfile to install additional tools you might need, e.g.
-# RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
-#     && apt-get -y install --no-install-recommends <your-package-list-here>
+# Install build tools needed for native npm packages (e.g., better-sqlite3)
+RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
+    && apt-get -y install --no-install-recommends python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*

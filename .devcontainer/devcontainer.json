@@ -3,7 +3,7 @@
 //
 // See https://aka.ms/devcontainer.json for more information.
 {
-    "name": "Ona",
+    "name": "WhatsApp Bot Scanner",
     // Use "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
     // instead of the build to use a pre-built image.
     "build": {
@@ -16,6 +16,17 @@
         "ghcr.io/devcontainers/features/docker-in-docker": {
             "moby": true,
             "dockerDashComposeVersion": "v2"
+        },
+        "ghcr.io/devcontainers/features/node:1": {
+            "version": "20"
         }
+    },
+    // Run setup after container is created
+    "postCreateCommand": "npm install && npm run build",
+    // Forward ports for development
+    "forwardPorts": [3000, 3001, 3002, 3003, 3005, 6379, 8080, 8088, 9091],
+    // Set environment variables
+    "containerEnv": {
+        "NODE_ENV": "development"
     }
 }

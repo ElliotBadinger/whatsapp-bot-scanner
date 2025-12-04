@@ -27,9 +27,18 @@ COPY packages/shared/src /app/packages/shared/src
 # Install confusable dependencies first (so confusables.js is available)
 # Then install shared dependencies (which links to confusable via file:../confusable)
 # Finally build shared and pack both
+# Network retry logic: npm will retry on network failures
 RUN --mount=type=cache,target=/root/.npm \
-    cd /app/packages/confusable && npm install --no-audit --progress=false && \
-    cd /app && npm install -w packages/shared --include=dev --no-audit --progress=false && \
+    set -e && \
+    npm config set fetch-retries 5 && \
+    npm config set fetch-retry-mintimeout 20000 && \
+    npm config set fetch-retry-maxtimeout 120000 && \
+    cd /app/packages/confusable && \
+    (npm install --no-audit --progress=false || \
+     (echo "Retrying confusable install..." && sleep 5 && npm install --no-audit --progress=false)) && \
+    cd /app && \
+    (npm install -w packages/shared --include=dev --no-audit --progress=false || \
+     (echo "Retrying shared install..." && sleep 5 && npm install -w packages/shared --include=dev --no-audit --progress=false)) && \
     cd /app/packages/shared && npm run build && npm pack && \
     cd /app/packages/confusable && npm pack
 
