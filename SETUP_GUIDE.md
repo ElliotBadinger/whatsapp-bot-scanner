@@ -40,6 +40,7 @@ Docker is pre-installed. Just run:
 ### VS Code Dev Containers
 
 If Docker socket is not mounted, the script will:
+
 1. Detect the issue
 2. Auto-configure `devcontainer.json`
 3. Prompt you to rebuild the container
@@ -155,6 +156,7 @@ df -h
 ### Out of Memory
 
 Minimum requirements:
+
 - **RAM**: 4GB (8GB recommended)
 - **Disk**: 10GB free space
 
@@ -174,6 +176,7 @@ Before building, validate your environment:
 ```
 
 This checks:
+
 - ✓ Node.js 20+
 - ✓ Docker installed and running
 - ✓ Docker Compose available
@@ -233,16 +236,16 @@ make logs
 
 ## Common Failure Scenarios & Solutions
 
-| Scenario | Solution |
-|----------|----------|
-| No prerequisites installed | Run `./bootstrap.sh` |
-| Docker not running | `sudo systemctl start docker` |
-| Network timeout during build | Automatic retry (built-in) |
-| Permission denied | `sudo usermod -aG docker $USER` |
-| Out of disk space | `docker system prune -a -f` |
-| Module not found error | Fixed in latest version |
-| Can't reach npm registry | Check internet connection, retries automatic |
-| Build fails in Codespaces | Network issue, wait and retry |
+| Scenario                     | Solution                                     |
+| ---------------------------- | -------------------------------------------- |
+| No prerequisites installed   | Run `./bootstrap.sh`                         |
+| Docker not running           | `sudo systemctl start docker`                |
+| Network timeout during build | Automatic retry (built-in)                   |
+| Permission denied            | `sudo usermod -aG docker $USER`              |
+| Out of disk space            | `docker system prune -a -f`                  |
+| Module not found error       | Fixed in latest version                      |
+| Can't reach npm registry     | Check internet connection, retries automatic |
+| Build fails in Codespaces    | Network issue, wait and retry                |
 
 ## Zero-Downtime Updates
 
