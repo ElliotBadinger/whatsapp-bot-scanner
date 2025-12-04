@@ -12,18 +12,40 @@ import { PairingManager } from './cli/core/pairing.mjs';
 import { DockerOrchestrator } from './cli/core/docker.mjs';
 import { UserInterface } from './cli/ui/prompts.mjs';
 import { NotificationManager } from './cli/ui/notifications.mjs';
-import figlet from 'figlet';
 import enquirer from 'enquirer';
+import cliProgress from 'cli-progress';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
 
+// Graceful Ctrl+C handling
+let setupCancelled = false;
+process.on('SIGINT', () => {
+  if (!setupCancelled) {
+    setupCancelled = true;
+    console.log(chalk.yellow('\n\n⚠️  Setup cancelled by user.'));
+    console.log(chalk.dim('Run "npx whatsapp-bot-scanner setup" to try again.\n'));
+    process.exit(0);
+  }
+});
+
+// Step definitions with time estimates
+const SETUP_STEPS = [
+  { name: 'Prerequisites Check', estimate: '~10s' },
+  { name: 'Configuration', estimate: '~5s' },
+  { name: 'API Keys', estimate: '~30s' },
+  { name: 'Starting Services', estimate: '~2-5min' },
+  { name: 'WhatsApp Pairing', estimate: '~1min' },
+];
+
 class SetupWizard {
   constructor(options = {}) {
-    const { nonInteractive = false, debug = false } = options;
+    const { nonInteractive = false, debug = false, skipPairing = false } = options;
     this.nonInteractive = !!nonInteractive;
     this.debug = debug;
+    this.skipPairing = skipPairing;
+    this.currentStep = 0;
     this.state = {
       dockerVersion: null,
       nodeVersion: process.version,
@@ -31,16 +53,46 @@ class SetupWizard {
       pairingCode: null,
       rateLimited: false,
     };
+    // Initialize progress bar
+    this.progressBar = new cliProgress.SingleBar({
+      format: chalk.cyan('{bar}') + ' {percentage}% | Step {value}/{total} | {step}',
+      barCompleteChar: '█',
+      barIncompleteChar: '░',
+      hideCursor: true,
+    }, cliProgress.Presets.shades_classic);
   }
 
   async run() {
-    this.displayHeader();
-    await this.checkPrerequisites();
-    await this.setupModeSelection();
-    await this.collectApiKeys();
-    await this.startServices();
-    await this.startPairing();
-    await this.verifyInstallation();
+    try {
+      this.displayHeader();
+      this.progressBar.start(5, 0, { step: 'Initializing...' });
+      
+      await this.checkPrerequisites();
+      await this.setupModeSelection();
+      await this.collectApiKeys();
+      await this.startServices();
+      if (!this.skipPairing) {
+        await this.startPairing();
+      } else {
+        this.updateProgress(5, 'Pairing skipped');
+      }
+      
+      this.progressBar.stop();
+      await this.verifyInstallation();
+    } catch (error) {
+      this.progressBar.stop();
+      // Handle cancelled prompts gracefully
+      if (error.message === 'cancelled' || error.message === undefined) {
+        console.log(chalk.yellow('\n⚠️  Setup cancelled.'));
+        process.exit(0);
+      }
+      throw error;
+    }
+  }
+
+  updateProgress(step, stepName) {
+    this.currentStep = step;
+    this.progressBar.update(step, { step: stepName });
   }
 
   async verifyInstallation() {
@@ -106,16 +158,26 @@ class SetupWizard {
   }
 
   displayHeader() {
-    console.log(
-      chalk.cyan(
-        figlet.textSync('WA Bot Scanner', { horizontalLayout: 'full' })
-      )
-    );
-    console.log(boxen(chalk.bold('Unified Setup Wizard'), { padding: 1, borderStyle: 'round', borderColor: 'cyan' }));
+    // Compact header that works on narrow terminals (80 chars)
+    const header = `
+${chalk.cyan('╔══════════════════════════════════════════════════════════════╗')}
+${chalk.cyan('║')}  ${chalk.bold.white('🛡️  WhatsApp Bot Scanner')}${' '.repeat(36)}${chalk.cyan('║')}
+${chalk.cyan('║')}  ${chalk.dim('Unified Setup Wizard v1.0')}${' '.repeat(35)}${chalk.cyan('║')}
+${chalk.cyan('╚══════════════════════════════════════════════════════════════╝')}
+`;
+    console.log(header);
+    
+    // Show step overview with time estimates
+    console.log(chalk.bold('Setup Steps:'));
+    SETUP_STEPS.forEach((step, i) => {
+      console.log(chalk.dim(`  ${i + 1}. ${step.name} ${chalk.gray(`(${step.estimate})`)}`));
+    });
+    console.log();
   }
 
   async checkPrerequisites() {
-    console.log(chalk.bold('\nStep 1 of 5: Prerequisites Check'));
+    this.updateProgress(1, SETUP_STEPS[0].name);
+    console.log(chalk.bold('\n━━━ Step 1/5: Prerequisites Check ━━━'));
     const spinner = ora('Checking environment...').start();
 
     try {
@@ -155,7 +217,8 @@ class SetupWizard {
   }
 
   async setupModeSelection() {
-    console.log(chalk.bold('\nStep 2 of 5: Setup Configuration'));
+    this.updateProgress(2, SETUP_STEPS[1].name);
+    console.log(chalk.bold('\n━━━ Step 2/5: Configuration ━━━'));
 
     let selectedMode = 'hobby';
     if (!this.nonInteractive) {
@@ -189,7 +252,8 @@ class SetupWizard {
   }
 
   async collectApiKeys() {
-    console.log(chalk.bold('\nStep 3 of 5: API Keys'));
+    this.updateProgress(3, SETUP_STEPS[2].name);
+    console.log(chalk.bold('\n━━━ Step 3/5: API Keys ━━━'));
 
     const envFile = path.join(ROOT_DIR, '.env');
     let envContent = await fs.readFile(envFile, 'utf-8');
@@ -235,17 +299,15 @@ class SetupWizard {
         message: 'Enter your WhatsApp Phone Number (International format, e.g., 27123456789):',
         validate: (value) => {
           if (!value || value.trim().length === 0) return 'Phone number is required';
-          try {
-            const { PairingRequestSchema } = require('@wbscanner/shared');
-            const normalized = value.replace(/[\s\-()]/g, '');
-            const withPlus = normalized.startsWith('+') ? normalized : `+${normalized}`;
-            const result = PairingRequestSchema.safeParse({ phoneNumber: withPlus });
-            if (!result.success) return 'Invalid format. Use: country code + number (e.g., 27123456789)';
-            if (normalized.length < 10 || normalized.length > 13) return 'Must be 10-15 digits';
-            return true;
-          } catch (err) {
-            return /^\+?[1-9]\d{9,14}$/.test(value.replace(/[\s\-()]/g, '')) || 'Invalid phone format';
+          const normalized = value.replace(/[\s\-()]/g, '');
+          // Pure regex validation (ESM-compatible, no require())
+          if (!/^\+?[1-9]\d{9,14}$/.test(normalized)) {
+            return 'Invalid format. Use: country code + number (e.g., 27123456789)';
           }
+          if (normalized.replace(/^\+/, '').length < 10 || normalized.replace(/^\+/, '').length > 15) {
+            return 'Must be 10-15 digits';
+          }
+          return true;
         }
       });
 
@@ -260,7 +322,9 @@ class SetupWizard {
   }
 
   async startServices() {
-    console.log(chalk.bold('\nStep 3 of 5: Starting Services'));
+    this.updateProgress(4, SETUP_STEPS[3].name);
+    console.log(chalk.bold('\n━━━ Step 4/5: Starting Services ━━━'));
+    console.log(chalk.dim('This may take 2-5 minutes on first run (downloading images)...\n'));
     const spinner = ora('Starting Docker containers...').start();
 
     try {
@@ -287,9 +351,21 @@ class SetupWizard {
     let rateLimitDetected = false;
     let lastLogTime = 0;
 
+    // Get actual container name from docker compose
+    let containerName = null;
+    try {
+      const { stdout: psOutput } = await execa('docker', ['compose', 'ps', '--format', '{{.Name}}'], { cwd: ROOT_DIR });
+      const containers = psOutput.trim().split('\n');
+      containerName = containers.find(c => c.includes(serviceName));
+    } catch {
+      // Fallback to conventional naming
+      const projectName = path.basename(ROOT_DIR).replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+      containerName = `${projectName}-${serviceName}-1`;
+    }
+
     while (Date.now() - startTime < timeoutMs) {
       try {
-        const { stdout } = await execa('docker', ['inspect', `--format={{.State.Health.Status}}`, `whatsapp-bot-scanner-${serviceName}-1`]);
+        const { stdout } = await execa('docker', ['inspect', `--format={{.State.Health.Status}}`, containerName || `whatsapp-bot-scanner-${serviceName}-1`]);
         const health = stdout.trim();
 
         if (health === 'healthy') {
@@ -358,7 +434,8 @@ class SetupWizard {
   }
 
   async startPairing() {
-    console.log(chalk.bold('\nStep 4 of 5: WhatsApp Pairing'));
+    this.updateProgress(5, SETUP_STEPS[4].name);
+    console.log(chalk.bold('\n━━━ Step 5/5: WhatsApp Pairing ━━━'));
 
     // Skip pairing if WhatsApp is rate-limited
     if (this.state.rateLimited) {
@@ -375,7 +452,11 @@ class SetupWizard {
       // Wait a bit for the service to fully initialize internal state
       await new Promise(resolve => setTimeout(resolve, 5000));
 
-      const response = await fetch('http://127.0.0.1:3005/pair', {
+      // Read wa-client port from .env or use default
+      const envContent = await fs.readFile(path.join(ROOT_DIR, '.env'), 'utf-8').catch(() => '');
+      const waClientPort = envContent.match(/WA_CLIENT_PORT=(\d+)/)?.[1] || '3005';
+      
+      const response = await fetch(`http://127.0.0.1:${waClientPort}/pair`, {
         method: 'POST'
       });
 
