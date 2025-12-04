@@ -8,7 +8,7 @@
     "dev": "next dev",
     "lint": "eslint .",
     "start": "next start",
-    "test": "echo 'No tests configured' || true"
+    "test": "echo 'No tests configured for SafeMode-web-app'"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.1.0",
