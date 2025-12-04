@@ -1855,6 +1855,14 @@ async function main() {
     }
   }
 
+  client.on('authenticated', () => {
+    logger.info('WhatsApp client authenticated - session received from WhatsApp');
+    metrics.waSessionReconnects.labels('authenticated').inc();
+    cancelPairingFallback();
+    clearPairingRetry();
+    pairingOrchestrator?.setSessionActive(true);
+  });
+
   client.on('ready', async () => {
     logger.info('WhatsApp client ready');
     cancelPairingFallback();
@@ -1864,6 +1872,7 @@ async function main() {
     metrics.waSessionReconnects.labels('ready').inc();
     updateSessionStateGauge('ready');
     botWid = client.info?.wid?._serialized || null;
+    logger.info({ botWid }, 'Bot WID assigned, now listening for messages');
     try {
       await rehydrateAckWatchers(client);
     } catch (err) {
@@ -1887,9 +1896,13 @@ async function main() {
     const label = typeof state === 'string' ? state.toLowerCase() : 'unknown';
     metrics.waSessionReconnects.labels(`state_${label}`).inc();
     updateSessionStateGauge(String(state));
-    logger.info({ state }, 'WhatsApp client state change');
-    // NOTE: Automatic pairing disabled. Use !scanner pair command to request pairing codes manually.
+    logger.info({ state, timestamp: Date.now() }, 'WhatsApp client state change');
   });
+
+  client.on('loading_screen', (percent: number, message: string) => {
+    logger.info({ percent, message }, 'WhatsApp loading screen progress');
+  });
+
   client.on('disconnected', (r) => {
     logger.warn({ r }, 'Disconnected');
     cancelPairingFallback();
