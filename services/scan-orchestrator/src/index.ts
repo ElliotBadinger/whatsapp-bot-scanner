@@ -1707,9 +1707,6 @@ async function handleUrlscanCallback(req: FastifyRequest, reply: FastifyReply, d
   reply.send({ ok: true });
 }
 
-// Global GSB Local instance
-let gsbLocal: GsbLocalDatabase | null = null;
-
 async function main() {
   assertEssentialConfig('scan-orchestrator');
 
