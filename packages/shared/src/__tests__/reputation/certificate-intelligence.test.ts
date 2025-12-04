@@ -51,11 +51,11 @@ describe('Certificate Intelligence', () => {
 
     it('should handle expired certificates', async () => {
       const result = await certificateIntelligence('expired.badssl.com', {
-        timeoutMs: 3000,
+        timeoutMs: 5000,
         ctCheckEnabled: false,
       });
 
       expect(result).toBeDefined();
-    });
+    }, 10000); // Increase Jest timeout for network-dependent test
   });
 });

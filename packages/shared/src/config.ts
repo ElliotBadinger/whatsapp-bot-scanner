@@ -3,10 +3,12 @@ import { logger } from './log';
 
 import path from 'path';
 
-// Load .env and .env.local from project root
-const rootDir = path.resolve(__dirname, '../../..');
-dotenv.config({ path: path.join(rootDir, '.env') });
-dotenv.config({ path: path.join(rootDir, '.env.local'), override: true });
+// Load .env and .env.local from project root (skip in test environment to allow test control)
+if (process.env.NODE_ENV !== 'test') {
+  const rootDir = path.resolve(__dirname, '../../..');
+  dotenv.config({ path: path.join(rootDir, '.env') });
+  dotenv.config({ path: path.join(rootDir, '.env.local'), override: true });
+}
 
 const urlscanEnabled = (process.env.URLSCAN_ENABLED || 'true') === 'true';
 const urlscanCallbackSecret = (process.env.URLSCAN_CALLBACK_SECRET || '').trim();
