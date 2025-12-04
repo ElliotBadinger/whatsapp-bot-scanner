@@ -9,16 +9,19 @@ This document describes the comprehensive changes made to ensure the WhatsApp Bo
 ### 1. Docker Build Failures
 
 **Problem**: TypeScript couldn't find the `confusable` module during build
+
 - **Root Cause**: Dependencies not installed in correct order
 - **Solution**: Install `confusable` dependencies first, then `shared` dependencies
 - **Files Modified**: `docker/Dockerfile`
 
 **Problem**: Network timeouts in GitHub Codespaces
+
 - **Root Cause**: npm registry DNS resolution failures
 - **Solution**: Added retry logic with extended timeouts (5 retries, up to 2 min timeout)
 - **Files Modified**: `docker/Dockerfile`
 
 **Problem**: TypeScript binary not found
+
 - **Root Cause**: `--ignore-scripts` flag prevented binary installation
 - **Solution**: Removed `--ignore-scripts` flag
 - **Files Modified**: `docker/Dockerfile`
@@ -26,26 +29,31 @@ This document describes the comprehensive changes made to ensure the WhatsApp Bo
 ### 2. Makefile Failures
 
 **Problem**: No validation of Docker availability
+
 - **Solution**: Added `check-docker` target that validates Docker before build
 - **Files Modified**: `Makefile`
 
 **Problem**: Build failures with unclear error messages
+
 - **Solution**: Added automatic retry logic and helpful error messages
 - **Files Modified**: `Makefile`
 
 **Problem**: No fallback for missing package managers
+
 - **Solution**: Added fallback from bun → npm for all commands
 - **Files Modified**: `Makefile`
 
 ### 3. Missing Environment Validation
 
 **Problem**: No way to check if environment is ready
+
 - **Solution**: Created comprehensive validation script
 - **Files Created**: `scripts/validate-environment.sh`
 
 ### 4. Incomplete Documentation
 
 **Problem**: Setup instructions scattered across multiple files
+
 - **Solution**: Created comprehensive setup guide
 - **Files Created**: `SETUP_GUIDE.md`
 
@@ -69,6 +77,7 @@ RUN set -e && \
 ```
 
 **Key Features**:
+
 - ✅ Automatic retry on network failures
 - ✅ Extended timeouts for slow connections
 - ✅ Proper dependency installation order
@@ -93,6 +102,7 @@ build: check-docker
 ```
 
 **Key Features**:
+
 - ✅ Pre-flight Docker checks
 - ✅ Automatic retry without parallel build
 - ✅ Helpful error messages with recovery steps
@@ -113,6 +123,7 @@ The `validate-environment.sh` script checks:
 9. **Memory**: 4GB+ recommended
 
 **Exit Codes**:
+
 - `0`: Environment ready (no errors)
 - `0`: Environment ready with warnings (non-critical)
 - `1`: Environment not ready (critical errors)
@@ -131,30 +142,32 @@ The `SETUP_GUIDE.md` provides:
 
 All scenarios tested and working:
 
-| Environment | Prerequisites | Result |
-|-------------|--------------|--------|
-| GitHub Codespaces | None | ✅ Works |
-| Ubuntu 22.04 (fresh) | None | ✅ Works |
-| Debian 12 (fresh) | None | ✅ Works |
-| Fedora 39 (fresh) | None | ✅ Works |
-| macOS (fresh) | None | ✅ Works |
-| WSL2 Ubuntu | None | ✅ Works |
-| Alpine Linux | None | ✅ Works |
-| VS Code DevContainer | None | ✅ Works (with auto-config) |
-| Docker Desktop | None | ✅ Works |
-| Slow network | None | ✅ Works (with retries) |
-| No network (cached) | Docker images cached | ✅ Works |
+| Environment          | Prerequisites        | Result                      |
+| -------------------- | -------------------- | --------------------------- |
+| GitHub Codespaces    | None                 | ✅ Works                    |
+| Ubuntu 22.04 (fresh) | None                 | ✅ Works                    |
+| Debian 12 (fresh)    | None                 | ✅ Works                    |
+| Fedora 39 (fresh)    | None                 | ✅ Works                    |
+| macOS (fresh)        | None                 | ✅ Works                    |
+| WSL2 Ubuntu          | None                 | ✅ Works                    |
+| Alpine Linux         | None                 | ✅ Works                    |
+| VS Code DevContainer | None                 | ✅ Works (with auto-config) |
+| Docker Desktop       | None                 | ✅ Works                    |
+| Slow network         | None                 | ✅ Works (with retries)     |
+| No network (cached)  | Docker images cached | ✅ Works                    |
 
 ## Failure Recovery
 
 ### Network Failures
 
 **Automatic Recovery**:
+
 1. npm install fails → wait 5s → retry
 2. Retry fails → npm retries internally (5 times)
 3. All retries fail → clear error message with recovery steps
 
 **Manual Recovery**:
+
 ```bash
 docker system prune -f
 make build
@@ -163,6 +176,7 @@ make build
 ### Docker Not Running
 
 **Automatic Detection**:
+
 ```bash
 make build
 # Output: ❌ Docker daemon is not running.
@@ -170,6 +184,7 @@ make build
 ```
 
 **Manual Recovery**:
+
 ```bash
 sudo systemctl start docker
 make build
@@ -178,6 +193,7 @@ make build
 ### Permission Issues
 
 **Automatic Detection**:
+
 ```bash
 ./scripts/validate-environment.sh
 # Output: ⚠️  Docker requires sudo
@@ -185,6 +201,7 @@ make build
 ```
 
 **Manual Recovery**:
+
 ```bash
 sudo usermod -aG docker $USER
 newgrp docker
@@ -193,12 +210,14 @@ newgrp docker
 ### Out of Disk Space
 
 **Automatic Detection**:
+
 ```bash
 ./scripts/validate-environment.sh
 # Output: ❌ Disk space: 2GB available (insufficient, need 5GB+)
 ```
 
 **Manual Recovery**:
+
 ```bash
 docker system prune -a -f --volumes
 ```
@@ -223,10 +242,12 @@ docker system prune -a -f --volumes
 ## Files Changed
 
 ### Modified
+
 - `docker/Dockerfile` - Added retry logic and proper dependency order
 - `Makefile` - Added error handling and validation
 
 ### Created
+
 - `scripts/validate-environment.sh` - Environment validation script
 - `SETUP_GUIDE.md` - Comprehensive setup documentation
 - `DOCKER_BUILD_FIX.md` - Technical details of Docker fix
