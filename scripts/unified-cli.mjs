@@ -608,13 +608,13 @@ ${C.primary('  ╚════════════════════�
       return;
     }
     
-    const spinner = ora({
-      text: C.text('Requesting pairing code...'),
-      color: 'cyan',
-      spinner: 'dots12',
-    }).start();
-    
     try {
+      const spinner = ora({
+        text: C.text('Requesting pairing code...'),
+        color: 'cyan',
+        spinner: 'dots12',
+      }).start();
+      
       await new Promise(r => setTimeout(r, 5000));
       
       const envContent = await fs.readFile(path.join(ROOT_DIR, '.env'), 'utf-8').catch(() => '');
@@ -632,23 +632,22 @@ ${C.primary('  ╚════════════════════�
       
       if (data.code) {
         this.displayPairingCode(data.code);
-        
         if (!this.nonInteractive) {
-          await enquirer.prompt({
-            type: 'confirm',
-            name: 'done',
-            message: C.text('Press Enter when you have entered the code'),
-          });
+          console.log(`  ${ICON.info}  ${C.muted('Keep this window open while you enter the code on your phone.')}`);
+          console.log(`  ${ICON.info}  ${C.muted('If the code expires or is rejected, run')} ${C.code('npx whatsapp-bot-scanner pair')}`);
+          console.log(`           ${C.muted('for a richer pairing helper with live countdown and log monitoring.')}\n`);
         }
       } else {
         console.log(`  ${ICON.warning}  ${C.warning('No pairing code received, check logs')}`);
       }
     } catch (error) {
-      spinner.fail(C.error(`Pairing request failed: ${error.message}`));
+      console.log('');
+      console.log(C.error(`  ✗ Pairing request failed: ${error.message}`));
+      console.log(`  ${ICON.info}  ${C.text('You can retry later with:')} ${C.code('npx whatsapp-bot-scanner pair')}\n`);
       console.log(`  ${ICON.info}  ${C.text('Run manually:')} ${C.code('npx whatsapp-bot-scanner pair')}`);
     }
     
-    this.markStepComplete(5, 'Pairing process initiated');
+    this.markStepComplete(5, 'Pairing code requested (verify in WhatsApp)');
   }
 
   displayPairingCode(code) {
@@ -661,6 +660,8 @@ ${C.primary('  ║')}       ${ICON.key} ${C.accentBold('WHATSAPP PAIRING CODE')}
 ${C.primary('  ║')}                                                    ${C.primary('║')}
 ${C.primary('  ║')}       ${C.highlight(`    ${formattedCode}    `)}               ${C.primary('║')}
 ${C.primary('  ║')}                                                    ${C.primary('║')}
+${C.primary('  ║')}       ${C.muted('Valid for approximately 2–3 minutes.')}        ${C.primary('║')}
+${C.primary('  ║')}       ${C.muted('If it expires, request a new one.')}           ${C.primary('║')}
 ${C.primary('  ╠════════════════════════════════════════════════════╣')}
 ${C.primary('  ║')}                                                    ${C.primary('║')}
 ${C.primary('  ║')}   1. Open WhatsApp on your phone                   ${C.primary('║')}
@@ -668,6 +669,8 @@ ${C.primary('  ║')}   2. Settings → Linked Devices → Link a Device     ${C
 ${C.primary('  ║')}   3. Select "Link with phone number"               ${C.primary('║')}
 ${C.primary('  ║')}   4. Enter the code above                          ${C.primary('║')}
 ${C.primary('  ║')}                                                    ${C.primary('║')}
+${C.primary('  ║')}   ${C.muted('For advanced helper with countdown, run:')}        ${C.primary('║')}
+${C.primary('  ║')}   ${C.code('npx whatsapp-bot-scanner pair').padEnd(52)}${C.primary('║')}
 ${C.primary('  ╚════════════════════════════════════════════════════╝')}
 `);
   }
