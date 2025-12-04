@@ -1,5 +1,5 @@
 var R=require("./chunks/[turbopack]_runtime.js")("postcss.js")
-R.c("chunks/[turbopack-node]_transforms_postcss_ts_141a3405._.js")
+R.c("chunks/[turbopack-node]_transforms_postcss_ts_a24edceb._.js")
 R.c("chunks/[root-of-the-server]__84318315._.js")
 R.m("[turbopack-node]/globals.ts [postcss] (ecmascript)")
 R.m("[turbopack-node]/ipc/evaluate.ts/evaluate.js { INNER => \"[turbopack-node]/transforms/postcss.ts { CONFIG => \\\"[project]/Development/whatsapp-bot-scanner/SafeMode-web-app/postcss.config.mjs [postcss] (ecmascript)\\\" } [postcss] (ecmascript)\", RUNTIME => \"[turbopack-node]/ipc/evaluate.ts [postcss] (ecmascript)\" } [postcss] (ecmascript)")
