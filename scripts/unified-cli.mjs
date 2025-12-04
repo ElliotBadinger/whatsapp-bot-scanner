@@ -8,11 +8,10 @@ import { execa } from 'execa';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { UnifiedCLI } from './cli/core/unified-cli.mjs';
 import { PairingManager } from './cli/core/pairing.mjs';
+import { DockerOrchestrator } from './cli/core/docker.mjs';
 import { UserInterface } from './cli/ui/prompts.mjs';
 import { NotificationManager } from './cli/ui/notifications.mjs';
-import { DockerOrchestrator } from './cli/core/docker.mjs';
 import figlet from 'figlet';
 import enquirer from 'enquirer';
 
@@ -427,42 +426,24 @@ program
   .option('--noninteractive', 'Run CLI in non-interactive mode');
 
 program.command('setup')
-  .description('Run interactive setup wizard (deprecated: use "unified-cli setup" instead)')
+  .description('Run interactive setup wizard')
   .option('--skip-pairing', 'Skip WhatsApp pairing step')
+  .option('--noninteractive', 'Run in non-interactive mode')
+  .option('--debug', 'Enable debug logging')
   .action(async (options) => {
-    // Emit deprecation warning
-    console.log(chalk.yellow('\n⚠️  DEPRECATION WARNING:'));
-    console.log(chalk.yellow('This command is deprecated. Please use:'));
-    console.log(chalk.cyan('  npx whatsapp-bot-scanner unified-cli setup\n'));
-    
-    // Instantiate UnifiedCLI with proper configuration
-    const argv = process.argv.slice(2);
-    const unifiedCli = new UnifiedCLI(argv);
-    
+    const globalOpts = program.opts();
     try {
-      // Create and run setup wizard with unified infrastructure
-      const wizard = unifiedCli.createSetupWizard({ skipPairing: options.skipPairing });
+      const wizard = new SetupWizard({
+        nonInteractive: options.noninteractive || globalOpts.noninteractive,
+        debug: options.debug || globalOpts.debug,
+        skipPairing: options.skipPairing
+      });
       await wizard.run();
     } catch (error) {
       console.error(chalk.red(`Setup failed: ${error.message}`));
       process.exit(1);
     }
   });
-
-class SetupWizardEntry {
-  constructor(globalOptions) {
-    this.globalOptions = globalOptions;
-    this.cli = new SetupWizard({
-      nonInteractive: globalOptions.noninteractive,
-      debug: globalOptions.debug
-    });
-  }
-
-  async runSetup(options) {
-    this.cli.skipPairing = options.skipPairing;
-    await this.cli.run();
-  }
-}
 
 program.command('logs')
   .description('View service logs')
@@ -617,24 +598,17 @@ program.command('test')
   });
 
 program.command('pair')
-  .description('Request WhatsApp pairing code (deprecated: use "unified-cli pair" instead)')
+  .description('Request WhatsApp pairing code')
   .option('-f, --force', 'Force pairing request (clears rate limit state)')
   .action(async (options) => {
-    // Emit deprecation warning
-    console.log(chalk.yellow('\n⚠️  DEPRECATION WARNING:'));
-    console.log(chalk.yellow('This command is deprecated. Please use:'));
-    console.log(chalk.cyan('  npx whatsapp-bot-scanner unified-cli pair\n'));
-    
-    // Instantiate UnifiedCLI and PairingManager with proper configuration
-    const argv = process.argv.slice(2);
-    const unifiedCli = new UnifiedCLI(argv);
-    const pairingManager = unifiedCli.getPairingManager();
+    const ui = new UserInterface(true);
+    const notifications = new NotificationManager(ui);
+    const dockerOrchestrator = new DockerOrchestrator(ROOT_DIR, ui);
+    const pairingManager = new PairingManager(dockerOrchestrator, ui, notifications);
     
     try {
-      // Use PairingManager for enhanced pairing with countdown and auto-detection
       await pairingManager.requestManualPairing();
       
-      // Set up monitoring for pairing success with countdown hooks
       await pairingManager.monitorForPairingSuccess(
         (successData) => {
           console.log(chalk.green('✅ Pairing completed successfully!'));
