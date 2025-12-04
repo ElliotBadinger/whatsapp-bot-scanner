@@ -1,6 +1,9 @@
 import { httpFingerprinting } from '../../src/reputation/http-fingerprint';
 
 describe('HTTP Fingerprinting', () => {
+  // Increase timeout for network-dependent tests
+  jest.setTimeout(15000);
+
   describe('httpFingerprinting', () => {
     it('should analyze HTTP response', async () => {
       const result = await httpFingerprinting('https://www.google.com/', {

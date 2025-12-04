@@ -90,16 +90,13 @@ async function processRedirectResponse(response: UndiciResponse, normalized: str
   const location = response.headers?.get?.('location');
   if (response.status >= 300 && response.status < 400) {
     if (!location) {
-      // @ts-ignore
       response.body?.cancel?.();
       return { result: { finalUrl: normalized, chain } };
     }
-    // @ts-ignore
     response.body?.cancel?.();
     return { nextUrl: new URL(location, normalized).toString() };
   }
 
-  // @ts-ignore
   response.body?.cancel?.();
   return { result: { finalUrl: normalized, chain } };
 }
@@ -115,7 +112,6 @@ async function fetchAndValidateUrl(normalized: string, timeoutMs: number, maxCon
   if (contentLengthHeader) {
     const contentLength = Number.parseInt(contentLengthHeader, 10);
     if (Number.isFinite(contentLength) && contentLength > maxContentLength) {
-      // @ts-ignore
       response.body?.cancel?.();
       throw new DirectExpansionError('max-content-length', `Content too large: ${contentLength} bytes`);
     }
@@ -123,7 +119,6 @@ async function fetchAndValidateUrl(normalized: string, timeoutMs: number, maxCon
 
   if (response.status >= 400) {
     if (response.status >= 500) {
-      // @ts-ignore
       response.body?.cancel?.();
       throw new DirectExpansionError('http-error', `Expansion request failed with status ${response.status}`);
     }
