@@ -12,50 +12,64 @@ const path = require('path');
 
 const clientJsPath = path.join(__dirname, '..', 'node_modules', 'whatsapp-web.js', 'src', 'Client.js');
 
+console.log('🔧 Checking whatsapp-web.js for INTRO_IMG_SELECTOR patch...');
+
 if (!fs.existsSync(clientJsPath)) {
-  console.log('whatsapp-web.js not found, skipping patch');
+  console.log('ℹ️  whatsapp-web.js not found at:', clientJsPath);
+  console.log('   Skipping patch (normal during npm install)');
   process.exit(0);
 }
 
 let content = fs.readFileSync(clientJsPath, 'utf8');
 
-// The old selectors that WhatsApp has deprecated
-const oldSelectors = [
-  `const INTRO_IMG_SELECTOR = '[data-testid="intro-md-beta-logo-dark"], [data-testid="intro-md-beta-logo-light"], [data-asset-intro-image-light="true"], [data-asset-intro-image-dark="true"]';`,
-  `const INTRO_IMG_SELECTOR = '[data-icon="intro-md-beta-logo-dark"], [data-icon="intro-md-beta-logo-light"], [data-asset-intro-image-light="true"], [data-asset-intro-image-dark="true"]';`,
-];
-
 // New selector that works with current WhatsApp Web UI
-// Uses the chat icon which appears when WhatsApp is fully loaded
-const newSelector = `const INTRO_IMG_SELECTOR = '[data-icon="chat"], [data-icon="intro-md-beta-logo-dark"], [data-icon="intro-md-beta-logo-light"], [data-testid="intro-md-beta-logo-dark"], [data-testid="intro-md-beta-logo-light"], div[role="textbox"]';`;
+// Uses multiple fallbacks including chat icon, textbox, and legacy selectors
+const newSelector = `const INTRO_IMG_SELECTOR = '[data-icon="chat"], div[role="textbox"], [data-icon="intro-md-beta-logo-dark"], [data-icon="intro-md-beta-logo-light"], [data-testid="intro-md-beta-logo-dark"], [data-testid="intro-md-beta-logo-light"], [data-asset-intro-image-light="true"], [data-asset-intro-image-dark="true"]'`;
 
-let patched = false;
-for (const oldSelector of oldSelectors) {
-  if (content.includes(oldSelector)) {
-    content = content.replace(oldSelector, newSelector);
-    patched = true;
-    console.log('✅ Patched INTRO_IMG_SELECTOR in whatsapp-web.js');
-    break;
-  }
+// Check if already patched
+if (content.includes('[data-icon="chat"], div[role="textbox"]')) {
+  console.log('✅ whatsapp-web.js already patched with robust selector');
+  process.exit(0);
 }
 
-// Also try a regex approach for any variations
-if (!patched) {
-  const selectorRegex = /const INTRO_IMG_SELECTOR = ['"`][^'"`]+['"`];/;
-  if (selectorRegex.test(content)) {
-    content = content.replace(selectorRegex, newSelector);
+// Find any INTRO_IMG_SELECTOR definition using multiple regex patterns
+const patterns = [
+  /const INTRO_IMG_SELECTOR\s*=\s*['"`][^'"`]+['"`];?/g,
+  /const INTRO_IMG_SELECTOR\s*=\s*`[^`]+`;?/g,
+  /INTRO_IMG_SELECTOR\s*=\s*['"][^'"]+['"];?/g,
+];
+
+let patched = false;
+let matchedPattern = null;
+
+for (const pattern of patterns) {
+  const matches = content.match(pattern);
+  if (matches && matches.length > 0) {
+    matchedPattern = matches[0];
+    console.log('📍 Found selector:', matchedPattern.substring(0, 80) + '...');
+    content = content.replace(pattern, newSelector + ';');
     patched = true;
-    console.log('✅ Patched INTRO_IMG_SELECTOR in whatsapp-web.js (regex)');
+    break;
   }
 }
 
 if (patched) {
   fs.writeFileSync(clientJsPath, content, 'utf8');
-  console.log('✅ whatsapp-web.js patch applied successfully');
-} else if (content.includes('[data-icon="chat"]')) {
-  console.log('ℹ️  whatsapp-web.js already patched');
+  console.log('✅ Patched INTRO_IMG_SELECTOR in whatsapp-web.js');
+  console.log('   New selector includes: [data-icon="chat"], div[role="textbox"], etc.');
 } else {
-  console.log('⚠️  Could not find INTRO_IMG_SELECTOR to patch');
-  console.log('   You may need to manually update node_modules/whatsapp-web.js/src/Client.js');
+  // Check if INTRO_IMG_SELECTOR exists at all
+  if (content.includes('INTRO_IMG_SELECTOR')) {
+    console.log('⚠️  Found INTRO_IMG_SELECTOR but could not match pattern');
+    // Extract and show what we found
+    const lines = content.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].includes('INTRO_IMG_SELECTOR')) {
+        console.log(`   Line ${i + 1}: ${lines[i].trim().substring(0, 100)}`);
+      }
+    }
+  } else {
+    console.log('ℹ️  INTRO_IMG_SELECTOR not found in Client.js');
+    console.log('   This version may use a different mechanism');
+  }
 }
-
