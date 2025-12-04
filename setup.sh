@@ -1,13 +1,57 @@
 #!/usr/bin/env bash
+# =============================================================================
+# WhatsApp Bot Scanner - Setup (Legacy Wrapper)
+# =============================================================================
+# This script is kept for backward compatibility.
+# It delegates to bootstrap.sh which handles prerequisites and runs npx setup.
+#
+# Recommended: Use ./bootstrap.sh or npx whatsapp-bot-scanner setup directly.
+# =============================================================================
+
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ROOT_DIR="$SCRIPT_DIR"
-SETUP_WIZARD="$ROOT_DIR/scripts/setup-wizard.mjs"
 
-if [ ! -f "$SETUP_WIZARD" ]; then
-  echo "setup-wizard.mjs not found. Ensure you are running from the repository root." >&2
+# If bootstrap.sh exists, delegate to it
+if [ -f "$SCRIPT_DIR/bootstrap.sh" ]; then
+  exec "$SCRIPT_DIR/bootstrap.sh" "$@"
+fi
+
+# Fallback: run the old logic if bootstrap.sh doesn't exist
+ROOT_DIR="$SCRIPT_DIR"
+
+# Color output helpers
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+error() {
+  echo -e "${RED}❌ Error: $1${NC}" >&2
   exit 1
+}
+
+success() {
+  echo -e "${GREEN}✅ $1${NC}"
+}
+
+warning() {
+  echo -e "${YELLOW}⚠️  $1${NC}"
+}
+
+info() {
+  echo -e "${BLUE}ℹ️  $1${NC}"
+}
+
+# Show banner if not in hobby mode
+if [ "${1:-}" != "--hobby-mode" ]; then
+  echo ""
+  echo "╔═══════════════════════════════════════════════════════════════════╗"
+  echo "║  WhatsApp Bot Scanner - Setup Script                              ║"
+  echo "║  Installing prerequisites and launching setup wizard              ║"
+  echo "╚═══════════════════════════════════════════════════════════════════╝"
+  echo ""
 fi
 
 
@@ -248,25 +292,35 @@ if ! command -v "$NODE_BIN" >/dev/null 2>&1; then
   NODE_BIN="node" # Update binary path after install
 fi
 
-# Verify Node version
+# Verify Node version (require 20+ to match package.json engines)
 NODE_VERSION="$("$NODE_BIN" -v | sed 's/^v//')"
 NODE_MAJOR="${NODE_VERSION%%.*}"
-if [ "${NODE_MAJOR:-0}" -lt 18 ]; then
-  echo "⚠️  Detected Node.js v$NODE_VERSION (too old)."
+if [ "${NODE_MAJOR:-0}" -lt 20 ]; then
+  warning "Detected Node.js v$NODE_VERSION (requires 20+)."
   install_node
   NODE_BIN="node"
 fi
 
+if [ "${1:-}" != "--hobby-mode" ]; then
+  success "Node.js $(node -v) is installed and ready."
+fi
+
 # Check if dependencies are installed properly
-# Use npm list to check if all dependencies from package.json are satisfied
-if ! npm list --depth=0 >/dev/null 2>&1; then
-  echo "Installing or updating Node.js dependencies (this may take a minute)..."
-  cd "$ROOT_DIR"
-  npm install || {
-    echo "Failed to install dependencies. Please run 'npm install' manually." >&2
-    exit 1
-  }
-  echo "Dependencies installed successfully."
+# Only do this if not in hobby mode (hobby mode handles this separately)
+if [ "${1:-}" != "--hobby-mode" ]; then
+  if [ ! -f "$ROOT_DIR/package.json" ]; then
+    warning "package.json not found. Skipping dependency installation."
+  elif [ ! -d "$ROOT_DIR/node_modules" ] || ! npm list --depth=0 >/dev/null 2>&1; then
+    info "Installing Node.js dependencies (this may take a minute)..."
+    cd "$ROOT_DIR"
+    if command -v npm >/dev/null 2>&1; then
+      npm install || warning "npm install failed. Setup wizard will handle this."
+    elif command -v bun >/dev/null 2>&1; then
+      bun install || warning "bun install failed. Setup wizard will handle this."
+    else
+      warning "No package manager found (npm/bun). Setup wizard will handle this."
+    fi
+  fi
 fi
 
 
@@ -427,7 +481,9 @@ PYPYTHON
 
 # First, check if Docker socket is already available
 if check_docker_socket; then
-  echo "✅ Docker socket detected and accessible."
+  if [ "${1:-}" != "--hobby-mode" ]; then
+    success "Docker socket detected and accessible."
+  fi
   DOCKER_AVAILABLE=true
 elif ! command -v docker >/dev/null 2>&1; then
   # Docker binary not found, attempt installation
@@ -445,7 +501,9 @@ elif ! command -v docker >/dev/null 2>&1; then
 else
   # Docker binary exists, check if daemon is running
   if docker info >/dev/null 2>&1 || sudo docker info >/dev/null 2>&1; then
-    echo "\u2705 Docker is available and running."
+    if [ "${1:-}" != "--hobby-mode" ]; then
+      success "Docker is available and running."
+    fi
   else
     # In Codespaces, Docker might just need to be started or use docker group
     if detect_codespaces; then
@@ -601,17 +659,60 @@ if [ "${1:-}" == "--hobby-mode" ]; then
 
   exit 0
 fi
-# Run the CLI-based setup wizard
-# Run the CLI-based setup wizard
-# If user is in docker group but current session doesn't have it, use sg
-if groups | grep -q "docker"; then
-  exec "$NODE_BIN" "$SETUP_WIZARD" "$@"
-else
-  if getent group docker | grep -q "\b$USER\b"; then
-    echo "🔄 Switching to 'docker' group for this session..."
+# -----------------------------------------------------------------------------
+# Launch Setup Wizard
+# -----------------------------------------------------------------------------
+
+# For hobby mode, we've already handled everything above
+if [ "${1:-}" == "--hobby-mode" ]; then
+  exit 0
+fi
+
+echo ""
+echo "╔═══════════════════════════════════════════════════════════════════╗"
+echo "║  Prerequisites Ready!                                            ║"
+echo "║  Launching setup wizard...                                       ║"
+echo "╚═══════════════════════════════════════════════════════════════════╝"
+echo ""
+
+# Try to use npx first (recommended), then unified CLI, then legacy setup-wizard
+SETUP_WIZARD="$ROOT_DIR/scripts/setup-wizard.mjs"
+UNIFIED_CLI="$ROOT_DIR/scripts/unified-cli.mjs"
+
+if command -v npx >/dev/null 2>&1; then
+  info "Launching setup wizard via npx..."
+  cd "$ROOT_DIR"
+  # If user is in docker group but current session doesn't have it, use sg
+  if groups | grep -q "docker"; then
+    exec npx whatsapp-bot-scanner setup "$@"
+  elif getent group docker | grep -q "\b$USER\b"; then
+    info "Switching to 'docker' group for this session..."
+    exec sg docker -c "npx whatsapp-bot-scanner setup $*"
+  else
+    exec npx whatsapp-bot-scanner setup "$@"
+  fi
+elif [ -f "$UNIFIED_CLI" ]; then
+  info "Launching setup wizard via unified CLI..."
+  cd "$ROOT_DIR"
+  if groups | grep -q "docker"; then
+    exec "$NODE_BIN" "$UNIFIED_CLI" setup "$@"
+  elif getent group docker | grep -q "\b$USER\b"; then
+    info "Switching to 'docker' group for this session..."
+    exec sg docker -c "$NODE_BIN $UNIFIED_CLI setup $*"
+  else
+    exec "$NODE_BIN" "$UNIFIED_CLI" setup "$@"
+  fi
+elif [ -f "$SETUP_WIZARD" ]; then
+  info "Launching setup wizard (legacy)..."
+  cd "$ROOT_DIR"
+  if groups | grep -q "docker"; then
+    exec "$NODE_BIN" "$SETUP_WIZARD" "$@"
+  elif getent group docker | grep -q "\b$USER\b"; then
+    info "Switching to 'docker' group for this session..."
     exec sg docker -c "$NODE_BIN $SETUP_WIZARD $*"
   else
-    # Fallback if group membership failed or isn't needed yet
     exec "$NODE_BIN" "$SETUP_WIZARD" "$@"
   fi
+else
+  error "Could not find setup wizard. Please ensure you're in the project root directory."
 fi
