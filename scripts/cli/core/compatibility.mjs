@@ -7,81 +7,86 @@
  * continue to work during the transition to the unified CLI system.
  */
 
-import { program } from 'commander';
-import { UserInterface } from '../ui/prompts.mjs';
-import { NotificationManager } from '../ui/notifications.mjs';
-import { FileManager } from '../utils/file.mjs';
-import { handleError } from './errors.mjs';
-import { execSync, execFileSync } from 'child_process';
-import { existsSync } from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { program } from "commander";
+import { UserInterface } from "../ui/prompts.mjs";
+import { NotificationManager } from "../ui/notifications.mjs";
+import { FileManager } from "../utils/file.mjs";
+import { handleError } from "./errors.mjs";
+import { execSync, execFileSync } from "child_process";
+import { existsSync } from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
 // Get current directory
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const ROOT_DIR = path.resolve(__dirname, '../../../../');
+const ROOT_DIR = path.resolve(__dirname, "../../../../");
 
 /**
  * Script mapping for backward compatibility
  * Maps old script names to new CLI commands
  */
 const SCRIPT_MAPPING = {
-  'setup-wizard.mjs': 'setup',
-  'pair.sh': 'pair',
-  'validate-setup.sh': 'status',
-  'validate-compilation.sh': 'status',
-  'validate-config.js': 'status',
-  'run-migrations.js': 'logs --service db-migrator',
-  'run-seeds.js': 'logs --service db-seeder',
-  'init-sqlite.js': 'setup --skip-dependencies',
-  'test-wa-auth.sh': 'pair'
+  "setup-wizard.mjs": "setup",
+  "pair.sh": "pair",
+  "validate-setup.sh": "status",
+  "validate-compilation.sh": "status",
+  "validate-config.js": "status",
+  "run-migrations.js": "logs --service db-migrator",
+  "run-seeds.js": "logs --service db-seeder",
+  "init-sqlite.js": "setup --skip-dependencies",
+  "test-wa-auth.sh": "pair",
 };
 
 /**
  * Deprecation warnings and migration guidance
  */
 const DEPRECATION_MESSAGES = {
-  'setup-wizard.mjs': {
-    message: 'The standalone setup-wizard.mjs script is deprecated.',
-    migration: 'Use: unified-cli setup',
-    timeline: 'This script will be removed in v2.0.0 (scheduled for Q2 2026)',
-    severity: 'high',
-    alternatives: ['unified-cli setup', 'unified-cli setup --noninteractive'],
-    documentation: 'https://github.com/yourorg/whatsapp-bot-scanner/wiki/Migration-Guide#setup-wizard'
+  "setup-wizard.mjs": {
+    message: "The standalone setup-wizard.mjs script is deprecated.",
+    migration: "Use: unified-cli setup",
+    timeline: "This script will be removed in v2.0.0 (scheduled for Q2 2026)",
+    severity: "high",
+    alternatives: ["unified-cli setup", "unified-cli setup --noninteractive"],
+    documentation:
+      "https://github.com/yourorg/whatsapp-bot-scanner/wiki/Migration-Guide#setup-wizard",
   },
-  'pair.sh': {
-    message: 'The pair.sh script is deprecated.',
-    migration: 'Use: unified-cli pair',
-    timeline: 'This script will be removed in v2.0.0 (scheduled for Q2 2026)',
-    severity: 'medium',
-    alternatives: ['unified-cli pair'],
-    documentation: 'https://github.com/yourorg/whatsapp-bot-scanner/wiki/Migration-Guide#pairing'
+  "pair.sh": {
+    message: "The pair.sh script is deprecated.",
+    migration: "Use: unified-cli pair",
+    timeline: "This script will be removed in v2.0.0 (scheduled for Q2 2026)",
+    severity: "medium",
+    alternatives: ["unified-cli pair"],
+    documentation:
+      "https://github.com/yourorg/whatsapp-bot-scanner/wiki/Migration-Guide#pairing",
   },
-  'validate-setup.sh': {
-    message: 'The validate-setup.sh script is deprecated.',
-    migration: 'Use: unified-cli status',
-    timeline: 'This script will be removed in v2.0.0 (scheduled for Q2 2026)',
-    severity: 'low',
-    alternatives: ['unified-cli status', 'unified-cli status --monitor'],
-    documentation: 'https://github.com/yourorg/whatsapp-bot-scanner/wiki/Migration-Guide#validation'
+  "validate-setup.sh": {
+    message: "The validate-setup.sh script is deprecated.",
+    migration: "Use: unified-cli status",
+    timeline: "This script will be removed in v2.0.0 (scheduled for Q2 2026)",
+    severity: "low",
+    alternatives: ["unified-cli status", "unified-cli status --monitor"],
+    documentation:
+      "https://github.com/yourorg/whatsapp-bot-scanner/wiki/Migration-Guide#validation",
   },
-  'validate-compilation.sh': {
-    message: 'The validate-compilation.sh script is deprecated.',
-    migration: 'Use: unified-cli status',
-    timeline: 'This script will be removed in v2.0.0 (scheduled for Q2 2026)',
-    severity: 'low',
-    alternatives: ['unified-cli status'],
-    documentation: 'https://github.com/yourorg/whatsapp-bot-scanner/wiki/Migration-Guide#validation'
+  "validate-compilation.sh": {
+    message: "The validate-compilation.sh script is deprecated.",
+    migration: "Use: unified-cli status",
+    timeline: "This script will be removed in v2.0.0 (scheduled for Q2 2026)",
+    severity: "low",
+    alternatives: ["unified-cli status"],
+    documentation:
+      "https://github.com/yourorg/whatsapp-bot-scanner/wiki/Migration-Guide#validation",
   },
-  'run-migrations.js': {
-    message: 'The run-migrations.js script is deprecated.',
-    migration: 'Use: unified-cli logs --service db-migrator',
-    timeline: 'This script will be removed in v2.0.0 (scheduled for Q2 2026)',
-    severity: 'medium',
-    alternatives: ['unified-cli logs --service db-migrator'],
-    documentation: 'https://github.com/yourorg/whatsapp-bot-scanner/wiki/Migration-Guide#database-operations'
-  }
+  "run-migrations.js": {
+    message: "The run-migrations.js script is deprecated.",
+    migration: "Use: unified-cli logs --service db-migrator",
+    timeline: "This script will be removed in v2.0.0 (scheduled for Q2 2026)",
+    severity: "medium",
+    alternatives: ["unified-cli logs --service db-migrator"],
+    documentation:
+      "https://github.com/yourorg/whatsapp-bot-scanner/wiki/Migration-Guide#database-operations",
+  },
 };
 
 /**
@@ -120,7 +125,11 @@ export class CompatibilityManager {
    * @param {boolean} showMigration - Whether to show migration guidance
    * @param {boolean} showAlternatives - Whether to show alternative commands
    */
-  showDeprecationWarning(scriptName, showMigration = true, showAlternatives = true) {
+  showDeprecationWarning(
+    scriptName,
+    showMigration = true,
+    showAlternatives = true,
+  ) {
     if (this.suppressedWarnings.has(scriptName)) {
       return;
     }
@@ -129,8 +138,12 @@ export class CompatibilityManager {
 
     if (deprecationInfo) {
       // Show severity-based warning
-      const severityEmoji = deprecationInfo.severity === 'high' ? '🔴' :
-                           deprecationInfo.severity === 'medium' ? '🟡' : '🔵';
+      const severityEmoji =
+        deprecationInfo.severity === "high"
+          ? "🔴"
+          : deprecationInfo.severity === "medium"
+            ? "🟡"
+            : "🔵";
 
       this.ui.warn(`${severityEmoji}  ${deprecationInfo.message}`);
       this.ui.warn(`📅  ${deprecationInfo.timeline}`);
@@ -140,16 +153,20 @@ export class CompatibilityManager {
       }
 
       if (showAlternatives && deprecationInfo.alternatives) {
-        this.ui.info('🔄  Alternatives:');
-        deprecationInfo.alternatives.forEach(alt => this.ui.info(`   • ${alt}`));
+        this.ui.info("🔄  Alternatives:");
+        deprecationInfo.alternatives.forEach((alt) =>
+          this.ui.info(`   • ${alt}`),
+        );
       }
 
       if (deprecationInfo.documentation) {
         this.ui.info(`📖  Documentation: ${deprecationInfo.documentation}`);
       }
     } else {
-      this.ui.warn(`⚠️  This script is deprecated and will be removed in future versions.`);
-      this.ui.info('📖  For more information, run: unified-cli --help');
+      this.ui.warn(
+        `⚠️  This script is deprecated and will be removed in future versions.`,
+      );
+      this.ui.info("📖  For more information, run: unified-cli --help");
     }
   }
 
@@ -172,7 +189,7 @@ export class CompatibilityManager {
       this.showDeprecationWarning(scriptName);
 
       // Check if the script exists
-      const scriptPath = path.join(ROOT_DIR, 'scripts', scriptName);
+      const scriptPath = path.join(ROOT_DIR, "scripts", scriptName);
 
       if (!existsSync(scriptPath)) {
         throw new Error(`Script ${scriptName} not found at ${scriptPath}`);
@@ -185,15 +202,21 @@ export class CompatibilityManager {
         this.ui.info(`🔄  Routing to new CLI command: ${newCommand}`);
 
         // Execute the new command
-        const unifiedCliPath = path.join(ROOT_DIR, 'scripts', 'unified-cli.mjs');
+        const unifiedCliPath = path.join(
+          ROOT_DIR,
+          "scripts",
+          "unified-cli.mjs",
+        );
         const command = `node ${unifiedCliPath} ${newCommand}`;
 
         try {
-          execSync(command, { stdio: 'inherit' });
+          execSync(command, { stdio: "inherit" });
           return true;
         } catch (execError) {
-          this.ui.error(`❌  Failed to execute new command: ${execError.message}`);
-          this.ui.info('🔙  Falling back to original script...');
+          this.ui.error(
+            `❌  Failed to execute new command: ${execError.message}`,
+          );
+          this.ui.info("🔙  Falling back to original script...");
 
           // Fallback to original script execution
           return this.executeOriginalScript(scriptName, args);
@@ -216,33 +239,39 @@ export class CompatibilityManager {
    */
   executeOriginalScript(scriptName, args = []) {
     try {
-      const scriptPath = path.join(ROOT_DIR, 'scripts', scriptName);
+      const scriptPath = path.join(ROOT_DIR, "scripts", scriptName);
 
       // Handle different script types
-      if (scriptName.endsWith('.sh')) {
+      if (scriptName.endsWith(".sh")) {
         // Bash script - use execFile with proper argument array to prevent injection
-        const sanitizedArgs = args.filter(arg => 
-          typeof arg === 'string' && 
-          !arg.includes(';') && 
-          !arg.includes('&&') && 
-          !arg.includes('||') && 
-          !arg.includes('|') &&
-          !arg.includes('>') &&
-          !arg.includes('<') &&
-          !arg.includes('`') &&
-          !arg.includes('$')
+        const sanitizedArgs = args.filter(
+          (arg) =>
+            typeof arg === "string" &&
+            !arg.includes(";") &&
+            !arg.includes("&&") &&
+            !arg.includes("||") &&
+            !arg.includes("|") &&
+            !arg.includes(">") &&
+            !arg.includes("<") &&
+            !arg.includes("`") &&
+            !arg.includes("$"),
         );
-        execFileSync('bash', [scriptPath, ...sanitizedArgs], { stdio: 'inherit' });
-      } else if (scriptName.endsWith('.mjs') || scriptName.endsWith('.js')) {
+        execFileSync("bash", [scriptPath, ...sanitizedArgs], {
+          stdio: "inherit",
+        });
+      } else if (scriptName.endsWith(".mjs") || scriptName.endsWith(".js")) {
         // Node script - use execFile with proper argument array to prevent injection
-        const sanitizedArgs = args.filter(arg => 
-          typeof arg === 'string' && 
-          !arg.includes('--eval') &&
-          !arg.includes('-e') &&
-          !arg.includes('--require') &&
-          !arg.includes('-r')
+        const sanitizedArgs = args.filter(
+          (arg) =>
+            typeof arg === "string" &&
+            !arg.includes("--eval") &&
+            !arg.includes("-e") &&
+            !arg.includes("--require") &&
+            !arg.includes("-r"),
         );
-        execFileSync('node', [scriptPath, ...sanitizedArgs], { stdio: 'inherit' });
+        execFileSync("node", [scriptPath, ...sanitizedArgs], {
+          stdio: "inherit",
+        });
       } else {
         throw new Error(`Unsupported script type: ${scriptName}`);
       }
@@ -272,20 +301,20 @@ export class CompatibilityManager {
         alternatives: deprecationInfo.alternatives,
         documentation: deprecationInfo.documentation,
         additionalNotes: this.getAdditionalMigrationNotes(scriptName),
-        migrationSteps: this.getMigrationSteps(scriptName)
+        migrationSteps: this.getMigrationSteps(scriptName),
       };
     }
 
     return {
       oldScript: scriptName,
-      newCommand: this.getNewCommand(scriptName) || 'No direct equivalent',
-      migrationPath: 'Check unified-cli --help for available commands',
-      timeline: 'Future version',
-      severity: 'unknown',
+      newCommand: this.getNewCommand(scriptName) || "No direct equivalent",
+      migrationPath: "Check unified-cli --help for available commands",
+      timeline: "Future version",
+      severity: "unknown",
       alternatives: [],
       documentation: null,
       additionalNotes: [],
-      migrationSteps: []
+      migrationSteps: [],
     };
   }
 
@@ -298,19 +327,23 @@ export class CompatibilityManager {
     const notes = [];
 
     switch (scriptName) {
-      case 'setup-wizard.mjs':
-        notes.push('The new setup command includes all the functionality of the old wizard');
-        notes.push('Additional features: Docker health checks, dependency validation');
+      case "setup-wizard.mjs":
+        notes.push(
+          "The new setup command includes all the functionality of the old wizard",
+        );
+        notes.push(
+          "Additional features: Docker health checks, dependency validation",
+        );
         break;
 
-      case 'pair.sh':
-        notes.push('The new pair command provides better error handling');
-        notes.push('Includes QR code display and pairing status monitoring');
+      case "pair.sh":
+        notes.push("The new pair command provides better error handling");
+        notes.push("Includes QR code display and pairing status monitoring");
         break;
 
-      case 'validate-setup.sh':
-        notes.push('The status command provides comprehensive health checks');
-        notes.push('Includes service monitoring and detailed error reporting');
+      case "validate-setup.sh":
+        notes.push("The status command provides comprehensive health checks");
+        notes.push("Includes service monitoring and detailed error reporting");
         break;
     }
 
@@ -325,29 +358,35 @@ export class CompatibilityManager {
     const steps = [];
 
     switch (scriptName) {
-      case 'setup-wizard.mjs':
-        steps.push('1. Replace `node scripts/setup-wizard.mjs` with `unified-cli setup`');
-        steps.push('2. Add `--noninteractive` flag for CI/CD environments');
-        steps.push('3. Use `--hobby-mode` for personal/hobby setups');
-        steps.push('4. Review new Docker health check features');
+      case "setup-wizard.mjs":
+        steps.push(
+          "1. Replace `node scripts/setup-wizard.mjs` with `unified-cli setup`",
+        );
+        steps.push("2. Add `--noninteractive` flag for CI/CD environments");
+        steps.push("3. Use `--hobby-mode` for personal/hobby setups");
+        steps.push("4. Review new Docker health check features");
         break;
 
-      case 'pair.sh':
-        steps.push('1. Replace `bash scripts/pair.sh` with `unified-cli pair`');
-        steps.push('2. No additional flags needed - same functionality');
-        steps.push('3. New command includes automatic QR code display');
+      case "pair.sh":
+        steps.push("1. Replace `bash scripts/pair.sh` with `unified-cli pair`");
+        steps.push("2. No additional flags needed - same functionality");
+        steps.push("3. New command includes automatic QR code display");
         break;
 
-      case 'validate-setup.sh':
-        steps.push('1. Replace `bash scripts/validate-setup.sh` with `unified-cli status`');
-        steps.push('2. Use `--monitor` flag for continuous monitoring');
-        steps.push('3. Review new comprehensive health check output');
+      case "validate-setup.sh":
+        steps.push(
+          "1. Replace `bash scripts/validate-setup.sh` with `unified-cli status`",
+        );
+        steps.push("2. Use `--monitor` flag for continuous monitoring");
+        steps.push("3. Review new comprehensive health check output");
         break;
 
-      case 'run-migrations.js':
-        steps.push('1. Replace `node scripts/run-migrations.js` with `unified-cli logs --service db-migrator`');
-        steps.push('2. Use `--tail 100` to see last 100 lines');
-        steps.push('3. Add `--timestamps` for better log analysis');
+      case "run-migrations.js":
+        steps.push(
+          "1. Replace `node scripts/run-migrations.js` with `unified-cli logs --service db-migrator`",
+        );
+        steps.push("2. Use `--tail 100` to see last 100 lines");
+        steps.push("3. Add `--timestamps` for better log analysis");
         break;
     }
 
@@ -400,7 +439,7 @@ export async function runCompatibilityMode() {
  * This can be used to wrap old scripts to make them compatible
  */
 export function createCompatibilityWrapper(scriptName) {
-  return async function() {
+  return async function () {
     const compatibilityManager = new CompatibilityManager();
     const args = process.argv.slice(2);
     return compatibilityManager.executeOldScript(scriptName, args);

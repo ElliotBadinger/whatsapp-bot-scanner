@@ -1,43 +1,42 @@
-import dns from 'node:dns/promises';
-import ipaddr from 'ipaddr.js';
+import dns from "node:dns/promises";
+import ipaddr from "ipaddr.js";
 
 const privateCidrs = [
-  '10.0.0.0/8',
-  '172.16.0.0/12',
-  '192.168.0.0/16',
-  '127.0.0.0/8',
-  '169.254.0.0/16',
-  '::1/128',
-  'fc00::/7',
-  'fe80::/10'
-].map(c => ipaddr.parseCIDR(c));
+  "10.0.0.0/8",
+  "172.16.0.0/12",
+  "192.168.0.0/16",
+  "127.0.0.0/8",
+  "169.254.0.0/16",
+  "::1/128",
+  "fc00::/7",
+  "fe80::/10",
+].map((c) => ipaddr.parseCIDR(c));
 
 const BLOCKED_HOSTNAMES = [
-  'localhost',
-  '127.0.0.1',
-  '0.0.0.0',
-  '::1',
-  'internal',
-  'metadata',
-  '169.254.169.254'
+  "localhost",
+  "127.0.0.1",
+  "0.0.0.0",
+  "::1",
+  "internal",
+  "metadata",
+  "169.254.169.254",
 ];
 
 export async function isPrivateHostname(hostname: string): Promise<boolean> {
   const lowerHostname = hostname.toLowerCase();
-  
+
   // Check blocked hostnames first
   if (BLOCKED_HOSTNAMES.includes(lowerHostname)) {
     return true;
   }
-  
+
   try {
     const addrs = await dns.lookup(hostname, { all: true, family: 0 });
-    return addrs.some(a => isPrivateIp(a.address));
+    return addrs.some((a) => isPrivateIp(a.address));
   } catch {
     return true; // fail closed
   }
 }
-
 
 export function isPrivateIp(ip: string): boolean {
   try {
@@ -50,4 +49,3 @@ export function isPrivateIp(ip: string): boolean {
     return true;
   }
 }
-

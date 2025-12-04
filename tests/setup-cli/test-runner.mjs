@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-import { execa } from 'execa';
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { testReporter } from './test-reporter.mjs';
+import { execa } from "execa";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { testReporter } from "./test-reporter.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -16,7 +16,7 @@ class TestRunner {
 
   async runTests() {
     try {
-      console.log('🚀 Starting comprehensive test suite...');
+      console.log("🚀 Starting comprehensive test suite...");
 
       // Run all test files
       const testFiles = await this.findTestFiles();
@@ -28,50 +28,54 @@ class TestRunner {
       // Generate reports
       await this.generateReports();
 
-      console.log('✅ Test suite completed successfully!');
+      console.log("✅ Test suite completed successfully!");
       return result;
-
     } catch (error) {
-      console.error('❌ Test suite failed:', error.message);
+      console.error("❌ Test suite failed:", error.message);
       await this.generateReports();
       process.exit(1);
     }
   }
 
   async findTestFiles() {
-    const testDir = path.join(__dirname, '..', 'setup-cli');
+    const testDir = path.join(__dirname, "..", "setup-cli");
     const files = await fs.readdir(testDir);
 
     return files
-      .filter(file => file.endsWith('.test.mjs'))
-      .map(file => path.join(testDir, file));
+      .filter((file) => file.endsWith(".test.mjs"))
+      .map((file) => path.join(testDir, file));
   }
 
   async runVitestTests(testFiles) {
-    console.log('🧪 Running tests with Vitest...');
+    console.log("🧪 Running tests with Vitest...");
 
     try {
-      const result = await execa('npx', [
-        'vitest',
-        'run',
-        ...testFiles,
-        '--config', path.join(__dirname, 'test-config.mjs'),
-        '--reporter=verbose',
-        '--coverage'
-      ], {
-        stdio: 'inherit',
-        cwd: __dirname
-      });
+      const result = await execa(
+        "npx",
+        [
+          "vitest",
+          "run",
+          ...testFiles,
+          "--config",
+          path.join(__dirname, "test-config.mjs"),
+          "--reporter=verbose",
+          "--coverage",
+        ],
+        {
+          stdio: "inherit",
+          cwd: __dirname,
+        },
+      );
 
       return result;
     } catch (error) {
-      console.error('❌ Vitest execution failed:', error.message);
+      console.error("❌ Vitest execution failed:", error.message);
       throw error;
     }
   }
 
   async generateReports() {
-    console.log('📊 Generating test reports...');
+    console.log("📊 Generating test reports...");
 
     // Generate HTML report
     const htmlReport = await this.testReporter.generateHTMLReport();
@@ -90,81 +94,100 @@ class TestRunner {
   }
 
   async runSpecificTests(testPatterns) {
-    console.log(`🎯 Running specific tests: ${testPatterns.join(', ')}`);
+    console.log(`🎯 Running specific tests: ${testPatterns.join(", ")}`);
 
     try {
-      const result = await execa('npx', [
-        'vitest',
-        'run',
-        ...testPatterns,
-        '--config', path.join(__dirname, 'test-config.mjs'),
-        '--reporter=verbose'
-      ], {
-        stdio: 'inherit',
-        cwd: __dirname
-      });
+      const result = await execa(
+        "npx",
+        [
+          "vitest",
+          "run",
+          ...testPatterns,
+          "--config",
+          path.join(__dirname, "test-config.mjs"),
+          "--reporter=verbose",
+        ],
+        {
+          stdio: "inherit",
+          cwd: __dirname,
+        },
+      );
 
       return result;
     } catch (error) {
-      console.error('❌ Specific test execution failed:', error.message);
+      console.error("❌ Specific test execution failed:", error.message);
       throw error;
     }
   }
 
   async runWatchMode() {
-    console.log('👀 Running tests in watch mode...');
+    console.log("👀 Running tests in watch mode...");
 
     try {
-      const result = await execa('npx', [
-        'vitest',
-        'watch',
-        '--config', path.join(__dirname, 'test-config.mjs'),
-        '--reporter=verbose'
-      ], {
-        stdio: 'inherit',
-        cwd: __dirname
-      });
+      const result = await execa(
+        "npx",
+        [
+          "vitest",
+          "watch",
+          "--config",
+          path.join(__dirname, "test-config.mjs"),
+          "--reporter=verbose",
+        ],
+        {
+          stdio: "inherit",
+          cwd: __dirname,
+        },
+      );
 
       return result;
     } catch (error) {
-      console.error('❌ Watch mode failed:', error.message);
+      console.error("❌ Watch mode failed:", error.message);
       throw error;
     }
   }
 
   async runCoverageAnalysis() {
-    console.log('🔍 Running coverage analysis...');
+    console.log("🔍 Running coverage analysis...");
 
     try {
-      const result = await execa('npx', [
-        'vitest',
-        'run',
-        '--coverage',
-        '--config', path.join(__dirname, 'test-config.mjs'),
-        '--reporter=verbose'
-      ], {
-        stdio: 'inherit',
-        cwd: __dirname
-      });
+      const result = await execa(
+        "npx",
+        [
+          "vitest",
+          "run",
+          "--coverage",
+          "--config",
+          path.join(__dirname, "test-config.mjs"),
+          "--reporter=verbose",
+        ],
+        {
+          stdio: "inherit",
+          cwd: __dirname,
+        },
+      );
 
       return result;
     } catch (error) {
-      console.error('❌ Coverage analysis failed:', error.message);
+      console.error("❌ Coverage analysis failed:", error.message);
       throw error;
     }
   }
 
   async analyzeTestResults() {
-    console.log('📈 Analyzing test results...');
+    console.log("📈 Analyzing test results...");
 
     const report = this.testReporter.generateReport();
 
     if (report.summary.passRate < 80) {
-      console.warn('⚠️  Test pass rate below 80% - consider improving test coverage');
+      console.warn(
+        "⚠️  Test pass rate below 80% - consider improving test coverage",
+      );
     }
 
     if (report.summary.failedTests > 0) {
-      console.warn(`⚠️  ${report.summary.failedTests} tests failed - review required`);
+      console.warn(
+        `⚠️  ${report.summary.failedTests} tests failed - review required`,
+      );
     }
 
     return report;
@@ -177,10 +200,10 @@ class TestRunner {
 
   // Parse command line arguments
   const args = process.argv.slice(2);
-  const helpRequested = args.includes('--help') || args.includes('-h');
-  const watchMode = args.includes('--watch') || args.includes('-w');
-  const coverageOnly = args.includes('--coverage-only');
-  const specificTests = args.filter(arg => !arg.startsWith('--'));
+  const helpRequested = args.includes("--help") || args.includes("-h");
+  const watchMode = args.includes("--watch") || args.includes("-w");
+  const coverageOnly = args.includes("--coverage-only");
+  const specificTests = args.filter((arg) => !arg.startsWith("--"));
 
   if (helpRequested) {
     console.log(`
@@ -217,10 +240,9 @@ Examples:
 
     // Analyze results
     const analysis = await runner.analyzeTestResults();
-    console.log('📊 Test analysis complete:', analysis.summary);
-
+    console.log("📊 Test analysis complete:", analysis.summary);
   } catch (error) {
-    console.error('❌ Test runner failed:', error.message);
+    console.error("❌ Test runner failed:", error.message);
     process.exit(1);
   }
 })();

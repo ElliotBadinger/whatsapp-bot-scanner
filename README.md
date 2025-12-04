@@ -26,6 +26,7 @@ These features reduce external API calls by 30-40% while improving scan latency.
 > **Required API Keys and Secrets**: Before running the application, you must configure API keys and generate secure secrets. The `.env` file does not contain any credentials by default.
 >
 > See [`docs/SECURITY_SETUP.md`](docs/SECURITY_SETUP.md) for detailed instructions on:
+>
 > - Obtaining API keys from VirusTotal, Google Safe Browsing, WhoisXML, and urlscan.io
 > - Generating secure random secrets for authentication and encryption
 > - Quick setup script to generate all required secrets at once
@@ -64,6 +65,7 @@ This folder is **automatically synchronized** with a standalone repository at [g
 - **Standalone → Monorepo**: Automatic sync every 15 minutes (or instant with webhook)
 
 **Setup Documentation:**
+
 - [`docs/SAFEMODE_SYNC_SETUP.md`](docs/SAFEMODE_SYNC_SETUP.md) - Complete sync setup and troubleshooting
 - [`.github/SYNC_QUICKSTART.md`](.github/SYNC_QUICKSTART.md) - Quick reference guide
 - [`SafeMode-web-app/SYNC_INFO.md`](SafeMode-web-app/SYNC_INFO.md) - Developer info
@@ -71,6 +73,7 @@ This folder is **automatically synchronized** with a standalone repository at [g
 ## 📚 Documentation
 
 ### Unified CLI Documentation
+
 - **User Guide**: [`docs/CLI_USER_GUIDE.md`](docs/CLI_USER_GUIDE.md) - Getting started, usage examples, and tutorials
 - **Technical Documentation**: [`docs/CLI_TECHNICAL_DOCUMENTATION.md`](docs/CLI_TECHNICAL_DOCUMENTATION.md) - Architecture, components, and API reference
 - **Migration Guide**: [`docs/CLI_MIGRATION_GUIDE.md`](docs/CLI_MIGRATION_GUIDE.md) - Migration instructions and deprecation timeline
@@ -78,6 +81,7 @@ This folder is **automatically synchronized** with a standalone repository at [g
 - **Visual Aids**: [`docs/CLI_VISUAL_AIDS.md`](docs/CLI_VISUAL_AIDS.md) - ASCII diagrams, flowcharts, and reference tables
 
 ### Legacy Documentation
+
 - **Getting Started**: [`docs/getting-started.md`](docs/getting-started.md) - Traditional setup guide
 - **Cost Model**: [`docs/COST_MODEL.md`](docs/COST_MODEL.md) - VirusTotal quota guidance
 - **WHOIS Migration**: [`docs/WHOIS_MIGRATION.md`](docs/WHOIS_MIGRATION.md) - WHOIS service details
@@ -109,12 +113,12 @@ npx whatsapp-bot-scanner compatibility         # Show migration information
 
 The unified CLI replaces multiple legacy scripts with a single interface:
 
-| Legacy Script | Unified CLI Equivalent |
-|---------------|-----------------------|
-| `setup.sh` | `npx whatsapp-bot-scanner setup` |
+| Legacy Script            | Unified CLI Equivalent                        |
+| ------------------------ | --------------------------------------------- |
+| `setup.sh`               | `npx whatsapp-bot-scanner setup`              |
 | `setup-hobby-express.sh` | `npx whatsapp-bot-scanner setup --hobby-mode` |
-| `watch-pairing-code.js` | `npx whatsapp-bot-scanner logs wa-client` |
-| `pair.sh` | `npx whatsapp-bot-scanner pair` |
+| `watch-pairing-code.js`  | `npx whatsapp-bot-scanner logs wa-client`     |
+| `pair.sh`                | `npx whatsapp-bot-scanner pair`               |
 
 See [`docs/CLI_MIGRATION_GUIDE.md`](docs/CLI_MIGRATION_GUIDE.md) for complete migration instructions.
 

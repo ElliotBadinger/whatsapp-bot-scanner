@@ -128,7 +128,7 @@ interface EnvironmentType {
   isCodespaces: boolean;
   isContainer: boolean;
   isBareMetal: boolean;
-  containerType?: 'docker' | 'podman' | 'lxc';
+  containerType?: "docker" | "podman" | "lxc";
 }
 
 interface SystemCapabilities {
@@ -248,7 +248,7 @@ interface DockerComposeInfo {
 interface ServiceHealth {
   serviceName: string;
   containerId: string;
-  status: 'healthy' | 'unhealthy' | 'starting' | 'stopped';
+  status: "healthy" | "unhealthy" | "starting" | "stopped";
   healthCheck?: string;
   error?: string;
 }
@@ -258,7 +258,7 @@ interface ServiceUrl {
   internalPort: number;
   externalPort: number;
   url: string;
-  protocol: 'http' | 'https';
+  protocol: "http" | "https";
 }
 ```
 
@@ -278,7 +278,12 @@ interface ServiceUrl {
 
 ```typescript
 interface PairingEvent {
-  type: 'code_requested' | 'code_received' | 'qr_generated' | 'rate_limited' | 'authenticated';
+  type:
+    | "code_requested"
+    | "code_received"
+    | "qr_generated"
+    | "rate_limited"
+    | "authenticated";
   code?: string;
   phoneNumber?: string;
   attempt?: number;
@@ -318,7 +323,7 @@ interface PairingStatus {
 ```typescript
 interface ProgressOptions {
   text: string;
-  color?: 'cyan' | 'yellow' | 'green' | 'red';
+  color?: "cyan" | "yellow" | "green" | "red";
   spinner?: string;
 }
 
@@ -351,6 +356,7 @@ interface ConfirmOptions {
 ### Environment File Integration
 
 **File Management:**
+
 - Atomic read/write operations using file locking
 - Configuration validation before saving
 - Backup and restore functionality
@@ -359,6 +365,7 @@ interface ConfirmOptions {
 ### Docker Integration
 
 **Command Execution:**
+
 - Unified Docker command interface
 - Command timeout and retry logic
 - Output parsing and error detection
@@ -367,6 +374,7 @@ interface ConfirmOptions {
 ### WhatsApp Pairing Integration
 
 **Event Monitoring:**
+
 - Docker log streaming with parsing
 - Event pattern matching and extraction
 - State management for pairing process
@@ -386,24 +394,32 @@ interface ConfirmOptions {
 ### Error Handling Pattern
 
 ```typescript
-async function withErrorHandling<T>(operation: () => Promise<T>, errorContext: string): Promise<T> {
+async function withErrorHandling<T>(
+  operation: () => Promise<T>,
+  errorContext: string,
+): Promise<T> {
   try {
     return await operation();
   } catch (error) {
     this.ui.showError(`[${errorContext}] ${error.message}`);
 
     if (error instanceof DependencyError) {
-      this.ui.showWarning('Attempting automatic recovery...');
+      this.ui.showWarning("Attempting automatic recovery...");
       await this.dependencyManager.recoverFromError(error);
       return await operation(); // Retry after recovery
     }
 
     if (error instanceof ConfigurationError) {
-      this.ui.showInfo('Configuration can be fixed manually. Continuing with partial setup.');
+      this.ui.showInfo(
+        "Configuration can be fixed manually. Continuing with partial setup.",
+      );
       this.configManager.markConfigurationIncomplete();
     }
 
-    throw new SetupError(`Failed to complete ${errorContext}: ${error.message}`, error);
+    throw new SetupError(
+      `Failed to complete ${errorContext}: ${error.message}`,
+      error,
+    );
   }
 }
 ```
@@ -420,41 +436,46 @@ async function withErrorHandling<T>(operation: () => Promise<T>, errorContext: s
 ### Optimization Strategies
 
 **Dependency Installation:**
+
 - Parallel package installation where possible
 - Caching of environment detection results
 - Minimal memory footprint during monitoring
 
 **Docker Operations:**
+
 - Efficient log processing with streaming
 - Parallel container health checks
 - Optimized service discovery
 
 **Configuration Management:**
+
 - Lazy loading of configuration
 - Incremental validation
 - Efficient file operations
 
 ### Performance Metrics
 
-| Metric | Target | Current |
-|--------|--------|---------|
-| Setup completion (first run) | < 5 minutes | ~8 minutes |
+| Metric                        | Target      | Current    |
+| ----------------------------- | ----------- | ---------- |
+| Setup completion (first run)  | < 5 minutes | ~8 minutes |
 | Setup completion (subsequent) | < 2 minutes | ~3 minutes |
-| Memory usage | < 200MB | ~150MB |
-| CPU usage | < 30% | ~20% |
-| Response time | < 100ms | ~50ms |
+| Memory usage                  | < 200MB     | ~150MB     |
+| CPU usage                     | < 30%       | ~20%       |
+| Response time                 | < 100ms     | ~50ms      |
 
 ## 🔒 Security Considerations
 
 ### Security Requirements
 
 **Data Protection:**
+
 - Secure handling of API keys
 - Proper redaction of sensitive information
 - Secure file permissions for .env files
 - Encrypted storage of secrets
 
 **Validation:**
+
 - Input validation for all user prompts
 - API key format validation
 - Configuration file validation
@@ -465,8 +486,8 @@ async function withErrorHandling<T>(operation: () => Promise<T>, errorContext: s
 ```typescript
 // Secure API key handling
 function redactApiKey(key: string): string {
-  if (!key || key.length <= 4) return '****';
-  return '****' + key.slice(-4);
+  if (!key || key.length <= 4) return "****";
+  return "****" + key.slice(-4);
 }
 
 function validateApiKeyFormat(key: string): boolean {
@@ -484,7 +505,7 @@ function validateApiKeyFormat(key: string): boolean {
 ```typescript
 interface CLICommands {
   setup: {
-    description: 'Run complete setup wizard';
+    description: "Run complete setup wizard";
     options: {
       noninteractive: boolean;
       hobbyMode: boolean;
@@ -492,7 +513,7 @@ interface CLICommands {
     };
   };
   logs: {
-    description: 'Stream service logs';
+    description: "Stream service logs";
     arguments: {
       service?: string;
     };
@@ -503,11 +524,11 @@ interface CLICommands {
     };
   };
   pair: {
-    description: 'Manual pairing request';
+    description: "Manual pairing request";
     options: {};
   };
   status: {
-    description: 'Check service health';
+    description: "Check service health";
     options: {
       monitor?: boolean;
       interval?: number;
@@ -544,17 +565,29 @@ interface ConfigurationAPI {
 
 ```typescript
 // Core Types
-type EnvironmentType = 'codespaces' | 'container' | 'bare-metal';
-type PackageManager = 'apt' | 'dnf' | 'pacman' | 'apk' | 'zypper' | 'brew' | 'unknown';
-type InitSystem = 'systemd' | 'sysvinit' | 'service' | 'none';
+type EnvironmentType = "codespaces" | "container" | "bare-metal";
+type PackageManager =
+  | "apt"
+  | "dnf"
+  | "pacman"
+  | "apk"
+  | "zypper"
+  | "brew"
+  | "unknown";
+type InitSystem = "systemd" | "sysvinit" | "service" | "none";
 
 // Service Types
-type ServiceName = 'wa-client' | 'scan-orchestrator' | 'control-plane' | 'redis' | 'postgres';
-type ServiceStatus = 'healthy' | 'unhealthy' | 'starting' | 'stopped';
+type ServiceName =
+  | "wa-client"
+  | "scan-orchestrator"
+  | "control-plane"
+  | "redis"
+  | "postgres";
+type ServiceStatus = "healthy" | "unhealthy" | "starting" | "stopped";
 
 // Configuration Types
-type ConfigMode = 'production' | 'hobby' | 'development';
-type AuthStrategy = 'qr' | 'phone-number' | 'remote';
+type ConfigMode = "production" | "hobby" | "development";
+type AuthStrategy = "qr" | "phone-number" | "remote";
 ```
 
 ### Configuration Reference
@@ -578,7 +611,7 @@ interface EnvironmentConfig {
     };
   };
   logging: {
-    level: 'debug' | 'info' | 'warn' | 'error';
+    level: "debug" | "info" | "warn" | "error";
     file?: string;
     maxSize?: string;
   };

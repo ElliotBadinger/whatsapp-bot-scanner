@@ -2414,4 +2414,3 @@ metadata:
   labels:
     io.kompose.service: wa-client
   name: wa-client-cm1
-

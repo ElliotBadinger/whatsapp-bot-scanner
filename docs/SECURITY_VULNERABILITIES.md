@@ -3,8 +3,9 @@
 ## Fixed Vulnerabilities
 
 ### ✅ url-expand dependency (Critical/High)
+
 - **Issue**: url-expand package depended on deprecated `request` package with vulnerable `form-data` and `tough-cookie`
-- **CVEs**: 
+- **CVEs**:
   - GHSA-fjxv-7rqg-78g4 (Predictable Value Range in form-data)
   - GHSA-qhv9-728r-6jqg (ReDoS in tough-cookie)
   - GHSA-g7q5-pjjr-gqvp (ReDoS in tough-cookie)
@@ -13,6 +14,7 @@
 - **Impact**: No functional impact - the custom implementation provides the same URL expansion capabilities with better security
 
 ### ✅ ioredis-mock tmp vulnerability (High)
+
 - **Issue**: ioredis-mock dependency chain included vulnerable `tmp` package
 - **CVE**: GHSA-52f5-9888-hmc6 (Symlink Attack in tmp)
 - **Fix**: Updated ioredis-mock to version 4.7.0
@@ -21,21 +23,24 @@
 ## Accepted Risk Vulnerabilities
 
 ### ⚠️ whatsapp-web.js transitive dependencies (High)
+
 The following vulnerabilities exist in the dependency chain of whatsapp-web.js → puppeteer → puppeteer-core:
 
 #### tar-fs vulnerabilities
+
 - **CVEs**:
   - GHSA-vj76-c3g6-qr5v (Symlink validation bypass)
   - GHSA-8cj5-5rvv-wf4v (Path traversal)
   - GHSA-pq67-2wwv-3xjx (Link following)
 - **Risk Assessment**: LOW
-- **Rationale**: 
+- **Rationale**:
   - whatsapp-web.js does not process untrusted tar files
   - Vulnerabilities require crafted malicious tar files
   - Application runs in isolated containers
   - No direct tar file processing from user input
 
 #### ws vulnerability
+
 - **CVE**: GHSA-3h5v-q93c-6h6q (Denial of Service via many HTTP headers)
 - **Risk Assessment**: LOW
 - **Rationale**:

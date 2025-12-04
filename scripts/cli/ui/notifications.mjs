@@ -1,8 +1,8 @@
-import { execa } from 'execa';
-import { UserInterface } from './prompts.mjs';
-import boxen from 'boxen';
-import chalk from 'chalk';
-import readline from 'node:readline';
+import { execa } from "execa";
+import { UserInterface } from "./prompts.mjs";
+import boxen from "boxen";
+import chalk from "chalk";
+import readline from "node:readline";
 
 export class NotificationManager {
   constructor(ui) {
@@ -12,12 +12,12 @@ export class NotificationManager {
     this.inputHandlers = { onRefresh: null, onComplete: null };
   }
 
-  triggerPairingAlert(code, phone, countdown = '02:00', callbacks = {}) {
+  triggerPairingAlert(code, phone, countdown = "02:00", callbacks = {}) {
     // Audio alert
     this.playAlertSound();
 
     // Voice notification (if available)
-    if (process.platform === 'darwin') {
+    if (process.platform === "darwin") {
       this.speak(`WhatsApp pairing code ${code} received`);
     }
 
@@ -28,11 +28,11 @@ export class NotificationManager {
   playAlertSound() {
     // Cross-platform alert sound
     try {
-      if (process.platform === 'darwin') {
-        execa('afplay', ['/System/Library/Sounds/Ping.aiff']);
+      if (process.platform === "darwin") {
+        execa("afplay", ["/System/Library/Sounds/Ping.aiff"]);
       } else {
         // Fallback to terminal bell
-        process.stdout.write('\x07');
+        process.stdout.write("\x07");
       }
     } catch {
       // Ignore sound errors
@@ -41,10 +41,10 @@ export class NotificationManager {
 
   speak(text) {
     try {
-      if (process.platform === 'darwin') {
-        execa('say', ['-v', 'Ava', text]);
-      } else if (process.platform === 'linux') {
-        execa('espeak', [text]);
+      if (process.platform === "darwin") {
+        execa("say", ["-v", "Ava", text]);
+      } else if (process.platform === "linux") {
+        execa("espeak", [text]);
       }
     } catch {
       // Ignore speech errors
@@ -58,15 +58,16 @@ export class NotificationManager {
         phone,
         countdown,
         onRefresh: callbacks.onRefresh,
-        onComplete: callbacks.onComplete
+        onComplete: callbacks.onComplete,
       };
 
       this.renderPairingBox();
       this.setupInteractiveInput();
-
     } catch (error) {
-      console.error('Error displaying pairing interface:', error.message);
-      this.ui.error('Failed to display pairing interface. Falling back to basic display.');
+      console.error("Error displaying pairing interface:", error.message);
+      this.ui.error(
+        "Failed to display pairing interface. Falling back to basic display.",
+      );
       this.showBasicPairingDisplay(code, phone, countdown);
     }
   }
@@ -80,20 +81,25 @@ export class NotificationManager {
     this.clearCurrentDisplay();
 
     const pairingBox = boxen(
-      chalk.bold.green('🔑 WHATSAPP PAIRING REQUIRED') + '\n\n' +
-      chalk.bold(`Code: ${chalk.yellow(code)}`) + '\n' +
-      chalk.bold(`Phone: ${chalk.cyan(phone)}`) + '\n\n' +
-      chalk.bold(`Expires in: ${chalk.red(countdown)}`) + '\n\n' +
-      chalk.dim('Press ENTER when pairing is complete') + '\n' +
-      chalk.dim('Press R to refresh the pairing code'),
+      chalk.bold.green("🔑 WHATSAPP PAIRING REQUIRED") +
+        "\n\n" +
+        chalk.bold(`Code: ${chalk.yellow(code)}`) +
+        "\n" +
+        chalk.bold(`Phone: ${chalk.cyan(phone)}`) +
+        "\n\n" +
+        chalk.bold(`Expires in: ${chalk.red(countdown)}`) +
+        "\n\n" +
+        chalk.dim("Press ENTER when pairing is complete") +
+        "\n" +
+        chalk.dim("Press R to refresh the pairing code"),
       {
         padding: 1,
         margin: 1,
-        borderStyle: 'round',
-        borderColor: 'blue',
-        backgroundColor: '#000000',
-        align: 'center'
-      }
+        borderStyle: "round",
+        borderColor: "blue",
+        backgroundColor: "#000000",
+        align: "center",
+      },
     );
 
     console.log(pairingBox);
@@ -103,7 +109,7 @@ export class NotificationManager {
     this.ui.success(`🔑 WhatsApp Pairing Code: ${code}`);
     this.ui.info(`Phone: ${phone}`);
     this.ui.warn(`Expires in: ${countdown}`);
-    this.ui.info('Press ENTER when pairing is complete, R to refresh');
+    this.ui.info("Press ENTER when pairing is complete, R to refresh");
   }
 
   updateCountdownDisplay(countdown) {
@@ -116,17 +122,19 @@ export class NotificationManager {
     this.clearCurrentDisplay();
 
     const expiredBox = boxen(
-      chalk.bold.red('⏰ PAIRING CODE EXPIRED') + '\n\n' +
-      chalk.bold('The pairing code has expired.') + '\n' +
-      chalk.dim('A new code has been generated automatically.'),
+      chalk.bold.red("⏰ PAIRING CODE EXPIRED") +
+        "\n\n" +
+        chalk.bold("The pairing code has expired.") +
+        "\n" +
+        chalk.dim("A new code has been generated automatically."),
       {
         padding: 1,
         margin: 1,
-        borderStyle: 'round',
-        borderColor: 'red',
-        backgroundColor: '#000000',
-        align: 'center'
-      }
+        borderStyle: "round",
+        borderColor: "red",
+        backgroundColor: "#000000",
+        align: "center",
+      },
     );
 
     console.log(expiredBox);
@@ -140,39 +148,40 @@ export class NotificationManager {
     try {
       this.rl = readline.createInterface({
         input: process.stdin,
-        output: process.stdout
+        output: process.stdout,
       });
 
-      this.rl.on('line', (input) => {
+      this.rl.on("line", (input) => {
         try {
-          if (input.toLowerCase() === 'r') {
-            this.ui.info('🔄 Refresh requested...');
-            if (typeof this.currentDisplay?.onRefresh === 'function') {
+          if (input.toLowerCase() === "r") {
+            this.ui.info("🔄 Refresh requested...");
+            if (typeof this.currentDisplay?.onRefresh === "function") {
               this.currentDisplay.onRefresh();
             }
-          } else if (input === '') {
-            this.ui.success('✅ Pairing process completed!');
-            if (typeof this.currentDisplay?.onComplete === 'function') {
+          } else if (input === "") {
+            this.ui.success("✅ Pairing process completed!");
+            if (typeof this.currentDisplay?.onComplete === "function") {
               this.currentDisplay.onComplete();
             }
           }
         } catch (error) {
-          console.error('Error handling user input:', error.message);
+          console.error("Error handling user input:", error.message);
         }
       });
 
-      this.rl.on('SIGINT', () => {
+      this.rl.on("SIGINT", () => {
         this.cleanupInteractiveInput();
       });
 
-      this.rl.on('error', (error) => {
-        console.error('Readline error:', error.message);
+      this.rl.on("error", (error) => {
+        console.error("Readline error:", error.message);
         this.cleanupInteractiveInput();
       });
-
     } catch (error) {
-      console.error('Error setting up interactive input:', error.message);
-      this.ui.error('Failed to set up interactive input. Using basic interface.');
+      console.error("Error setting up interactive input:", error.message);
+      this.ui.error(
+        "Failed to set up interactive input. Using basic interface.",
+      );
     }
   }
 
@@ -186,6 +195,6 @@ export class NotificationManager {
 
   clearCurrentDisplay() {
     // Clear the console without breaking readline prompts
-    process.stdout.write('\x1B[2J\x1B[0f');
+    process.stdout.write("\x1B[2J\x1B[0f");
   }
 }

@@ -1,5 +1,5 @@
-import enquirer from 'enquirer';
-import chalk from 'chalk';
+import enquirer from "enquirer";
+import chalk from "chalk";
 
 export class UserInterface {
   constructor(interactive = true) {
@@ -8,22 +8,22 @@ export class UserInterface {
 
   async prompt(options) {
     if (!this.interactive) {
-      return options.initialValue || '';
+      return options.initialValue || "";
     }
 
     try {
       const response = await enquirer.prompt({
-        type: 'input',
-        name: 'value',
+        type: "input",
+        name: "value",
         message: options.message,
         initial: options.initialValue,
         validate: options.validate,
-        required: options.required
+        required: options.required,
       });
 
       return response.value;
     } catch (error) {
-      if (error.message === 'canceled') {
+      if (error.message === "canceled") {
         process.exit(0);
       }
       throw error;
@@ -36,12 +36,12 @@ export class UserInterface {
     }
 
     const response = await enquirer.prompt({
-      type: 'confirm',
-      name: 'value',
+      type: "confirm",
+      name: "value",
       message: options.message,
       initial: options.initial,
-      affirmative: options.affirmative || 'Yes',
-      negative: options.negative || 'No'
+      affirmative: options.affirmative || "Yes",
+      negative: options.negative || "No",
     });
 
     return response.value;
@@ -53,34 +53,34 @@ export class UserInterface {
     }
 
     const response = await enquirer.prompt({
-      type: 'select',
-      name: 'value',
+      type: "select",
+      name: "value",
       message: options.message,
       choices: options.choices,
-      initial: options.initial
+      initial: options.initial,
     });
 
     return response.value;
   }
 
   info(message) {
-    console.log(chalk.blue('ℹ'), message);
+    console.log(chalk.blue("ℹ"), message);
   }
 
   success(message) {
-    console.log(chalk.green('✓'), message);
+    console.log(chalk.green("✓"), message);
   }
 
   warn(message) {
-    console.log(chalk.yellow('⚠'), message);
+    console.log(chalk.yellow("⚠"), message);
   }
 
   error(message) {
-    console.log(chalk.red('✗'), message);
+    console.log(chalk.red("✗"), message);
   }
 
   progress(message) {
-    console.log(chalk.cyan('⏳'), message);
+    console.log(chalk.cyan("⏳"), message);
   }
 
   log(message) {
