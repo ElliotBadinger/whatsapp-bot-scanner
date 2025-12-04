@@ -967,26 +967,34 @@ async function main() {
     );
   }
 
-  if (!config.wa.remoteAuth.autoPair) {
-    logger.info('RemoteAuth auto pairing disabled; a QR code will be displayed for first-time linking.');
-  }
   let remoteSessionActive = authResolution.remote?.sessionExists ?? false;
-  const shouldRequestPhonePairing = Boolean(
-    false && // DISABLED: Never auto-start pairing - requires explicit user command
+  
+  // Determine if we should use phone-number pairing mode (suppress QR codes)
+  // This is true when phone numbers are configured and no session exists
+  const shouldUsePhonePairingMode = Boolean(
     authResolution.remote &&
     remotePhoneNumbers.length > 0 &&
-    !remoteSessionActive &&
-    config.wa.remoteAuth.autoPair
+    !remoteSessionActive
   );
-  if (shouldRequestPhonePairing && remotePhoneNumbers.length > 0) {
-    logger.info({ phoneNumbers: remotePhoneNumbers.map(maskPhone) }, 'Auto pairing enabled; open WhatsApp > Linked Devices on the target device before continuing.');
+  
+  // Auto-start pairing only if explicitly enabled
+  const shouldAutoStartPairing = shouldUsePhonePairingMode && config.wa.remoteAuth.autoPair;
+  
+  if (shouldUsePhonePairingMode) {
+    if (config.wa.remoteAuth.autoPair) {
+      logger.info({ phoneNumbers: remotePhoneNumbers.map(maskPhone) }, 'Auto pairing enabled; open WhatsApp > Linked Devices on the target device before continuing.');
+    } else {
+      logger.info({ phoneNumbers: remotePhoneNumbers.map(maskPhone) }, 'Phone-number pairing mode active. QR codes suppressed. Use /pair endpoint or setup wizard to request pairing code.');
+    }
+  } else if (!remoteSessionActive && remotePhoneNumbers.length === 0) {
+    logger.info('No phone numbers configured and no session exists; QR code will be displayed for linking.');
   }
 
   const client = new Client(clientOptions);
   const pairingTimeoutMs = config.wa.remoteAuth.pairingDelayMs > 0
     ? config.wa.remoteAuth.pairingDelayMs
     : DEFAULT_PAIRING_CODE_TIMEOUT_MS;
-  let allowQrOutput = !shouldRequestPhonePairing;
+  let allowQrOutput = !shouldUsePhonePairingMode;
   let qrSuppressedLogged = false;
   let cachedQr: string | null = null;
   let pairingCodeDelivered = false;
@@ -1481,7 +1489,7 @@ async function main() {
   // This prevents background rate limiting while allowing smooth initial setup
   const useManualOnlyMode = !isFirstTimeSetup;
 
-  if (shouldRequestPhonePairing && remotePhone) {
+  if (shouldAutoStartPairing && remotePhone) {
     // Pre-flight check: warn user if rate limited before attempting
     const rateLimitKey = `wa:pairing:next_attempt:${remotePhone}`;
     const nextAttemptTime = await redis.get(rateLimitKey);
