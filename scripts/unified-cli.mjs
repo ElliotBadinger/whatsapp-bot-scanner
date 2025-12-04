@@ -13,6 +13,7 @@ import chalk from 'chalk';
 import { execa } from 'execa';
 import fs from 'fs/promises';
 import path from 'path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'url';
 import { PairingManager } from './cli/core/pairing.mjs';
 import { DockerOrchestrator } from './cli/core/docker.mjs';
@@ -334,6 +335,38 @@ ${C.primary('  ╚════════════════════�
       return '*'.repeat(Math.min(value.length - visibleChars, 20)) + value.slice(-visibleChars);
     };
     
+    // Helper to generate secrets (mirrors scripts/setup/orchestrator.mjs)
+    const generateHexSecret = (bytes = 32) => crypto.randomBytes(bytes).toString('hex');
+    const generateBase64Secret = (bytes = 32) => crypto.randomBytes(bytes).toString('base64');
+
+    // Helper to auto-generate core secrets if missing
+    const ensureSecret = (key, generator) => {
+      const current = getEnvValue(key);
+      if (!current) {
+        const value = generator();
+        setEnvValue(key, value);
+        console.log(`  ${ICON.success}  ${C.success(`${key} generated and stored (redacted)`)}`);
+      }
+    };
+
+    // Helper to ensure non-secret config defaults
+    const ensureConfigDefaults = () => {
+      const sqlitePath = getEnvValue('SQLITE_DB_PATH');
+      if (!sqlitePath) {
+        // Default for Dockerised pipeline; can be overridden for local dev
+        setEnvValue('SQLITE_DB_PATH', '/app/storage/wbscanner.db');
+        console.log(`  ${ICON.info}  ${C.text('SQLITE_DB_PATH set to default: /app/storage/wbscanner.db')}`);
+      }
+    };
+
+    // Auto-generate required secrets and config before prompting
+    ensureSecret('JWT_SECRET', () => generateHexSecret());
+    ensureSecret('SESSION_SECRET', () => generateBase64Secret(48));
+    ensureSecret('CONTROL_PLANE_API_TOKEN', () => generateHexSecret());
+    ensureSecret('WA_REMOTE_AUTH_SHARED_SECRET', () => generateHexSecret());
+    ensureSecret('WA_REMOTE_AUTH_DATA_KEY', () => generateBase64Secret(32));
+    ensureConfigDefaults();
+
     // Helper to prompt for value with keep/change option
     const promptConfigValue = async (options) => {
       const { key, label, currentValue, required, type = 'input', hint = null, validate = null } = options;
