@@ -18,7 +18,8 @@
     "lint:fix": "bun run --filter '*' lint:fix",
     "test": "bun run --filter '*' test -- --passWithNoTests",
     "build": "bun run --filter '*' build",
-    "clean": "bun run --filter '*' clean && rm -rf node_modules",
+    "build:prod": "NODE_ENV=production bun run --filter '*' build:prod",
+    "clean": "bun run --filter '*' clean && rm -rf node_modules .tsbuildinfo",
     "precommit": "./scripts/validate-types.sh",
     "unified-cli": "bun scripts/unified-cli.mjs"
   },
@@ -40,6 +41,7 @@
     "cli-table3": "^0.6.3",
     "commander": "^12.1.0",
     "enquirer": "^2.4.1",
+    "esbuild": "^0.24.0",
     "execa": "^8.0.1",
     "figlet": "^1.9.4",
     "humanize-duration": "^3.31.0",

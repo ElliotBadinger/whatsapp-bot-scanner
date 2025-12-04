@@ -39,7 +39,21 @@ async function decryptWithKms(ciphertextB64: string, kmsKeyId: string, logger: L
   if (!region) {
     throw new Error('AWS_REGION (or AWS_DEFAULT_REGION) must be set when using KMS decryption for RemoteAuth.');
   }
-  const { KMSClient, DecryptCommand } = await import('@aws-sdk/client-kms');
+
+  // Dynamically import AWS SDK - it's an optional dependency
+  let KMSClient: typeof import('@aws-sdk/client-kms').KMSClient;
+  let DecryptCommand: typeof import('@aws-sdk/client-kms').DecryptCommand;
+  try {
+    const kmsModule = await import('@aws-sdk/client-kms');
+    KMSClient = kmsModule.KMSClient;
+    DecryptCommand = kmsModule.DecryptCommand;
+  } catch (err) {
+    throw new Error(
+      'AWS KMS encryption is configured but @aws-sdk/client-kms is not installed. ' +
+      'Install it with: npm install @aws-sdk/client-kms'
+    );
+  }
+
   const client = new KMSClient({ region });
   const ciphertext = decodeBase64(ciphertextB64, 'WA_REMOTE_AUTH_ENCRYPTED_DATA_KEY');
   const command = new DecryptCommand({
