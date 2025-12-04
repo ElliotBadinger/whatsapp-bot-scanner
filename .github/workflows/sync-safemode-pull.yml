@@ -26,7 +26,7 @@ jobs:
       
       - name: Clone standalone repo
         run: |
-          git clone https://github.com/ElliotBadinger/SafeMode-web-app.git /tmp/safemode-standalone
+          git clone https://x-access-token:${{ secrets.SAFEMODE_SYNC_TOKEN || secrets.GITHUB_TOKEN }}@github.com/ElliotBadinger/SafeMode-web-app.git /tmp/safemode-standalone
       
       - name: Sync files back to monorepo
         id: sync

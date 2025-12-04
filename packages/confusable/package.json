@@ -6,6 +6,7 @@
   "types": "index.d.ts",
   "scripts": {
     "build": "echo 'No build needed for confusable package'",
+    "type-check": "echo 'No type check needed'",
     "test": "node -e \"process.exit(0)\""
   },
   "dependencies": {
