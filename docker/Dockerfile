@@ -191,7 +191,9 @@ COPY --from=shared-builder /app/packages/shared/wbscanner-shared-0.1.0.tgz /app/
 COPY --from=shared-builder /app/packages/confusable/confusable-0.1.0.tgz /app/packages/confusable/
 
 # Install ALL dependencies (including dev) to build
+# Copy scripts first for postinstall hook (patches whatsapp-web.js)
 COPY services/wa-client/package.json services/wa-client/tsconfig.json /app/services/wa-client/
+COPY services/wa-client/scripts /app/services/wa-client/scripts
 RUN --mount=type=cache,target=/root/.npm \
     cd /app/services/wa-client && \
     npm install /app/packages/shared/wbscanner-shared-0.1.0.tgz --include=dev --no-audit --progress=false --legacy-peer-deps && \
@@ -215,7 +217,9 @@ COPY --from=shared-builder /app/packages/shared/wbscanner-shared-0.1.0.tgz /app/
 COPY --from=shared-builder /app/packages/confusable/confusable-0.1.0.tgz /app/packages/confusable/
 
 # Install PRODUCTION dependencies only
+# Copy scripts first for postinstall hook (patches whatsapp-web.js)
 COPY services/wa-client/package.json /app/services/wa-client/
+COPY services/wa-client/scripts /app/services/wa-client/scripts
 RUN --mount=type=cache,target=/root/.npm \
     cd /app/services/wa-client && \
     npm install /app/packages/shared/wbscanner-shared-0.1.0.tgz --omit=dev --no-audit --progress=false --legacy-peer-deps && \

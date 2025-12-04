@@ -4,6 +4,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
+    "postinstall": "node scripts/patch-wwebjs.js",
     "build": "tsc -p tsconfig.json",
     "build:prod": "node ../../scripts/esbuild-service.mjs wa-client",
     "dev": "ts-node src/index.ts",
