@@ -2,6 +2,7 @@
 source: https://docs.wwebjs.dev/structures_Order.js.html
 captured_at: 2025-10-23T16:01:38.133Z
 ---
+
 [whatsapp-web.js 1.34.1](index.html)
 
 # Source: structures/Order.js

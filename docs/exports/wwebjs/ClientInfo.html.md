@@ -2,6 +2,7 @@
 source: https://docs.wwebjs.dev/ClientInfo.html
 captured_at: 2025-10-23T16:01:18.871Z
 ---
+
 [whatsapp-web.js 1.34.1](index.html)
 
 class
@@ -56,31 +57,31 @@ Optional
 
 Description
 
-wa\_version
+wa_version
 
 string
 
 WhatsApp Version running on the phone
 
-os\_version
+os_version
 
 string
 
 OS Version running on the phone (iOS or Android version)
 
-device\_manufacturer
+device_manufacturer
 
 string
 
 Device manufacturer
 
-device\_model
+device_model
 
 string
 
 Device model
 
-os\_build\_number
+os_build_number
 
 string
 

@@ -2,6 +2,7 @@
 source: https://docs.wwebjs.dev/authStrategies_LocalAuth.js.html
 captured_at: 2025-10-23T16:01:29.564Z
 ---
+
 [whatsapp-web.js 1.34.1](index.html)
 
 # Source: authStrategies/LocalAuth.js
@@ -17,7 +18,7 @@ const BaseAuthStrategy = require('./BaseAuthStrategy');
  * Local directory-based authentication
  * @param {object} options - options
  * @param {string} options.clientId - Client id to distinguish instances if you are using multiple, otherwise keep null if you are using only one instance
- * @param {string} options.dataPath - Change the default path for saving session files, default is: "./.wwebjs_auth/" 
+ * @param {string} options.dataPath - Change the default path for saving session files, default is: "./.wwebjs_auth/"
  * @param {number} options.rmMaxRetries - Sets the maximum number of retries for removing the session directory
 */
 class LocalAuth extends BaseAuthStrategy {
@@ -44,7 +45,7 @@ class LocalAuth extends BaseAuthStrategy {
         }
 
         fs.mkdirSync(dirPath, { recursive: true });
-        
+
         this.client.options.puppeteer = {
             ...puppeteerOpts,
             userDataDir: dirPath

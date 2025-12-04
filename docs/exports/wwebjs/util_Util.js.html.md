@@ -2,6 +2,7 @@
 source: https://docs.wwebjs.dev/util_Util.js.html
 captured_at: 2025-10-23T16:01:40.825Z
 ---
+
 [whatsapp-web.js 1.34.1](index.html)
 
 # Source: util/Util.js
@@ -58,7 +59,7 @@ class Util {
     /**
      * Formats a image to webp
      * @param {MessageMedia} media
-     * 
+     *
      * @returns {Promise&lt;MessageMedia>} media in webp format
      */
     static async formatImageToWebpSticker(media, pupPage) {
@@ -77,7 +78,7 @@ class Util {
     /**
      * Formats a video to webp
      * @param {MessageMedia} media
-     * 
+     *
      * @returns {Promise&lt;MessageMedia>} media in webp format
      */
     static async formatVideoToWebpSticker(media) {
@@ -141,8 +142,8 @@ class Util {
     /**
      * Sticker metadata.
      * @typedef {Object} StickerMetadata
-     * @property {string} [name] 
-     * @property {string} [author] 
+     * @property {string} [name]
+     * @property {string} [author]
      * @property {string[]} [categories]
      */
 
@@ -150,7 +151,7 @@ class Util {
      * Formats a media to webp
      * @param {MessageMedia} media
      * @param {StickerMetadata} metadata
-     * 
+     *
      * @returns {Promise&lt;MessageMedia>} media in webp format
      */
     static async formatToWebpSticker(media, metadata, pupPage) {

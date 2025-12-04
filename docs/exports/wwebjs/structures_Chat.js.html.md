@@ -2,6 +2,7 @@
 source: https://docs.wwebjs.dev/structures_Chat.js.html
 captured_at: 2025-10-23T16:01:34.119Z
 ---
+
 [whatsapp-web.js 1.34.1](index.html)
 
 # Source: structures/Chat.js
@@ -89,14 +90,14 @@ class Chat extends Base {
          * @type {Message}
          */
         this.lastMessage = data.lastMessage ? new Message(this.client, data.lastMessage) : undefined;
-        
+
         return super._patch(data);
     }
 
     /**
      * Send a message to this chat
      * @param {string|MessageMedia|Location} content
-     * @param {MessageSendOptions} [options] 
+     * @param {MessageSendOptions} [options]
      * @returns {Promise&lt;Message>} Message that was just sent
      */
     async sendMessage(content, options) {
@@ -219,7 +220,7 @@ class Chat extends Base {
                     if (!loadedMessages || !loadedMessages.length) break;
                     msgs = [...loadedMessages.filter(msgFilter), ...msgs];
                 }
-                
+
                 if (msgs.length > searchOptions.limit) {
                     msgs.sort((a, b) => (a.t > b.t) ? 1 : -1);
                     msgs = msgs.splice(msgs.length - searchOptions.limit);
@@ -295,7 +296,7 @@ class Chat extends Base {
     async getPinnedMessages() {
         return this.client.getPinnedMessages(this.id._serialized);
     }
-    
+
     /**
      * Sync chat history conversation
      * @return {Promise&lt;boolean>} True if operation completed successfully, false otherwise.

@@ -2,6 +2,7 @@
 source: https://docs.wwebjs.dev/structures_PollVote.js.html
 captured_at: 2025-10-23T16:01:38.736Z
 ---
+
 [whatsapp-web.js 1.34.1](index.html)
 
 # Source: structures/PollVote.js
@@ -58,7 +59,7 @@ class PollVote extends Base {
         } else {
             this.selectedOptions = [];
         }
-        
+
         /**
          * Timestamp the option was selected or deselected at
          * @type {number}

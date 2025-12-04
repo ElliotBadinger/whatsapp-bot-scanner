@@ -2,6 +2,7 @@
 source: https://docs.wwebjs.dev/structures_BusinessContact.js.html
 captured_at: 2025-10-23T16:01:32.759Z
 ---
+
 [whatsapp-web.js 1.34.1](index.html)
 
 # Source: structures/BusinessContact.js

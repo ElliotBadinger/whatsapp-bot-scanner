@@ -2,6 +2,7 @@
 source: https://docs.wwebjs.dev/structures_GroupNotification.js.html
 captured_at: 2025-10-23T16:01:35.435Z
 ---
+
 [whatsapp-web.js 1.34.1](index.html)
 
 # Source: structures/GroupNotification.js
@@ -35,12 +36,12 @@ class GroupNotification extends Base {
          */
         this.body = data.body || '';
 
-        /** 
+        /**
          * GroupNotification type
          * @type {GroupNotificationTypes}
          */
         this.type = data.subtype;
-        
+
         /**
          * Unix timestamp for when the groupNotification was created
          * @type {number}
@@ -49,7 +50,7 @@ class GroupNotification extends Base {
 
         /**
          * ID for the Chat that this groupNotification was sent for.
-         * 
+         *
          * @type {string}
          */
         this.chatId = typeof (data.id.remote) === 'object' ? data.id.remote._serialized : data.id.remote;
@@ -59,7 +60,7 @@ class GroupNotification extends Base {
          * @type {string}
          */
         this.author = typeof (data.author) === 'object' ? data.author._serialized : data.author;
-        
+
         /**
          * Contact IDs for the users that were affected by this GroupNotification.
          * @type {Array&lt;string>}
@@ -99,15 +100,15 @@ class GroupNotification extends Base {
 
     /**
      * Sends a message to the same chat this GroupNotification was produced in.
-     * 
-     * @param {string|MessageMedia|Location} content 
+     *
+     * @param {string|MessageMedia|Location} content
      * @param {object} options
      * @returns {Promise&lt;Message>}
      */
     async reply(content, options={}) {
         return this.client.sendMessage(this.chatId, content, options);
     }
-    
+
 }
 
 module.exports = GroupNotification;

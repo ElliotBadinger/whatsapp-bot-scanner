@@ -2,6 +2,7 @@
 source: https://docs.wwebjs.dev/structures_Call.js.html
 captured_at: 2025-10-23T16:01:33.507Z
 ---
+
 [whatsapp-web.js 1.34.1](index.html)
 
 # Source: structures/Call.js
@@ -68,7 +69,7 @@ class Call extends Base {
          * @type {object}
          */
         this.participants = data.participants;
-        
+
         return super._patch(data);
     }
 

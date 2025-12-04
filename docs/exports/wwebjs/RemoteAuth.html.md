@@ -2,6 +2,7 @@
 source: https://docs.wwebjs.dev/RemoteAuth.html
 captured_at: 2025-10-23T16:01:27.508Z
 ---
+
 [whatsapp-web.js 1.34.1](index.html)
 
 class
@@ -48,7 +49,7 @@ Client id to distinguish instances if you are using multiple, otherwise keep nul
 
 dataPath
 
-Change the default path for saving session files, default is: "./.wwebjs\_auth/"
+Change the default path for saving session files, default is: "./.wwebjs_auth/"
 
 backupSyncIntervalMs
 
