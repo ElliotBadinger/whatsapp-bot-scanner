@@ -1,8 +1,14 @@
 #!/usr/bin/env node
 
+/**
+ * WhatsApp Bot Scanner - Unified CLI
+ * 
+ * A beautifully designed terminal onboarding experience
+ * with clear progress tracking and stunning visual feedback.
+ */
+
 import { program } from 'commander';
 import ora from 'ora';
-import boxen from 'boxen';
 import chalk from 'chalk';
 import { execa } from 'execa';
 import fs from 'fs/promises';
@@ -12,40 +18,92 @@ import { PairingManager } from './cli/core/pairing.mjs';
 import { DockerOrchestrator } from './cli/core/docker.mjs';
 import { UserInterface } from './cli/ui/prompts.mjs';
 import { NotificationManager } from './cli/ui/notifications.mjs';
+import { ProgressManager } from './cli/ui/progress.mjs';
 import enquirer from 'enquirer';
-import cliProgress from 'cli-progress';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
 
-// Graceful Ctrl+C handling
+// ─────────────────────────────────────────────────────────────────────────────
+// Color Palette (Cohesive Design System)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const C = {
+  primary: chalk.hex('#00D9FF'),
+  primaryBold: chalk.hex('#00D9FF').bold,
+  accent: chalk.hex('#FFB347'),
+  accentBold: chalk.hex('#FFB347').bold,
+  success: chalk.hex('#00E676'),
+  successBold: chalk.hex('#00E676').bold,
+  warning: chalk.hex('#FFD54F'),
+  warningBold: chalk.hex('#FFD54F').bold,
+  error: chalk.hex('#FF5252'),
+  errorBold: chalk.hex('#FF5252').bold,
+  muted: chalk.hex('#6B7280'),
+  text: chalk.white,
+  textBold: chalk.white.bold,
+  code: chalk.hex('#A78BFA'),
+  link: chalk.hex('#60A5FA').underline,
+  highlight: chalk.bgHex('#1a2744').hex('#00ffcc').bold,
+};
+
+const ICON = {
+  success: C.success('✓'),
+  error: C.error('✗'),
+  warning: C.warning('⚠'),
+  info: C.primary('ℹ'),
+  arrow: C.primary('→'),
+  active: C.accent('◉'),
+  pending: C.muted('○'),
+  complete: C.success('●'),
+  shield: '🛡️',
+  docker: '🐳',
+  phone: '📱',
+  key: '🔑',
+  gear: '⚙️',
+  check: '✅',
+  rocket: '🚀',
+  sparkle: '✨',
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Setup Steps Configuration
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SETUP_STEPS = [
+  { id: 'prereqs', name: 'Prerequisites Check', estimate: '~10s', icon: ICON.gear },
+  { id: 'config', name: 'Configuration', estimate: '~5s', icon: ICON.gear },
+  { id: 'apikeys', name: 'API Keys', estimate: '~30s', icon: ICON.key },
+  { id: 'services', name: 'Starting Services', estimate: '~2-5min', icon: ICON.docker },
+  { id: 'pairing', name: 'WhatsApp Pairing', estimate: '~1min', icon: ICON.phone },
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Graceful Exit Handler
+// ─────────────────────────────────────────────────────────────────────────────
+
 let setupCancelled = false;
 process.on('SIGINT', () => {
   if (!setupCancelled) {
     setupCancelled = true;
-    console.log(chalk.yellow('\n\n⚠️  Setup cancelled by user.'));
-    console.log(chalk.dim('Run "npx whatsapp-bot-scanner setup" to try again.\n'));
+    console.log(C.warning('\n\n⚠  Setup cancelled by user.'));
+    console.log(C.muted('Run "npx whatsapp-bot-scanner setup" to try again.\n'));
     process.exit(0);
   }
 });
 
-// Step definitions with time estimates
-const SETUP_STEPS = [
-  { name: 'Prerequisites Check', estimate: '~10s' },
-  { name: 'Configuration', estimate: '~5s' },
-  { name: 'API Keys', estimate: '~30s' },
-  { name: 'Starting Services', estimate: '~2-5min' },
-  { name: 'WhatsApp Pairing', estimate: '~1min' },
-];
+// ─────────────────────────────────────────────────────────────────────────────
+// Setup Wizard Class
+// ─────────────────────────────────────────────────────────────────────────────
 
 class SetupWizard {
   constructor(options = {}) {
-    const { nonInteractive = false, debug = false, skipPairing = false } = options;
-    this.nonInteractive = !!nonInteractive;
-    this.debug = debug;
-    this.skipPairing = skipPairing;
+    this.nonInteractive = !!options.nonInteractive;
+    this.debug = options.debug;
+    this.skipPairing = options.skipPairing;
     this.currentStep = 0;
+    this.progress = new ProgressManager();
     this.state = {
       dockerVersion: null,
       nodeVersion: process.version,
@@ -53,461 +111,492 @@ class SetupWizard {
       pairingCode: null,
       rateLimited: false,
     };
-    // Initialize progress bar
-    this.progressBar = new cliProgress.SingleBar({
-      format: chalk.cyan('{bar}') + ' {percentage}% | Step {value}/{total} | {step}',
-      barCompleteChar: '█',
-      barIncompleteChar: '░',
-      hideCursor: true,
-    }, cliProgress.Presets.shades_classic);
   }
 
   async run() {
     try {
-      this.displayHeader();
-      this.progressBar.start(5, 0, { step: 'Initializing...' });
+      this.displayBanner();
+      this.displayStepOverview();
       
-      await this.checkPrerequisites();
-      await this.setupModeSelection();
-      await this.collectApiKeys();
-      await this.startServices();
+      await this.step1Prerequisites();
+      await this.step2Configuration();
+      await this.step3ApiKeys();
+      await this.step4StartServices();
+      
       if (!this.skipPairing) {
-        await this.startPairing();
+        await this.step5Pairing();
       } else {
-        this.updateProgress(5, 'Pairing skipped');
+        this.markStepSkipped(5, 'Pairing skipped');
       }
       
-      this.progressBar.stop();
-      await this.verifyInstallation();
+      await this.displayCompletionSummary();
+      
     } catch (error) {
-      this.progressBar.stop();
       // Handle cancelled prompts gracefully
       if (error.message === 'cancelled' || error.message === undefined) {
-        console.log(chalk.yellow('\n⚠️  Setup cancelled.'));
+        console.log(C.warning('\n⚠  Setup cancelled.'));
         process.exit(0);
       }
       throw error;
     }
   }
 
-  updateProgress(step, stepName) {
-    this.currentStep = step;
-    this.progressBar.update(step, { step: stepName });
-  }
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Visual Components
+  // ─────────────────────────────────────────────────────────────────────────────
 
-  async verifyInstallation() {
-    console.log(chalk.bold('\nStep 5 of 5: Verification'));
-
-    // Give services a moment to stabilize after pairing
-    await new Promise(resolve => setTimeout(resolve, 3000));
-
-    const spinner = ora('Verifying services...').start();
-
-    try {
-      // Check if all services are running
-      const { stdout } = await execa('docker', ['compose', 'ps', '--format', 'json']);
-
-      // Handle both single JSON object and multiple line-delimited JSON
-      let containers;
-      try {
-        containers = JSON.parse(stdout);
-      } catch {
-        // Try parsing as line-delimited JSON
-        containers = stdout.trim().split('\n')
-          .filter(line => line)
-          .map(line => JSON.parse(line));
-      }
-
-      if (!Array.isArray(containers)) {
-        containers = [containers];
-      }
-
-      const running = containers.filter(c => c.State === 'running' || c.State === 'healthy');
-
-      if (running.length > 0) {
-        spinner.succeed('All services are running');
-
-        // Read actual port mappings from environment
-        const envContent = await fs.readFile(path.join(ROOT_DIR, '.env'), 'utf-8').catch(() => '');
-        const getEnv = (key, def) => {
-          const match = envContent.match(new RegExp(`${key}=(.*)`));
-          return match ? match[1] : def;
-        };
-
-        const uptimeKumaPort = getEnv('UPTIME_KUMA_PORT', '3001');
-        const reverseProxyPort = getEnv('REVERSE_PROXY_PORT', '8088');
-        const scanOrchestratorPort = getEnv('SCAN_ORCHESTRATOR_PORT', '3003');
-        const grafanaPort = getEnv('GRAFANA_PORT', '3002');
-
-        console.log(boxen(
-          chalk.green('🎉 Setup complete! Your bot is now protecting your groups.') + '\n\n' +
-          chalk.white('Dashboard:          ') + chalk.cyan(`http://localhost:${reverseProxyPort}`) + '\n' +
-          chalk.white('Uptime Monitor:     ') + chalk.cyan(`http://localhost:${uptimeKumaPort}`) + '\n' +
-          chalk.white('Scan Orchestrator:  ') + chalk.cyan(`http://localhost:${scanOrchestratorPort}/healthz`) + '\n' +
-          chalk.white('Grafana:            ') + chalk.cyan(`http://localhost:${grafanaPort} (admin/admin)`) + '\n\n' +
-          chalk.white('Logs:               ') + chalk.cyan('npx whatsapp-bot-scanner logs') + '\n' +
-          chalk.white('Health Check:       ') + chalk.cyan('npx whatsapp-bot-scanner health'),
-          { padding: 1, borderStyle: 'round', borderColor: 'green' }
-        ));
-      } else {
-        spinner.warn('Some services might not be running correctly. Check logs.');
-      }
-    } catch (error) {
-      spinner.fail(`Verification failed: ${error.message}`);
-    }
-  }
-
-  displayHeader() {
-    // Compact header that works on narrow terminals (80 chars)
-    const header = `
-${chalk.cyan('╔══════════════════════════════════════════════════════════════╗')}
-${chalk.cyan('║')}  ${chalk.bold.white('🛡️  WhatsApp Bot Scanner')}${' '.repeat(36)}${chalk.cyan('║')}
-${chalk.cyan('║')}  ${chalk.dim('Unified Setup Wizard v1.0')}${' '.repeat(35)}${chalk.cyan('║')}
-${chalk.cyan('╚══════════════════════════════════════════════════════════════╝')}
+  displayBanner() {
+    const banner = `
+${C.primary('  ╔═══════════════════════════════════════════════════════════════╗')}
+${C.primary('  ║')}                                                               ${C.primary('║')}
+${C.primary('  ║')}    ${C.primaryBold('██╗    ██╗██████╗ ███████╗  ')}${C.muted('WhatsApp Bot Scanner')}       ${C.primary('║')}
+${C.primary('  ║')}    ${C.primaryBold('██║    ██║██╔══██╗██╔════╝  ')}${C.muted('─────────────────────')}       ${C.primary('║')}
+${C.primary('  ║')}    ${C.primaryBold('██║ █╗ ██║██████╔╝███████╗  ')}${ICON.shield} ${C.text('Protect your groups')}       ${C.primary('║')}
+${C.primary('  ║')}    ${C.primaryBold('██║███╗██║██╔══██╗╚════██║  ')}${C.text('from malicious links')}        ${C.primary('║')}
+${C.primary('  ║')}    ${C.primaryBold('╚███╔███╔╝██████╔╝███████║')}                              ${C.primary('║')}
+${C.primary('  ║')}    ${C.primaryBold(' ╚══╝╚══╝ ╚═════╝ ╚══════╝ ')}  ${C.accent('Setup Wizard v2.0')}         ${C.primary('║')}
+${C.primary('  ║')}                                                               ${C.primary('║')}
+${C.primary('  ╚═══════════════════════════════════════════════════════════════╝')}
 `;
-    console.log(header);
-    
-    // Show step overview with time estimates
-    console.log(chalk.bold('Setup Steps:'));
-    SETUP_STEPS.forEach((step, i) => {
-      console.log(chalk.dim(`  ${i + 1}. ${step.name} ${chalk.gray(`(${step.estimate})`)}`));
-    });
-    console.log();
+    console.log(banner);
   }
 
-  async checkPrerequisites() {
-    this.updateProgress(1, SETUP_STEPS[0].name);
-    console.log(chalk.bold('\n━━━ Step 1/5: Prerequisites Check ━━━'));
-    const spinner = ora('Checking environment...').start();
+  displayStepOverview() {
+    console.log(C.textBold('\n  Setup Overview:\n'));
+    
+    for (let i = 0; i < SETUP_STEPS.length; i++) {
+      const step = SETUP_STEPS[i];
+      const num = C.muted(`${i + 1}.`);
+      const name = C.text(step.name);
+      const est = C.muted(`(${step.estimate})`);
+      console.log(`    ${num} ${name} ${est}`);
+    }
+    
+    console.log('');
+    console.log(C.muted('  ─'.repeat(30)));
+    console.log('');
+  }
 
-    try {
-      // Check Node.js version
-      const nodeMajor = parseInt(process.version.substring(1).split('.')[0], 10);
-      if (nodeMajor < 20) {
-        spinner.fail(`Node.js v20+ is required. Detected ${process.version}`);
-        process.exit(1);
-      }
-      spinner.succeed(`Node.js ${process.version} detected`);
+  displayStepHeader(stepNum, stepName, icon = '') {
+    console.log('');
+    console.log(C.muted('  ─'.repeat(30)));
+    console.log(`  ${C.accentBold(`Step ${stepNum}/5`)}  ${icon} ${C.textBold(stepName)}`);
+    console.log(C.muted('  ─'.repeat(30)));
+  }
 
-      // Check Docker
-      spinner.start('Checking Docker...');
-      try {
-        const { stdout } = await execa('docker', ['--version']);
-        this.state.dockerVersion = stdout;
-        spinner.succeed(`Docker found: ${stdout}`);
-      } catch (error) {
-        spinner.fail('Docker not found. Please install Docker and try again.');
-        process.exit(1);
-      }
+  markStepComplete(stepNum, message) {
+    console.log(`\n  ${ICON.success}  ${C.success(message)}`);
+  }
 
-      // Check Docker Daemon
-      spinner.start('Checking Docker Daemon...');
-      try {
-        await execa('docker', ['info']);
-        spinner.succeed('Docker daemon is running');
-      } catch (error) {
-        spinner.fail('Docker daemon is not running. Please start Docker and try again.');
-        process.exit(1);
-      }
+  markStepSkipped(stepNum, message) {
+    console.log(`\n  ${C.muted('○')}  ${C.muted(message)}`);
+  }
 
-    } catch (error) {
-      spinner.fail(`Prerequisites check failed: ${error.message}`);
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Step 1: Prerequisites
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  async step1Prerequisites() {
+    this.displayStepHeader(1, 'Prerequisites Check', ICON.gear);
+    
+    // Check Node.js
+    const spinner = ora({
+      text: C.text('Checking Node.js version...'),
+      color: 'cyan',
+      spinner: 'dots12',
+    }).start();
+    
+    const nodeMajor = parseInt(process.version.substring(1).split('.')[0], 10);
+    if (nodeMajor < 20) {
+      spinner.fail(C.error(`Node.js v20+ required. Found ${process.version}`));
       process.exit(1);
     }
+    spinner.succeed(C.text(`Node.js ${process.version}`));
+    
+    // Check Docker
+    const dockerSpinner = ora({
+      text: C.text('Checking Docker...'),
+      color: 'cyan',
+      spinner: 'dots12',
+    }).start();
+    
+    try {
+      const { stdout } = await execa('docker', ['--version']);
+      this.state.dockerVersion = stdout.trim();
+      dockerSpinner.succeed(C.text('Docker installed'));
+    } catch {
+      dockerSpinner.fail(C.error('Docker not found'));
+      console.log(`\n  ${ICON.info}  ${C.text('Install Docker from:')} ${C.link('https://docs.docker.com/get-docker/')}`);
+      process.exit(1);
+    }
+    
+    // Check Docker daemon
+    const daemonSpinner = ora({
+      text: C.text('Checking Docker daemon...'),
+      color: 'cyan',
+      spinner: 'dots12',
+    }).start();
+    
+    try {
+      await execa('docker', ['info']);
+      daemonSpinner.succeed(C.text('Docker daemon running'));
+    } catch {
+      daemonSpinner.fail(C.error('Docker daemon not running'));
+      console.log(`\n  ${ICON.info}  ${C.text('Start Docker Desktop or run:')} ${C.code('sudo systemctl start docker')}`);
+      process.exit(1);
+    }
+    
+    this.markStepComplete(1, 'All prerequisites satisfied');
   }
 
-  async setupModeSelection() {
-    this.updateProgress(2, SETUP_STEPS[1].name);
-    console.log(chalk.bold('\n━━━ Step 2/5: Configuration ━━━'));
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Step 2: Configuration
+  // ─────────────────────────────────────────────────────────────────────────────
 
+  async step2Configuration() {
+    this.displayStepHeader(2, 'Configuration', ICON.gear);
+    
     let selectedMode = 'hobby';
+    
     if (!this.nonInteractive) {
       const response = await enquirer.prompt({
         type: 'select',
         name: 'mode',
-        message: 'Choose setup mode:',
+        message: C.text('Choose setup mode:'),
         choices: [
-          { name: 'hobby', message: 'Hobby Mode (Recommended for personal use)' },
-          { name: 'production', message: 'Production Mode (Full features)' }
-        ]
+          { name: 'hobby', message: `${C.success('●')} Hobby Mode ${C.muted('(Recommended for personal use)')}` },
+          { name: 'production', message: `${C.muted('○')} Production Mode ${C.muted('(Full features, more setup)')}` },
+        ],
+        pointer: C.accent('›'),
       });
       selectedMode = response.mode;
     } else {
-      console.log(chalk.blue('ℹ Non-interactive mode detected. Defaulting to hobby configuration.'));
+      console.log(`  ${ICON.info}  ${C.text('Non-interactive mode: using hobby configuration')}`);
     }
-
+    
     this.state.mode = selectedMode;
-
+    
     const envFile = path.join(ROOT_DIR, '.env');
-    const templateFile = path.join(ROOT_DIR, this.state.mode === 'hobby' ? '.env.hobby' : '.env.example');
-
+    const templateFile = path.join(ROOT_DIR, selectedMode === 'hobby' ? '.env.hobby' : '.env.example');
+    
+    const envSpinner = ora({
+      text: C.text('Setting up environment...'),
+      color: 'cyan',
+      spinner: 'dots12',
+    }).start();
+    
     try {
       await fs.access(envFile);
-      console.log(chalk.yellow('ℹ .env file already exists. Using existing configuration.'));
+      envSpinner.succeed(C.text('.env file found, using existing configuration'));
     } catch {
-      console.log(chalk.blue(`ℹ Creating .env from ${path.basename(templateFile)}...`));
-      await fs.copyFile(templateFile, envFile);
-      console.log(chalk.green('✔ .env file created.'));
+      try {
+        await fs.copyFile(templateFile, envFile);
+        envSpinner.succeed(C.text(`.env created from ${path.basename(templateFile)}`));
+      } catch {
+        envSpinner.warn(C.warning('Could not find template, creating minimal .env'));
+        await fs.writeFile(envFile, '# WhatsApp Bot Scanner Configuration\n');
+      }
     }
+    
+    this.markStepComplete(2, `Configuration set to ${selectedMode} mode`);
   }
 
-  async collectApiKeys() {
-    this.updateProgress(3, SETUP_STEPS[2].name);
-    console.log(chalk.bold('\n━━━ Step 3/5: API Keys ━━━'));
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Step 3: API Keys
+  // ─────────────────────────────────────────────────────────────────────────────
 
+  async step3ApiKeys() {
+    this.displayStepHeader(3, 'API Keys', ICON.key);
+    
     const envFile = path.join(ROOT_DIR, '.env');
     let envContent = await fs.readFile(envFile, 'utf-8');
-
-    // Check for VirusTotal API Key
-    const vtKeyMatch = envContent.match(/VT_API_KEY=(.*)/);
-    let vtKey = vtKeyMatch ? vtKeyMatch[1] : '';
-
+    
+    // Check VirusTotal API Key
+    const vtMatch = envContent.match(/VT_API_KEY=(.*)/);
+    let vtKey = vtMatch ? vtMatch[1].trim() : '';
+    
     if (!vtKey) {
       if (this.nonInteractive) {
-        throw new Error('VT_API_KEY is required in non-interactive mode. Please set it in your .env before running with --noninteractive.');
+        throw new Error('VT_API_KEY required. Set it in .env before running with --noninteractive');
       }
-
+      
+      console.log(`\n  ${ICON.info}  ${C.text('VirusTotal API key is required for URL scanning')}`);
+      console.log(`     ${C.muted('Get a free key at:')} ${C.link('https://www.virustotal.com/gui/join-us')}`);
+      
       const response = await enquirer.prompt({
         type: 'password',
         name: 'vtKey',
-        message: 'Enter your VirusTotal API Key (Required):',
-        validate: value => value.length > 0 ? true : 'API Key is required'
+        message: C.text('Enter VirusTotal API Key:'),
+        validate: v => v.length > 0 ? true : 'API key is required',
       });
-
+      
       vtKey = response.vtKey;
       envContent = envContent.replace(/VT_API_KEY=.*/, `VT_API_KEY=${vtKey}`);
+      if (!envContent.includes('VT_API_KEY=')) {
+        envContent += `\nVT_API_KEY=${vtKey}`;
+      }
       await fs.writeFile(envFile, envContent);
-      console.log(chalk.green('✔ VirusTotal API Key saved.'));
+      console.log(`  ${ICON.success}  ${C.success('VirusTotal API key saved')}`);
     } else {
-      console.log(chalk.green('✔ VirusTotal API Key found in .env.'));
+      console.log(`  ${ICON.success}  ${C.text('VirusTotal API key found')}`);
     }
-
+    
     this.state.apiKey = vtKey;
-
-    // Check for WhatsApp Phone Number
+    
+    // Check WhatsApp Phone Number
     const phoneMatch = envContent.match(/WA_REMOTE_AUTH_PHONE_NUMBERS=(.*)/);
-    let phone = phoneMatch ? phoneMatch[1] : '';
-
+    let phone = phoneMatch ? phoneMatch[1].trim() : '';
+    
     if (!phone) {
       if (this.nonInteractive) {
-        throw new Error('WA_REMOTE_AUTH_PHONE_NUMBERS must be set in non-interactive mode. Update your .env file and rerun.');
+        throw new Error('WA_REMOTE_AUTH_PHONE_NUMBERS required in non-interactive mode');
       }
-
+      
+      console.log(`\n  ${ICON.info}  ${C.text('Enter the WhatsApp phone number to pair with')}`);
+      console.log(`     ${C.muted('Format: country code + number (e.g., 27123456789)')}`);
+      
       const response = await enquirer.prompt({
         type: 'input',
         name: 'phone',
-        message: 'Enter your WhatsApp Phone Number (International format, e.g., 27123456789):',
+        message: C.text('Phone number:'),
         validate: (value) => {
-          if (!value || value.trim().length === 0) return 'Phone number is required';
+          if (!value.trim()) return 'Phone number is required';
           const normalized = value.replace(/[\s\-()]/g, '');
-          // Pure regex validation (ESM-compatible, no require())
           if (!/^\+?[1-9]\d{9,14}$/.test(normalized)) {
-            return 'Invalid format. Use: country code + number (e.g., 27123456789)';
-          }
-          if (normalized.replace(/^\+/, '').length < 10 || normalized.replace(/^\+/, '').length > 15) {
-            return 'Must be 10-15 digits';
+            return 'Invalid format. Use: country code + number';
           }
           return true;
-        }
+        },
       });
-
-      phone = response.phone;
+      
+      phone = response.phone.replace(/[\s\-()]/g, '');
       envContent = envContent.replace(/WA_REMOTE_AUTH_PHONE_NUMBERS=.*/, `WA_REMOTE_AUTH_PHONE_NUMBERS=${phone}`);
+      if (!envContent.includes('WA_REMOTE_AUTH_PHONE_NUMBERS=')) {
+        envContent += `\nWA_REMOTE_AUTH_PHONE_NUMBERS=${phone}`;
+      }
       await fs.writeFile(envFile, envContent);
-      console.log(chalk.green('✔ Phone number saved.'));
+      console.log(`  ${ICON.success}  ${C.success('Phone number saved')}`);
     } else {
-      console.log(chalk.green(`✔ Phone number found: ${phone}`));
+      const masked = phone.slice(0, -4).replace(/./g, '*') + phone.slice(-4);
+      console.log(`  ${ICON.success}  ${C.text(`Phone number configured: ${masked}`)}`);
     }
+    
     this.state.phone = phone;
+    this.markStepComplete(3, 'API keys configured');
   }
 
-  async startServices() {
-    this.updateProgress(4, SETUP_STEPS[3].name);
-    console.log(chalk.bold('\n━━━ Step 4/5: Starting Services ━━━'));
-    console.log(chalk.dim('This may take 2-5 minutes on first run (downloading images)...\n'));
-    const spinner = ora('Starting Docker containers...').start();
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Step 4: Start Services
+  // ─────────────────────────────────────────────────────────────────────────────
 
+  async step4StartServices() {
+    this.displayStepHeader(4, 'Starting Services', ICON.docker);
+    console.log(`  ${C.muted('This may take 2-5 minutes on first run...')}\n`);
+    
+    const spinner = ora({
+      text: C.text('Starting Docker containers...'),
+      color: 'cyan',
+      spinner: 'dots12',
+    }).start();
+    
     try {
-      // Start all services (including observability and reverse proxy)
-      await execa('docker', ['compose', 'up', '-d']);
-      spinner.succeed('Containers started');
-
-      // Wait for wa-client to be ready
-      const waitSpinner = ora('Waiting for services to be healthy...').start();
-      const isRateLimited = await this.waitForService('wa-client');
-      waitSpinner.succeed('Services are ready');
-
-      // Store rate-limit status for pairing step
-      this.state.rateLimited = isRateLimited;
+      await execa('docker', ['compose', 'up', '-d'], { cwd: ROOT_DIR });
+      spinner.succeed(C.text('Containers started'));
     } catch (error) {
-      spinner.fail(`Failed to start services: ${error.message}`);
-      process.exit(1);
+      spinner.fail(C.error('Failed to start containers'));
+      console.log(`\n  ${ICON.info}  ${C.text('Try running:')} ${C.code('docker compose logs')}`);
+      throw error;
     }
+    
+    // Wait for services
+    const healthSpinner = ora({
+      text: C.text('Waiting for services to be healthy...'),
+      color: 'cyan',
+      spinner: 'dots12',
+    }).start();
+    
+    const isRateLimited = await this.waitForService('wa-client', healthSpinner);
+    healthSpinner.succeed(C.text('Services are healthy'));
+    
+    this.state.rateLimited = isRateLimited;
+    this.markStepComplete(4, 'All services running');
   }
 
-  async waitForService(serviceName, timeoutMs = 120000) {
+  async waitForService(serviceName, spinner, timeoutMs = 120000) {
     const startTime = Date.now();
-    const logIntervalMs = 10000;
     let rateLimitDetected = false;
-    let lastLogTime = 0;
-
-    // Get actual container name from docker compose
+    
+    // Get container name
     let containerName = null;
     try {
-      const { stdout: psOutput } = await execa('docker', ['compose', 'ps', '--format', '{{.Name}}'], { cwd: ROOT_DIR });
-      const containers = psOutput.trim().split('\n');
+      const { stdout } = await execa('docker', ['compose', 'ps', '--format', '{{.Name}}'], { cwd: ROOT_DIR });
+      const containers = stdout.trim().split('\n');
       containerName = containers.find(c => c.includes(serviceName));
     } catch {
-      // Fallback to conventional naming
-      const projectName = path.basename(ROOT_DIR).replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-      containerName = `${projectName}-${serviceName}-1`;
+      containerName = `whatsapp-bot-scanner-${serviceName}-1`;
     }
-
+    
     while (Date.now() - startTime < timeoutMs) {
       try {
-        const { stdout } = await execa('docker', ['inspect', `--format={{.State.Health.Status}}`, containerName || `whatsapp-bot-scanner-${serviceName}-1`]);
+        const { stdout } = await execa('docker', ['inspect', `--format={{.State.Health.Status}}`, containerName]);
         const health = stdout.trim();
-
+        
         if (health === 'healthy') {
-          console.log(chalk.green(`✓ ${serviceName} is ready`));
-
-          // Special handling for wa-client - check for rate limiting
+          // Check for rate limiting in logs
           if (serviceName === 'wa-client') {
             try {
-              const { stdout: logs } = await execa('docker', ['compose', 'logs', '--tail=50', 'wa-client']);
+              const { stdout: logs } = await execa('docker', ['compose', 'logs', '--tail=50', 'wa-client'], { cwd: ROOT_DIR });
               if (logs.includes('rate-overlimit') || logs.includes('rate_limit')) {
                 rateLimitDetected = true;
-                console.log(chalk.yellow(`⚠️  ${serviceName} is healthy but WhatsApp rate-limited`));
-
-                // Try to parse nextRetryAt from logs
-                const match = logs.match(/"nextRetryAt":"([^"]+)"/);
-                let waitMsg = 'Wait 15 minutes';
-                if (match && match[1]) {
-                  const nextRetry = new Date(match[1]);
-                  const now = new Date();
-                  const diffMs = nextRetry - now;
-                  if (diffMs > 0) {
-                    const minutes = Math.ceil(diffMs / 60000);
-                    waitMsg = `Wait approx. ${minutes} minute(s) (until ${nextRetry.toLocaleTimeString()})`;
-                  }
-                }
-
-                console.log(chalk.yellow('\n⚠️  WhatsApp Rate Limit Detected'));
-                console.log(chalk.yellow('The service is running but cannot pair with WhatsApp right now.'));
-                console.log(chalk.yellow(`${waitMsg} and run: docker compose restart wa-client\n`));
+                spinner.text = C.warning('WhatsApp rate-limited, will retry automatically');
               }
-            } catch (logErr) {
-              // Ignore log check errors
-            }
+            } catch {}
           }
           return rateLimitDetected;
         }
-      } catch (error) {
-        // Container might not exist yet, keep waiting
-      }
-
-      if (Date.now() - startTime > lastLogTime + logIntervalMs) {
-        lastLogTime = Date.now();
-      }
-
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      } catch {}
+      
+      await new Promise(r => setTimeout(r, 2000));
     }
-
-    // Check for rate limiting before throwing error
-    if (serviceName === 'wa-client') {
-      try {
-        const { stdout: logs } = await execa('docker', ['compose', 'logs', '--tail=100', 'wa-client']);
-        if (logs.includes('rate-overlimit') || logs.includes('rate_limit')) {
-          console.log(chalk.yellow(`⚠️  ${serviceName} timed out (WhatsApp rate-limited)`));
-          console.log(chalk.yellow('\n⚠️  Setup continuing with warning:'));
-          console.log(chalk.yellow('WhatsApp is rate-limiting pairing attempts.'));
-          console.log(chalk.yellow('The service will retry automatically. Check status with:'));
-          console.log(chalk.cyan('  npx whatsapp-bot-scanner logs wa-client\n'));
-          return true; // Continue setup
-        }
-      } catch (logErr) {
-        // Ignore log check errors
-      }
-    }
-
-    throw new Error(`Service ${serviceName} timed out after ${Math.round(timeoutMs / 1000)}s. Run 'npx whatsapp-bot-scanner logs ${serviceName}' to investigate.`);
+    
+    throw new Error(`Service ${serviceName} did not become healthy in time`);
   }
 
-  async startPairing() {
-    this.updateProgress(5, SETUP_STEPS[4].name);
-    console.log(chalk.bold('\n━━━ Step 5/5: WhatsApp Pairing ━━━'));
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Step 5: WhatsApp Pairing
+  // ─────────────────────────────────────────────────────────────────────────────
 
-    // Skip pairing if WhatsApp is rate-limited
+  async step5Pairing() {
+    this.displayStepHeader(5, 'WhatsApp Pairing', ICON.phone);
+    
     if (this.state.rateLimited) {
-      console.log(chalk.yellow('⚠️  Skipping pairing due to WhatsApp rate limit'));
-      console.log(chalk.yellow('Wait 15 minutes and run: ') + chalk.cyan('npx whatsapp-bot-scanner pair'));
+      console.log(`\n  ${ICON.warning}  ${C.warning('WhatsApp is rate-limiting pairing requests')}`);
+      console.log(`     ${C.muted('Wait 15 minutes and run:')} ${C.code('npx whatsapp-bot-scanner pair')}`);
       return;
     }
-
-    // Check if already paired (optional, maybe check logs or status endpoint)
-
-    const spinner = ora('Requesting pairing code...').start();
-
+    
+    const spinner = ora({
+      text: C.text('Requesting pairing code...'),
+      color: 'cyan',
+      spinner: 'dots12',
+    }).start();
+    
     try {
-      // Wait a bit for the service to fully initialize internal state
-      await new Promise(resolve => setTimeout(resolve, 5000));
-
-      // Read wa-client port from .env or use default
+      await new Promise(r => setTimeout(r, 5000));
+      
       const envContent = await fs.readFile(path.join(ROOT_DIR, '.env'), 'utf-8').catch(() => '');
       const waClientPort = envContent.match(/WA_CLIENT_PORT=(\d+)/)?.[1] || '3005';
       
-      const response = await fetch(`http://127.0.0.1:${waClientPort}/pair`, {
-        method: 'POST'
-      });
-
+      const response = await fetch(`http://127.0.0.1:${waClientPort}/pair`, { method: 'POST' });
+      
       if (!response.ok) {
         const text = await response.text();
-        throw new Error(`Server responded with ${response.status}: ${text}`);
+        throw new Error(`Server: ${response.status} - ${text}`);
       }
-
+      
       const data = await response.json();
       spinner.stop();
-
+      
       if (data.code) {
-        console.log(boxen(
-          chalk.bold(`Your Pairing Code:\n\n${chalk.green(data.code.split('').join(' '))}`),
-          { padding: 1, margin: 1, borderStyle: 'double', borderColor: 'green', title: 'Action Required', titleAlignment: 'center' }
-        ));
-        console.log(chalk.yellow('1. Open WhatsApp on your phone'));
-        console.log(chalk.yellow('2. Go to Settings > Linked Devices > Link a Device'));
-        console.log(chalk.yellow('3. Select "Link with phone number"'));
-        console.log(chalk.yellow('4. Enter the code above'));
-
+        this.displayPairingCode(data.code);
+        
         if (!this.nonInteractive) {
-          // Wait for user confirmation or success detection
           await enquirer.prompt({
             type: 'confirm',
-            name: 'continue',
-            message: 'Press Enter once you have entered the code on your phone'
+            name: 'done',
+            message: C.text('Press Enter when you have entered the code'),
           });
-        } else {
-          console.log(chalk.blue('ℹ Non-interactive mode: Skipping pairing confirmation prompt.')); 
         }
       } else {
-        console.log(chalk.red('No code received. Check logs.'));
+        console.log(`  ${ICON.warning}  ${C.warning('No pairing code received, check logs')}`);
       }
-
     } catch (error) {
-      spinner.fail(`Pairing request failed: ${error.message}`);
-      console.log(chalk.yellow('Ensure wa-client is running and phone number is correct.'));
+      spinner.fail(C.error(`Pairing request failed: ${error.message}`));
+      console.log(`  ${ICON.info}  ${C.text('Run manually:')} ${C.code('npx whatsapp-bot-scanner pair')}`);
     }
+    
+    this.markStepComplete(5, 'Pairing process initiated');
+  }
+
+  displayPairingCode(code) {
+    const formattedCode = code.split('').join(' ');
+    
+    console.log(`
+${C.primary('  ╔════════════════════════════════════════════════════╗')}
+${C.primary('  ║')}                                                    ${C.primary('║')}
+${C.primary('  ║')}       ${ICON.key} ${C.accentBold('WHATSAPP PAIRING CODE')}                    ${C.primary('║')}
+${C.primary('  ║')}                                                    ${C.primary('║')}
+${C.primary('  ║')}       ${C.highlight(`    ${formattedCode}    `)}               ${C.primary('║')}
+${C.primary('  ║')}                                                    ${C.primary('║')}
+${C.primary('  ╠════════════════════════════════════════════════════╣')}
+${C.primary('  ║')}                                                    ${C.primary('║')}
+${C.primary('  ║')}   1. Open WhatsApp on your phone                   ${C.primary('║')}
+${C.primary('  ║')}   2. Settings → Linked Devices → Link a Device     ${C.primary('║')}
+${C.primary('  ║')}   3. Select "Link with phone number"               ${C.primary('║')}
+${C.primary('  ║')}   4. Enter the code above                          ${C.primary('║')}
+${C.primary('  ║')}                                                    ${C.primary('║')}
+${C.primary('  ╚════════════════════════════════════════════════════╝')}
+`);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Completion Summary
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  async displayCompletionSummary() {
+    // Read ports from .env
+    const envContent = await fs.readFile(path.join(ROOT_DIR, '.env'), 'utf-8').catch(() => '');
+    const getPort = (key, def) => envContent.match(new RegExp(`${key}=(\\d+)`))?.[1] || def;
+    
+    const ports = {
+      dashboard: getPort('REVERSE_PROXY_PORT', '8088'),
+      grafana: getPort('GRAFANA_PORT', '3002'),
+      uptime: getPort('UPTIME_KUMA_PORT', '3001'),
+      orchestrator: getPort('SCAN_ORCHESTRATOR_PORT', '3003'),
+    };
+    
+    console.log(`
+${C.success('  ╔════════════════════════════════════════════════════════════════╗')}
+${C.success('  ║')}                                                                ${C.success('║')}
+${C.success('  ║')}         ${ICON.sparkle} ${C.successBold('SETUP COMPLETE!')} ${ICON.sparkle}                              ${C.success('║')}
+${C.success('  ║')}                                                                ${C.success('║')}
+${C.success('  ║')}   Your WhatsApp Bot Scanner is now protecting your groups.    ${C.success('║')}
+${C.success('  ║')}                                                                ${C.success('║')}
+${C.success('  ╠════════════════════════════════════════════════════════════════╣')}
+${C.success('  ║')}                                                                ${C.success('║')}
+${C.success('  ║')}   ${C.textBold('Access Points:')}                                             ${C.success('║')}
+${C.success('  ║')}                                                                ${C.success('║')}
+${C.success('  ║')}   ${ICON.arrow}  Dashboard:       ${C.link(`http://localhost:${ports.dashboard}`)}                 ${C.success('║')}
+${C.success('  ║')}   ${ICON.arrow}  Uptime Monitor:  ${C.link(`http://localhost:${ports.uptime}`)}                 ${C.success('║')}
+${C.success('  ║')}   ${ICON.arrow}  Grafana:         ${C.link(`http://localhost:${ports.grafana}`)} ${C.muted('(admin/admin)')}    ${C.success('║')}
+${C.success('  ║')}   ${ICON.arrow}  Orchestrator:    ${C.link(`http://localhost:${ports.orchestrator}/healthz`)}          ${C.success('║')}
+${C.success('  ║')}                                                                ${C.success('║')}
+${C.success('  ╠════════════════════════════════════════════════════════════════╣')}
+${C.success('  ║')}                                                                ${C.success('║')}
+${C.success('  ║')}   ${C.textBold('Quick Commands:')}                                            ${C.success('║')}
+${C.success('  ║')}                                                                ${C.success('║')}
+${C.success('  ║')}   ${C.code('npx whatsapp-bot-scanner logs')}      ${C.muted('View service logs')}    ${C.success('║')}
+${C.success('  ║')}   ${C.code('npx whatsapp-bot-scanner health')}    ${C.muted('Check status')}        ${C.success('║')}
+${C.success('  ║')}   ${C.code('npx whatsapp-bot-scanner pair')}      ${C.muted('Re-pair WhatsApp')}    ${C.success('║')}
+${C.success('  ║')}                                                                ${C.success('║')}
+${C.success('  ╚════════════════════════════════════════════════════════════════╝')}
+`);
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CLI Commands
+// ─────────────────────────────────────────────────────────────────────────────
+
 program
   .name('whatsapp-bot-scanner')
-  .description('Unified setup and management CLI for WhatsApp Bot Scanner')
-  .version('1.0.0')
-  .option('--debug', 'Enable debug mode with verbose logging')
-  .option('--noninteractive', 'Run CLI in non-interactive mode');
+  .description('WhatsApp Bot Scanner - Unified CLI')
+  .version('2.0.0')
+  .option('--debug', 'Enable debug mode')
+  .option('--noninteractive', 'Run in non-interactive mode');
 
 program.command('setup')
-  .description('Run interactive setup wizard')
+  .description('Run the interactive setup wizard')
   .option('--skip-pairing', 'Skip WhatsApp pairing step')
   .option('--noninteractive', 'Run in non-interactive mode')
   .option('--debug', 'Enable debug logging')
@@ -517,11 +606,14 @@ program.command('setup')
       const wizard = new SetupWizard({
         nonInteractive: options.noninteractive || globalOpts.noninteractive,
         debug: options.debug || globalOpts.debug,
-        skipPairing: options.skipPairing
+        skipPairing: options.skipPairing,
       });
       await wizard.run();
     } catch (error) {
-      console.error(chalk.red(`Setup failed: ${error.message}`));
+      console.error(C.error(`\nSetup failed: ${error.message}`));
+      if (globalOpts.debug) {
+        console.error(error.stack);
+      }
       process.exit(1);
     }
   });
@@ -532,156 +624,40 @@ program.command('logs')
   .action((service) => {
     const args = ['compose', 'logs', '-f'];
     if (service) args.push(service);
-
-    console.log(chalk.blue(`Starting log stream${service ? ` for ${service}` : ''}... (Press Ctrl+C to exit)`));
-    const logs = execa('docker', args, { stdio: 'inherit', cwd: ROOT_DIR });
-    logs.catch(() => { }); // Ignore exit errors
+    console.log(C.primary(`\nStreaming logs${service ? ` for ${service}` : ''}... (Ctrl+C to exit)\n`));
+    execa('docker', args, { stdio: 'inherit', cwd: ROOT_DIR }).catch(() => {});
   });
 
 program.command('health')
-  .description('Check pipeline health status')
+  .description('Check service health status')
   .action(async () => {
-    console.log(chalk.bold.cyan('\n🏥 Pipeline Health Check\n'));
-
-    const spinner = ora('Checking services...').start();
-
+    console.log(C.textBold('\n  🏥 Pipeline Health Check\n'));
+    
+    const spinner = ora({ text: C.text('Checking services...'), color: 'cyan' }).start();
+    
     try {
       const { stdout } = await execa('docker', ['compose', 'ps', '--format', 'json'], { cwd: ROOT_DIR });
-      const containers = stdout.trim().split('\n')
-        .filter(line => line)
-        .map(line => JSON.parse(line));
-
+      const containers = stdout.trim().split('\n').filter(l => l).map(l => JSON.parse(l));
       spinner.stop();
-
-      console.log(chalk.bold('Services:'));
-      for (const container of containers) {
-        const status = container.State === 'running' ? chalk.green('✓') : chalk.red('✗');
-        const health = container.Health ? `[${container.Health}]` : '';
-        console.log(`  ${status} ${container.Service.padEnd(20)} ${container.State} ${health}`);
+      
+      console.log(C.textBold('  Services:'));
+      for (const c of containers) {
+        const icon = c.State === 'running' ? ICON.success : ICON.error;
+        const health = c.Health ? C.muted(`[${c.Health}]`) : '';
+        console.log(`    ${icon}  ${c.Service.padEnd(20)} ${c.State} ${health}`);
       }
-
-      // Check health endpoints
-      console.log(chalk.bold('\nHealth Endpoints:'));
-
-      // Read ports from environment
-      const envContent = await fs.readFile(path.join(ROOT_DIR, '.env'), 'utf-8').catch(() => '');
-      const getEnv = (key, def) => {
-        const match = envContent.match(new RegExp(`${key}=(.*)`));
-        return match ? match[1] : def;
-      };
-
-      const scanOrchestratorPort = getEnv('SCAN_ORCHESTRATOR_PORT', '3003');
-      const uptimeKumaPort = getEnv('UPTIME_KUMA_PORT', '3001');
-      const grafanaPort = getEnv('GRAFANA_PORT', '3002');
-      const reverseProxyPort = getEnv('REVERSE_PROXY_PORT', '8088');
-
-      const healthChecks = [
-        { name: 'wa-client', url: 'http://localhost:3005/healthz' },
-        { name: 'scan-orchestrator', url: `http://localhost:${scanOrchestratorPort}/healthz` },
-        { name: 'uptime-kuma', url: `http://localhost:${uptimeKumaPort}` },
-        { name: 'grafana', url: `http://localhost:${grafanaPort}/api/health` },
-        { name: 'reverse-proxy', url: `http://localhost:${reverseProxyPort}` },
-      ];
-
-      for (const check of healthChecks) {
-        try {
-          await execa('curl', ['-sf', check.url, '-m', '3']);
-          console.log(`  ${chalk.green('✓')} ${check.name.padEnd(20)} responding`);
-        } catch {
-          console.log(`  ${chalk.red('✗')} ${check.name.padEnd(20)} not responding`);
-        }
-      }
-
-      console.log();
+      
+      console.log('');
     } catch (error) {
-      spinner.fail('Health check failed');
-      console.error(chalk.red(error.message));
-      process.exit(1);
-    }
-  });
-
-program.command('metrics')
-  .description('Display pipeline metrics')
-  .action(async () => {
-    console.log(chalk.bold.cyan('\n📊 Pipeline Metrics\n'));
-
-    const spinner = ora('Fetching metrics...').start();
-
-    try {
-      // Try to connect to Redis to get queue depths
-      const { execa: execaSync } = await import('execa');
-
-      const queues = ['scan-request', 'scan-verdict', 'deep-scan'];
-      spinner.stop();
-
-      console.log(chalk.bold('Queue Depths:'));
-      for (const queue of queues) {
-        try {
-          const { stdout } = await execaSync('docker', ['compose', 'exec', '-T', 'redis',
-            'redis-cli', 'LLEN', queue], { cwd: ROOT_DIR });
-          const depth = parseInt(stdout.trim());
-          const status = depth === 0 ? chalk.green(depth) :
-            depth < 10 ? chalk.yellow(depth) :
-              chalk.red(depth);
-          console.log(`  ${queue.padEnd(20)} ${status}`);
-        } catch {
-          console.log(`  ${queue.padEnd(20)} ${chalk.gray('N/A')}`);
-        }
-      }
-
-      console.log();
-    } catch (error) {
-      spinner.fail('Metrics fetch failed');
-      console.error(chalk.red(error.message));
-    }
-  });
-
-program.command('debug')
-  .description('Run comprehensive pipeline diagnostics')
-  .action(async () => {
-    console.log(chalk.yellow('Running debug diagnostics...\n'));
-    const debug = execa('node', [path.join(ROOT_DIR, 'scripts/debug-pipeline.mjs')], {
-      stdio: 'inherit',
-      cwd: ROOT_DIR,
-    });
-    try {
-      await debug;
-    } catch (error) {
-      console.error(chalk.red('\nDebug diagnostics failed'));
-      process.exit(1);
-    }
-  });
-
-program.command('test')
-  .description('Run pipeline validation tests')
-  .option('--stress', 'Run stress tests instead of standard tests')
-  .option('--verbose', 'Show detailed test output')
-  .option('--benchmark', 'Show performance benchmarks')
-  .action(async (options) => {
-    const testFile = options.stress ? 'stress_test_pipeline.mjs' : 'test_unified_pipeline.mjs';
-    const args = ['node', path.join(ROOT_DIR, 'tests', testFile)];
-
-    if (options.verbose) args.push('--verbose');
-    if (options.benchmark) args.push('--benchmark');
-
-    console.log(chalk.yellow(`Running ${options.stress ? 'stress' : 'validation'} tests...\n`));
-
-    const test = execa(args[0], args.slice(1), {
-      stdio: 'inherit',
-      cwd: ROOT_DIR,
-    });
-
-    try {
-      await test;
-    } catch (error) {
+      spinner.fail(C.error('Health check failed'));
+      console.error(C.error(error.message));
       process.exit(1);
     }
   });
 
 program.command('pair')
   .description('Request WhatsApp pairing code')
-  .option('-f, --force', 'Force pairing request (clears rate limit state)')
-  .action(async (options) => {
+  .action(async () => {
     const ui = new UserInterface(true);
     const notifications = new NotificationManager(ui);
     const dockerOrchestrator = new DockerOrchestrator(ROOT_DIR, ui);
@@ -691,24 +667,30 @@ program.command('pair')
       await pairingManager.requestManualPairing();
       
       await pairingManager.monitorForPairingSuccess(
-        (successData) => {
-          console.log(chalk.green('✅ Pairing completed successfully!'));
-          console.log(chalk.dim(`Timestamp: ${successData.timestamp}`));
-          if (successData.sessionInfo) {
-            console.log(chalk.dim(`Session: ${successData.sessionInfo}`));
-          }
+        (success) => {
+          console.log(C.success('\n✓ Pairing completed successfully!'));
+          process.exit(0);
         },
-        (errorData) => {
-          console.error(chalk.red(`❌ Pairing failed: ${errorData.errorDetails || 'Unknown error'}`));
-          console.error(chalk.dim(`Timestamp: ${errorData.timestamp}`));
+        (error) => {
+          console.error(C.error(`\n✗ Pairing failed: ${error.errorDetails || 'Unknown error'}`));
+          process.exit(1);
         }
       );
-      
     } catch (error) {
-      console.error(chalk.red(`Pairing failed: ${error.message}`));
-      console.log(chalk.yellow('Ensure wa-client is running: docker compose up -d wa-client'));
+      console.error(C.error(`\nPairing failed: ${error.message}`));
+      console.log(C.muted('Ensure wa-client is running: docker compose up -d wa-client'));
       process.exit(1);
     }
+  });
+
+program.command('debug')
+  .description('Run pipeline diagnostics')
+  .action(async () => {
+    console.log(C.warning('\nRunning debug diagnostics...\n'));
+    await execa('node', [path.join(ROOT_DIR, 'scripts/debug-pipeline.mjs')], {
+      stdio: 'inherit',
+      cwd: ROOT_DIR,
+    }).catch(() => process.exit(1));
   });
 
 program.parse(process.argv);

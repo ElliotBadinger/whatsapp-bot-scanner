@@ -1,91 +1,202 @@
+/**
+ * Interactive Hotkey System
+ * Real-time keyboard shortcuts with visual feedback
+ */
+
 import readline from 'node:readline';
+import chalk from 'chalk';
 
-const HOTKEY_DESCRIPTIONS = [
-  { key: 'v', description: 'Toggle Guided ↔ Expert verbosity' },
-  { key: 'g', description: 'Toggle glossary panel' },
-  { key: 'r', description: 'Show recovery actions' },
-  { key: 'h', description: 'List hotkeys' },
-  { key: 'q', description: 'Abort setup safely' }
+// ─────────────────────────────────────────────────────────────────────────────
+// Color Palette
+// ─────────────────────────────────────────────────────────────────────────────
+
+const C = {
+  primary: chalk.hex('#00D9FF'),
+  accent: chalk.hex('#FFB347'),
+  success: chalk.hex('#00E676'),
+  warning: chalk.hex('#FFD54F'),
+  error: chalk.hex('#FF5252'),
+  muted: chalk.hex('#6B7280'),
+  text: chalk.white,
+  textBold: chalk.white.bold,
+  code: chalk.hex('#A78BFA'),
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hotkey Definitions
+// ─────────────────────────────────────────────────────────────────────────────
+
+const HOTKEYS = [
+  { key: 'V', action: 'verbosity', description: 'Toggle verbose mode' },
+  { key: 'G', action: 'glossary', description: 'Show glossary' },
+  { key: 'R', action: 'recovery', description: 'Recovery options' },
+  { key: 'H', action: 'help', description: 'Show hotkeys' },
+  { key: 'Q', action: 'quit', description: 'Abort setup' },
 ];
 
-const GLOSSARY_ENTRIES = [
-  ['Guided mode', 'Conversational narration with safety tips and visuals.'],
-  ['Expert mode', 'Condensed status lines ideal for repeat operators.'],
-  ['Checkpoint', 'Saved stage used for resume commands (preflight, environment, containers).'],
-  ['Transcript', 'Markdown + JSON artifact capturing decisions and outcomes.'],
-  ['Quick action', 'One-command helpers such as --quick=preflight or --quick=purge-caches.']
+const GLOSSARY = [
+  { term: 'Guided Mode', definition: 'Step-by-step setup with detailed explanations' },
+  { term: 'Expert Mode', definition: 'Condensed output for experienced users' },
+  { term: 'Checkpoint', definition: 'Saved progress point for resume capability' },
+  { term: 'Transcript', definition: 'Log file recording all setup decisions' },
+  { term: 'Quick Action', description: 'Shortcut commands like --quick=preflight' },
 ];
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Get hotkey description string (compact)
+ */
 export function describeHotkeys() {
-  return HOTKEY_DESCRIPTIONS.map(item => `${item.key.toUpperCase()}: ${item.description}`).join(' | ');
+  return HOTKEYS
+    .map(h => `${C.accent(h.key)}:${h.description}`)
+    .join(C.muted(' │ '));
 }
 
-function renderGlossary(output) {
-  output.heading('CLI Glossary');
-  for (const [term, definition] of GLOSSARY_ENTRIES) {
-    output.info(`${term}: ${definition}`);
+/**
+ * Get hotkey description string (formatted for display)
+ */
+export function getHotkeyHelp() {
+  const lines = [
+    '',
+    C.textBold('  Keyboard Shortcuts:'),
+    '',
+  ];
+  
+  for (const h of HOTKEYS) {
+    lines.push(`    ${C.accent(h.key)}  ${C.muted('→')}  ${C.text(h.description)}`);
+  }
+  
+  lines.push('');
+  return lines.join('\n');
+}
+
+/**
+ * Display glossary panel
+ */
+function showGlossary(output) {
+  output.heading('Glossary');
+  
+  for (const item of GLOSSARY) {
+    console.log(`  ${C.textBold(item.term)}`);
+    console.log(`     ${C.muted(item.definition)}`);
+    console.log('');
   }
 }
 
+/**
+ * Register hotkey listeners
+ * @param {Object} context - Setup context
+ * @param {Object} output - Output helper
+ * @param {Object} recoveryManager - Recovery manager
+ * @returns {Function} Cleanup function
+ */
 export function registerHotkeys(context, output, recoveryManager) {
-  if (!process.stdin.isTTY) return () => {};
-  readline.emitKeypressEvents(process.stdin);
-  if (process.stdin.setRawMode) {
-    process.stdin.setRawMode(true);
+  // Skip in non-TTY environments
+  if (!process.stdin.isTTY) {
+    return () => {};
   }
-
-  function handle(key, data) {
+  
+  // Enable keypress events
+  readline.emitKeypressEvents(process.stdin);
+  
+  if (process.stdin.setRawMode) {
+    try {
+      process.stdin.setRawMode(true);
+    } catch {
+      // Some environments don't support raw mode
+      return () => {};
+    }
+  }
+  
+  /**
+   * Handle keypress events
+   */
+  function handleKeypress(key, data) {
+    // Handle Ctrl+C
     if (data?.ctrl && data?.name === 'c') {
-      output.warn('Received Ctrl+C, shutting down gracefully...');
-      context.appendError('Setup aborted by user.');
+      console.log(C.warning('\n\n⚠  Setup cancelled by user.'));
+      context.appendError('Setup aborted by user');
       context.finalize('aborted').finally(() => process.exit(1));
       return;
     }
-    const char = typeof key === 'string' ? key.toLowerCase() : '';
+    
+    const char = typeof key === 'string' ? key.toUpperCase() : '';
+    
     switch (char) {
-      case 'v': {
-        const next = context.toggleMode({ reason: 'hotkey' });
-        output.info(`Verbosity switched to ${next.toUpperCase()} mode.`);
-        context.recordDecision('mode', next);
+      case 'V': {
+        // Toggle verbosity mode
+        const newMode = context.toggleMode({ reason: 'hotkey' });
+        const modeLabel = newMode === 'guided' ? 'Verbose' : 'Compact';
+        console.log(`\n  ${C.success('✓')}  ${C.text(`Switched to ${modeLabel} mode`)}\n`);
+        context.recordDecision('mode', newMode);
         break;
       }
-      case 'g': {
+      
+      case 'G': {
+        // Toggle glossary
         context.glossaryVisible = !context.glossaryVisible;
         if (context.glossaryVisible) {
           context.noteGlossaryViewed();
-          output.info('Glossary panel opened. Key concepts explained below.');
-          renderGlossary(output);
+          showGlossary(output);
         } else {
-          output.info('Glossary panel hidden.');
+          console.log(`\n  ${C.muted('Glossary hidden')}\n`);
         }
         break;
       }
-      case 'r': {
-        recoveryManager?.displayQuickActions();
+      
+      case 'R': {
+        // Show recovery options
+        if (recoveryManager?.displayQuickActions) {
+          recoveryManager.displayQuickActions();
+        } else {
+          console.log(`\n  ${C.textBold('Recovery Options:')}`);
+          console.log(`    ${C.code('./setup.sh --quick=preflight')}    ${C.muted('Run preflight only')}`);
+          console.log(`    ${C.code('./setup.sh --quick=resume-docker')} ${C.muted('Resume from Docker')}`);
+          console.log(`    ${C.code('./setup.sh --quick=purge-caches')}  ${C.muted('Clear caches')}\n`);
+        }
         break;
       }
-      case 'h': {
-        output.info(`Hotkeys: ${describeHotkeys()}`);
+      
+      case 'H': {
+        // Show hotkey help
+        console.log(getHotkeyHelp());
         break;
       }
-      case 'q': {
-        output.warn('Abort requested by user. Finishing partial transcript...');
-        context.appendError('Setup aborted via hotkey.');
+      
+      case 'Q': {
+        // Quit/abort
+        console.log(C.warning('\n\n⚠  Aborting setup...'));
+        context.appendError('Setup aborted via hotkey');
         context.finalize('aborted').finally(() => process.exit(1));
         break;
       }
+      
       default:
+        // Ignore other keys
         break;
     }
   }
-
-  process.stdin.on('keypress', handle);
-  output.info(`Hotkeys active → ${describeHotkeys()}`);
-
+  
+  // Attach listener
+  process.stdin.on('keypress', handleKeypress);
+  
+  // Show hotkey hint
+  console.log(`\n  ${C.muted('Hotkeys:')} ${describeHotkeys()}\n`);
+  
+  // Return cleanup function
   return () => {
-    process.stdin.removeListener('keypress', handle);
+    process.stdin.removeListener('keypress', handleKeypress);
     if (process.stdin.setRawMode) {
-      process.stdin.setRawMode(false);
+      try {
+        process.stdin.setRawMode(false);
+      } catch {
+        // Ignore cleanup errors
+      }
     }
   };
 }
+
+export default { registerHotkeys, describeHotkeys, getHotkeyHelp };
