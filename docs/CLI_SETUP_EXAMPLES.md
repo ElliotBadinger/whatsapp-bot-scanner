@@ -131,32 +131,32 @@ name: Deploy WhatsApp Bot Scanner
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
 
-    - name: Install dependencies
-      run: npm install
+      - name: Install dependencies
+        run: npm install
 
-    - name: Run setup
-      env:
-        VT_API_KEY: ${{ secrets.VT_API_KEY }}
-        GSB_API_KEY: ${{ secrets.GSB_API_KEY }}
-      run: npx whatsapp-bot-scanner setup --noninteractive
+      - name: Run setup
+        env:
+          VT_API_KEY: ${{ secrets.VT_API_KEY }}
+          GSB_API_KEY: ${{ secrets.GSB_API_KEY }}
+        run: npx whatsapp-bot-scanner setup --noninteractive
 
-    - name: Verify deployment
-      run: npx whatsapp-bot-scanner status
+      - name: Verify deployment
+        run: npx whatsapp-bot-scanner status
 ```
 
 ### Example 2: GitLab CI Pipeline
@@ -206,14 +206,14 @@ pipeline {
 
 ```yaml
 # docker-compose.override.yml
-version: '3.8'
+version: "3.8"
 
 services:
   wa-client:
     deploy:
       resources:
         limits:
-          cpus: '1.5'
+          cpus: "1.5"
           memory: 1G
     environment:
       - WHATSAPP_POLLING_INTERVAL=15000
@@ -223,7 +223,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'
+          cpus: "2.0"
           memory: 2G
     environment:
       - SCAN_CONCURRENCY=10

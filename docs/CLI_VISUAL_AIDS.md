@@ -340,42 +340,42 @@ npx whatsapp-bot-scanner logs wa-client --tail 50 --timestamps
 
 ### Command Reference Table
 
-| Command | Description | Options | Example |
-|---------|-------------|---------|---------|
-| `setup` | Complete setup wizard | `--noninteractive`, `--hobby-mode`, `--skip-dependencies` | `npx whatsapp-bot-scanner setup` |
-| `logs` | Stream service logs | `--tail <lines>`, `--timestamps`, `--no-follow`, `[service]` | `npx whatsapp-bot-scanner logs wa-client --tail 50` |
-| `pair` | Manual pairing | None | `npx whatsapp-bot-scanner pair` |
-| `status` | Service health | `--monitor`, `--interval <ms>` | `npx whatsapp-bot-scanner status --monitor` |
-| `compatibility` | Migration info | None | `npx whatsapp-bot-scanner compatibility` |
+| Command         | Description           | Options                                                      | Example                                             |
+| --------------- | --------------------- | ------------------------------------------------------------ | --------------------------------------------------- |
+| `setup`         | Complete setup wizard | `--noninteractive`, `--hobby-mode`, `--skip-dependencies`    | `npx whatsapp-bot-scanner setup`                    |
+| `logs`          | Stream service logs   | `--tail <lines>`, `--timestamps`, `--no-follow`, `[service]` | `npx whatsapp-bot-scanner logs wa-client --tail 50` |
+| `pair`          | Manual pairing        | None                                                         | `npx whatsapp-bot-scanner pair`                     |
+| `status`        | Service health        | `--monitor`, `--interval <ms>`                               | `npx whatsapp-bot-scanner status --monitor`         |
+| `compatibility` | Migration info        | None                                                         | `npx whatsapp-bot-scanner compatibility`            |
 
 ### Service Reference Table
 
-| Service | Port | Description | Health Check |
-|----------|------|-------------|--------------|
-| `wa-client` | 3000 | WhatsApp automation client | `/healthz` |
-| `scan-orchestrator` | 3001 | URL scanning orchestrator | `/healthz` |
-| `control-plane` | 3002 | Admin API and control plane | `/healthz` |
-| `redis` | 6379 | Redis cache and queue | Built-in |
-| `postgres` | 5432 | PostgreSQL database | Built-in |
+| Service             | Port | Description                 | Health Check |
+| ------------------- | ---- | --------------------------- | ------------ |
+| `wa-client`         | 3000 | WhatsApp automation client  | `/healthz`   |
+| `scan-orchestrator` | 3001 | URL scanning orchestrator   | `/healthz`   |
+| `control-plane`     | 3002 | Admin API and control plane | `/healthz`   |
+| `redis`             | 6379 | Redis cache and queue       | Built-in     |
+| `postgres`          | 5432 | PostgreSQL database         | Built-in     |
 
 ### API Key Reference Table
 
-| Service | Environment Variable | Required | Validation Endpoint |
-|----------|----------------------|----------|---------------------|
-| VirusTotal | `VT_API_KEY` | ✅ Yes | `https://www.virustotal.com/api/v3/ip_addresses/8.8.8.8` |
-| Google Safe Browsing | `GSB_API_KEY` | ❌ No | `https://safebrowsing.googleapis.com/v4/threatMatches:find` |
-| URLScan | `URLSCAN_API_KEY` | ❌ No | `https://urlscan.io/api/v1/scan/` |
-| WhoisXML | `WHOISXML_API_KEY` | ❌ No | `https://www.whoisxmlapi.com/whoisserver/WhoisService` |
+| Service              | Environment Variable | Required | Validation Endpoint                                         |
+| -------------------- | -------------------- | -------- | ----------------------------------------------------------- |
+| VirusTotal           | `VT_API_KEY`         | ✅ Yes   | `https://www.virustotal.com/api/v3/ip_addresses/8.8.8.8`    |
+| Google Safe Browsing | `GSB_API_KEY`        | ❌ No    | `https://safebrowsing.googleapis.com/v4/threatMatches:find` |
+| URLScan              | `URLSCAN_API_KEY`    | ❌ No    | `https://urlscan.io/api/v1/scan/`                           |
+| WhoisXML             | `WHOISXML_API_KEY`   | ❌ No    | `https://www.whoisxmlapi.com/whoisserver/WhoisService`      |
 
 ### Configuration Reference Table
 
-| Configuration | Environment Variable | Default | Description |
-|----------------|----------------------|---------|-------------|
-| Mode | `MODE` | `production` | `production`, `hobby`, or `development` |
-| WhatsApp Auth | `WHATSAPP_AUTH` | `qr` | `qr`, `phone-number`, or `remote` |
-| Log Level | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error` |
-| Max Log Size | `LOG_MAX_SIZE` | `10m` | Maximum log file size |
-| API Timeout | `API_TIMEOUT` | `10000` | API request timeout in ms |
+| Configuration | Environment Variable | Default      | Description                             |
+| ------------- | -------------------- | ------------ | --------------------------------------- |
+| Mode          | `MODE`               | `production` | `production`, `hobby`, or `development` |
+| WhatsApp Auth | `WHATSAPP_AUTH`      | `qr`         | `qr`, `phone-number`, or `remote`       |
+| Log Level     | `LOG_LEVEL`          | `info`       | `debug`, `info`, `warn`, or `error`     |
+| Max Log Size  | `LOG_MAX_SIZE`       | `10m`        | Maximum log file size                   |
+| API Timeout   | `API_TIMEOUT`        | `10000`      | API request timeout in ms               |
 
 ## 📋 Command Cheat Sheet
 
@@ -412,6 +412,7 @@ npx whatsapp-bot-scanner status --monitor
 ### Common Workflows
 
 **Basic Setup:**
+
 ```bash
 git clone https://github.com/your-repo/whatsapp-bot-scanner.git
 cd whatsapp-bot-scanner
@@ -419,6 +420,7 @@ npx whatsapp-bot-scanner setup
 ```
 
 **Hobby Mode Setup:**
+
 ```bash
 git clone https://github.com/your-repo/whatsapp-bot-scanner.git
 cd whatsapp-bot-scanner
@@ -426,6 +428,7 @@ npx whatsapp-bot-scanner setup --hobby-mode
 ```
 
 **CI/CD Deployment:**
+
 ```bash
 export VT_API_KEY="your_key"
 export GSB_API_KEY="your_key"
@@ -433,6 +436,7 @@ npx whatsapp-bot-scanner setup --noninteractive
 ```
 
 **Service Monitoring:**
+
 ```bash
 npx whatsapp-bot-scanner status --monitor --interval 5000
 ```

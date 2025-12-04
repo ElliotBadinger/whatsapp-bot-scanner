@@ -1,5 +1,5 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
+import fs from "node:fs/promises";
+import path from "node:path";
 
 export class FileManager {
   async ensureFileExists(filePath, templatePath = null) {
@@ -9,7 +9,7 @@ export class FileManager {
       if (templatePath) {
         await this.copyFile(templatePath, filePath);
       } else {
-        await fs.writeFile(filePath, '');
+        await fs.writeFile(filePath, "");
       }
     }
   }
@@ -19,7 +19,7 @@ export class FileManager {
   }
 
   async readFile(filePath) {
-    return await fs.readFile(filePath, 'utf8');
+    return await fs.readFile(filePath, "utf8");
   }
 
   async writeFile(filePath, content) {
@@ -40,7 +40,7 @@ export class FileManager {
       await fs.mkdir(dirPath, { recursive: true });
       return true;
     } catch (error) {
-      if (error.code === 'EEXIST') {
+      if (error.code === "EEXIST") {
         return true;
       }
       throw error;

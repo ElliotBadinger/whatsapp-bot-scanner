@@ -296,11 +296,11 @@ docs/
 
 ### Change Log
 
-| Version | Date | Changes |
-|---------|------|---------|
-| 1.0.0 | 2025-12-02 | Initial comprehensive documentation release |
-| 1.0.0 | 2025-12-02 | Added user guide, technical docs, migration guide |
-| 1.0.0 | 2025-12-02 | Added troubleshooting and visual aids |
+| Version | Date       | Changes                                           |
+| ------- | ---------- | ------------------------------------------------- |
+| 1.0.0   | 2025-12-02 | Initial comprehensive documentation release       |
+| 1.0.0   | 2025-12-02 | Added user guide, technical docs, migration guide |
+| 1.0.0   | 2025-12-02 | Added troubleshooting and visual aids             |
 
 ### Contribution Guidelines
 

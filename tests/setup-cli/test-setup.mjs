@@ -1,5 +1,5 @@
-import { vi } from 'vitest';
-import { execa } from 'execa';
+import { vi } from "vitest";
+import { execa } from "execa";
 
 // Global test setup
 export function setup() {
@@ -18,15 +18,15 @@ export function setup() {
   // Mock execa for command execution
   const originalExeca = execa;
   execa.execa = vi.fn().mockImplementation((cmd) => {
-    if (typeof cmd === 'string') {
-      if (cmd.includes('docker')) {
-        return Promise.resolve({ stdout: 'Docker version 20.10.7' });
+    if (typeof cmd === "string") {
+      if (cmd.includes("docker")) {
+        return Promise.resolve({ stdout: "Docker version 20.10.7" });
       }
-      if (cmd.includes('node')) {
-        return Promise.resolve({ stdout: 'v20.0.0' });
+      if (cmd.includes("node")) {
+        return Promise.resolve({ stdout: "v20.0.0" });
       }
     }
-    return Promise.reject(new Error('Command not found'));
+    return Promise.reject(new Error("Command not found"));
   });
 
   // Store original methods for restoration
@@ -34,15 +34,15 @@ export function setup() {
     log: console.log,
     error: console.error,
     warn: console.warn,
-    info: console.info
+    info: console.info,
   };
 
   global.__originalProcess__ = {
-    exit: originalExit
+    exit: originalExit,
   };
 
   global.__originalExeca__ = {
-    execa: originalExeca
+    execa: originalExeca,
   };
 }
 

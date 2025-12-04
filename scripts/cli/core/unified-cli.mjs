@@ -1,20 +1,20 @@
-import { EnvironmentDetector } from './environment.mjs';
-import { DependencyManager } from './dependencies.mjs';
-import { ConfigurationManager } from './configuration.mjs';
-import { DockerOrchestrator } from './docker.mjs';
-import { PairingManager } from './pairing.mjs';
-import { UserInterface } from '../ui/prompts.mjs';
-import { ProgressManager } from '../ui/progress.mjs';
-import { NotificationManager } from '../ui/notifications.mjs';
-import { SetupWizard } from './setup-wizard.mjs';
-import { handleError } from './errors.mjs';
+import { EnvironmentDetector } from "./environment.mjs";
+import { DependencyManager } from "./dependencies.mjs";
+import { ConfigurationManager } from "./configuration.mjs";
+import { DockerOrchestrator } from "./docker.mjs";
+import { PairingManager } from "./pairing.mjs";
+import { UserInterface } from "../ui/prompts.mjs";
+import { ProgressManager } from "../ui/progress.mjs";
+import { NotificationManager } from "../ui/notifications.mjs";
+import { SetupWizard } from "./setup-wizard.mjs";
+import { handleError } from "./errors.mjs";
 
 export class UnifiedCLI {
   constructor(argv) {
     this.argv = argv;
     this.rootDir = process.cwd();
-    this.interactive = !argv.includes('--noninteractive');
-    this.debug = argv.includes('--debug');
+    this.interactive = !argv.includes("--noninteractive");
+    this.debug = argv.includes("--debug");
 
     // Initialize UI components
     this.ui = new UserInterface(this.interactive);
@@ -26,7 +26,11 @@ export class UnifiedCLI {
     this.configManager = new ConfigurationManager(this.rootDir, this.ui);
     this.dockerOrchestrator = new DockerOrchestrator(this.rootDir, this.ui);
     this.notifications = new NotificationManager(this.ui);
-    this.pairingManager = new PairingManager(this.dockerOrchestrator, this.ui, this.notifications);
+    this.pairingManager = new PairingManager(
+      this.dockerOrchestrator,
+      this.ui,
+      this.notifications,
+    );
   }
 
   async run() {
@@ -37,10 +41,10 @@ export class UnifiedCLI {
       const result = await wizard.run();
 
       if (result.success) {
-        this.ui.success('🎉 Setup completed successfully!');
+        this.ui.success("🎉 Setup completed successfully!");
         return result;
       } else {
-        throw new Error(result.error || 'Setup failed');
+        throw new Error(result.error || "Setup failed");
       }
     } catch (error) {
       handleError(error, this);
@@ -123,7 +127,7 @@ export class UnifiedCLI {
       interactive: this.interactive,
       argv: this.argv,
       debug: this.debug,
-      skipPairing: options.skipPairing ?? false
+      skipPairing: options.skipPairing ?? false,
     });
     return this.setupWizard;
   }
@@ -135,22 +139,26 @@ export class UnifiedCLI {
    */
   async streamServiceLogs(serviceName, options = {}) {
     try {
-      const { process, stop } = await this.dockerOrchestrator.streamLogsWithFormatting(serviceName, options);
+      const { process, stop } =
+        await this.dockerOrchestrator.streamLogsWithFormatting(
+          serviceName,
+          options,
+        );
 
       // Handle process events
-      process.on('error', (error) => {
+      process.on("error", (error) => {
         this.ui.error(`Log streaming error: ${error.message}`);
         // Don't exit in test environment
-        if (process.env.NODE_ENV !== 'test') {
+        if (process.env.NODE_ENV !== "test") {
           process.exit(1);
         }
       });
 
-      process.on('exit', (code) => {
+      process.on("exit", (code) => {
         if (code !== 0) {
           this.ui.error(`Log streaming process exited with code ${code}`);
           // Don't exit in test environment
-          if (process.env.NODE_ENV !== 'test') {
+          if (process.env.NODE_ENV !== "test") {
             process.exit(code);
           }
         }
@@ -160,7 +168,7 @@ export class UnifiedCLI {
     } catch (error) {
       handleError(error, this);
       // Don't exit in test environment
-      if (process.env.NODE_ENV !== 'test') {
+      if (process.env.NODE_ENV !== "test") {
         process.exit(1);
       }
       throw error; // Re-throw for test handling
@@ -172,13 +180,14 @@ export class UnifiedCLI {
    */
   async checkServiceHealth() {
     try {
-      const healthResults = await this.dockerOrchestrator.checkAllServicesHealth();
+      const healthResults =
+        await this.dockerOrchestrator.checkAllServicesHealth();
       this.dockerOrchestrator.displayHealthStatus(healthResults);
       return healthResults;
     } catch (error) {
       handleError(error, this);
       // Don't exit in test environment
-      if (process.env.NODE_ENV !== 'test') {
+      if (process.env.NODE_ENV !== "test") {
         process.exit(1);
       }
       throw error; // Re-throw for test handling
@@ -192,11 +201,14 @@ export class UnifiedCLI {
    */
   async startHealthMonitoring(services, interval = 5000) {
     try {
-      return await this.dockerOrchestrator.startHealthMonitoring(services, interval);
+      return await this.dockerOrchestrator.startHealthMonitoring(
+        services,
+        interval,
+      );
     } catch (error) {
       handleError(error, this);
       // Don't exit in test environment
-      if (process.env.NODE_ENV !== 'test') {
+      if (process.env.NODE_ENV !== "test") {
         process.exit(1);
       }
       throw error; // Re-throw for test handling

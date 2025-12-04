@@ -127,29 +127,29 @@ npx whatsapp-bot-scanner setup --noninteractive --hobby-mode
 
 ### Main Commands
 
-| Command | Description | Options |
-|---------|-------------|---------|
-| `setup` | Run complete setup wizard | `--noninteractive`, `--hobby-mode`, `--skip-dependencies` |
-| `logs` | Stream service logs | `--tail <lines>`, `--timestamps`, `--no-follow` |
-| `pair` | Manual pairing request | None |
-| `status` | Check service health | `--monitor`, `--interval <ms>` |
-| `compatibility` | Show migration info | None |
+| Command         | Description               | Options                                                   |
+| --------------- | ------------------------- | --------------------------------------------------------- |
+| `setup`         | Run complete setup wizard | `--noninteractive`, `--hobby-mode`, `--skip-dependencies` |
+| `logs`          | Stream service logs       | `--tail <lines>`, `--timestamps`, `--no-follow`           |
+| `pair`          | Manual pairing request    | None                                                      |
+| `status`        | Check service health      | `--monitor`, `--interval <ms>`                            |
+| `compatibility` | Show migration info       | None                                                      |
 
 ### Setup Command Options
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--noninteractive` | Run without prompts | false |
-| `--hobby-mode` | Configure for personal use | false |
-| `--skip-dependencies` | Skip dependency checks | false |
+| Option                | Description                | Default |
+| --------------------- | -------------------------- | ------- |
+| `--noninteractive`    | Run without prompts        | false   |
+| `--hobby-mode`        | Configure for personal use | false   |
+| `--skip-dependencies` | Skip dependency checks     | false   |
 
 ### Logs Command Options
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--tail <lines>` | Number of lines to show | 'all' |
-| `--timestamps` | Show timestamps | false |
-| `--no-follow` | Don't follow logs | false |
+| Option           | Description             | Default |
+| ---------------- | ----------------------- | ------- |
+| `--tail <lines>` | Number of lines to show | 'all'   |
+| `--timestamps`   | Show timestamps         | false   |
+| `--no-follow`    | Don't follow logs       | false   |
 
 ## ⚙️ Configuration Management
 
@@ -221,23 +221,23 @@ npx whatsapp-bot-scanner logs scan-orchestrator
 
 ### Service Health Indicators
 
-| Status | Meaning | Action Required |
-|--------|---------|-----------------|
-| ✅ Healthy | Service running normally | None |
-| ⚠️ Starting | Service initializing | Wait |
-| ❌ Unhealthy | Service failed | Check logs |
-| ⏹️ Stopped | Service not running | Restart |
+| Status       | Meaning                  | Action Required |
+| ------------ | ------------------------ | --------------- |
+| ✅ Healthy   | Service running normally | None            |
+| ⚠️ Starting  | Service initializing     | Wait            |
+| ❌ Unhealthy | Service failed           | Check logs      |
+| ⏹️ Stopped   | Service not running      | Restart         |
 
 ## 🔧 Troubleshooting
 
 ### Common Issues and Solutions
 
-| Issue | Solution |
-|-------|----------|
-| Docker not detected | Install Docker and Docker Compose v2 |
-| Node.js version too old | Upgrade to Node.js 20.x or later |
-| API key validation failed | Check key format and permissions |
-| Pairing code expired | Request new code with `npx whatsapp-bot-scanner pair` |
+| Issue                       | Solution                                                  |
+| --------------------------- | --------------------------------------------------------- |
+| Docker not detected         | Install Docker and Docker Compose v2                      |
+| Node.js version too old     | Upgrade to Node.js 20.x or later                          |
+| API key validation failed   | Check key format and permissions                          |
+| Pairing code expired        | Request new code with `npx whatsapp-bot-scanner pair`     |
 | Service health check failed | Check logs with `npx whatsapp-bot-scanner logs <service>` |
 
 ### Error Recovery
@@ -296,12 +296,12 @@ docker stats
 
 ### From Legacy Scripts to Unified CLI
 
-| Legacy Script | Unified CLI Equivalent |
-|---------------|-----------------------|
-| `setup.sh` | `npx whatsapp-bot-scanner setup` |
+| Legacy Script            | Unified CLI Equivalent                        |
+| ------------------------ | --------------------------------------------- |
+| `setup.sh`               | `npx whatsapp-bot-scanner setup`              |
 | `setup-hobby-express.sh` | `npx whatsapp-bot-scanner setup --hobby-mode` |
-| `watch-pairing-code.js` | `npx whatsapp-bot-scanner logs wa-client` |
-| `pair.sh` | `npx whatsapp-bot-scanner pair` |
+| `watch-pairing-code.js`  | `npx whatsapp-bot-scanner logs wa-client`     |
+| `pair.sh`                | `npx whatsapp-bot-scanner pair`               |
 
 ### Migration Steps
 

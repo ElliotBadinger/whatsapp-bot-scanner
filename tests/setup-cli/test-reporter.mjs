@@ -1,6 +1,6 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import fs from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -21,11 +21,11 @@ export class TestReporter {
   addTestResult(result) {
     this.testResults.push(result);
 
-    if (result.status === 'passed') {
+    if (result.status === "passed") {
       this.passedTests++;
-    } else if (result.status === 'failed') {
+    } else if (result.status === "failed") {
       this.failedTests++;
-    } else if (result.status === 'skipped') {
+    } else if (result.status === "skipped") {
       this.skippedTests++;
     }
   }
@@ -43,13 +43,16 @@ export class TestReporter {
         passedTests: this.passedTests,
         failedTests: this.failedTests,
         skippedTests: this.skippedTests,
-        passRate: this.testResults.length > 0 ? (this.passedTests / this.testResults.length) * 100 : 0,
+        passRate:
+          this.testResults.length > 0
+            ? (this.passedTests / this.testResults.length) * 100
+            : 0,
         duration: this.testDuration,
         startTime: this.startTime,
-        endTime: new Date()
+        endTime: new Date(),
       },
       results: this.testResults,
-      coverage: this.calculateCoverage()
+      coverage: this.calculateCoverage(),
     };
   }
 
@@ -63,7 +66,7 @@ export class TestReporter {
       lines: { total: 0, covered: 0, percentage: 0 },
       functions: { total: 0, covered: 0, percentage: 0 },
       branches: { total: 0, covered: 0, percentage: 0 },
-      statements: { total: 0, covered: 0, percentage: 0 }
+      statements: { total: 0, covered: 0, percentage: 0 },
     };
   }
 
@@ -72,10 +75,13 @@ export class TestReporter {
    * @param {string} outputDir - Output directory
    * @returns {Promise<string>} Path to HTML report
    */
-  async generateHTMLReport(outputDir = './test-reports') {
+  async generateHTMLReport(outputDir = "./test-reports") {
     const report = this.generateReport();
     const reportDir = path.join(__dirname, outputDir);
-    const reportFile = path.join(reportDir, `test-report-${new Date().toISOString().split('T')[0]}.html`);
+    const reportFile = path.join(
+      reportDir,
+      `test-report-${new Date().toISOString().split("T")[0]}.html`,
+    );
 
     // Create report directory if it doesn't exist
     await fs.mkdir(reportDir, { recursive: true });
@@ -93,7 +99,8 @@ export class TestReporter {
    */
   generateHTMLContent(report) {
     const passRate = report.summary.passRate.toFixed(2);
-    const passColor = passRate >= 80 ? 'green' : passRate >= 60 ? 'orange' : 'red';
+    const passColor =
+      passRate >= 80 ? "green" : passRate >= 60 ? "orange" : "red";
 
     return `
 <!DOCTYPE html>
@@ -253,15 +260,19 @@ export class TestReporter {
 
   <div class="test-results">
     <h2>Test Results</h2>
-    ${report.results.map(result => `
+    ${report.results
+      .map(
+        (result) => `
       <div class="test-result ${result.status}">
         <div class="test-name">${result.name}</div>
         <div class="test-status ${result.status}">${result.status}</div>
-        ${result.message ? `<div class="test-message">${result.message}</div>` : ''}
-        <div class="test-duration">Duration: ${result.duration || 'N/A'}ms</div>
-        ${result.error ? `<div class="test-error" style="color: #F44336; margin-top: 5px;">${result.error}</div>` : ''}
+        ${result.message ? `<div class="test-message">${result.message}</div>` : ""}
+        <div class="test-duration">Duration: ${result.duration || "N/A"}ms</div>
+        ${result.error ? `<div class="test-error" style="color: #F44336; margin-top: 5px;">${result.error}</div>` : ""}
       </div>
-    `).join('')}
+    `,
+      )
+      .join("")}
   </div>
 
   <div class="coverage">
@@ -299,10 +310,13 @@ export class TestReporter {
    * @param {string} outputDir - Output directory
    * @returns {Promise<string>} Path to JSON report
    */
-  async generateJSONReport(outputDir = './test-reports') {
+  async generateJSONReport(outputDir = "./test-reports") {
     const report = this.generateReport();
     const reportDir = path.join(__dirname, outputDir);
-    const reportFile = path.join(reportDir, `test-report-${new Date().toISOString().split('T')[0]}.json`);
+    const reportFile = path.join(
+      reportDir,
+      `test-report-${new Date().toISOString().split("T")[0]}.json`,
+    );
 
     // Create report directory if it doesn't exist
     await fs.mkdir(reportDir, { recursive: true });
@@ -317,10 +331,13 @@ export class TestReporter {
    * @param {string} outputDir - Output directory
    * @returns {Promise<string>} Path to Markdown report
    */
-  async generateMarkdownReport(outputDir = './test-reports') {
+  async generateMarkdownReport(outputDir = "./test-reports") {
     const report = this.generateReport();
     const reportDir = path.join(__dirname, outputDir);
-    const reportFile = path.join(reportDir, `test-report-${new Date().toISOString().split('T')[0]}.md`);
+    const reportFile = path.join(
+      reportDir,
+      `test-report-${new Date().toISOString().split("T")[0]}.md`,
+    );
 
     // Create report directory if it doesn't exist
     await fs.mkdir(reportDir, { recursive: true });
@@ -354,8 +371,8 @@ export class TestReporter {
     mdContent += `| Test Name | Status | Duration | Message |\n`;
     mdContent += `|-----------|--------|----------|---------|\n`;
 
-    report.results.forEach(result => {
-      mdContent += `| ${result.name} | ${result.status} | ${result.duration || 'N/A'}ms | ${result.message || ''} |\n`;
+    report.results.forEach((result) => {
+      mdContent += `| ${result.name} | ${result.status} | ${result.duration || "N/A"}ms | ${result.message || ""} |\n`;
       if (result.error) {
         mdContent += `| | | | \`${result.error}\` |\n`;
       }
@@ -377,23 +394,25 @@ export class TestReporter {
     const report = this.generateReport();
     const passRate = report.summary.passRate.toFixed(2);
 
-    console.log('='.repeat(60));
-    console.log('TEST REPORT');
-    console.log('='.repeat(60));
+    console.log("=".repeat(60));
+    console.log("TEST REPORT");
+    console.log("=".repeat(60));
     console.log(`Generated on: ${new Date().toLocaleString()}`);
     console.log(`Total Tests: ${report.summary.totalTests}`);
     console.log(`Passed: ${report.summary.passedTests}`);
     console.log(`Failed: ${report.summary.failedTests}`);
     console.log(`Skipped: ${report.summary.skippedTests}`);
     console.log(`Pass Rate: ${passRate}%`);
-    console.log(`Duration: ${(report.summary.duration / 1000).toFixed(2)} seconds`);
-    console.log('='.repeat(60));
+    console.log(
+      `Duration: ${(report.summary.duration / 1000).toFixed(2)} seconds`,
+    );
+    console.log("=".repeat(60));
 
     if (report.summary.failedTests > 0) {
-      console.log('FAILED TESTS:');
+      console.log("FAILED TESTS:");
       report.results
-        .filter(result => result.status === 'failed')
-        .forEach(result => {
+        .filter((result) => result.status === "failed")
+        .forEach((result) => {
           console.log(`- ${result.name}: ${result.message}`);
           if (result.error) {
             console.log(`  Error: ${result.error}`);
@@ -401,7 +420,7 @@ export class TestReporter {
         });
     }
 
-    console.log('='.repeat(60));
+    console.log("=".repeat(60));
   }
 }
 

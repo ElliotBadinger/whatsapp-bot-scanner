@@ -1,4 +1,4 @@
-import ora from 'ora';
+import ora from "ora";
 
 export class ProgressManager {
   constructor() {
@@ -13,8 +13,8 @@ export class ProgressManager {
 
     const spinner = ora({
       text: message,
-      color: 'cyan',
-      spinner: 'dots'
+      color: "cyan",
+      spinner: "dots",
     }).start();
 
     this.spinners.set(task, spinner);

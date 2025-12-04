@@ -1,7 +1,7 @@
 type TimeoutHandle = NodeJS.Timeout;
 
 export interface PairingErrorInfo {
-  type: 'rate_limit' | 'network' | 'other';
+  type: "rate_limit" | "network" | "other";
   retryAfter: number;
   message: string;
   rawError: unknown;
@@ -25,9 +25,21 @@ export interface PairingOrchestratorOptions {
   manualOnly?: boolean;
   requestCode: () => Promise<string>;
   onSuccess?: (code: string, attempt: number) => void;
-  onError?: (err: unknown, attempt: number, nextDelayMs: number, meta: { rateLimited: boolean; holdUntil?: number }, errorInfo?: PairingErrorInfo) => void;
+  onError?: (
+    err: unknown,
+    attempt: number,
+    nextDelayMs: number,
+    meta: { rateLimited: boolean; holdUntil?: number },
+    errorInfo?: PairingErrorInfo,
+  ) => void;
   onFallback?: (err: unknown, attempt: number) => void;
-  onForcedRetry?: (err: unknown, attempt: number, nextDelayMs: number, meta: { rateLimited: boolean; holdUntil?: number }, errorInfo?: PairingErrorInfo) => void;
+  onForcedRetry?: (
+    err: unknown,
+    attempt: number,
+    nextDelayMs: number,
+    meta: { rateLimited: boolean; holdUntil?: number },
+    errorInfo?: PairingErrorInfo,
+  ) => void;
   scheduler?: (fn: () => void, delay: number) => TimeoutHandle;
   clearer?: (handle: TimeoutHandle) => void;
   storage?: {
@@ -45,9 +57,21 @@ export class PairingOrchestrator {
   private readonly manualOnly: boolean;
   private readonly requestCode: () => Promise<string>;
   private readonly onSuccess?: (code: string, attempt: number) => void;
-  private readonly onError?: (err: unknown, attempt: number, nextDelayMs: number, meta: { rateLimited: boolean; holdUntil?: number }, errorInfo?: PairingErrorInfo) => void;
+  private readonly onError?: (
+    err: unknown,
+    attempt: number,
+    nextDelayMs: number,
+    meta: { rateLimited: boolean; holdUntil?: number },
+    errorInfo?: PairingErrorInfo,
+  ) => void;
   private readonly onFallback?: (err: unknown, attempt: number) => void;
-  private readonly onForcedRetry?: (err: unknown, attempt: number, nextDelayMs: number, meta: { rateLimited: boolean; holdUntil?: number }, errorInfo?: PairingErrorInfo) => void;
+  private readonly onForcedRetry?: (
+    err: unknown,
+    attempt: number,
+    nextDelayMs: number,
+    meta: { rateLimited: boolean; holdUntil?: number },
+    errorInfo?: PairingErrorInfo,
+  ) => void;
   private readonly scheduler: (fn: () => void, delay: number) => TimeoutHandle;
   private readonly clearer: (handle: TimeoutHandle) => void;
   private readonly storage?: {
@@ -70,15 +94,21 @@ export class PairingOrchestrator {
     this.maxAttempts = options.maxAttempts;
     this.baseRetryDelayMs = options.baseRetryDelayMs;
     this.rateLimitDelayMs = options.rateLimitDelayMs;
-    const configuredMaxRateDelay = options.maxRateLimitDelayMs ?? Math.max(options.rateLimitDelayMs * 10, 15 * 60 * 1000);
-    this.maxRateLimitDelayMs = Math.max(options.rateLimitDelayMs, configuredMaxRateDelay);
+    const configuredMaxRateDelay =
+      options.maxRateLimitDelayMs ??
+      Math.max(options.rateLimitDelayMs * 10, 15 * 60 * 1000);
+    this.maxRateLimitDelayMs = Math.max(
+      options.rateLimitDelayMs,
+      configuredMaxRateDelay,
+    );
     this.manualOnly = options.manualOnly ?? false;
     this.requestCode = options.requestCode;
     this.onSuccess = options.onSuccess;
     this.onError = options.onError;
     this.onFallback = options.onFallback;
     this.onForcedRetry = options.onForcedRetry;
-    this.scheduler = options.scheduler ?? ((fn, delay) => setTimeout(fn, delay));
+    this.scheduler =
+      options.scheduler ?? ((fn, delay) => setTimeout(fn, delay));
     this.clearer = options.clearer ?? ((handle) => clearTimeout(handle));
     this.storage = options.storage;
   }
@@ -115,7 +145,7 @@ export class PairingOrchestrator {
       } else {
         // If no restriction, we could clear it, but the interface is simple set/get
         // Maybe set to 0 or past
-        await this.storage.set('0');
+        await this.storage.set("0");
       }
     } catch {
       // ignore storage errors
@@ -167,7 +197,11 @@ export class PairingOrchestrator {
    */
   getStatus(): PairingStatus {
     const cooldown = this.getRemainingCooldown();
-    const canRequest = this.enabled && !this.sessionActive && !this.codeDelivered && cooldown === 0;
+    const canRequest =
+      this.enabled &&
+      !this.sessionActive &&
+      !this.codeDelivered &&
+      cooldown === 0;
 
     return {
       canRequest,
@@ -244,9 +278,21 @@ export class PairingOrchestrator {
 
         const holdUntil = rateLimited ? Date.now() + delay : undefined;
         const errorInfo = this.createErrorInfo(err, rateLimited, delay);
-        this.onError?.(err, attempt, delay, { rateLimited, holdUntil }, errorInfo);
+        this.onError?.(
+          err,
+          attempt,
+          delay,
+          { rateLimited, holdUntil },
+          errorInfo,
+        );
         if (this.forcePhonePairing && attempt >= this.maxAttempts) {
-          this.onForcedRetry?.(err, attempt, delay, { rateLimited, holdUntil }, errorInfo);
+          this.onForcedRetry?.(
+            err,
+            attempt,
+            delay,
+            { rateLimited, holdUntil },
+            errorInfo,
+          );
           this.attempts = 0;
           if (!this.manualOnly && this.canSchedule()) {
             this.schedule(delay);
@@ -265,9 +311,12 @@ export class PairingOrchestrator {
       }
     };
 
-    this.timer = this.scheduler(() => {
-      void run();
-    }, Math.max(0, delayMs));
+    this.timer = this.scheduler(
+      () => {
+        void run();
+      },
+      Math.max(0, delayMs),
+    );
   }
 
   async cancel(): Promise<void> {
@@ -281,17 +330,27 @@ export class PairingOrchestrator {
     await this.saveState();
   }
 
-  private classifyError(err: unknown, attempt: number): { rateLimited: boolean; delay: number } {
+  private classifyError(
+    err: unknown,
+    attempt: number,
+  ): { rateLimited: boolean; delay: number } {
     const message = this.extractMessage(err);
-    let rateLimited = message.includes('rate-overlimit') || message.includes('"code":429') || message.includes('429');
+    let rateLimited =
+      message.includes("rate-overlimit") ||
+      message.includes('"code":429') ||
+      message.includes("429");
 
     // Check for IQErrorRateOverlimit in structured error objects
-    if (!rateLimited && message.includes('IQErrorRateOverlimit')) {
+    if (!rateLimited && message.includes("IQErrorRateOverlimit")) {
       rateLimited = true;
     }
 
     // Try to parse JSON error payloads for structured errors
-    if (!rateLimited && (message.includes('{') || message.includes('pairing_code_request_failed:'))) {
+    if (
+      !rateLimited &&
+      (message.includes("{") ||
+        message.includes("pairing_code_request_failed:"))
+    ) {
       try {
         // Extract JSON from error messages like "pairing_code_request_failed:{...json...}"
         const jsonMatch = message.match(/\{.*\}/s);
@@ -304,19 +363,29 @@ export class PairingOrchestrator {
 
           if (parsed.type) {
             // Check if type is a string (test format)
-            if (typeof parsed.type === 'string') {
-              if (parsed.type === 'IQErrorRateOverlimit' || parsed.type.includes('RateOverlimit')) {
+            if (typeof parsed.type === "string") {
+              if (
+                parsed.type === "IQErrorRateOverlimit" ||
+                parsed.type.includes("RateOverlimit")
+              ) {
                 rateLimited = true;
               }
             }
             // Check if type is an object with name property (real format)
-            else if (typeof parsed.type === 'object') {
+            else if (typeof parsed.type === "object") {
               const typeObj = parsed.type as Record<string, unknown>;
-              if (typeObj.name === 'IQErrorRateOverlimit' || String(typeObj.name).includes('RateOverlimit')) {
+              if (
+                typeObj.name === "IQErrorRateOverlimit" ||
+                String(typeObj.name).includes("RateOverlimit")
+              ) {
                 rateLimited = true;
               }
               // Check for code: 429 in type.value
-              if (!rateLimited && typeObj.value && typeof typeObj.value === 'object') {
+              if (
+                !rateLimited &&
+                typeObj.value &&
+                typeof typeObj.value === "object"
+              ) {
                 const valueObj = typeObj.value as Record<string, unknown>;
                 if (valueObj.code === 429) {
                   rateLimited = true;
@@ -326,7 +395,11 @@ export class PairingOrchestrator {
           }
 
           // Also check for code: 429 in top-level value (test format)
-          if (!rateLimited && parsed.value && typeof parsed.value === 'object') {
+          if (
+            !rateLimited &&
+            parsed.value &&
+            typeof parsed.value === "object"
+          ) {
             const valueObj = parsed.value as Record<string, unknown>;
             if (valueObj.code === 429) {
               rateLimited = true;
@@ -341,36 +414,50 @@ export class PairingOrchestrator {
     if (rateLimited) {
       const exponent = Math.min(Math.max(0, attempt - 1), 5);
       const multiplier = Math.pow(2, exponent);
-      const delay = Math.min(this.rateLimitDelayMs * multiplier, this.maxRateLimitDelayMs);
+      const delay = Math.min(
+        this.rateLimitDelayMs * multiplier,
+        this.maxRateLimitDelayMs,
+      );
       return { rateLimited, delay };
     }
     const backoffExponent = Math.min(Math.max(0, attempt - 1), 3);
-    const delay = Math.min(this.baseRetryDelayMs * Math.max(1, Math.pow(2, backoffExponent)), this.rateLimitDelayMs);
+    const delay = Math.min(
+      this.baseRetryDelayMs * Math.max(1, Math.pow(2, backoffExponent)),
+      this.rateLimitDelayMs,
+    );
     return { rateLimited, delay };
   }
 
   private extractMessage(err: unknown): string {
     if (err instanceof Error) {
-      return err.message ?? '';
+      return err.message ?? "";
     }
-    if (typeof err === 'string') {
+    if (typeof err === "string") {
       return err;
     }
     try {
       return JSON.stringify(err);
     } catch {
-      return '';
+      return "";
     }
   }
 
-  private createErrorInfo(err: unknown, rateLimited: boolean, retryAfter: number): PairingErrorInfo {
+  private createErrorInfo(
+    err: unknown,
+    rateLimited: boolean,
+    retryAfter: number,
+  ): PairingErrorInfo {
     const message = this.extractMessage(err);
-    let type: 'rate_limit' | 'network' | 'other' = 'other';
+    let type: "rate_limit" | "network" | "other" = "other";
 
     if (rateLimited) {
-      type = 'rate_limit';
-    } else if (message.includes('network') || message.includes('timeout') || message.includes('ECONNREFUSED')) {
-      type = 'network';
+      type = "rate_limit";
+    } else if (
+      message.includes("network") ||
+      message.includes("timeout") ||
+      message.includes("ECONNREFUSED")
+    ) {
+      type = "network";
     }
 
     return {

@@ -1,8 +1,8 @@
-import { vi } from 'vitest';
-import os from 'node:os';
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import { execa } from 'execa';
+import { vi } from "vitest";
+import os from "node:os";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { execa } from "execa";
 
 // Test utilities and mocking infrastructure
 export class TestUtilities {
@@ -10,7 +10,7 @@ export class TestUtilities {
    * Create a temporary directory for testing
    * @returns {Promise<string>} Path to temporary directory
    */
-  static async createTempDir(prefix = 'test-') {
+  static async createTempDir(prefix = "test-") {
     return await fs.mkdtemp(path.join(os.tmpdir(), prefix));
   }
 
@@ -34,19 +34,19 @@ export class TestUtilities {
     return {
       messages: [],
       success(message) {
-        this.messages.push({ type: 'success', message });
+        this.messages.push({ type: "success", message });
       },
       error(message) {
-        this.messages.push({ type: 'error', message });
+        this.messages.push({ type: "error", message });
       },
       progress(message) {
-        this.messages.push({ type: 'progress', message });
+        this.messages.push({ type: "progress", message });
       },
       info(message) {
-        this.messages.push({ type: 'info', message });
+        this.messages.push({ type: "info", message });
       },
       warn(message) {
-        this.messages.push({ type: 'warn', message });
+        this.messages.push({ type: "warn", message });
       },
       getMessages() {
         return this.messages;
@@ -55,14 +55,14 @@ export class TestUtilities {
         this.messages = [];
       },
       async prompt(options) {
-        return options.default || '';
+        return options.default || "";
       },
       async confirm(options) {
         return options.initial || false;
       },
       async select(options) {
-        return options.choices?.[0]?.value || '';
-      }
+        return options.choices?.[0]?.value || "";
+      },
     };
   }
 
@@ -74,26 +74,26 @@ export class TestUtilities {
     return {
       detectContainer: vi.fn().mockResolvedValue(false),
       detectCodespaces: vi.fn().mockReturnValue(false),
-      detectPackageManager: vi.fn().mockResolvedValue('npm'),
-      detectInitSystem: vi.fn().mockResolvedValue('systemd'),
+      detectPackageManager: vi.fn().mockResolvedValue("npm"),
+      detectInitSystem: vi.fn().mockResolvedValue("systemd"),
       getPlatformInfo: vi.fn().mockReturnValue({
-        platform: 'linux',
-        arch: 'x64',
-        release: '5.15.0',
-        cpus: 4
+        platform: "linux",
+        arch: "x64",
+        release: "5.15.0",
+        cpus: 4,
       }),
       detect: vi.fn().mockResolvedValue({
         isCodespaces: false,
         isContainer: false,
-        packageManager: 'npm',
-        initSystem: 'systemd',
+        packageManager: "npm",
+        initSystem: "systemd",
         platform: {
-          platform: 'linux',
-          arch: 'x64',
-          release: '5.15.0',
-          cpus: 4
-        }
-      })
+          platform: "linux",
+          arch: "x64",
+          release: "5.15.0",
+          cpus: 4,
+        },
+      }),
     };
   }
 
@@ -103,13 +103,13 @@ export class TestUtilities {
    */
   static createMockDependencyManager() {
     return {
-      getNodeVersion: vi.fn().mockReturnValue('20.0.0'),
+      getNodeVersion: vi.fn().mockReturnValue("20.0.0"),
       isVersionSufficient: vi.fn().mockReturnValue(true),
       ensureDocker: vi.fn().mockResolvedValue(),
       verifyDependencies: vi.fn().mockResolvedValue(true),
       ensureNodeJS: vi.fn().mockResolvedValue(),
       installNodeViaFnm: vi.fn().mockResolvedValue(),
-      installNodeViaNodeSource: vi.fn().mockResolvedValue()
+      installNodeViaNodeSource: vi.fn().mockResolvedValue(),
     };
   }
 
@@ -135,11 +135,11 @@ export class TestUtilities {
       },
       parseConfig(configContent) {
         const config = {};
-        const lines = configContent.split('\n');
+        const lines = configContent.split("\n");
 
         for (const line of lines) {
-          if (line.trim() && !line.startsWith('#')) {
-            const [key, value] = line.split('=');
+          if (line.trim() && !line.startsWith("#")) {
+            const [key, value] = line.split("=");
             if (key && value !== undefined) {
               config[key.trim()] = value.trim();
             }
@@ -147,7 +147,7 @@ export class TestUtilities {
         }
 
         return config;
-      }
+      },
     };
   }
 
@@ -165,28 +165,46 @@ export class TestUtilities {
       healthCheckIntervals: new Map(),
       async detectDockerCompose() {
         return {
-          command: ['docker', 'compose'],
-          version: 'v2',
-          supportsComposeV2: true
+          command: ["docker", "compose"],
+          version: "v2",
+          supportsComposeV2: true,
         };
       },
       async buildAndStartServices() {
         return true;
       },
       async getServiceStatus() {
-        return 'wa-client Up, control-plane Up, scan-orchestrator Up';
+        return "wa-client Up, control-plane Up, scan-orchestrator Up";
       },
       async streamLogsWithFormatting(serviceName, options) {
         return {
           process: { on: vi.fn(), kill: vi.fn() },
-          stop: vi.fn()
+          stop: vi.fn(),
         };
       },
       async checkAllServicesHealth() {
         return [
-          { service: 'wa-client', status: 'running', healthy: true, state: 'running', health: 'healthy' },
-          { service: 'control-plane', status: 'running', healthy: true, state: 'running', health: 'healthy' },
-          { service: 'scan-orchestrator', status: 'running', healthy: true, state: 'running', health: 'healthy' }
+          {
+            service: "wa-client",
+            status: "running",
+            healthy: true,
+            state: "running",
+            health: "healthy",
+          },
+          {
+            service: "control-plane",
+            status: "running",
+            healthy: true,
+            state: "running",
+            health: "healthy",
+          },
+          {
+            service: "scan-orchestrator",
+            status: "running",
+            healthy: true,
+            state: "running",
+            health: "healthy",
+          },
         ];
       },
       displayHealthStatus(healthResults) {
@@ -197,7 +215,7 @@ export class TestUtilities {
       },
       stopAllHealthMonitoring() {
         this.healthCheckIntervals.clear();
-      }
+      },
     };
   }
 
@@ -217,11 +235,11 @@ export class TestUtilities {
       countdownInterval: null,
       expirationTime: null,
       pairingSuccessPatterns: [
-        'remote_session_saved',
-        'authentication successful',
-        'session established',
-        'pairing complete',
-        'connected to whatsapp'
+        "remote_session_saved",
+        "authentication successful",
+        "session established",
+        "pairing complete",
+        "connected to whatsapp",
       ],
       extractPairingCode(line) {
         const match = line.match(/code: (\d+)/);
@@ -235,21 +253,21 @@ export class TestUtilities {
         return Math.floor(100000 + Math.random() * 900000).toString();
       },
       isPairingSuccessEvent(line) {
-        return this.pairingSuccessPatterns.some(pattern =>
-          line.toLowerCase().includes(pattern.toLowerCase())
+        return this.pairingSuccessPatterns.some((pattern) =>
+          line.toLowerCase().includes(pattern.toLowerCase()),
         );
       },
       isRateLimitError(line) {
         const rateLimitPatterns = [
-          'rate limit',
-          'too many requests',
-          '429',
-          'quota exceeded',
-          'request limit'
+          "rate limit",
+          "too many requests",
+          "429",
+          "quota exceeded",
+          "request limit",
         ];
 
-        return rateLimitPatterns.some(pattern =>
-          line.toLowerCase().includes(pattern.toLowerCase())
+        return rateLimitPatterns.some((pattern) =>
+          line.toLowerCase().includes(pattern.toLowerCase()),
         );
       },
       startCountdownTimer() {
@@ -267,18 +285,20 @@ export class TestUtilities {
       },
       async requestManualPairing() {
         const phone = await this.ui.prompt({
-          message: 'Enter phone number to pair (with country code, e.g., +1234567890):',
+          message:
+            "Enter phone number to pair (with country code, e.g., +1234567890):",
           validate: (value) => {
-            if (!value) return 'Phone number is required';
-            if (!/^\+?[0-9\s-]+$/.test(value)) return 'Invalid phone number format';
+            if (!value) return "Phone number is required";
+            if (!/^\+?[0-9\s-]+$/.test(value))
+              return "Invalid phone number format";
             return true;
           },
-          required: true
+          required: true,
         });
 
         const simulatedCode = this.generateSimulatedPairingCode();
         this.handlePairingCode(simulatedCode, phone);
-      }
+      },
     };
   }
 
@@ -292,20 +312,20 @@ export class TestUtilities {
       options,
       logs: [],
       info(message, data) {
-        this.logs.push({ level: 'info', message, data });
+        this.logs.push({ level: "info", message, data });
       },
       error(message, data) {
-        this.logs.push({ level: 'error', message, data });
+        this.logs.push({ level: "error", message, data });
       },
       warn(message, data) {
-        this.logs.push({ level: 'warn', message, data });
+        this.logs.push({ level: "warn", message, data });
       },
       async logStepCompletion(step, name, data) {
-        this.logs.push({ level: 'step', step, name, data });
+        this.logs.push({ level: "step", step, name, data });
       },
       getLogFilePath() {
-        return '/tmp/setup-wizard.log';
-      }
+        return "/tmp/setup-wizard.log";
+      },
     };
   }
 
@@ -316,27 +336,27 @@ export class TestUtilities {
    */
   static mockExeca(commands = {}) {
     return vi.fn().mockImplementation((cmd) => {
-      if (typeof cmd === 'string') {
+      if (typeof cmd === "string") {
         if (commands[cmd]) {
           return commands[cmd];
         }
       } else if (Array.isArray(cmd)) {
-        const cmdStr = cmd.join(' ');
+        const cmdStr = cmd.join(" ");
         if (commands[cmdStr]) {
           return commands[cmdStr];
         }
       }
 
       // Default mock responses
-      if (cmd === 'docker' || (Array.isArray(cmd) && cmd.includes('docker'))) {
-        return Promise.resolve({ stdout: 'Docker version 20.10.7' });
+      if (cmd === "docker" || (Array.isArray(cmd) && cmd.includes("docker"))) {
+        return Promise.resolve({ stdout: "Docker version 20.10.7" });
       }
 
-      if (cmd === 'node' || (Array.isArray(cmd) && cmd.includes('node'))) {
-        return Promise.resolve({ stdout: 'v20.0.0' });
+      if (cmd === "node" || (Array.isArray(cmd) && cmd.includes("node"))) {
+        return Promise.resolve({ stdout: "v20.0.0" });
       }
 
-      return Promise.reject(new Error('Command not found'));
+      return Promise.reject(new Error("Command not found"));
     });
   }
 
@@ -349,9 +369,9 @@ export class TestUtilities {
   static async createTestConfigFile(dirPath, config = {}) {
     const configContent = Object.entries(config)
       .map(([key, value]) => `${key}=${value}`)
-      .join('\n');
+      .join("\n");
 
-    const configPath = path.join(dirPath, '.env');
+    const configPath = path.join(dirPath, ".env");
     await fs.writeFile(configPath, configContent);
     return configPath;
   }
@@ -365,9 +385,9 @@ export class TestUtilities {
   static async createTestTemplateFile(dirPath, template = {}) {
     const templateContent = Object.entries(template)
       .map(([key, value]) => `${key}=${value}`)
-      .join('\n');
+      .join("\n");
 
-    const templatePath = path.join(dirPath, '.env.hobby');
+    const templatePath = path.join(dirPath, ".env.hobby");
     await fs.writeFile(templatePath, templateContent);
     return templatePath;
   }
@@ -386,5 +406,5 @@ export const {
   createMockLogger,
   mockExeca,
   createTestConfigFile,
-  createTestTemplateFile
+  createTestTemplateFile,
 } = TestUtilities;

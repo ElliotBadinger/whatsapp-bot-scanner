@@ -25,12 +25,12 @@ The unified CLI consolidates all onboarding functionality into a single, cohesiv
 
 ### What's Changing?
 
-| Legacy Script | Unified CLI Equivalent | Status |
-|---------------|-----------------------|--------|
-| `setup.sh` | `npx whatsapp-bot-scanner setup` | Deprecated |
+| Legacy Script            | Unified CLI Equivalent                        | Status     |
+| ------------------------ | --------------------------------------------- | ---------- |
+| `setup.sh`               | `npx whatsapp-bot-scanner setup`              | Deprecated |
 | `setup-hobby-express.sh` | `npx whatsapp-bot-scanner setup --hobby-mode` | Deprecated |
-| `watch-pairing-code.js` | `npx whatsapp-bot-scanner logs wa-client` | Deprecated |
-| `pair.sh` | `npx whatsapp-bot-scanner pair` | Deprecated |
+| `watch-pairing-code.js`  | `npx whatsapp-bot-scanner logs wa-client`     | Deprecated |
+| `pair.sh`                | `npx whatsapp-bot-scanner pair`               | Deprecated |
 
 ## ⏰ Deprecation Timeline
 
@@ -52,12 +52,12 @@ gantt
 
 ### Detailed Timeline
 
-| Phase | Duration | Start Date | End Date | Description |
-|-------|----------|------------|----------|-------------|
-| **Phase 1** | 30 days | 2025-12-01 | 2025-12-31 | Parallel support for both old and new CLI |
-| **Phase 2** | 90 days | 2026-01-01 | 2026-03-31 | Deprecation warnings added to legacy scripts |
-| **Phase 3** | 30 days | 2026-04-01 | 2026-04-30 | Feature freeze on legacy scripts |
-| **Phase 4** | 30 days | 2026-05-01 | 2026-05-31 | Legacy script removal |
+| Phase       | Duration | Start Date | End Date   | Description                                  |
+| ----------- | -------- | ---------- | ---------- | -------------------------------------------- |
+| **Phase 1** | 30 days  | 2025-12-01 | 2025-12-31 | Parallel support for both old and new CLI    |
+| **Phase 2** | 90 days  | 2026-01-01 | 2026-03-31 | Deprecation warnings added to legacy scripts |
+| **Phase 3** | 30 days  | 2026-04-01 | 2026-04-30 | Feature freeze on legacy scripts             |
+| **Phase 4** | 30 days  | 2026-05-01 | 2026-05-31 | Legacy script removal                        |
 
 ### Key Milestones
 
@@ -128,14 +128,14 @@ rm setup.sh setup-hobby-express.sh watch-pairing-code.js pair.sh
 
 ### Migration Command Reference
 
-| Migration Task | Command |
-|----------------|---------|
-| Backup configuration | `cp .env .env.backup` |
-| Install unified CLI | `npm install -g whatsapp-bot-scanner` |
-| Run migration wizard | `npx whatsapp-bot-scanner setup` |
-| Check service health | `npx whatsapp-bot-scanner status` |
-| View service logs | `npx whatsapp-bot-scanner logs` |
-| Test pairing | `npx whatsapp-bot-scanner pair` |
+| Migration Task       | Command                               |
+| -------------------- | ------------------------------------- |
+| Backup configuration | `cp .env .env.backup`                 |
+| Install unified CLI  | `npm install -g whatsapp-bot-scanner` |
+| Run migration wizard | `npx whatsapp-bot-scanner setup`      |
+| Check service health | `npx whatsapp-bot-scanner status`     |
+| View service logs    | `npx whatsapp-bot-scanner logs`       |
+| Test pairing         | `npx whatsapp-bot-scanner pair`       |
 
 ## ✅ Migration Checklist
 
@@ -237,11 +237,11 @@ npx whatsapp-bot-scanner status
 
 ### Compatibility Mapping
 
-| Legacy Argument | Unified CLI Equivalent |
-|------------------|------------------------|
-| `--hobby-mode` | `--hobby-mode` |
-| `--noninteractive` | `--noninteractive` |
-| `--skip-dependencies` | `--skip-dependencies` |
+| Legacy Argument       | Unified CLI Equivalent |
+| --------------------- | ---------------------- |
+| `--hobby-mode`        | `--hobby-mode`         |
+| `--noninteractive`    | `--noninteractive`     |
+| `--skip-dependencies` | `--skip-dependencies`  |
 
 ### Compatibility Layer
 
@@ -256,13 +256,13 @@ The unified CLI includes a compatibility layer that:
 
 ### Common Migration Issues
 
-| Issue | Solution |
-|-------|----------|
+| Issue                      | Solution                                                  |
+| -------------------------- | --------------------------------------------------------- |
 | Configuration not detected | Run `npx whatsapp-bot-scanner setup --config .env.backup` |
-| API keys not migrated | Manually add keys to new configuration |
-| Services not starting | Check Docker daemon and restart services |
-| Pairing issues | Use `npx whatsapp-bot-scanner pair` for manual pairing |
-| Permission errors | Run with appropriate permissions or use `sudo` |
+| API keys not migrated      | Manually add keys to new configuration                    |
+| Services not starting      | Check Docker daemon and restart services                  |
+| Pairing issues             | Use `npx whatsapp-bot-scanner pair` for manual pairing    |
+| Permission errors          | Run with appropriate permissions or use `sudo`            |
 
 ### Migration Error Recovery
 
