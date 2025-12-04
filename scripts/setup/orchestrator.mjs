@@ -906,6 +906,8 @@ async function configureSecrets(context, runtime, output) {
   ensure('SESSION_SECRET', () => generateBase64Secret(48));
   ensure('CONTROL_PLANE_API_TOKEN', generateHexSecret);
   ensure('WA_REMOTE_AUTH_SHARED_SECRET', generateHexSecret);
+  // WA_REMOTE_AUTH_DATA_KEY is required for RemoteAuth encryption (32 bytes, base64-encoded)
+  ensure('WA_REMOTE_AUTH_DATA_KEY', () => generateBase64Secret(32));
   output.success('Core secrets present.');
 }
 
@@ -1132,6 +1134,14 @@ async function buildAndLaunch(context, runtime, output) {
   if (context.flags.dryRun) {
     output.info('Dry run requested: skipping Docker build and launch.');
     return;
+  }
+  // Ensure ./storage directory exists on host for Docker volume mounts
+  const storagePath = path.join(ROOT_DIR, 'storage');
+  try {
+    await fs.mkdir(storagePath, { recursive: true });
+    output.success('Host storage directory ready.');
+  } catch (error) {
+    output.warn(`Could not create storage directory: ${error.message}`);
   }
   output.heading('Building containers');
   await runWithSpinner(context, 'make build', () =>
