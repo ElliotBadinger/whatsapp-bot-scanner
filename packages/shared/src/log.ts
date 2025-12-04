@@ -1,12 +1,13 @@
-import pino from 'pino';
+import pino from "pino";
 
-const isHobbyMode = process.env.NODE_ENV !== 'production';
-const isTestEnv = process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !== undefined;
+const isHobbyMode = process.env.NODE_ENV !== "production";
+const isTestEnv =
+  process.env.NODE_ENV === "test" || process.env.JEST_WORKER_ID !== undefined;
 
 // Check if pino-pretty is available (it's a dev dependency)
 function isPinoPrettyAvailable(): boolean {
   try {
-    require.resolve('pino-pretty');
+    require.resolve("pino-pretty");
     return true;
   } catch {
     return false;
@@ -18,18 +19,18 @@ function isPinoPrettyAvailable(): boolean {
 // In production, use structured JSON logging with redaction
 function createLogger() {
   if (isTestEnv) {
-    return pino({ level: 'silent' });
+    return pino({ level: "silent" });
   }
 
   if (isHobbyMode && isPinoPrettyAvailable()) {
     return pino({
       transport: {
-        target: 'pino-pretty',
+        target: "pino-pretty",
         options: {
           colorize: true,
-          translateTime: 'HH:MM:ss',
-          ignore: 'pid,hostname',
-          messageFormat: '{msg}',
+          translateTime: "HH:MM:ss",
+          ignore: "pid,hostname",
+          messageFormat: "{msg}",
         },
       },
     });
@@ -37,9 +38,14 @@ function createLogger() {
 
   // Production or hobby mode without pino-pretty
   return pino({
-    level: process.env.LOG_LEVEL || 'info',
+    level: process.env.LOG_LEVEL || "info",
     redact: {
-      paths: ['req.headers.authorization', 'authorization', 'vt.apiKey', 'gsb.apiKey'],
+      paths: [
+        "req.headers.authorization",
+        "authorization",
+        "vt.apiKey",
+        "gsb.apiKey",
+      ],
       remove: true,
     },
   });
