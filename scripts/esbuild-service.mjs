@@ -26,7 +26,16 @@ if (!serviceName) {
   process.exit(1);
 }
 
-const serviceDir = join(rootDir, 'services', serviceName);
+// Sanitize service name to prevent path traversal attacks
+// Only allow alphanumeric characters, hyphens, and underscores
+const sanitizedServiceName = serviceName.replace(/[^a-zA-Z0-9_-]/g, '');
+if (sanitizedServiceName !== serviceName || serviceName.includes('..')) {
+  console.error(`Invalid service name: ${serviceName}`);
+  console.error('Service name must contain only alphanumeric characters, hyphens, and underscores.');
+  process.exit(1);
+}
+
+const serviceDir = join(rootDir, 'services', sanitizedServiceName);
 if (!existsSync(serviceDir)) {
   console.error(`Service directory not found: ${serviceDir}`);
   process.exit(1);
