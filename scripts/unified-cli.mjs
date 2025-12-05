@@ -258,9 +258,11 @@ ${C.primary('  ╚════════════════════�
     this.displayStepHeader(2, 'Configuration', ICON.gear);
     
     let selectedMode = 'hobby';
+    let selectedLibrary = 'baileys';
     
     if (!this.nonInteractive) {
-      const response = await enquirer.prompt({
+      // Setup mode selection
+      const modeResponse = await enquirer.prompt({
         type: 'select',
         name: 'mode',
         message: C.text('Choose setup mode:'),
@@ -270,12 +272,33 @@ ${C.primary('  ╚════════════════════�
         ],
         pointer: C.accent('›'),
       });
-      selectedMode = response.mode;
+      selectedMode = modeResponse.mode;
+      
+      // WhatsApp library selection
+      console.log('');
+      const libResponse = await enquirer.prompt({
+        type: 'select',
+        name: 'library',
+        message: C.text('Choose WhatsApp library:'),
+        choices: [
+          { name: 'baileys', message: `${C.success('●')} Baileys ${C.muted('(Recommended: ~50MB RAM, no browser)')}` },
+          { name: 'wwebjs', message: `${C.muted('○')} whatsapp-web.js ${C.muted('(Legacy: ~500MB RAM, needs Chromium)')}` },
+        ],
+        pointer: C.accent('›'),
+      });
+      selectedLibrary = libResponse.library;
+      
+      if (selectedLibrary === 'baileys') {
+        console.log(`  ${ICON.info}  ${C.text('Using Baileys - protocol-based, lower resources, faster startup')}`);
+      } else {
+        console.log(`  ${ICON.warning}  ${C.warning('Using whatsapp-web.js - consider Baileys for better performance')}`);
+      }
     } else {
-      console.log(`  ${ICON.info}  ${C.text('Non-interactive mode: using hobby configuration')}`);
+      console.log(`  ${ICON.info}  ${C.text('Non-interactive mode: using hobby configuration with Baileys')}`);
     }
     
     this.state.mode = selectedMode;
+    this.state.library = selectedLibrary;
     
     const envFile = path.join(ROOT_DIR, '.env');
     const templateFile = path.join(ROOT_DIR, selectedMode === 'hobby' ? '.env.hobby' : '.env.example');
@@ -299,7 +322,21 @@ ${C.primary('  ╚════════════════════�
       }
     }
     
-    this.markStepComplete(2, `Configuration set to ${selectedMode} mode`);
+    // Update WA_LIBRARY in .env
+    try {
+      let envContent = await fs.readFile(envFile, 'utf-8');
+      if (envContent.includes('WA_LIBRARY=')) {
+        envContent = envContent.replace(/WA_LIBRARY=.*/, `WA_LIBRARY=${selectedLibrary}`);
+      } else {
+        envContent += `\nWA_LIBRARY=${selectedLibrary}`;
+      }
+      await fs.writeFile(envFile, envContent);
+      console.log(`  ${ICON.success}  ${C.success(`WA_LIBRARY set to ${selectedLibrary}`)}`);
+    } catch (err) {
+      console.log(`  ${ICON.warning}  ${C.warning('Could not update WA_LIBRARY in .env')}`);
+    }
+    
+    this.markStepComplete(2, `Configuration set to ${selectedMode} mode with ${selectedLibrary}`)
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
