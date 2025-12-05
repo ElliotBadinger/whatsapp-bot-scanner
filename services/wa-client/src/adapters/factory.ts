@@ -14,9 +14,10 @@ import {
   type AdapterConfig,
   type WhatsAppLibrary,
 } from "./types.js";
-import { BaileysAdapter } from "./baileys-adapter.js";
-import { WWebJSAdapter, type WWebJSAdapterConfig } from "./wwebjs-adapter.js";
 import { config as appConfig } from "@wbscanner/shared";
+
+// Dynamic imports to avoid loading unused adapters
+// This prevents module-not-found errors when whatsapp-web.js isn't installed (Baileys build)
 
 /**
  * Extended factory configuration
@@ -64,13 +65,14 @@ export function getConfiguredLibrary(): WhatsAppLibrary {
  * @param config - Factory configuration
  * @returns WhatsApp adapter instance
  */
-export function createWhatsAppAdapter(config: FactoryConfig): WhatsAppAdapter {
+export async function createWhatsAppAdapter(config: FactoryConfig): Promise<WhatsAppAdapter> {
   const { library, logger } = config;
 
   logger.info({ library }, "Creating WhatsApp adapter");
 
   switch (library) {
     case "baileys": {
+      const { BaileysAdapter } = await import("./baileys-adapter.js");
       const adapterConfig: AdapterConfig = {
         redis: config.redis,
         logger: config.logger,
@@ -84,6 +86,12 @@ export function createWhatsAppAdapter(config: FactoryConfig): WhatsAppAdapter {
     }
 
     case "wwebjs": {
+      // Dynamic import to avoid loading whatsapp-web.js when using Baileys
+      const { WWebJSAdapter } = await import("./wwebjs-adapter.js");
+      type WWebJSAdapterConfig = AdapterConfig & {
+        useRemoteAuth?: boolean;
+        puppeteerArgs?: string[];
+      };
       const adapterConfig: WWebJSAdapterConfig = {
         redis: config.redis,
         logger: config.logger,
@@ -113,10 +121,10 @@ export function createWhatsAppAdapter(config: FactoryConfig): WhatsAppAdapter {
  * @param logger - Logger instance
  * @returns WhatsApp adapter instance
  */
-export function createAdapterFromEnv(
+export async function createAdapterFromEnv(
   redis: Redis,
   logger: Logger,
-): WhatsAppAdapter {
+): Promise<WhatsAppAdapter> {
   const library = getConfiguredLibrary();
 
   return createWhatsAppAdapter({

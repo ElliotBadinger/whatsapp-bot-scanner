@@ -71,7 +71,8 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-      target: wa-client
+      # Use wa-client-baileys for Baileys (lightweight), wa-client for wwebjs (Puppeteer)
+      target: ${WA_BUILD_TARGET:-wa-client-baileys}
       network: host
     env_file: [.env]
     depends_on:
@@ -91,6 +92,7 @@ services:
       - PORT=3005
       - NODE_OPTIONS=--max-old-space-size=768
       - REDIS_URL=redis://redis:6379/0
+      - WA_LIBRARY=${WA_LIBRARY:-baileys}
     volumes:
       - wa_session:/app/services/wa-client/data:rw
       - ./storage:/app/storage:rw

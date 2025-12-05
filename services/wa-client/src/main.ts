@@ -88,8 +88,8 @@ async function main(): Promise<void> {
     connection: redis,
   });
 
-  // Create WhatsApp adapter
-  adapter = createAdapterFromEnv(redis, logger);
+  // Create WhatsApp adapter (async to support dynamic imports)
+  adapter = await createAdapterFromEnv(redis, logger);
 
   // Set up connection handlers
   adapter.onConnectionChange((state) => {

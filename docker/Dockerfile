@@ -238,8 +238,10 @@ RUN --mount=type=cache,target=/root/.bun/install/cache \
 FROM base AS wa-client-baileys-prod-deps
 WORKDIR /app
 
-# Install build tools for better-sqlite3 native compilation
-RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+# Install build tools for better-sqlite3 native compilation (need node-gyp)
+RUN apt-get update && apt-get install -y python3 make g++ nodejs npm && \
+    npm install -g node-gyp && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy shared package tarball from builder
 COPY --from=shared-builder /app/packages/shared/*.tgz /app/packages/shared/
