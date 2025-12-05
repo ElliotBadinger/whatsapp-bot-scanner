@@ -1,4 +1,4 @@
-import type { Redis } from 'ioredis';
+import type { Redis } from "ioredis";
 
 export interface GroupGovernanceEvent {
   chatId: string;
@@ -13,8 +13,13 @@ export interface GroupGovernanceEvent {
 export class GroupStore {
   private readonly maxEvents: number;
 
-  constructor(private readonly redis: Redis, private readonly ttlSeconds: number, options?: { maxEvents?: number }) {
-    this.maxEvents = options?.maxEvents && options.maxEvents > 0 ? options.maxEvents : 50;
+  constructor(
+    private readonly redis: Redis,
+    private readonly ttlSeconds: number,
+    options?: { maxEvents?: number },
+  ) {
+    this.maxEvents =
+      options?.maxEvents && options.maxEvents > 0 ? options.maxEvents : 50;
   }
 
   private key(chatId: string): string {
@@ -34,7 +39,10 @@ export class GroupStore {
     await this.redis.expire(key, this.ttlSeconds);
   }
 
-  async listRecentEvents(chatId: string, limit = 10): Promise<GroupGovernanceEvent[]> {
+  async listRecentEvents(
+    chatId: string,
+    limit = 10,
+  ): Promise<GroupGovernanceEvent[]> {
     if (limit <= 0) {
       return [];
     }

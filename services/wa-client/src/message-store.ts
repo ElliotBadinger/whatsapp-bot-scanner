@@ -1,6 +1,11 @@
-import type { Redis } from 'ioredis';
+import type { Redis } from "ioredis";
 
-export type VerdictStatus = 'pending' | 'sent' | 'retrying' | 'failed' | 'retracted';
+export type VerdictStatus =
+  | "pending"
+  | "sent"
+  | "retrying"
+  | "failed"
+  | "retracted";
 
 export interface VerdictAttemptPayload {
   chatId: string;
@@ -51,7 +56,7 @@ export interface MessageReactionRecord {
 }
 
 export interface MessageRevocationRecord {
-  scope: 'everyone' | 'me';
+  scope: "everyone" | "me";
   timestamp: number;
 }
 
@@ -77,12 +82,15 @@ export interface VerdictContext {
   urlHash: string;
 }
 
-const MESSAGE_KEY_PREFIX = 'wa:message:';
-const VERDICT_MAP_PREFIX = 'wa:verdict:message:';
-const PENDING_ACK_SET_KEY = 'wa:verdict:pending_ack';
+const MESSAGE_KEY_PREFIX = "wa:message:";
+const VERDICT_MAP_PREFIX = "wa:verdict:message:";
+const PENDING_ACK_SET_KEY = "wa:verdict:pending_ack";
 
 export class MessageStore {
-  constructor(private readonly redis: Redis, private readonly ttlSeconds: number) {}
+  constructor(
+    private readonly redis: Redis,
+    private readonly ttlSeconds: number,
+  ) {}
 
   private messageKey(chatId: string, messageId: string): string {
     return `${MESSAGE_KEY_PREFIX}${chatId}:${messageId}`;
@@ -93,7 +101,11 @@ export class MessageStore {
   }
 
   private serializeContext(context: VerdictContext): string {
-    return JSON.stringify({ chatId: context.chatId, messageId: context.messageId, urlHash: context.urlHash });
+    return JSON.stringify({
+      chatId: context.chatId,
+      messageId: context.messageId,
+      urlHash: context.urlHash,
+    });
   }
 
   private async loadRecord(key: string): Promise<MessageRecord | null> {
@@ -114,10 +126,13 @@ export class MessageStore {
   }
 
   private async saveRecord(key: string, record: MessageRecord): Promise<void> {
-    await this.redis.set(key, JSON.stringify(record), 'EX', this.ttlSeconds);
+    await this.redis.set(key, JSON.stringify(record), "EX", this.ttlSeconds);
   }
 
-  async getRecord(chatId: string, messageId: string): Promise<MessageRecord | null> {
+  async getRecord(
+    chatId: string,
+    messageId: string,
+  ): Promise<MessageRecord | null> {
     return this.loadRecord(this.messageKey(chatId, messageId));
   }
 
@@ -190,7 +205,11 @@ export class MessageStore {
     return record;
   }
 
-  async appendEdit(chatId: string, messageId: string, edit: MessageEditRecord): Promise<MessageRecord | null> {
+  async appendEdit(
+    chatId: string,
+    messageId: string,
+    edit: MessageEditRecord,
+  ): Promise<MessageRecord | null> {
     const key = this.messageKey(chatId, messageId);
     const record = await this.loadRecord(key);
     if (!record) {
@@ -207,7 +226,12 @@ export class MessageStore {
     return record;
   }
 
-  async recordRevocation(chatId: string, messageId: string, scope: 'everyone' | 'me', timestamp: number): Promise<MessageRecord | null> {
+  async recordRevocation(
+    chatId: string,
+    messageId: string,
+    scope: "everyone" | "me",
+    timestamp: number,
+  ): Promise<MessageRecord | null> {
     const key = this.messageKey(chatId, messageId);
     const record = await this.loadRecord(key);
     if (!record) {
@@ -215,13 +239,19 @@ export class MessageStore {
     }
     record.revocations.push({ scope, timestamp });
     if (record.revocations.length > 10) {
-      record.revocations = record.revocations.slice(record.revocations.length - 10);
+      record.revocations = record.revocations.slice(
+        record.revocations.length - 10,
+      );
     }
     await this.saveRecord(key, record);
     return record;
   }
 
-  async recordReaction(chatId: string, messageId: string, reaction: MessageReactionRecord): Promise<MessageRecord | null> {
+  async recordReaction(
+    chatId: string,
+    messageId: string,
+    reaction: MessageReactionRecord,
+  ): Promise<MessageRecord | null> {
     const key = this.messageKey(chatId, messageId);
     const record = await this.loadRecord(key);
     if (!record) {
@@ -235,7 +265,9 @@ export class MessageStore {
     return record;
   }
 
-  async registerVerdictAttempt(payload: VerdictAttemptPayload): Promise<VerdictRecord | null> {
+  async registerVerdictAttempt(
+    payload: VerdictAttemptPayload,
+  ): Promise<VerdictRecord | null> {
     const key = this.messageKey(payload.chatId, payload.messageId);
     const record = await this.ensureRecord({
       chatId: payload.chatId,
@@ -251,7 +283,7 @@ export class MessageStore {
       verdict: payload.verdict,
       reasons: payload.reasons,
       decidedAt: payload.decidedAt,
-      status: 'sent',
+      status: "sent",
       attemptCount: nextAttemptCount,
       lastAttemptAt: now,
       verdictMessageId: payload.verdictMessageId ?? existing?.verdictMessageId,
@@ -261,7 +293,8 @@ export class MessageStore {
       attachments: payload.attachments ?? existing?.attachments,
       redirectChain: payload.redirectChain ?? existing?.redirectChain,
       shortener: payload.shortener ?? existing?.shortener ?? null,
-      degradedProviders: payload.degradedProviders ?? existing?.degradedProviders ?? null,
+      degradedProviders:
+        payload.degradedProviders ?? existing?.degradedProviders ?? null,
     };
     if (payload.ack !== undefined) {
       verdictRecord.ackHistory.push({ ack: payload.ack ?? null, at: now });
@@ -304,7 +337,9 @@ export class MessageStore {
           contexts.push(parsed);
         }
       } catch {
-        await this.redis.zrem(PENDING_ACK_SET_KEY, entry).catch(() => undefined);
+        await this.redis
+          .zrem(PENDING_ACK_SET_KEY, entry)
+          .catch(() => undefined);
       }
     }
     return contexts;
@@ -313,7 +348,7 @@ export class MessageStore {
   async updateVerdictAck(
     context: VerdictContext,
     ack: number | null,
-    timestamp: number
+    timestamp: number,
   ): Promise<{ verdict: VerdictRecord; previousAck: number | null } | null> {
     const key = this.messageKey(context.chatId, context.messageId);
     const record = await this.loadRecord(key);
@@ -332,14 +367,19 @@ export class MessageStore {
     }
     verdict.ackHistory.push({ ack, at: timestamp });
     if (verdict.ackHistory.length > 20) {
-      verdict.ackHistory = verdict.ackHistory.slice(verdict.ackHistory.length - 20);
+      verdict.ackHistory = verdict.ackHistory.slice(
+        verdict.ackHistory.length - 20,
+      );
     }
     record.verdicts[context.urlHash] = verdict;
     await this.saveRecord(key, record);
     return { verdict, previousAck: prevAck };
   }
 
-  async markVerdictStatus(context: VerdictContext, status: VerdictStatus): Promise<VerdictRecord | null> {
+  async markVerdictStatus(
+    context: VerdictContext,
+    status: VerdictStatus,
+  ): Promise<VerdictRecord | null> {
     const key = this.messageKey(context.chatId, context.messageId);
     const record = await this.loadRecord(key);
     if (!record) {
@@ -350,7 +390,7 @@ export class MessageStore {
       return null;
     }
     verdict.status = status;
-    if (status === 'failed') {
+    if (status === "failed") {
       verdict.lastAttemptAt = Date.now();
     }
     record.verdicts[context.urlHash] = verdict;
@@ -358,7 +398,9 @@ export class MessageStore {
     return verdict;
   }
 
-  async getVerdictRecord(context: VerdictContext): Promise<VerdictRecord | null> {
+  async getVerdictRecord(
+    context: VerdictContext,
+  ): Promise<VerdictRecord | null> {
     const key = this.messageKey(context.chatId, context.messageId);
     const record = await this.loadRecord(key);
     if (!record) {
@@ -367,7 +409,10 @@ export class MessageStore {
     return record.verdicts[context.urlHash] ?? null;
   }
 
-  async setVerdictMessageId(context: VerdictContext, verdictMessageId: string): Promise<VerdictRecord | null> {
+  async setVerdictMessageId(
+    context: VerdictContext,
+    verdictMessageId: string,
+  ): Promise<VerdictRecord | null> {
     const key = this.messageKey(context.chatId, context.messageId);
     const record = await this.loadRecord(key);
     if (!record) {
@@ -384,11 +429,21 @@ export class MessageStore {
     return verdict;
   }
 
-  async setVerdictMapping(verdictMessageId: string, context: VerdictContext): Promise<void> {
-    await this.redis.set(this.verdictMappingKey(verdictMessageId), JSON.stringify(context), 'EX', this.ttlSeconds);
+  async setVerdictMapping(
+    verdictMessageId: string,
+    context: VerdictContext,
+  ): Promise<void> {
+    await this.redis.set(
+      this.verdictMappingKey(verdictMessageId),
+      JSON.stringify(context),
+      "EX",
+      this.ttlSeconds,
+    );
   }
 
-  async getVerdictMapping(verdictMessageId: string): Promise<VerdictContext | null> {
+  async getVerdictMapping(
+    verdictMessageId: string,
+  ): Promise<VerdictContext | null> {
     const raw = await this.redis.get(this.verdictMappingKey(verdictMessageId));
     if (!raw) {
       return null;

@@ -41,7 +41,10 @@ import {
   type PairingCodeHandler,
   type PresenceType,
 } from "./types.js";
-import { useRedisAuthState, sessionExists } from "../auth/baileys-auth-store.js";
+import {
+  useRedisAuthState,
+  sessionExists,
+} from "../auth/baileys-auth-store.js";
 
 /**
  * Baileys implementation of the WhatsAppAdapter interface

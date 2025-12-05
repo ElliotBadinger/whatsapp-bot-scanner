@@ -1,9 +1,13 @@
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
-import type { Redis } from 'ioredis';
-import type { Logger } from 'pino';
-import type { EncryptionMaterials } from './crypto/dataKeyProvider.js';
-import { encryptPayload, decryptPayload, type EncryptedPayload } from './crypto/secureEnvelope.js';
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import type { Redis } from "ioredis";
+import type { Logger } from "pino";
+import type { EncryptionMaterials } from "./crypto/dataKeyProvider.js";
+import {
+  encryptPayload,
+  decryptPayload,
+  type EncryptedPayload,
+} from "./crypto/secureEnvelope.js";
 
 interface StoreOptions {
   redis: Redis;
@@ -30,7 +34,7 @@ export class RedisRemoteAuthStore {
   constructor(options: StoreOptions) {
     this.redis = options.redis;
     this.logger = options.logger;
-    this.prefix = options.prefix.replace(/:+$/, '');
+    this.prefix = options.prefix.replace(/:+$/, "");
     this.materials = options.materials;
     this.clientId = options.clientId;
   }
@@ -46,7 +50,10 @@ export class RedisRemoteAuthStore {
 
   async delete({ session }: { session: string }): Promise<void> {
     await this.redis.del(this.key(session));
-    this.logger.info({ session, clientId: this.clientId }, 'Deleted RemoteAuth session from Redis');
+    this.logger.info(
+      { session, clientId: this.clientId },
+      "Deleted RemoteAuth session from Redis",
+    );
   }
 
   async save({ session }: { session: string }): Promise<void> {
@@ -60,10 +67,19 @@ export class RedisRemoteAuthStore {
       version: payload.version,
     };
     await this.redis.set(this.key(session), JSON.stringify(record));
-    this.logger.info({ session, clientId: this.clientId }, 'Persisted RemoteAuth session snapshot to Redis');
+    this.logger.info(
+      { session, clientId: this.clientId },
+      "Persisted RemoteAuth session snapshot to Redis",
+    );
   }
 
-  async extract({ session, path: zipPath }: { session: string; path: string }): Promise<void> {
+  async extract({
+    session,
+    path: zipPath,
+  }: {
+    session: string;
+    path: string;
+  }): Promise<void> {
     const raw = await this.redis.get(this.key(session));
     if (!raw) {
       throw new Error(`RemoteAuth session ${session} not found in Redis`);
@@ -72,14 +88,21 @@ export class RedisRemoteAuthStore {
     try {
       record = JSON.parse(raw) as StorePayload;
     } catch (err) {
-      throw new Error(`Stored RemoteAuth payload is invalid JSON: ${(err as Error).message}`);
+      throw new Error(
+        `Stored RemoteAuth payload is invalid JSON: ${(err as Error).message}`,
+      );
     }
     const buffer = decryptPayload(record.payload, this.materials);
     await fs.writeFile(path.resolve(zipPath), buffer);
-    this.logger.info({ session, clientId: this.clientId }, 'Extracted RemoteAuth session snapshot from Redis');
+    this.logger.info(
+      { session, clientId: this.clientId },
+      "Extracted RemoteAuth session snapshot from Redis",
+    );
   }
 }
 
-export function createRemoteAuthStore(options: StoreOptions): RedisRemoteAuthStore {
+export function createRemoteAuthStore(
+  options: StoreOptions,
+): RedisRemoteAuthStore {
   return new RedisRemoteAuthStore(options);
 }
