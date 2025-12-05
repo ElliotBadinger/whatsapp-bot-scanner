@@ -1,6 +1,6 @@
 import type { Logger } from 'pino';
 import type { Message } from 'whatsapp-web.js';
-import type { MessageStore } from '../message-store';
+import type { MessageStore } from '../message-store.js';
 
 type MetricsCounter = { inc: () => void };
 

@@ -17,7 +17,7 @@ import type { ClientOptions } from "whatsapp-web.js";
 import QRCode from "qrcode-terminal";
 import { Queue, Worker, JobsOptions } from "bullmq";
 import { createHash } from "node:crypto";
-import Redis from "ioredis";
+import { Redis } from "ioredis";
 import path from "node:path";
 import { readFileSync } from "node:fs";
 import {
@@ -37,26 +37,26 @@ import {
   connectRedis,
 } from "@wbscanner/shared";
 import { RateLimiterRedis } from "rate-limiter-flexible";
-import { createGlobalTokenBucket, GLOBAL_TOKEN_BUCKET_ID } from "./limiters";
-import { MessageStore, VerdictContext } from "./message-store";
-import { GroupStore } from "./group-store";
-import { loadEncryptionMaterials } from "./crypto/dataKeyProvider";
-import { createRemoteAuthStore } from "./remoteAuthStore";
-import type { RedisRemoteAuthStore } from "./remoteAuthStore";
+import { createGlobalTokenBucket, GLOBAL_TOKEN_BUCKET_ID } from "./limiters.js";
+import { MessageStore, VerdictContext } from "./message-store.js";
+import { GroupStore } from "./group-store.js";
+import { loadEncryptionMaterials } from "./crypto/dataKeyProvider.js";
+import { createRemoteAuthStore } from "./remoteAuthStore.js";
+import type { RedisRemoteAuthStore } from "./remoteAuthStore.js";
 import {
   forceRemoteSessionReset,
   ensureRemoteSessionDirectories,
-} from "./session/cleanup";
+} from "./session/cleanup.js";
 import {
   describeSession,
   isSessionReady,
   type SessionSnapshot,
-} from "./session/guards";
-import { enrichEvaluationError } from "./session/errors";
-import { safeGetGroupChatById } from "./utils/chatLookup";
-import { handleSelfMessageRevoke } from "./handlers/selfRevoke";
-import { PairingOrchestrator } from "./pairingOrchestrator";
-import { SessionManager } from "./session/sessionManager";
+} from "./session/guards.js";
+import { enrichEvaluationError } from "./session/errors.js";
+import { safeGetGroupChatById } from "./utils/chatLookup.js";
+import { handleSelfMessageRevoke } from "./handlers/selfRevoke.js";
+import { PairingOrchestrator } from "./pairingOrchestrator.js";
+import { SessionManager } from "./session/sessionManager.js";
 
 const redis = createRedisConnection();
 const scanRequestQueue = new Queue(config.queues.scanRequest, {
@@ -338,7 +338,7 @@ const ackWatchers = new Map<string, NodeJS.Timeout>();
 let currentWaState: string | null = null;
 let botWid: string | null = null;
 let pairingOrchestrator:
-  | import("./pairingOrchestrator").PairingOrchestrator
+  | import("./pairingOrchestrator.js").PairingOrchestrator
   | null = null;
 let remotePhone: string | undefined = undefined;
 

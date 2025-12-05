@@ -5,7 +5,7 @@
  * allowing session persistence across restarts and container deployments.
  */
 
-import type Redis from "ioredis";
+import type { Redis } from "ioredis";
 import type { Logger } from "pino";
 import type {
   AuthenticationCreds,

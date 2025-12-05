@@ -20,7 +20,7 @@ import {
   type GroupChat,
 } from "whatsapp-web.js";
 import type { Logger } from "pino";
-import type Redis from "ioredis";
+import type { Redis } from "ioredis";
 
 import {
   type WhatsAppAdapter,
@@ -38,12 +38,12 @@ import {
   type QRCodeHandler,
   type PairingCodeHandler,
   type PresenceType,
-} from "./types";
+} from "./types.js";
 import {
   createRemoteAuthStore,
   type RedisRemoteAuthStore,
-} from "../remoteAuthStore";
-import { loadEncryptionMaterials } from "../crypto/dataKeyProvider";
+} from "../remoteAuthStore.js";
+import { loadEncryptionMaterials } from "../crypto/dataKeyProvider.js";
 import { config } from "@wbscanner/shared";
 
 /**

@@ -232,13 +232,67 @@ RUN --mount=type=cache,target=/root/.bun/install/cache \
     bun install --production
 
 # =============================================================================
-# Service: WA Client (Final Runtime)
-# Note: WA Client uses puppeteer base image which requires Node.js
+# Service: WA Client - Baileys (Lightweight Production Dependencies)
+# Baileys doesn't need puppeteer or chromium - much smaller image
+# =============================================================================
+FROM base AS wa-client-baileys-prod-deps
+WORKDIR /app
+
+# Install build tools for better-sqlite3 native compilation
+RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+
+# Copy shared package tarball from builder
+COPY --from=shared-builder /app/packages/shared/*.tgz /app/packages/shared/
+COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusable/
+
+# Copy package.json and filter out whatsapp-web.js (not needed for Baileys)
+COPY services/wa-client/package.json /app/services/wa-client/
+COPY services/wa-client/scripts /app/services/wa-client/scripts
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    cd /app/services/wa-client && \
+    sed -i 's|"@wbscanner/shared": "file:../../packages/shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
+    sed -i 's|"confusable": "file:../../packages/confusable"|"confusable": "file:/app/packages/confusable/confusable-0.1.0.tgz"|g' package.json && \
+    sed -i '/"whatsapp-web.js":/d' package.json && \
+    bun install --production
+
+# =============================================================================
+# Service: WA Client - Baileys (Final Lightweight Runtime)
+# Uses slim base image without Puppeteer/Chromium (~500MB smaller)
+# =============================================================================
+FROM base AS wa-client-baileys
+WORKDIR /app
+ENV NODE_ENV=production \
+    WA_LIBRARY=baileys
+
+# Copy production node_modules from baileys-specific prod-deps stage
+COPY --from=wa-client-baileys-prod-deps /app/services/wa-client/node_modules /app/services/wa-client/node_modules
+
+# Copy built artifacts from builder stage
+COPY --from=wa-client-builder /app/services/wa-client/dist /app/services/wa-client/dist
+COPY --from=wa-client-builder /app/services/wa-client/package.json /app/services/wa-client/
+
+# Copy entrypoint script for library selection
+COPY services/wa-client/scripts/entrypoint.sh /app/services/wa-client/entrypoint.sh
+
+# Setup storage and user
+RUN mkdir -p /app/services/wa-client/data /app/storage && \
+    chmod +x /app/services/wa-client/entrypoint.sh && \
+    chown -R bun:bun /app/services/wa-client /app/storage
+USER bun
+VOLUME ["/app/services/wa-client/data"]
+EXPOSE 3000 3005
+WORKDIR /app/services/wa-client
+CMD ["./entrypoint.sh"]
+
+# =============================================================================
+# Service: WA Client - WWebJS (Final Runtime with Puppeteer)
+# Note: WA Client uses puppeteer base image which requires Node.js and Chromium
 # =============================================================================
 FROM ghcr.io/puppeteer/puppeteer:22.13.1 AS wa-client
 USER root
 WORKDIR /app
 ENV NODE_ENV=production \
+    WA_LIBRARY=wwebjs \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome \
     PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 

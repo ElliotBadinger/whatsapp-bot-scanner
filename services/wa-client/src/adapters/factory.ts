@@ -7,15 +7,15 @@
  */
 
 import type { Logger } from "pino";
-import type Redis from "ioredis";
+import type { Redis } from "ioredis";
 
 import {
   type WhatsAppAdapter,
   type AdapterConfig,
   type WhatsAppLibrary,
-} from "./types";
-import { BaileysAdapter } from "./baileys-adapter";
-import { WWebJSAdapter, type WWebJSAdapterConfig } from "./wwebjs-adapter";
+} from "./types.js";
+import { BaileysAdapter } from "./baileys-adapter.js";
+import { WWebJSAdapter, type WWebJSAdapterConfig } from "./wwebjs-adapter.js";
 import { config as appConfig } from "@wbscanner/shared";
 
 /**

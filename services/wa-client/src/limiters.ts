@@ -1,4 +1,4 @@
-import type Redis from 'ioredis';
+import type { Redis } from 'ioredis';
 import { RateLimiterRedis } from 'rate-limiter-flexible';
 
 export const GLOBAL_TOKEN_BUCKET_ID = 'wa-global-rate';

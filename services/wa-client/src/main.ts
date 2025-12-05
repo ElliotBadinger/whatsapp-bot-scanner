@@ -30,8 +30,8 @@ import {
   getConfiguredLibrary,
   LIBRARY_INFO,
   type WhatsAppAdapter,
-} from "./adapters";
-import { createMessageHandler } from "./handlers";
+} from "./adapters/index.js";
+import { createMessageHandler } from "./handlers/index.js";
 
 // Global state
 let adapter: WhatsAppAdapter | null = null;

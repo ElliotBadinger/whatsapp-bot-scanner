@@ -1,9 +1,9 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type Redis from 'ioredis';
+import type { Redis } from 'ioredis';
 import type { Logger } from 'pino';
-import type { EncryptionMaterials } from './crypto/dataKeyProvider';
-import { encryptPayload, decryptPayload, type EncryptedPayload } from './crypto/secureEnvelope';
+import type { EncryptionMaterials } from './crypto/dataKeyProvider.js';
+import { encryptPayload, decryptPayload, type EncryptedPayload } from './crypto/secureEnvelope.js';
 
 interface StoreOptions {
   redis: Redis;

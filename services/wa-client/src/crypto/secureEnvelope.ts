@@ -1,5 +1,5 @@
 import { randomBytes, createCipheriv, createDecipheriv, createHmac, timingSafeEqual } from 'node:crypto';
-import type { EncryptionMaterials } from './dataKeyProvider';
+import type { EncryptionMaterials } from './dataKeyProvider.js';
 
 export interface EncryptedPayload {
   ciphertext: string;

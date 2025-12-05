@@ -1,8 +1,8 @@
 import type { Logger } from 'pino';
 import type { Message } from 'whatsapp-web.js';
-import type { MessageStore } from '../message-store';
-import { describeSession, isSessionReady, type SessionSnapshot } from '../session/guards';
-import { enrichEvaluationError } from '../session/errors';
+import type { MessageStore } from '../message-store.js';
+import { describeSession, isSessionReady, type SessionSnapshot } from '../session/guards.js';
+import { enrichEvaluationError } from '../session/errors.js';
 
 export interface SelfRevokeDependencies {
   snapshot: SessionSnapshot;

@@ -1,6 +1,6 @@
 import type { Client, GroupChat, Message } from 'whatsapp-web.js';
 import type { Logger } from 'pino';
-import { assertSessionReady } from '../state/runtimeSession';
+import { assertSessionReady } from '../state/runtimeSession.js';
 
 export class ChatLookupError extends Error {
   public readonly chatId: string;

@@ -5,15 +5,15 @@
  */
 
 // Types
-export * from "./types";
+export * from "./types.js";
 
 // Adapters
-export { BaileysAdapter, baileysSessionExists } from "./baileys-adapter";
+export { BaileysAdapter, baileysSessionExists } from "./baileys-adapter.js";
 export {
   WWebJSAdapter,
   wwebjsSessionExists,
   type WWebJSAdapterConfig,
-} from "./wwebjs-adapter";
+} from "./wwebjs-adapter.js";
 
 // Factory
 export {
@@ -22,4 +22,4 @@ export {
   getConfiguredLibrary,
   LIBRARY_INFO,
   type FactoryConfig,
-} from "./factory";
+} from "./factory.js";

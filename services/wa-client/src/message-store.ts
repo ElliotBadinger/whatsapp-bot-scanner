@@ -1,4 +1,4 @@
-import Redis from 'ioredis';
+import type { Redis } from 'ioredis';
 
 export type VerdictStatus = 'pending' | 'sent' | 'retrying' | 'failed' | 'retracted';
 

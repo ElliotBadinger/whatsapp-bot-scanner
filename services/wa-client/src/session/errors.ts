@@ -1,4 +1,4 @@
-import type { SessionSnapshot } from './guards';
+import type { SessionSnapshot } from './guards.js';
 
 export interface ChatLookupErrorContext {
   operation: string;

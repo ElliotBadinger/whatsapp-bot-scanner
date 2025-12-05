@@ -40,8 +40,8 @@ import {
   type QRCodeHandler,
   type PairingCodeHandler,
   type PresenceType,
-} from "./types";
-import { useRedisAuthState, sessionExists } from "../auth/baileys-auth-store";
+} from "./types.js";
+import { useRedisAuthState, sessionExists } from "../auth/baileys-auth-store.js";
 
 /**
  * Baileys implementation of the WhatsAppAdapter interface

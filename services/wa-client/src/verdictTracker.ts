@@ -1,4 +1,4 @@
-import type Redis from 'ioredis';
+import type { Redis } from 'ioredis';
 import type { Message } from 'whatsapp-web.js';
 import type { Logger } from 'pino';
 import { config, metrics } from '@wbscanner/shared';

@@ -6,14 +6,14 @@
  */
 
 import type { Logger } from "pino";
-import type Redis from "ioredis";
+import type { Redis } from "ioredis";
 import type { Queue } from "bullmq";
 
 import {
   type WhatsAppAdapter,
   type WAMessage,
   type MessageHandler as AdapterMessageHandler,
-} from "../adapters/types";
+} from "../adapters/types.js";
 import {
   extractUrls,
   normalizeUrl,

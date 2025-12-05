@@ -2,13 +2,24 @@
 # WhatsApp Client Entrypoint Script
 # Routes to the appropriate entry point based on WA_LIBRARY environment variable
 #
-# NOTE: Baileys adapter (main.js) has ESM compatibility issues with Node.js require().
-# Until fixed, both libraries use index.js which supports both via runtime detection.
+# - baileys: Uses main.js (ESM adapter-based entry point)
+# - wwebjs: Uses index.js (legacy whatsapp-web.js entry point)
 
 set -e
 
 WA_LIBRARY="${WA_LIBRARY:-baileys}"
 
-echo "Starting wa-client with WA_LIBRARY=$WA_LIBRARY (using index.js)"
-# The legacy index.js handles library selection at runtime and works with both
-exec node dist/index.js
+case "$WA_LIBRARY" in
+  baileys)
+    echo "Starting wa-client with WA_LIBRARY=baileys (using main.js)"
+    exec node dist/main.js
+    ;;
+  wwebjs|whatsapp-web.js)
+    echo "Starting wa-client with WA_LIBRARY=wwebjs (using index.js)"
+    exec node dist/index.js
+    ;;
+  *)
+    echo "Unknown WA_LIBRARY: $WA_LIBRARY. Using baileys (default)."
+    exec node dist/main.js
+    ;;
+esac

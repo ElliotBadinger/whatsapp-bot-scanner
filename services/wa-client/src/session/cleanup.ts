@@ -1,8 +1,8 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { Logger } from 'pino';
-import type { RedisRemoteAuthStore } from '../remoteAuthStore';
-import { resetRuntimeSessionState } from '../state/runtimeSession';
+import type { RedisRemoteAuthStore } from '../remoteAuthStore.js';
+import { resetRuntimeSessionState } from '../state/runtimeSession.js';
 
 export interface RemoteSessionCleanupOptions {
   store: Pick<RedisRemoteAuthStore, 'delete'>;

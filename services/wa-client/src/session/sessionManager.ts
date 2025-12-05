@@ -1,9 +1,9 @@
-import { Logger } from 'pino';
-import Redis from 'ioredis';
+import type { Logger } from 'pino';
+import type { Redis } from 'ioredis';
 import { config } from '@wbscanner/shared';
-import { forceRemoteSessionReset } from './cleanup';
-import { createRemoteAuthStore } from '../remoteAuthStore';
-import { loadEncryptionMaterials } from '../crypto/dataKeyProvider';
+import { forceRemoteSessionReset } from './cleanup.js';
+import { createRemoteAuthStore } from '../remoteAuthStore.js';
+import { loadEncryptionMaterials } from '../crypto/dataKeyProvider.js';
 
 export class SessionManager {
     constructor(

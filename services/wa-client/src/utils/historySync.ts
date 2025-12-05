@@ -1,8 +1,8 @@
-import type Redis from 'ioredis';
+import type { Redis } from 'ioredis';
 import type { Logger } from 'pino';
 import type { Client, GroupChat, Message } from 'whatsapp-web.js';
-import { safeGetGroupChatById } from './chatLookup';
-import type { SessionSnapshot } from '../session/guards';
+import { safeGetGroupChatById } from './chatLookup.js';
+import type { SessionSnapshot } from '../session/guards.js';
 
 const CHAT_CURSOR_KEY = (chatId: string) => `wa:chat:${chatId}:cursor`;
 const KNOWN_CHATS_KEY = 'wa:chats:known';

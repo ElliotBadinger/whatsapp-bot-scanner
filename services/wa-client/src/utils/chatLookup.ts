@@ -1,7 +1,7 @@
 import type { Logger } from 'pino';
 import type { Client, GroupChat } from 'whatsapp-web.js';
-import { describeSession, isSessionReady, type SessionSnapshot } from '../session/guards';
-import { enrichEvaluationError } from '../session/errors';
+import { describeSession, isSessionReady, type SessionSnapshot } from '../session/guards.js';
+import { enrichEvaluationError } from '../session/errors.js';
 
 interface ChatLookupParams {
   client: Client;
