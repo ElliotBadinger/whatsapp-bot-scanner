@@ -89,8 +89,8 @@ describe("Adapter Factory", () => {
   });
 
   describe("createWhatsAppAdapter", () => {
-    it('should create a BaileysAdapter when library is "baileys"', () => {
-      const adapter = createWhatsAppAdapter({
+    it('should create a BaileysAdapter when library is "baileys"', async () => {
+      const adapter = await createWhatsAppAdapter({
         library: "baileys",
         redis: mockRedis,
         logger: mockLogger,
@@ -101,8 +101,8 @@ describe("Adapter Factory", () => {
       expect(adapter).toBeDefined();
     });
 
-    it('should create a WWebJSAdapter when library is "wwebjs"', () => {
-      const adapter = createWhatsAppAdapter({
+    it('should create a WWebJSAdapter when library is "wwebjs"', async () => {
+      const adapter = await createWhatsAppAdapter({
         library: "wwebjs",
         redis: mockRedis,
         logger: mockLogger,
@@ -113,19 +113,19 @@ describe("Adapter Factory", () => {
       expect(adapter).toBeDefined();
     });
 
-    it("should throw error for unknown library", () => {
-      expect(() =>
+    it("should throw error for unknown library", async () => {
+      await expect(
         createWhatsAppAdapter({
           library: "unknown" as any,
           redis: mockRedis,
           logger: mockLogger,
           clientId: "test-client",
         }),
-      ).toThrow("Unknown WhatsApp library: unknown");
+      ).rejects.toThrow("Unknown WhatsApp library: unknown");
     });
 
-    it("should pass configuration to BaileysAdapter", () => {
-      createWhatsAppAdapter({
+    it("should pass configuration to BaileysAdapter", async () => {
+      await createWhatsAppAdapter({
         library: "baileys",
         redis: mockRedis,
         logger: mockLogger,
@@ -146,8 +146,8 @@ describe("Adapter Factory", () => {
       );
     });
 
-    it("should pass configuration to WWebJSAdapter", () => {
-      createWhatsAppAdapter({
+    it("should pass configuration to WWebJSAdapter", async () => {
+      await createWhatsAppAdapter({
         library: "wwebjs",
         redis: mockRedis,
         logger: mockLogger,
