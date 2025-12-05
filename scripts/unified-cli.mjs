@@ -743,22 +743,47 @@ ${C.primary("  ╚════════════════════�
    * Check all required ports and report conflicts
    */
   async checkRequiredPorts() {
+    // Read both .env and .env.local - Docker Compose loads both with .env.local taking precedence
     const envFile = path.join(ROOT_DIR, ".env");
+    const envLocalFile = path.join(ROOT_DIR, ".env.local");
     let envContent = "";
+    let envLocalContent = "";
     try {
       envContent = await fs.readFile(envFile, "utf-8");
     } catch {
       // File doesn't exist yet
     }
+    try {
+      envLocalContent = await fs.readFile(envLocalFile, "utf-8");
+    } catch {
+      // File doesn't exist
+    }
 
+    // Get port from env files (.env.local takes precedence, matching Docker Compose behavior)
     const getPort = (key, defaultPort) => {
+      // Check .env.local first (takes precedence)
+      const localMatch = envLocalContent.match(new RegExp(`${key}=["']?(\\d+)["']?`));
+      if (localMatch) {
+        return Number.parseInt(localMatch[1], 10);
+      }
+      // Fall back to .env
       const match = envContent.match(new RegExp(`${key}=(\\d+)`));
       return Number.parseInt(match?.[1] ?? defaultPort, 10);
     };
 
-    // Define all ports used by Docker services (all configurable)
-    // Note: Redis and Prometheus use Docker internal network only
+    // Define all ports used by Docker services
+    // Include hardcoded ports (Redis, Prometheus) and configurable ones
     const ports = [
+      {
+        name: "Redis",
+        port: 6379,
+        env: null, // Hardcoded in docker-compose.yml
+      },
+      {
+        name: "Prometheus",
+        port: 9091,
+        env: null, // Hardcoded in docker-compose.yml
+      },
       {
         name: "WA Client",
         port: getPort("WA_CLIENT_PORT", "3005"),
@@ -786,6 +811,9 @@ ${C.primary("  ╚════════════════════�
       },
     ];
 
+    // Store all configured ports to avoid conflicts during reassignment
+    this._allConfiguredPorts = new Set(ports.map((p) => p.port));
+
     const conflicts = [];
 
     for (const { name, port, env } of ports) {
@@ -802,18 +830,41 @@ ${C.primary("  ╚════════════════════�
    * Auto-reassign ports for conflicting services
    */
   async resolvePortConflicts(conflicts) {
+    // Update both .env and .env.local to ensure consistency
     const envFile = path.join(ROOT_DIR, ".env");
+    const envLocalFile = path.join(ROOT_DIR, ".env.local");
     let envContent = await fs.readFile(envFile, "utf-8").catch(() => "");
+    let envLocalContent = await fs.readFile(envLocalFile, "utf-8").catch(() => "");
     let modified = false;
+    let localModified = false;
     let allResolved = true;
 
+    // Track ports already assigned in this resolution cycle to avoid duplicates
+    const assignedPorts = new Set(this._allConfiguredPorts || []);
+
     for (const { name, port, env } of conflicts) {
-      // Find an available alternative port
+      // Skip hardcoded ports (env is null) - these cannot be reassigned
+      if (!env) {
+        console.log(
+          `  ${ICON.error}  ${C.error(`Port ${port} (${name}) is hardcoded and cannot be reassigned.`)}`,
+        );
+        console.log(
+          `  ${ICON.info}  ${C.text(`Stop the process using port ${port} and try again.`)}`,
+        );
+        allResolved = false;
+        continue;
+      }
+
+      // Find an available alternative port that:
+      // 1. Is not in use on the system
+      // 2. Has not been assigned to another service in this batch
       let altPort = port + 1;
-      while (
-        !(await this.checkPortAvailable(altPort)) &&
-        altPort < port + 100
-      ) {
+      while (altPort < port + 100) {
+        const systemAvailable = await this.checkPortAvailable(altPort);
+        const notAlreadyAssigned = !assignedPorts.has(altPort);
+        if (systemAvailable && notAlreadyAssigned) {
+          break;
+        }
         altPort++;
       }
 
@@ -825,7 +876,10 @@ ${C.primary("  ╚════════════════════�
         continue;
       }
 
-      // Auto-reassign without prompting
+      // Mark this port as assigned
+      assignedPorts.add(altPort);
+
+      // Auto-reassign in .env
       if (envContent.includes(`${env}=`)) {
         envContent = envContent.replace(
           new RegExp(`${env}=.*`),
@@ -836,6 +890,15 @@ ${C.primary("  ╚════════════════════�
       }
       modified = true;
 
+      // Also update .env.local if it contains this setting (to keep them in sync)
+      if (envLocalContent.includes(`${env}=`)) {
+        envLocalContent = envLocalContent.replace(
+          new RegExp(`${env}=["']?\\d+["']?`),
+          `${env}="${altPort}"`,
+        );
+        localModified = true;
+      }
+
       console.log(
         `  ${ICON.success}  ${C.success(`${name} auto-reassigned from port ${port} to ${altPort}`)}`,
       );
@@ -843,6 +906,9 @@ ${C.primary("  ╚════════════════════�
 
     if (modified) {
       await fs.writeFile(envFile, envContent);
+    }
+    if (localModified) {
+      await fs.writeFile(envLocalFile, envLocalContent);
     }
 
     return allResolved;
