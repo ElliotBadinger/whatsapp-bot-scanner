@@ -747,8 +747,10 @@ async function runConfigValidation(context, output) {
     return;
   }
   output.heading('Validating configuration');
-  await runWithSpinner(context, 'node scripts/validate-config.js', () =>
-    execa('node', [scriptPath], { cwd: ROOT_DIR, stdout: 'inherit', stderr: 'inherit' })
+  // Prefer bun over node for script execution
+  const runtime = (await commandExists('bun')) ? 'bun' : 'node';
+  await runWithSpinner(context, `${runtime} scripts/validate-config.js`, () =>
+    execa(runtime, [scriptPath], { cwd: ROOT_DIR, stdout: 'inherit', stderr: 'inherit' })
   );
 }
 
@@ -1393,7 +1395,7 @@ async function offerPairingWatcher(context, output) {
   if (context.flags.noninteractive || context.flags.dryRun) return;
   if ((context.runtime.envFile.get('WA_AUTH_STRATEGY') || 'remote').toLowerCase() !== 'remote') return;
   if ((context.runtime.envFile.get('WA_REMOTE_AUTH_AUTO_PAIR') || '').toLowerCase() !== 'true') {
-    output.info('Need audio cues later? Run npm run watch:pairing-code for audible alerts.');
+    output.info('Need audio cues later? Run bun run watch:pairing-code for audible alerts.');
     return;
   }
   if (!(await commandExists('node'))) {
@@ -1409,9 +1411,11 @@ async function offerPairingWatcher(context, output) {
   if (startWatcher) {
     output.info('Press Ctrl+C when you are done listening for codes.');
     try {
-      await execa('npm', ['run', '--silent', 'watch:pairing-code'], { cwd: ROOT_DIR, stdio: 'inherit' });
+      // Prefer bun over npm
+      const pkgMgr = (await commandExists('bun')) ? 'bun' : 'npm';
+      await execa(pkgMgr, ['run', '--silent', 'watch:pairing-code'], { cwd: ROOT_DIR, stdio: 'inherit' });
     } catch {
-      output.warn('Pairing watcher exited unexpectedly. You can run npm run watch:pairing-code again later.');
+      output.warn('Pairing watcher exited unexpectedly. You can run bun run watch:pairing-code again later.');
     }
   }
 }

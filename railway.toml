@@ -14,7 +14,7 @@ source = "services/scan-orchestrator"
 replicas = 2
 healthcheckPath = "/healthz"
 healthcheckTimeout = 100
-startCommand = "npm run migrate && npm start"
+startCommand = "bun run migrate && bun start"
 
 [[services]]
 name = "control-plane"

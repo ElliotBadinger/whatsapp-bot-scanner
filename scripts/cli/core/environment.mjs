@@ -35,19 +35,25 @@ export class EnvironmentDetector {
   }
 
   async detectPackageManager() {
+    // Prefer bun over other package managers
     try {
-      await execa('yarn', ['--version'], { stdio: 'ignore' });
-      return 'yarn';
+      await execa('bun', ['--version'], { stdio: 'ignore' });
+      return 'bun';
     } catch {
       try {
-        await execa('pnpm', ['--version'], { stdio: 'ignore' });
-        return 'pnpm';
+        await execa('yarn', ['--version'], { stdio: 'ignore' });
+        return 'yarn';
       } catch {
         try {
-          await execa('npm', ['--version'], { stdio: 'ignore' });
-          return 'npm';
+          await execa('pnpm', ['--version'], { stdio: 'ignore' });
+          return 'pnpm';
         } catch {
-          return 'unknown';
+          try {
+            await execa('npm', ['--version'], { stdio: 'ignore' });
+            return 'npm';
+          } catch {
+            return 'unknown';
+          }
         }
       }
     }

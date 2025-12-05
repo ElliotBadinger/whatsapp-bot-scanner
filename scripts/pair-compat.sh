@@ -6,5 +6,9 @@
 # Set the calling script for compatibility detection
 export COMPATIBILITY_CALLING_SCRIPT="pair.sh"
 
-# Execute the compatibility wrapper
-node ./scripts/cli/core/compatibility.mjs
+# Execute the compatibility wrapper (prefer bun over node)
+if command -v bun &> /dev/null; then
+    bun ./scripts/cli/core/compatibility.mjs
+else
+    node ./scripts/cli/core/compatibility.mjs
+fi

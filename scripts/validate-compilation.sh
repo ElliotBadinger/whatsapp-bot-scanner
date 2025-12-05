@@ -72,18 +72,31 @@ else
     exit 1
 fi
 
-# Check npm
-if command_exists npm; then
+# Detect package manager (prefer bun)
+if command_exists bun; then
+    PKG_MGR="bun"
+    PKG_RUN="bun run"
+    PKG_INSTALL="bun install"
+    bun_version=$(bun --version)
+    print_status $GREEN "✓ Bun found: $bun_version (preferred)"
+    safe_increment total_checks
+    safe_increment passed_checks
+elif command_exists npm; then
+    PKG_MGR="npm"
+    PKG_RUN="npm run"
+    PKG_INSTALL="npm install"
     npm_version=$(npm --version)
     print_status $GREEN "✓ npm found: $npm_version"
     safe_increment total_checks
     safe_increment passed_checks
 else
-    print_status $RED "✗ npm not found"
+    print_status $RED "✗ No package manager found (bun or npm required)"
     safe_increment total_checks
     safe_increment failed_checks
     exit 1
 fi
+
+print_status $BLUE "Using package manager: $PKG_MGR"
 
 # Check if we're in the right directory
 if [ -f "package.json" ] && grep -q '"whatsapp-bot-scanner"' package.json; then
@@ -152,8 +165,8 @@ done
 # Install dependencies
 print_section "Installing Dependencies"
 
-print_status $BLUE "Installing root dependencies..."
-if npm install --silent; then
+print_status $BLUE "Installing root dependencies with $PKG_MGR..."
+if $PKG_INSTALL --silent 2>/dev/null || $PKG_INSTALL; then
     print_status $GREEN "✓ Root dependencies installed successfully"
     safe_increment total_checks
     safe_increment passed_checks
@@ -166,8 +179,8 @@ fi
 # Run workspace build validation
 print_section "Running Full Workspace Build"
 
-print_status $BLUE "Running 'npm run build' for entire workspace..."
-if npm run build 2>&1; then
+print_status $BLUE "Running '$PKG_RUN build' for entire workspace..."
+if $PKG_RUN build 2>&1; then
     print_status $GREEN "✓ Full workspace build completed successfully"
     safe_increment total_checks
     safe_increment passed_checks
@@ -187,7 +200,7 @@ for workspace in "${workspaces[@]}"; do
         
         cd "$workspace" || continue
         
-        if npm run build --silent 2>&1; then
+        if $PKG_RUN build --silent 2>&1; then
             print_status $GREEN "✓ $workspace build completed successfully"
             safe_increment total_checks
             safe_increment passed_checks
@@ -302,11 +315,11 @@ if [ $failed_checks -gt 0 ]; then
     print_status $YELLOW ""
     print_status $YELLOW "Troubleshooting steps:"
     print_status $YELLOW "1. Check the error messages above for specific issues"
-    print_status $YELLOW "2. Run 'npm install' to ensure all dependencies are installed"
+    print_status $YELLOW "2. Run 'bun install' to ensure all dependencies are installed"
     print_status $YELLOW "3. Check TypeScript configuration files (tsconfig.json) in each workspace"
     print_status $YELLOW "4. Verify source code syntax in any workspace that failed"
     print_status $YELLOW "5. Check for circular dependencies between workspaces"
-    print_status $YELLOW "6. Run 'npm run lint' to identify code quality issues"
+    print_status $YELLOW "6. Run 'bun run lint' to identify code quality issues"
     echo ""
     exit 1
 else
@@ -317,9 +330,9 @@ else
     print_status $GREEN "The codebase is ready for deployment!"
     print_status $BLUE ""
     print_status $BLUE "Next steps:"
-    print_status $BLUE "1. Run 'npm run test' to execute test suites"
+    print_status $BLUE "1. Run 'bun run test' to execute test suites"
     print_status $BLUE "2. Review the compiled JavaScript files in each workspace's dist/ directory"
-    print_status $BLUE "3. Consider running 'npm run lint' for code quality checks"
+    print_status $BLUE "3. Consider running 'bun run lint' for code quality checks"
     print_status $BLUE "4. Use 'make build' to build Docker containers for deployment"
     echo ""
     exit 0

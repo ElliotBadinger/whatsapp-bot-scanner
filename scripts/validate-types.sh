@@ -20,6 +20,19 @@ echo -e "${YELLOW}🔍 Running comprehensive type checking and tests...${NC}\n"
 # Track failures
 FAILED=0
 
+# Detect package manager (prefer bun)
+if command -v bun &> /dev/null; then
+    PKG_MGR="bun"
+    PKG_RUN="bun run"
+    PKG_X="bunx"
+else
+    PKG_MGR="npm"
+    PKG_RUN="npm run"
+    PKG_X="npx"
+fi
+
+echo -e "${YELLOW}Using package manager: $PKG_MGR${NC}\n"
+
 # Function to run command and track failures
 run_check() {
     local name=$1
@@ -35,39 +48,39 @@ run_check() {
 }
 
 # 1. Build shared package (required for all services)
-run_check "Build shared package" "packages/shared" "npm run build"
+run_check "Build shared package" "packages/shared" "$PKG_RUN build"
 
 # 2. TypeScript strict compilation for shared
-run_check "TypeScript check (shared)" "packages/shared" "npx tsc --noEmit --strict"
+run_check "TypeScript check (shared)" "packages/shared" "$PKG_X tsc --noEmit --strict"
 
 # 3. Run shared tests
-run_check "Unit tests (shared)" "packages/shared" "npm test -- --passWithNoTests"
+run_check "Unit tests (shared)" "packages/shared" "$PKG_RUN test -- --passWithNoTests"
 
 # 4. Build and type-check scan-orchestrator
-run_check "Build scan-orchestrator" "services/scan-orchestrator" "npm run build"
-run_check "TypeScript check (scan-orchestrator)" "services/scan-orchestrator" "npx tsc --noEmit"
+run_check "Build scan-orchestrator" "services/scan-orchestrator" "$PKG_RUN build"
+run_check "TypeScript check (scan-orchestrator)" "services/scan-orchestrator" "$PKG_X tsc --noEmit"
 
 # 5. Build and type-check wa-client
 if [ -d "$PROJECT_ROOT/services/wa-client" ]; then
-    run_check "Build wa-client" "services/wa-client" "npm run build"
-    run_check "TypeScript check (wa-client)" "services/wa-client" "npx tsc --noEmit"
+    run_check "Build wa-client" "services/wa-client" "$PKG_RUN build"
+    run_check "TypeScript check (wa-client)" "services/wa-client" "$PKG_X tsc --noEmit"
 fi
 
 # 6. Build and type-check verdict-publisher
 if [ -d "$PROJECT_ROOT/services/verdict-publisher" ]; then
-    run_check "Build verdict-publisher" "services/verdict-publisher" "npm run build"
-    run_check "TypeScript check (verdict-publisher)" "services/verdict-publisher" "npx tsc --noEmit"
+    run_check "Build verdict-publisher" "services/verdict-publisher" "$PKG_RUN build"
+    run_check "TypeScript check (verdict-publisher)" "services/verdict-publisher" "$PKG_X tsc --noEmit"
 fi
 
 # 7. Build and type-check control-plane
 if [ -d "$PROJECT_ROOT/services/control-plane" ]; then
-    run_check "Build control-plane" "services/control-plane" "npm run build"
-    run_check "TypeScript check (control-plane)" "services/control-plane" "npx tsc --noEmit"
+    run_check "Build control-plane" "services/control-plane" "$PKG_RUN build"
+    run_check "TypeScript check (control-plane)" "services/control-plane" "$PKG_X tsc --noEmit"
 fi
 
 # 8. ESLint checks
-run_check "ESLint (shared)" "packages/shared" "npx eslint src --ext .ts --max-warnings 0 || true"
-run_check "ESLint (scan-orchestrator)" "services/scan-orchestrator" "npx eslint src --ext .ts --max-warnings 0 || true"
+run_check "ESLint (shared)" "packages/shared" "$PKG_X eslint src --ext .ts --max-warnings 0 || true"
+run_check "ESLint (scan-orchestrator)" "services/scan-orchestrator" "$PKG_X eslint src --ext .ts --max-warnings 0 || true"
 
 # Summary
 echo -e "\n${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

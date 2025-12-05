@@ -7,7 +7,7 @@
   "scripts": {
     "build": "echo 'No build needed for confusable package'",
     "type-check": "echo 'No type check needed'",
-    "test": "node -e \"process.exit(0)\""
+    "test": "echo 'No tests for confusable package'"
   },
   "dependencies": {
     "confusables.js": "^0.4.1"

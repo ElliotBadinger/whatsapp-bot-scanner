@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1.4
 
 # =============================================================================
-# Base stage for Node.js
+# Base stage with Bun
 # =============================================================================
-FROM node:20-slim AS base
+FROM oven/bun:1.3-slim AS base
 WORKDIR /app
 ENV NODE_ENV=production
 
@@ -14,7 +14,7 @@ FROM base AS shared-builder
 WORKDIR /app
 
 # Copy root config and lockfile
-COPY tsconfig.base.json package.json package-lock.json /app/
+COPY tsconfig.base.json package.json bun.lock /app/
 COPY types /app/types
 
 # Copy confusable package (complete)
@@ -24,23 +24,13 @@ COPY packages/confusable /app/packages/confusable
 COPY packages/shared/package.json packages/shared/tsconfig.json /app/packages/shared/
 COPY packages/shared/src /app/packages/shared/src
 
-# Install confusable dependencies first (so confusables.js is available)
-# Then install shared dependencies (which links to confusable via file:../confusable)
-# Finally build shared and pack both
-# Network retry logic: npm will retry on network failures
-RUN --mount=type=cache,target=/root/.npm \
+# Install dependencies and build shared package
+RUN --mount=type=cache,target=/root/.bun/install/cache \
     set -e && \
-    npm config set fetch-retries 5 && \
-    npm config set fetch-retry-mintimeout 20000 && \
-    npm config set fetch-retry-maxtimeout 120000 && \
-    cd /app/packages/confusable && \
-    (npm install --no-audit --progress=false || \
-     (echo "Retrying confusable install..." && sleep 5 && npm install --no-audit --progress=false)) && \
-    cd /app && \
-    (npm install -w packages/shared --include=dev --no-audit --progress=false || \
-     (echo "Retrying shared install..." && sleep 5 && npm install -w packages/shared --include=dev --no-audit --progress=false)) && \
-    cd /app/packages/shared && npm run build && npm pack && \
-    cd /app/packages/confusable && npm pack
+    cd /app/packages/confusable && bun install && \
+    cd /app && bun install --filter packages/shared && \
+    cd /app/packages/shared && bun run build && bun pm pack && \
+    cd /app/packages/confusable && bun pm pack
 
 # =============================================================================
 # Service: Control Plane (Builder)
@@ -52,22 +42,22 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y python3 make g++ wget && rm -rf /var/lib/apt/lists/*
 
 # Copy shared package tarball from builder
-COPY --from=shared-builder /app/packages/shared/wbscanner-shared-0.1.0.tgz /app/packages/shared/
-COPY --from=shared-builder /app/packages/confusable/confusable-0.1.0.tgz /app/packages/confusable/
+COPY --from=shared-builder /app/packages/shared/*.tgz /app/packages/shared/
+COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusable/
 
 # Install ALL dependencies (including dev) to build
 COPY services/control-plane/package.json services/control-plane/tsconfig.json /app/services/control-plane/
-RUN --mount=type=cache,target=/root/.npm \
+RUN --mount=type=cache,target=/root/.bun/install/cache \
     cd /app/services/control-plane && \
-    npm install /app/packages/shared/wbscanner-shared-0.1.0.tgz --include=dev --no-audit --progress=false --legacy-peer-deps && \
-    npm install /app/packages/confusable/confusable-0.1.0.tgz --include=dev --no-audit --progress=false --legacy-peer-deps && \
-    npm install --include=dev --no-audit --progress=false --legacy-peer-deps
+    bun add /app/packages/shared/*.tgz && \
+    bun add /app/packages/confusable/*.tgz && \
+    bun install
 
 # Copy source and build
 COPY tsconfig.base.json /app/
 COPY types /app/types
 COPY services/control-plane/src /app/services/control-plane/src
-RUN cd /app/services/control-plane && npm run build
+RUN cd /app/services/control-plane && bun run build
 
 # =============================================================================
 # Service: Control Plane (Production)
@@ -79,16 +69,16 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
 
 # Copy shared package tarball from builder
-COPY --from=shared-builder /app/packages/shared/wbscanner-shared-0.1.0.tgz /app/packages/shared/
-COPY --from=shared-builder /app/packages/confusable/confusable-0.1.0.tgz /app/packages/confusable/
+COPY --from=shared-builder /app/packages/shared/*.tgz /app/packages/shared/
+COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusable/
 
 # Install PRODUCTION dependencies only
 COPY services/control-plane/package.json /app/services/control-plane/
-RUN --mount=type=cache,target=/root/.npm \
+RUN --mount=type=cache,target=/root/.bun/install/cache \
     cd /app/services/control-plane && \
-    npm install /app/packages/shared/wbscanner-shared-0.1.0.tgz --omit=dev --no-audit --progress=false --legacy-peer-deps && \
-    npm install /app/packages/confusable/confusable-0.1.0.tgz --omit=dev --no-audit --progress=false --legacy-peer-deps && \
-    npm install --omit=dev --no-audit --progress=false --legacy-peer-deps
+    bun add /app/packages/shared/*.tgz && \
+    bun add /app/packages/confusable/*.tgz && \
+    bun install --production
 
 # =============================================================================
 # Service: Control Plane (Final)
@@ -104,12 +94,12 @@ COPY --from=control-plane-builder /app/services/control-plane/dist /app/services
 COPY --from=control-plane-builder /app/services/control-plane/package.json /app/services/control-plane/
 
 # Setup storage and user
-RUN mkdir -p /app/storage && chown -R node:node /app/storage
-USER node
+RUN mkdir -p /app/storage && chown -R bun:bun /app/storage
+USER bun
 WORKDIR /app/services/control-plane
 
 EXPOSE 8080
-CMD ["node", "dist/index.js"]
+CMD ["bun", "run", "dist/index.js"]
 
 # =============================================================================
 # Service: Scan Orchestrator (Builder)
@@ -121,22 +111,22 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y python3 make g++ wget && rm -rf /var/lib/apt/lists/*
 
 # Copy shared package tarball from builder
-COPY --from=shared-builder /app/packages/shared/wbscanner-shared-0.1.0.tgz /app/packages/shared/
-COPY --from=shared-builder /app/packages/confusable/confusable-0.1.0.tgz /app/packages/confusable/
+COPY --from=shared-builder /app/packages/shared/*.tgz /app/packages/shared/
+COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusable/
 
 # Install ALL dependencies (including dev) to build
 COPY services/scan-orchestrator/package.json services/scan-orchestrator/tsconfig.json /app/services/scan-orchestrator/
-RUN --mount=type=cache,target=/root/.npm \
+RUN --mount=type=cache,target=/root/.bun/install/cache \
     cd /app/services/scan-orchestrator && \
-    npm install /app/packages/shared/wbscanner-shared-0.1.0.tgz --include=dev --no-audit --progress=false --legacy-peer-deps && \
-    npm install /app/packages/confusable/confusable-0.1.0.tgz --include=dev --no-audit --progress=false --legacy-peer-deps && \
-    npm install --include=dev --no-audit --progress=false --legacy-peer-deps
+    bun add /app/packages/shared/*.tgz && \
+    bun add /app/packages/confusable/*.tgz && \
+    bun install
 
 # Copy source and build
 COPY tsconfig.base.json /app/
 COPY types /app/types
 COPY services/scan-orchestrator/src /app/services/scan-orchestrator/src
-RUN cd /app/services/scan-orchestrator && npm run build
+RUN cd /app/services/scan-orchestrator && bun run build
 
 # =============================================================================
 # Service: Scan Orchestrator (Production Dependencies)
@@ -148,16 +138,16 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
 
 # Copy shared package tarball from builder
-COPY --from=shared-builder /app/packages/shared/wbscanner-shared-0.1.0.tgz /app/packages/shared/
-COPY --from=shared-builder /app/packages/confusable/confusable-0.1.0.tgz /app/packages/confusable/
+COPY --from=shared-builder /app/packages/shared/*.tgz /app/packages/shared/
+COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusable/
 
 # Install PRODUCTION dependencies only
 COPY services/scan-orchestrator/package.json /app/services/scan-orchestrator/
-RUN --mount=type=cache,target=/root/.npm \
+RUN --mount=type=cache,target=/root/.bun/install/cache \
     cd /app/services/scan-orchestrator && \
-    npm install /app/packages/shared/wbscanner-shared-0.1.0.tgz --omit=dev --no-audit --progress=false --legacy-peer-deps && \
-    npm install /app/packages/confusable/confusable-0.1.0.tgz --omit=dev --no-audit --progress=false --legacy-peer-deps && \
-    npm install --omit=dev --no-audit --progress=false --legacy-peer-deps
+    bun add /app/packages/shared/*.tgz && \
+    bun add /app/packages/confusable/*.tgz && \
+    bun install --production
 
 # =============================================================================
 # Service: Scan Orchestrator (Final)
@@ -173,12 +163,12 @@ COPY --from=scan-orchestrator-builder /app/services/scan-orchestrator/dist /app/
 COPY --from=scan-orchestrator-builder /app/services/scan-orchestrator/package.json /app/services/scan-orchestrator/
 
 # Setup storage and user
-RUN mkdir -p /app/storage && chown -R node:node /app/storage
-USER node
+RUN mkdir -p /app/storage && chown -R bun:bun /app/storage
+USER bun
 WORKDIR /app/services/scan-orchestrator
 
 EXPOSE 3001
-CMD ["node", "dist/index.js"]
+CMD ["bun", "run", "dist/index.js"]
 
 # =============================================================================
 # Service: WA Client (Builder)
@@ -187,24 +177,24 @@ FROM base AS wa-client-builder
 WORKDIR /app
 
 # Copy shared package tarball from builder
-COPY --from=shared-builder /app/packages/shared/wbscanner-shared-0.1.0.tgz /app/packages/shared/
-COPY --from=shared-builder /app/packages/confusable/confusable-0.1.0.tgz /app/packages/confusable/
+COPY --from=shared-builder /app/packages/shared/*.tgz /app/packages/shared/
+COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusable/
 
 # Install ALL dependencies (including dev) to build
 # Copy scripts first for postinstall hook (patches whatsapp-web.js)
 COPY services/wa-client/package.json services/wa-client/tsconfig.json /app/services/wa-client/
 COPY services/wa-client/scripts /app/services/wa-client/scripts
-RUN --mount=type=cache,target=/root/.npm \
+RUN --mount=type=cache,target=/root/.bun/install/cache \
     cd /app/services/wa-client && \
-    npm install /app/packages/shared/wbscanner-shared-0.1.0.tgz --include=dev --no-audit --progress=false --legacy-peer-deps && \
-    npm install /app/packages/confusable/confusable-0.1.0.tgz --include=dev --no-audit --progress=false --legacy-peer-deps && \
-    npm install --include=dev --no-audit --progress=false --legacy-peer-deps
+    bun add /app/packages/shared/*.tgz && \
+    bun add /app/packages/confusable/*.tgz && \
+    bun install
 
 # Copy source and build
 COPY tsconfig.base.json /app/
 COPY types /app/types
 COPY services/wa-client/src /app/services/wa-client/src
-RUN cd /app/services/wa-client && npm run build
+RUN cd /app/services/wa-client && bun run build
 
 # =============================================================================
 # Service: WA Client (Production Dependencies)
@@ -213,21 +203,22 @@ FROM base AS wa-client-prod-deps
 WORKDIR /app
 
 # Copy shared package tarball from builder
-COPY --from=shared-builder /app/packages/shared/wbscanner-shared-0.1.0.tgz /app/packages/shared/
-COPY --from=shared-builder /app/packages/confusable/confusable-0.1.0.tgz /app/packages/confusable/
+COPY --from=shared-builder /app/packages/shared/*.tgz /app/packages/shared/
+COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusable/
 
 # Install PRODUCTION dependencies only
 # Copy scripts first for postinstall hook (patches whatsapp-web.js)
 COPY services/wa-client/package.json /app/services/wa-client/
 COPY services/wa-client/scripts /app/services/wa-client/scripts
-RUN --mount=type=cache,target=/root/.npm \
+RUN --mount=type=cache,target=/root/.bun/install/cache \
     cd /app/services/wa-client && \
-    npm install /app/packages/shared/wbscanner-shared-0.1.0.tgz --omit=dev --no-audit --progress=false --legacy-peer-deps && \
-    npm install /app/packages/confusable/confusable-0.1.0.tgz --omit=dev --no-audit --progress=false --legacy-peer-deps && \
-    npm install --omit=dev --no-audit --progress=false --legacy-peer-deps
+    bun add /app/packages/shared/*.tgz && \
+    bun add /app/packages/confusable/*.tgz && \
+    bun install --production
 
 # =============================================================================
 # Service: WA Client (Final Runtime)
+# Note: WA Client uses puppeteer base image which requires Node.js
 # =============================================================================
 FROM ghcr.io/puppeteer/puppeteer:22.13.1 AS wa-client
 USER root
@@ -235,6 +226,10 @@ WORKDIR /app
 ENV NODE_ENV=production \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome \
     PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+
+# Install bun in puppeteer image
+RUN curl -fsSL https://bun.sh/install | bash && \
+    ln -s /root/.bun/bin/bun /usr/local/bin/bun
 
 # Copy production node_modules from prod-deps stage
 COPY --from=wa-client-prod-deps /app/services/wa-client/node_modules /app/services/wa-client/node_modules
@@ -249,6 +244,7 @@ USER pptruser
 VOLUME ["/app/services/wa-client/data"]
 EXPOSE 3000
 WORKDIR /app/services/wa-client
+# Use node for wa-client since puppeteer has specific Node.js requirements
 CMD ["node", "dist/index.js"]
 
 # =============================================================================
@@ -261,15 +257,16 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
 
 # Copy shared package tarball from builder
-COPY --from=shared-builder /app/packages/shared/wbscanner-shared-0.1.0.tgz /app/packages/shared/
+COPY --from=shared-builder /app/packages/shared/*.tgz /app/packages/shared/
 
 # Install dependencies
 COPY package.json /app/
 COPY packages/shared/package.json /app/packages/shared/
 
 # Install dependencies including shared (production only)
-RUN --mount=type=cache,target=/root/.npm \
-    npm install /app/packages/shared/wbscanner-shared-0.1.0.tgz --omit=dev --no-audit --progress=false
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    bun add /app/packages/shared/*.tgz && \
+    bun install --production
 
 # Copy migration script and migrations
 COPY scripts/run-migrations.js /app/scripts/
@@ -278,4 +275,4 @@ COPY db/migrations /app/db/migrations
 # Setup storage
 RUN mkdir -p /app/storage && chmod 777 /app/storage
 
-CMD ["node", "scripts/run-migrations.js"]
+CMD ["bun", "run", "scripts/run-migrations.js"]
