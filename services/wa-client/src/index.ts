@@ -21,6 +21,7 @@ import {
   isPrivateHostname,
   ScanRequestSchema,
   createRedisConnection,
+  connectRedis,
 } from '@wbscanner/shared';
 import { RateLimiterRedis } from 'rate-limiter-flexible';
 import { createGlobalTokenBucket, GLOBAL_TOKEN_BUCKET_ID } from './limiters';
@@ -836,31 +837,12 @@ async function main() {
   assertEssentialConfig('wa-client');
   assertControlPlaneToken();
 
-  // Wait for Redis connectivity with retries
-  // This handles the case where wa-client starts before Redis is fully ready
-  const maxRedisRetries = 30;
-  const redisRetryDelayMs = 2000;
-  let redisConnected = false;
-  
-  for (let attempt = 1; attempt <= maxRedisRetries; attempt++) {
-    try {
-      await redis.ping();
-      logger.info('Redis connectivity validated');
-      redisConnected = true;
-      break;
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      if (attempt < maxRedisRetries) {
-        logger.warn({ attempt, maxRetries: maxRedisRetries, err: errMsg }, 'Redis not ready, waiting...');
-        await new Promise(resolve => setTimeout(resolve, redisRetryDelayMs));
-      } else {
-        logger.error({ err: errMsg }, 'Redis connectivity check failed after all retries');
-      }
-    }
-  }
-  
-  if (!redisConnected) {
-    logger.error('Redis is required but unreachable after retries. Exiting...');
+  // Connect to Redis using the lazy connection pattern
+  // This defers connection until main() is called, avoiding ETIMEDOUT at module load
+  try {
+    await connectRedis(redis, 'wa-client');
+  } catch (err) {
+    logger.error({ err }, 'Failed to connect to Redis. Exiting...');
     process.exit(1);
   }
 

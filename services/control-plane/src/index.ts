@@ -4,20 +4,25 @@ import { createReadStream } from 'node:fs';
 import path from 'node:path';
 import Redis from 'ioredis';
 import { Queue } from 'bullmq';
-import { register, metrics, config, logger, assertControlPlaneToken, normalizeUrl, urlHash, assertEssentialConfig, OverrideBodySchema, RescanBodySchema, MuteGroupParamsSchema, getSharedRedis as getSharedRedisFromShared } from '@wbscanner/shared';
+import { register, metrics, config, logger, assertControlPlaneToken, normalizeUrl, urlHash, assertEssentialConfig, OverrideBodySchema, RescanBodySchema, MuteGroupParamsSchema, getConnectedSharedRedis } from '@wbscanner/shared';
 import { getSharedConnection } from './database.js';
 
 const artifactRoot = path.resolve(process.env.URLSCAN_ARTIFACT_DIR || 'storage/urlscan-artifacts');
 
 let sharedQueue: Queue | null = null;
+let sharedRedisInstance: Redis | null = null;
 
-function getSharedRedis(): Redis {
-  return getSharedRedisFromShared();
+async function getSharedRedis(): Promise<Redis> {
+  if (!sharedRedisInstance) {
+    sharedRedisInstance = await getConnectedSharedRedis('control-plane');
+  }
+  return sharedRedisInstance;
 }
 
-function getSharedQueue(): Queue {
+async function getSharedQueue(): Promise<Queue> {
   if (!sharedQueue) {
-    sharedQueue = new Queue(config.queues.scanRequest, { connection: getSharedRedis() });
+    const redis = await getSharedRedis();
+    sharedQueue = new Queue(config.queues.scanRequest, { connection: redis });
   }
   return sharedQueue;
 }
@@ -45,8 +50,8 @@ export async function buildServer(options: BuildOptions = {}) {
   const requiredToken = assertControlPlaneToken();
   const dbClient = options.dbClient ?? getSharedConnection();
   const ownsClient = !options.dbClient;
-  const redisClient = options.redisClient ?? getSharedRedis();
-  const queue = options.queue ?? getSharedQueue();
+  const redisClient = options.redisClient ?? await getSharedRedis();
+  const queue = options.queue ?? await getSharedQueue();
 
   const app = Fastify();
 

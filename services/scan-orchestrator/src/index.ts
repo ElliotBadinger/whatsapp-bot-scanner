@@ -39,6 +39,7 @@ import {
   GsbLocalDatabase,
   ScanRequestSchema,
   createRedisConnection,
+  connectRedis,
   TEST_REDIS_KEY,
   TEST_QUEUE_FACTORY_KEY,
   InMemoryRedis,
@@ -1580,14 +1581,13 @@ async function handleUrlscanCallback(req: FastifyRequest, reply: FastifyReply, d
 async function main() {
   assertEssentialConfig('scan-orchestrator');
 
-  // Validate Redis connectivity before starting
+  // Connect to Redis using the lazy connection pattern
+  // This defers connection until main() is called, avoiding ETIMEDOUT at module load
   try {
-    await redis.ping();
-    logger.info('Redis connectivity validated');
+    await connectRedis(redis, 'scan-orchestrator');
   } catch (err) {
-    logger.error({ err }, 'Redis connectivity check failed during startup');
-    // Don't throw, let healthcheck handle it so container doesn't crash loop immediately
-    // throw new Error('Redis is required but unreachable');
+    logger.error({ err }, 'Failed to connect to Redis. Exiting...');
+    process.exit(1);
   }
 
   const dbClient = getSharedConnection();
