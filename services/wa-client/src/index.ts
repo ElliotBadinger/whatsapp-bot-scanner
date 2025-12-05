@@ -1104,6 +1104,43 @@ async function main() {
     return result;
   };
 
+  // Wait for AuthStore.PairingCodeLinkUtils to be available
+  // This is required before requesting a pairing code
+  const waitForAuthStoreReady = async (maxWaitMs = 30000): Promise<boolean> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pupPage = (client as any).pupPage as { evaluate: (fn: () => unknown) => Promise<unknown> } | undefined;
+    if (!pupPage) {
+      logger.warn('Puppeteer page not available for AuthStore check');
+      return false;
+    }
+
+    const startTime = Date.now();
+    const pollInterval = 500;
+    
+    while (Date.now() - startTime < maxWaitMs) {
+      try {
+        const isReady = await pupPage.evaluate(() => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const win = window as any;
+          return !!(win.AuthStore?.PairingCodeLinkUtils?.startAltLinkingFlow);
+        });
+        
+        if (isReady) {
+          logger.debug({ waitedMs: Date.now() - startTime }, 'AuthStore.PairingCodeLinkUtils is ready');
+          return true;
+        }
+      } catch (err) {
+        // Page might be navigating, continue waiting
+        logger.debug({ err: err instanceof Error ? err.message : err }, 'AuthStore check failed, retrying...');
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+    }
+    
+    logger.warn({ maxWaitMs }, 'AuthStore.PairingCodeLinkUtils not ready after timeout');
+    return false;
+  };
+
   // Perform pairing code request for a specific phone number
   // Uses the library's built-in requestPairingCode method for proper auth handling
   const performPairingCodeRequestForPhone = async (phone: string): Promise<string | null> => {
@@ -1117,6 +1154,13 @@ async function main() {
 
     await addHumanBehaviorJitter();
 
+    // Wait for AuthStore to be ready before attempting pairing code request
+    const authStoreReady = await waitForAuthStoreReady();
+    if (!authStoreReady) {
+      logger.warn({ phoneNumber: maskPhone(phone) }, 'AuthStore not ready, will retry pairing code request later');
+      return null;
+    }
+
     try {
       // Use the library's official requestPairingCode method
       // This properly sets up the auth flow and emits events correctly
@@ -1129,17 +1173,31 @@ async function main() {
       logger.warn({ phoneNumber: maskPhone(phone), code }, 'Invalid pairing code response from library');
       return null;
     } catch (err) {
-      logger.error({ err, phoneNumber: maskPhone(phone) }, 'Failed to request pairing code via library');
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.error({ err: errMsg, phoneNumber: maskPhone(phone) }, 'Failed to request pairing code via library');
       
-      // Fall back to Puppeteer method if library method fails
+      // If the error is a minified WhatsApp error (like "Evaluation failed: t"), 
+      // it means the page state isn't ready - return null to allow retry
+      if (errMsg.includes('Evaluation failed')) {
+        logger.warn({ phoneNumber: maskPhone(phone) }, 'WhatsApp page not ready for pairing, will retry later');
+        return null;
+      }
+      
+      // Fall back to Puppeteer method if library method fails with other errors
       logger.info({ phoneNumber: maskPhone(phone) }, 'Falling back to Puppeteer pairing code request');
       const pageHandle = getPageHandle(client);
       if (!pageHandle) {
-        throw new Error('Puppeteer page handle unavailable for pairing fallback');
+        logger.warn({ phoneNumber: maskPhone(phone) }, 'Puppeteer page handle unavailable for pairing fallback');
+        return null;
       }
       const interval = Math.max(60000, config.wa.remoteAuth.pairingDelayMs ?? 0);
-      const outcome = await executePairingCodeRequestForPhone(pageHandle, phone, interval);
-      return processPairingOutcome(outcome);
+      try {
+        const outcome = await executePairingCodeRequestForPhone(pageHandle, phone, interval);
+        return processPairingOutcome(outcome);
+      } catch (fallbackErr) {
+        logger.error({ err: fallbackErr instanceof Error ? fallbackErr.message : fallbackErr, phoneNumber: maskPhone(phone) }, 'Puppeteer fallback also failed');
+        return null;
+      }
     }
   };
 
