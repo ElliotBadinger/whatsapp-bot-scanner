@@ -13,8 +13,8 @@ ENV NODE_ENV=production
 FROM base AS shared-builder
 WORKDIR /app
 
-# Copy root config and lockfile
-COPY tsconfig.base.json package.json bun.lock /app/
+# Copy root config
+COPY tsconfig.base.json /app/
 COPY types /app/types
 
 # Copy confusable package (complete)
@@ -25,12 +25,15 @@ COPY packages/shared/package.json packages/shared/tsconfig.json /app/packages/sh
 COPY packages/shared/src /app/packages/shared/src
 
 # Install dependencies and build shared package
+# Build each package independently without workspace resolution
+# Replace confusable file reference before building shared package
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     set -e && \
-    cd /app/packages/confusable && bun install && \
-    cd /app && bun install --filter packages/shared && \
-    cd /app/packages/shared && bun run build && bun pm pack && \
-    cd /app/packages/confusable && bun pm pack
+    cd /app/packages/confusable && bun install --ignore-scripts && bun pm pack && \
+    cd /app/packages/shared && \
+    sed -i 's|"confusable": "file:../confusable"|"confusable": "file:/app/packages/confusable/confusable-0.1.0.tgz"|g' package.json && \
+    bun install --ignore-scripts && \
+    bun run build && bun pm pack
 
 # =============================================================================
 # Service: Control Plane (Builder)
@@ -176,6 +179,11 @@ CMD ["bun", "run", "dist/index.js"]
 FROM base AS wa-client-builder
 WORKDIR /app
 
+# Install build tools for better-sqlite3 native compilation (need node-gyp)
+RUN apt-get update && apt-get install -y python3 make g++ nodejs npm && \
+    npm install -g node-gyp && \
+    rm -rf /var/lib/apt/lists/*
+
 # Copy shared package tarball from builder
 COPY --from=shared-builder /app/packages/shared/*.tgz /app/packages/shared/
 COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusable/
@@ -184,10 +192,11 @@ COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusab
 # Copy scripts first for postinstall hook (patches whatsapp-web.js)
 COPY services/wa-client/package.json services/wa-client/tsconfig.json /app/services/wa-client/
 COPY services/wa-client/scripts /app/services/wa-client/scripts
+# Replace workspace references with tarball paths, then install
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     cd /app/services/wa-client && \
-    bun add /app/packages/shared/*.tgz && \
-    bun add /app/packages/confusable/*.tgz && \
+    sed -i 's|"@wbscanner/shared": "file:../../packages/shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
+    sed -i 's|"confusable": "file:../../packages/confusable"|"confusable": "file:/app/packages/confusable/confusable-0.1.0.tgz"|g' package.json && \
     bun install
 
 # Copy source and build
@@ -202,6 +211,11 @@ RUN cd /app/services/wa-client && bun run build
 FROM base AS wa-client-prod-deps
 WORKDIR /app
 
+# Install build tools for better-sqlite3 native compilation (need node-gyp)
+RUN apt-get update && apt-get install -y python3 make g++ nodejs npm && \
+    npm install -g node-gyp && \
+    rm -rf /var/lib/apt/lists/*
+
 # Copy shared package tarball from builder
 COPY --from=shared-builder /app/packages/shared/*.tgz /app/packages/shared/
 COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusable/
@@ -210,10 +224,11 @@ COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusab
 # Copy scripts first for postinstall hook (patches whatsapp-web.js)
 COPY services/wa-client/package.json /app/services/wa-client/
 COPY services/wa-client/scripts /app/services/wa-client/scripts
+# Remove workspace references before installing, then add tarballs
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     cd /app/services/wa-client && \
-    bun add /app/packages/shared/*.tgz && \
-    bun add /app/packages/confusable/*.tgz && \
+    sed -i 's|"@wbscanner/shared": "file:../../packages/shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
+    sed -i 's|"confusable": "file:../../packages/confusable"|"confusable": "file:/app/packages/confusable/confusable-0.1.0.tgz"|g' package.json && \
     bun install --production
 
 # =============================================================================
@@ -238,14 +253,19 @@ COPY --from=wa-client-prod-deps /app/services/wa-client/node_modules /app/servic
 COPY --from=wa-client-builder /app/services/wa-client/dist /app/services/wa-client/dist
 COPY --from=wa-client-builder /app/services/wa-client/package.json /app/services/wa-client/
 
+# Copy entrypoint script for library selection
+COPY services/wa-client/scripts/entrypoint.sh /app/services/wa-client/entrypoint.sh
+
 # Setup storage and user
-RUN mkdir -p /app/services/wa-client/data /app/storage && chown -R pptruser:pptruser /app/services/wa-client /app/storage
+RUN mkdir -p /app/services/wa-client/data /app/storage && \
+    chmod +x /app/services/wa-client/entrypoint.sh && \
+    chown -R pptruser:pptruser /app/services/wa-client /app/storage
 USER pptruser
 VOLUME ["/app/services/wa-client/data"]
-EXPOSE 3000
+EXPOSE 3000 3005
 WORKDIR /app/services/wa-client
-# Use node for wa-client since puppeteer has specific Node.js requirements
-CMD ["node", "dist/index.js"]
+# Entrypoint routes to index.js (wwebjs) or main.js (baileys) based on WA_LIBRARY
+CMD ["./entrypoint.sh"]
 
 # =============================================================================
 # Service: Migrate
