@@ -762,7 +762,9 @@ ${C.primary("  ╚════════════════════�
     // Get port from env files (.env.local takes precedence, matching Docker Compose behavior)
     const getPort = (key, defaultPort) => {
       // Check .env.local first (takes precedence)
-      const localMatch = envLocalContent.match(new RegExp(`${key}=["']?(\\d+)["']?`));
+      const localMatch = envLocalContent.match(
+        new RegExp(`${key}=["']?(\\d+)["']?`),
+      );
       if (localMatch) {
         return Number.parseInt(localMatch[1], 10);
       }
@@ -834,7 +836,9 @@ ${C.primary("  ╚════════════════════�
     const envFile = path.join(ROOT_DIR, ".env");
     const envLocalFile = path.join(ROOT_DIR, ".env.local");
     let envContent = await fs.readFile(envFile, "utf-8").catch(() => "");
-    let envLocalContent = await fs.readFile(envLocalFile, "utf-8").catch(() => "");
+    let envLocalContent = await fs
+      .readFile(envLocalFile, "utf-8")
+      .catch(() => "");
     let modified = false;
     let localModified = false;
     let allResolved = true;
@@ -1020,7 +1024,9 @@ ${C.primary("  ╚════════════════════�
       const envLocalContent = await fs
         .readFile(envLocalFile, "utf-8")
         .catch(() => "");
-      const localMatch = envLocalContent.match(/WA_CLIENT_PORT=["']?(\d+)["']?/);
+      const localMatch = envLocalContent.match(
+        /WA_CLIENT_PORT=["']?(\d+)["']?/,
+      );
       const match = envContent.match(/WA_CLIENT_PORT=(\d+)/);
       waClientPort = localMatch?.[1] || match?.[1] || "3005";
     } catch {}
@@ -1198,7 +1204,9 @@ ${C.primary("  ╚════════════════════�
         .catch(() => "");
 
       // wa-client runs on configured port (mapped from container port 3001)
-      const localMatch = envLocalContent.match(/WA_CLIENT_PORT=["']?(\d+)["']?/);
+      const localMatch = envLocalContent.match(
+        /WA_CLIENT_PORT=["']?(\d+)["']?/,
+      );
       const match = envContent.match(/WA_CLIENT_PORT=(\d+)/);
       const waClientPort = localMatch?.[1] || match?.[1] || "3005";
 
