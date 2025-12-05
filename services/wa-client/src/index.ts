@@ -1915,16 +1915,18 @@ async function main() {
     clearPairingRetry();
     pairingOrchestrator?.setSessionActive(true);
 
-    // WORKAROUND: Some versions of whatsapp-web.js don't fire 'ready' event
-    // According to docs, ready is emitted inside onAppStateHasSyncedEvent after:
-    // 1. window.Store is injected (2s delay for non-Comet versions)
+    // WORKAROUND: whatsapp-web.js may not fire 'ready' event when using phone pairing
+    // The 'ready' event is emitted inside onAppStateHasSyncedEvent after:
+    // 1. window.Store is injected
     // 2. client.info is created from window.Store.Conn
     // 3. Event listeners are attached
     // 
-    // We poll for these conditions to manually trigger ready if the event doesn't fire
+    // When hasSynced doesn't fire, we need to:
+    // 1. Check if window.Store is available via Puppeteer
+    // 2. Manually get the user info and trigger ready
     let pollCount = 0;
-    const maxPolls = 90; // 90 * 2s = 180 seconds max wait (allows for slow injection)
-    const initialDelay = 3000; // Wait 3s before first poll (allows for 2s Store injection delay)
+    const maxPolls = 90; // 90 * 2s = 180 seconds max wait
+    const initialDelay = 5000; // Wait 5s before first poll (allows for Store injection)
     
     setTimeout(() => {
       readyFallbackTimer = setInterval(async () => {
@@ -1939,22 +1941,68 @@ async function main() {
         
         try {
           // Primary check: client.info.wid is populated (created from window.Store.Conn)
-          // This is the most reliable indicator that ready should have fired
           if (client.info?.wid) {
             logger.info({ pollCount, botWid: client.info.wid._serialized }, 'Detected client.info.wid populated - triggering ready fallback');
             await executeReadyLogic('authenticated-fallback-info');
             return;
           }
           
-          // Secondary check: getState() returns CONNECTED
-          // This indicates the client is connected but info might not be set yet
-          const state = await client.getState();
-          if (state === 'CONNECTED') {
-            // If CONNECTED but no info yet, wait a bit more
-            if (pollCount > 5) {
-              logger.info({ pollCount, state }, 'Client state is CONNECTED but info not set yet - will keep polling');
+          // Secondary check: Use Puppeteer to check if window.Store is available
+          // and manually trigger the ready state if the library failed to do so
+          const page = getPageHandle(client);
+          if (page && pollCount >= 10) { // Wait at least 20 seconds before trying Puppeteer fallback
+            try {
+              const storeInfo = await page.evaluate(() => {
+                // Check if Store is available and has the required data
+                if (typeof window.Store === 'undefined') {
+                  return { hasStore: false };
+                }
+                
+                // Check if we have user info
+                const user = window.Store?.User;
+                const conn = window.Store?.Conn;
+                if (!user || !conn) {
+                  return { hasStore: true, hasUser: false };
+                }
+                
+                // Try to get the user's WID
+                const wid = user.getMaybeMePnUser?.() || user.getMaybeMeLidUser?.() || user.getMeUser?.();
+                if (!wid) {
+                  return { hasStore: true, hasUser: true, hasWid: false };
+                }
+                
+                // Return the serialized WID
+                return {
+                  hasStore: true,
+                  hasUser: true,
+                  hasWid: true,
+                  wid: typeof wid.toJid === 'function' ? wid.toJid() : (wid._serialized || wid.toString()),
+                  pushname: conn.pushname || null,
+                  platform: conn.platform || null,
+                };
+              });
+              
+              if (storeInfo.hasWid && storeInfo.wid) {
+                logger.info({ pollCount, storeInfo }, 'Puppeteer fallback: Detected window.Store with user info - triggering ready');
+                
+                // The library didn't set client.info, but we have the data
+                // We can still trigger ready and the bot will work for message handling
+                // Note: Some client.info methods may not work, but basic functionality will
+                await executeReadyLogic('puppeteer-store-fallback');
+                return;
+              } else if (pollCount % 10 === 0) {
+                logger.debug({ pollCount, storeInfo }, 'Puppeteer fallback: Store state check');
+              }
+            } catch (evalErr) {
+              // Puppeteer evaluation can fail during page transitions
+              if (pollCount % 15 === 0) {
+                logger.debug({ err: evalErr instanceof Error ? evalErr.message : evalErr, pollCount }, 'Puppeteer fallback evaluation error');
+              }
             }
           }
+          
+          // Tertiary check: getState() returns CONNECTED
+          const state = await client.getState().catch(() => null);
           
           if (pollCount >= maxPolls) {
             logger.error({ pollCount, hasInfo: !!client.info, state }, 'Ready event fallback: Max polls reached without detecting ready state');
@@ -1963,11 +2011,9 @@ async function main() {
               readyFallbackTimer = null;
             }
           } else if (pollCount % 15 === 0) {
-            // Log every 30 seconds (15 polls * 2s)
             logger.info({ pollCount, hasInfo: !!client.info, state }, 'Ready fallback: Still waiting for client.info to be populated');
           }
         } catch (err) {
-          // getState() can throw during initialization, which is normal
           if (pollCount % 15 === 0) {
             logger.debug({ err: err instanceof Error ? err.message : err, pollCount }, 'Ready fallback poll error (may be normal during init)');
           }
