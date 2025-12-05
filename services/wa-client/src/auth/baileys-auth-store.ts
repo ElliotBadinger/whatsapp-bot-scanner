@@ -1,18 +1,18 @@
 /**
  * Redis-backed authentication state store for Baileys
- * 
+ *
  * This module provides a Redis-based implementation of Baileys' auth state,
  * allowing session persistence across restarts and container deployments.
  */
 
-import type Redis from 'ioredis';
-import type { Logger } from 'pino';
+import type Redis from "ioredis";
+import type { Logger } from "pino";
 import type {
   AuthenticationCreds,
   AuthenticationState,
   SignalDataTypeMap,
-} from '@whiskeysockets/baileys';
-import { initAuthCreds, proto, BufferJSON } from '@whiskeysockets/baileys';
+} from "@whiskeysockets/baileys";
+import { initAuthCreds, proto, BufferJSON } from "@whiskeysockets/baileys";
 
 /**
  * Configuration for the Redis auth store
@@ -28,13 +28,11 @@ export interface RedisAuthStoreConfig {
 
 /**
  * Creates a Redis-backed authentication state for Baileys
- * 
+ *
  * @param config - Configuration options
  * @returns Authentication state object compatible with Baileys
  */
-export async function useRedisAuthState(
-  config: RedisAuthStoreConfig
-): Promise<{
+export async function useRedisAuthState(config: RedisAuthStoreConfig): Promise<{
   state: AuthenticationState;
   saveCreds: () => Promise<void>;
   clearState: () => Promise<void>;
@@ -60,7 +58,7 @@ export async function useRedisAuthState(
       if (!data) return null;
       return JSON.parse(data, BufferJSON.reviver) as T;
     } catch (err) {
-      logger.warn({ err, key }, 'Failed to read auth data from Redis');
+      logger.warn({ err, key }, "Failed to read auth data from Redis");
       return null;
     }
   };
@@ -73,7 +71,7 @@ export async function useRedisAuthState(
       const serialized = JSON.stringify(data, BufferJSON.replacer);
       await redis.set(key, serialized);
     } catch (err) {
-      logger.error({ err, key }, 'Failed to write auth data to Redis');
+      logger.error({ err, key }, "Failed to write auth data to Redis");
       throw err;
     }
   };
@@ -85,7 +83,7 @@ export async function useRedisAuthState(
     try {
       await redis.del(key);
     } catch (err) {
-      logger.warn({ err, key }, 'Failed to remove auth data from Redis');
+      logger.warn({ err, key }, "Failed to remove auth data from Redis");
     }
   };
 
@@ -94,10 +92,10 @@ export async function useRedisAuthState(
   const existingCreds = await readData<AuthenticationCreds>(credsKey);
   if (existingCreds) {
     creds = existingCreds;
-    logger.info({ clientId }, 'Loaded existing Baileys credentials from Redis');
+    logger.info({ clientId }, "Loaded existing Baileys credentials from Redis");
   } else {
     creds = initAuthCreds();
-    logger.info({ clientId }, 'Initialized new Baileys credentials');
+    logger.info({ clientId }, "Initialized new Baileys credentials");
   }
 
   /**
@@ -105,7 +103,7 @@ export async function useRedisAuthState(
    */
   const saveCreds = async (): Promise<void> => {
     await writeData(credsKey, creds);
-    logger.debug({ clientId }, 'Saved Baileys credentials to Redis');
+    logger.debug({ clientId }, "Saved Baileys credentials to Redis");
   };
 
   /**
@@ -116,7 +114,10 @@ export async function useRedisAuthState(
     const keys = await redis.keys(pattern);
     if (keys.length > 0) {
       await redis.del(...keys);
-      logger.info({ clientId, keysDeleted: keys.length }, 'Cleared Baileys auth state from Redis');
+      logger.info(
+        { clientId, keysDeleted: keys.length },
+        "Cleared Baileys auth state from Redis",
+      );
     }
   };
 
@@ -128,10 +129,10 @@ export async function useRedisAuthState(
     keys: {
       get: async <T extends keyof SignalDataTypeMap>(
         type: T,
-        ids: string[]
+        ids: string[],
       ): Promise<{ [id: string]: SignalDataTypeMap[T] }> => {
         const result: { [id: string]: SignalDataTypeMap[T] } = {};
-        
+
         for (const id of ids) {
           const key = getKey(type, id);
           const data = await readData<SignalDataTypeMap[T]>(key);
@@ -139,11 +140,17 @@ export async function useRedisAuthState(
             result[id] = data;
           }
         }
-        
+
         return result;
       },
 
-      set: async (data: Partial<{ [T in keyof SignalDataTypeMap]: { [id: string]: SignalDataTypeMap[T] | null } }>): Promise<void> => {
+      set: async (
+        data: Partial<{
+          [T in keyof SignalDataTypeMap]: {
+            [id: string]: SignalDataTypeMap[T] | null;
+          };
+        }>,
+      ): Promise<void> => {
         const promises: Promise<void>[] = [];
 
         for (const type in data) {
@@ -180,7 +187,7 @@ export async function useRedisAuthState(
 export async function sessionExists(
   redis: Redis,
   prefix: string,
-  clientId: string
+  clientId: string,
 ): Promise<boolean> {
   const credsKey = `${prefix}:${clientId}:creds`;
   const exists = await redis.exists(credsKey);

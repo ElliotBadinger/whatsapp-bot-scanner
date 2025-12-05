@@ -1,6 +1,6 @@
 /**
  * Baileys WhatsApp Adapter
- * 
+ *
  * This module implements the WhatsAppAdapter interface using the Baileys library.
  * Baileys provides a protocol-based connection to WhatsApp, which is more
  * lightweight and reliable than browser-based approaches.
@@ -20,9 +20,9 @@ import makeWASocket, {
   type proto as BaileysProto,
   type WAMessage as BaileysWAMessage,
   type WAPresence,
-} from '@whiskeysockets/baileys';
-import { Boom } from '@hapi/boom';
-import type { Logger } from 'pino';
+} from "@whiskeysockets/baileys";
+import { Boom } from "@hapi/boom";
+import type { Logger } from "pino";
 
 import {
   type WhatsAppAdapter,
@@ -40,8 +40,8 @@ import {
   type QRCodeHandler,
   type PairingCodeHandler,
   type PresenceType,
-} from './types';
-import { useRedisAuthState, sessionExists } from '../auth/baileys-auth-store';
+} from "./types";
+import { useRedisAuthState, sessionExists } from "../auth/baileys-auth-store";
 
 /**
  * Baileys implementation of the WhatsAppAdapter interface
@@ -50,7 +50,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
   private socket: WASocket | null = null;
   private config: AdapterConfig;
   private logger: Logger;
-  private _state: ConnectionState = 'disconnected';
+  private _state: ConnectionState = "disconnected";
   private _botId: string | null = null;
 
   // Event handlers
@@ -66,7 +66,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
 
   constructor(config: AdapterConfig) {
     this.config = config;
-    this.logger = config.logger.child({ adapter: 'baileys' });
+    this.logger = config.logger.child({ adapter: "baileys" });
   }
 
   get state(): ConnectionState {
@@ -82,18 +82,22 @@ export class BaileysAdapter implements WhatsAppAdapter {
    */
   async connect(): Promise<void> {
     if (this.socket) {
-      this.logger.warn('Socket already exists, disconnecting first');
+      this.logger.warn("Socket already exists, disconnecting first");
       await this.disconnect();
     }
 
-    this.setState('connecting');
+    this.setState("connecting");
 
     try {
       // Initialize Redis auth state
-      const { state: authState, saveCreds, clearState } = await useRedisAuthState({
+      const {
+        state: authState,
+        saveCreds,
+        clearState,
+      } = await useRedisAuthState({
         redis: this.config.redis,
         logger: this.logger,
-        prefix: 'baileys:auth',
+        prefix: "baileys:auth",
         clientId: this.config.clientId,
       });
 
@@ -102,7 +106,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
 
       // Fetch latest Baileys version
       const { version, isLatest } = await fetchLatestBaileysVersion();
-      this.logger.info({ version, isLatest }, 'Using Baileys version');
+      this.logger.info({ version, isLatest }, "Using Baileys version");
 
       // Create the socket
       this.socket = makeWASocket({
@@ -113,7 +117,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
         },
         printQRInTerminal: this.config.printQRInTerminal ?? false,
         logger: this.logger,
-        browser: [this.config.browserName ?? 'WBScanner', 'Chrome', '120.0.0'],
+        browser: [this.config.browserName ?? "WBScanner", "Chrome", "120.0.0"],
         generateHighQualityLinkPreview: false,
         syncFullHistory: false,
         markOnlineOnConnect: false,
@@ -122,10 +126,10 @@ export class BaileysAdapter implements WhatsAppAdapter {
       // Set up event handlers
       this.setupEventHandlers();
 
-      this.logger.info('Baileys socket created, waiting for connection');
+      this.logger.info("Baileys socket created, waiting for connection");
     } catch (err) {
-      this.logger.error({ err }, 'Failed to create Baileys socket');
-      this.setState('disconnected');
+      this.logger.error({ err }, "Failed to create Baileys socket");
+      this.setState("disconnected");
       throw err;
     }
   }
@@ -137,32 +141,32 @@ export class BaileysAdapter implements WhatsAppAdapter {
     if (!this.socket) return;
 
     // Connection state updates
-    this.socket.ev.on('connection.update', async (update) => {
+    this.socket.ev.on("connection.update", async (update) => {
       const { connection, lastDisconnect, qr } = update;
 
       // Handle QR code
       if (qr) {
-        this.logger.info('QR code received');
+        this.logger.info("QR code received");
         for (const handler of this.qrCodeHandlers) {
           handler(qr);
         }
       }
 
       // Handle connection state changes
-      if (connection === 'close') {
+      if (connection === "close") {
         const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
         const isLoggedOut = statusCode === BaileysDisconnectReason.loggedOut;
         const shouldReconnect = !isLoggedOut;
 
         const reason: DisconnectReason = {
           code: statusCode ?? 0,
-          message: (lastDisconnect?.error as Error)?.message ?? 'Unknown error',
+          message: (lastDisconnect?.error as Error)?.message ?? "Unknown error",
           isLoggedOut,
           shouldReconnect,
         };
 
-        this.logger.info({ reason }, 'Connection closed');
-        this.setState('disconnected');
+        this.logger.info({ reason }, "Connection closed");
+        this.setState("disconnected");
 
         // Clear auth state if logged out
         if (isLoggedOut && this.clearState) {
@@ -176,32 +180,32 @@ export class BaileysAdapter implements WhatsAppAdapter {
 
         // Auto-reconnect if appropriate
         if (shouldReconnect) {
-          this.logger.info('Attempting to reconnect...');
+          this.logger.info("Attempting to reconnect...");
           setTimeout(() => this.connect(), 5000);
         }
-      } else if (connection === 'open') {
+      } else if (connection === "open") {
         this._botId = this.socket?.user?.id ?? null;
-        this.logger.info({ botId: this._botId }, 'Connection opened');
-        this.setState('ready');
-      } else if (connection === 'connecting') {
-        this.setState('connecting');
+        this.logger.info({ botId: this._botId }, "Connection opened");
+        this.setState("ready");
+      } else if (connection === "connecting") {
+        this.setState("connecting");
       }
     });
 
     // Credentials update
-    this.socket.ev.on('creds.update', async () => {
+    this.socket.ev.on("creds.update", async () => {
       if (this.saveCreds) {
         await this.saveCreds();
       }
     });
 
     // Message events
-    this.socket.ev.on('messages.upsert', async ({ messages, type }) => {
-      if (type !== 'notify') return;
+    this.socket.ev.on("messages.upsert", async ({ messages, type }) => {
+      if (type !== "notify") return;
 
       for (const msg of messages) {
         // Skip status broadcasts
-        if (msg.key.remoteJid === 'status@broadcast') continue;
+        if (msg.key.remoteJid === "status@broadcast") continue;
 
         const waMessage = this.convertMessage(msg);
         if (!waMessage) continue;
@@ -210,7 +214,10 @@ export class BaileysAdapter implements WhatsAppAdapter {
           try {
             await handler(waMessage);
           } catch (err) {
-            this.logger.error({ err, messageId: waMessage.id }, 'Message handler error');
+            this.logger.error(
+              { err, messageId: waMessage.id },
+              "Message handler error",
+            );
           }
         }
       }
@@ -228,7 +235,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
     if (!messageContent) return null;
 
     // Extract text from various message types
-    let body = '';
+    let body = "";
     if (messageContent.conversation) {
       body = messageContent.conversation;
     } else if (messageContent.extendedTextMessage?.text) {
@@ -243,16 +250,14 @@ export class BaileysAdapter implements WhatsAppAdapter {
 
     const remoteJid = key.remoteJid;
     const isGroup = isJidGroup(remoteJid) ?? false;
-    const senderId = isGroup
-      ? key.participant ?? remoteJid
-      : remoteJid;
+    const senderId = isGroup ? (key.participant ?? remoteJid) : remoteJid;
 
     // Extract quoted message if present
-    let quotedMessage: WAMessage['quotedMessage'];
+    let quotedMessage: WAMessage["quotedMessage"];
     const contextInfo = messageContent.extendedTextMessage?.contextInfo;
     if (contextInfo?.quotedMessage && contextInfo.stanzaId) {
       const quotedContent = contextInfo.quotedMessage;
-      let quotedBody = '';
+      let quotedBody = "";
       if (quotedContent.conversation) {
         quotedBody = quotedContent.conversation;
       } else if (quotedContent.extendedTextMessage?.text) {
@@ -300,8 +305,8 @@ export class BaileysAdapter implements WhatsAppAdapter {
       this.socket = null;
     }
     this._botId = null;
-    this.setState('disconnected');
-    this.logger.info('Disconnected from WhatsApp');
+    this.setState("disconnected");
+    this.logger.info("Disconnected from WhatsApp");
   }
 
   /**
@@ -310,46 +315,58 @@ export class BaileysAdapter implements WhatsAppAdapter {
   async sendMessage(
     jid: string,
     content: MessageContent,
-    options?: SendMessageOptions
+    options?: SendMessageOptions,
   ): Promise<SendResult> {
     if (!this.socket) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
 
-    let messageContent: Parameters<WASocket['sendMessage']>[1];
+    let messageContent: Parameters<WASocket["sendMessage"]>[1];
 
     switch (content.type) {
-      case 'text':
+      case "text":
         messageContent = { text: content.text };
         break;
-      case 'image':
+      case "image":
         messageContent = {
-          image: typeof content.data === 'string' ? Buffer.from(content.data, 'base64') : content.data,
+          image:
+            typeof content.data === "string"
+              ? Buffer.from(content.data, "base64")
+              : content.data,
           caption: content.caption,
           mimetype: content.mimetype,
         };
         break;
-      case 'video':
+      case "video":
         messageContent = {
-          video: typeof content.data === 'string' ? Buffer.from(content.data, 'base64') : content.data,
+          video:
+            typeof content.data === "string"
+              ? Buffer.from(content.data, "base64")
+              : content.data,
           caption: content.caption,
           mimetype: content.mimetype,
         };
         break;
-      case 'audio':
+      case "audio":
         messageContent = {
-          audio: typeof content.data === 'string' ? Buffer.from(content.data, 'base64') : content.data,
+          audio:
+            typeof content.data === "string"
+              ? Buffer.from(content.data, "base64")
+              : content.data,
           mimetype: content.mimetype,
         };
         break;
-      case 'document':
+      case "document":
         messageContent = {
-          document: typeof content.data === 'string' ? Buffer.from(content.data, 'base64') : content.data,
+          document:
+            typeof content.data === "string"
+              ? Buffer.from(content.data, "base64")
+              : content.data,
           mimetype: content.mimetype,
           fileName: content.filename,
         };
         break;
-      case 'reaction':
+      case "reaction":
         await this.socket.sendMessage(jid, {
           react: {
             text: content.emoji,
@@ -361,13 +378,16 @@ export class BaileysAdapter implements WhatsAppAdapter {
           timestamp: Date.now(),
           success: true,
         };
-      case 'sticker':
+      case "sticker":
         messageContent = {
-          sticker: typeof content.data === 'string' ? Buffer.from(content.data, 'base64') : content.data,
-          mimetype: content.mimetype ?? 'image/webp',
+          sticker:
+            typeof content.data === "string"
+              ? Buffer.from(content.data, "base64")
+              : content.data,
+          mimetype: content.mimetype ?? "image/webp",
         };
         break;
-      case 'location':
+      case "location":
         messageContent = {
           location: {
             degreesLatitude: content.latitude,
@@ -377,7 +397,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
           },
         };
         break;
-      case 'contact':
+      case "contact":
         messageContent = {
           contacts: {
             displayName: content.displayName,
@@ -386,15 +406,17 @@ export class BaileysAdapter implements WhatsAppAdapter {
         };
         break;
       default:
-        throw new Error(`Unsupported content type: ${(content as MessageContent).type}`);
+        throw new Error(
+          `Unsupported content type: ${(content as MessageContent).type}`,
+        );
     }
 
-    const sendOptions: Parameters<WASocket['sendMessage']>[2] = {};
+    const sendOptions: Parameters<WASocket["sendMessage"]>[2] = {};
     if (options?.quotedMessageId) {
       // Create a minimal quoted message structure for Baileys v7
       sendOptions.quoted = {
-        key: { 
-          remoteJid: jid, 
+        key: {
+          remoteJid: jid,
           id: options.quotedMessageId,
           fromMe: false,
         },
@@ -402,10 +424,14 @@ export class BaileysAdapter implements WhatsAppAdapter {
       } as BaileysWAMessage;
     }
 
-    const result = await this.socket.sendMessage(jid, messageContent, sendOptions);
+    const result = await this.socket.sendMessage(
+      jid,
+      messageContent,
+      sendOptions,
+    );
 
     return {
-      messageId: result?.key?.id ?? '',
+      messageId: result?.key?.id ?? "",
       timestamp: Date.now(),
       success: !!result?.key?.id,
     };
@@ -414,7 +440,10 @@ export class BaileysAdapter implements WhatsAppAdapter {
   /**
    * Reply to a message
    */
-  async reply(message: WAMessage, content: MessageContent): Promise<SendResult> {
+  async reply(
+    message: WAMessage,
+    content: MessageContent,
+  ): Promise<SendResult> {
     return this.sendMessage(message.chatId, content, {
       quotedMessageId: message.id,
     });
@@ -425,7 +454,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
    */
   async react(message: WAMessage, emoji: string): Promise<void> {
     if (!this.socket) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
 
     await this.socket.sendMessage(message.chatId, {
@@ -441,7 +470,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
    */
   async deleteMessage(message: WAMessage, forEveryone = true): Promise<void> {
     if (!this.socket) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
 
     await this.socket.sendMessage(message.chatId, {
@@ -458,7 +487,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
    */
   async getGroupMetadata(groupId: string): Promise<GroupMetadata | null> {
     if (!this.socket) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
 
     try {
@@ -470,13 +499,13 @@ export class BaileysAdapter implements WhatsAppAdapter {
         owner: metadata.owner ?? undefined,
         participants: metadata.participants.map((p) => ({
           id: p.id,
-          isAdmin: p.admin === 'admin' || p.admin === 'superadmin',
-          isSuperAdmin: p.admin === 'superadmin',
+          isAdmin: p.admin === "admin" || p.admin === "superadmin",
+          isSuperAdmin: p.admin === "superadmin",
         })),
         createdAt: metadata.creation ? metadata.creation * 1000 : undefined,
       };
     } catch (err) {
-      this.logger.warn({ err, groupId }, 'Failed to get group metadata');
+      this.logger.warn({ err, groupId }, "Failed to get group metadata");
       return null;
     }
   }
@@ -486,7 +515,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
    */
   async isOnWhatsApp(phoneNumber: string): Promise<boolean> {
     if (!this.socket) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
 
     try {
@@ -494,7 +523,10 @@ export class BaileysAdapter implements WhatsAppAdapter {
       if (!results || results.length === 0) return false;
       return !!results[0]?.exists;
     } catch (err) {
-      this.logger.warn({ err, phoneNumber }, 'Failed to check if number is on WhatsApp');
+      this.logger.warn(
+        { err, phoneNumber },
+        "Failed to check if number is on WhatsApp",
+      );
       return false;
     }
   }
@@ -504,14 +536,14 @@ export class BaileysAdapter implements WhatsAppAdapter {
    */
   async requestPairingCode(phoneNumber: string): Promise<string> {
     if (!this.socket) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
 
     // Remove any non-numeric characters
-    const cleanNumber = phoneNumber.replace(/\D/g, '');
-    
+    const cleanNumber = phoneNumber.replace(/\D/g, "");
+
     const code = await this.socket.requestPairingCode(cleanNumber);
-    
+
     // Notify pairing code handlers
     for (const handler of this.pairingCodeHandlers) {
       handler(code);
@@ -550,14 +582,14 @@ export class BaileysAdapter implements WhatsAppAdapter {
    */
   async getProfilePicUrl(jid: string): Promise<string | null> {
     if (!this.socket) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
 
     try {
-      const url = await this.socket.profilePictureUrl(jid, 'image');
+      const url = await this.socket.profilePictureUrl(jid, "image");
       return url ?? null;
     } catch (err) {
-      this.logger.debug({ err, jid }, 'Failed to get profile picture URL');
+      this.logger.debug({ err, jid }, "Failed to get profile picture URL");
       return null;
     }
   }
@@ -567,16 +599,16 @@ export class BaileysAdapter implements WhatsAppAdapter {
    */
   async sendPresenceUpdate(type: PresenceType, jid?: string): Promise<void> {
     if (!this.socket) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
 
     // Map our presence types to Baileys WAPresence
     const presenceMap: Record<PresenceType, WAPresence> = {
-      available: 'available',
-      unavailable: 'unavailable',
-      composing: 'composing',
-      recording: 'recording',
-      paused: 'paused',
+      available: "available",
+      unavailable: "unavailable",
+      composing: "composing",
+      recording: "recording",
+      paused: "paused",
     };
 
     await this.socket.sendPresenceUpdate(presenceMap[type], jid);
@@ -587,7 +619,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
    */
   async sendSeen(jid: string, messageIds?: string[]): Promise<void> {
     if (!this.socket) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
 
     if (messageIds && messageIds.length > 0) {
@@ -599,7 +631,9 @@ export class BaileysAdapter implements WhatsAppAdapter {
       await this.socket.readMessages(keys);
     } else {
       // Mark all messages in chat as read
-      await this.socket.readMessages([{ remoteJid: jid, id: '', fromMe: false }]);
+      await this.socket.readMessages([
+        { remoteJid: jid, id: "", fromMe: false },
+      ]);
     }
   }
 
@@ -608,19 +642,22 @@ export class BaileysAdapter implements WhatsAppAdapter {
    */
   async forwardMessage(jid: string, message: WAMessage): Promise<SendResult> {
     if (!this.socket) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
 
     const rawMsg = message.raw as BaileysWAMessage;
     if (!rawMsg.message || !rawMsg.key) {
-      throw new Error('Cannot forward message without content');
+      throw new Error("Cannot forward message without content");
     }
 
     const forwardContent = generateForwardMessageContent(rawMsg, false);
-    const result = await this.socket.sendMessage(jid, forwardContent as Parameters<WASocket['sendMessage']>[1]);
+    const result = await this.socket.sendMessage(
+      jid,
+      forwardContent as Parameters<WASocket["sendMessage"]>[1],
+    );
 
     return {
-      messageId: result?.key?.id ?? '',
+      messageId: result?.key?.id ?? "",
       timestamp: Date.now(),
       success: !!result?.key?.id,
     };
@@ -631,22 +668,22 @@ export class BaileysAdapter implements WhatsAppAdapter {
    */
   async downloadMedia(message: WAMessage): Promise<Buffer> {
     if (!this.socket) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
 
     const rawMsg = message.raw as BaileysWAMessage;
     if (!rawMsg.message || !rawMsg.key) {
-      throw new Error('Message has no content');
+      throw new Error("Message has no content");
     }
 
     const buffer = await downloadMediaMessage(
       rawMsg,
-      'buffer',
+      "buffer",
       {},
       {
         logger: this.logger,
         reuploadRequest: this.socket.updateMediaMessage,
-      }
+      },
     );
 
     return buffer as Buffer;
@@ -655,9 +692,12 @@ export class BaileysAdapter implements WhatsAppAdapter {
   /**
    * Create a new group
    */
-  async createGroup(name: string, participants: string[]): Promise<GroupMetadata> {
+  async createGroup(
+    name: string,
+    participants: string[],
+  ): Promise<GroupMetadata> {
     if (!this.socket) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
 
     const result = await this.socket.groupCreate(name, participants);
@@ -668,8 +708,8 @@ export class BaileysAdapter implements WhatsAppAdapter {
       owner: result.owner ?? undefined,
       participants: result.participants.map((p) => ({
         id: p.id,
-        isAdmin: p.admin === 'admin' || p.admin === 'superadmin',
-        isSuperAdmin: p.admin === 'superadmin',
+        isAdmin: p.admin === "admin" || p.admin === "superadmin",
+        isSuperAdmin: p.admin === "superadmin",
       })),
       createdAt: result.creation ? result.creation * 1000 : undefined,
     };
@@ -678,45 +718,57 @@ export class BaileysAdapter implements WhatsAppAdapter {
   /**
    * Add participants to a group
    */
-  async addParticipants(groupId: string, participants: string[]): Promise<void> {
+  async addParticipants(
+    groupId: string,
+    participants: string[],
+  ): Promise<void> {
     if (!this.socket) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
 
-    await this.socket.groupParticipantsUpdate(groupId, participants, 'add');
+    await this.socket.groupParticipantsUpdate(groupId, participants, "add");
   }
 
   /**
    * Remove participants from a group
    */
-  async removeParticipants(groupId: string, participants: string[]): Promise<void> {
+  async removeParticipants(
+    groupId: string,
+    participants: string[],
+  ): Promise<void> {
     if (!this.socket) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
 
-    await this.socket.groupParticipantsUpdate(groupId, participants, 'remove');
+    await this.socket.groupParticipantsUpdate(groupId, participants, "remove");
   }
 
   /**
    * Promote participants to admin in a group
    */
-  async promoteParticipants(groupId: string, participants: string[]): Promise<void> {
+  async promoteParticipants(
+    groupId: string,
+    participants: string[],
+  ): Promise<void> {
     if (!this.socket) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
 
-    await this.socket.groupParticipantsUpdate(groupId, participants, 'promote');
+    await this.socket.groupParticipantsUpdate(groupId, participants, "promote");
   }
 
   /**
    * Demote admins in a group
    */
-  async demoteParticipants(groupId: string, participants: string[]): Promise<void> {
+  async demoteParticipants(
+    groupId: string,
+    participants: string[],
+  ): Promise<void> {
     if (!this.socket) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
 
-    await this.socket.groupParticipantsUpdate(groupId, participants, 'demote');
+    await this.socket.groupParticipantsUpdate(groupId, participants, "demote");
   }
 
   /**
@@ -724,7 +776,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
    */
   async setGroupSubject(groupId: string, subject: string): Promise<void> {
     if (!this.socket) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
 
     await this.socket.groupUpdateSubject(groupId, subject);
@@ -733,9 +785,12 @@ export class BaileysAdapter implements WhatsAppAdapter {
   /**
    * Update group description
    */
-  async setGroupDescription(groupId: string, description: string): Promise<void> {
+  async setGroupDescription(
+    groupId: string,
+    description: string,
+  ): Promise<void> {
     if (!this.socket) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
 
     await this.socket.groupUpdateDescription(groupId, description);
@@ -746,7 +801,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
    */
   async leaveGroup(groupId: string): Promise<void> {
     if (!this.socket) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
 
     await this.socket.groupLeave(groupId);
@@ -757,12 +812,12 @@ export class BaileysAdapter implements WhatsAppAdapter {
    */
   async getInviteCode(groupId: string): Promise<string> {
     if (!this.socket) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
 
     const code = await this.socket.groupInviteCode(groupId);
     if (!code) {
-      throw new Error('Failed to get invite code');
+      throw new Error("Failed to get invite code");
     }
     return code;
   }
@@ -772,12 +827,12 @@ export class BaileysAdapter implements WhatsAppAdapter {
    */
   async acceptInvite(inviteCode: string): Promise<string> {
     if (!this.socket) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
 
     const groupId = await this.socket.groupAcceptInvite(inviteCode);
     if (!groupId) {
-      throw new Error('Failed to accept invite');
+      throw new Error("Failed to accept invite");
     }
     return groupId;
   }
@@ -787,10 +842,10 @@ export class BaileysAdapter implements WhatsAppAdapter {
    */
   async blockContact(jid: string): Promise<void> {
     if (!this.socket) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
 
-    await this.socket.updateBlockStatus(jid, 'block');
+    await this.socket.updateBlockStatus(jid, "block");
   }
 
   /**
@@ -798,10 +853,10 @@ export class BaileysAdapter implements WhatsAppAdapter {
    */
   async unblockContact(jid: string): Promise<void> {
     if (!this.socket) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
 
-    await this.socket.updateBlockStatus(jid, 'unblock');
+    await this.socket.updateBlockStatus(jid, "unblock");
   }
 
   /**
@@ -809,7 +864,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
    */
   async getBlockedContacts(): Promise<string[]> {
     if (!this.socket) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
 
     const blocklist = await this.socket.fetchBlocklist();
@@ -821,8 +876,8 @@ export class BaileysAdapter implements WhatsAppAdapter {
  * Check if a Baileys session exists
  */
 export async function baileysSessionExists(
-  redis: import('ioredis').default,
-  clientId: string
+  redis: import("ioredis").default,
+  clientId: string,
 ): Promise<boolean> {
-  return sessionExists(redis, 'baileys:auth', clientId);
+  return sessionExists(redis, "baileys:auth", clientId);
 }

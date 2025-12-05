@@ -6,10 +6,10 @@ This document describes the dual-library architecture that allows switching betw
 
 The WBScanner now supports two WhatsApp libraries:
 
-| Library | Type | RAM Usage | Browser Required | Recommended |
-|---------|------|-----------|------------------|-------------|
-| **Baileys** | Protocol-based | ~50MB | No | ✅ Yes |
-| whatsapp-web.js | Browser-based | ~500MB | Yes (Chromium) | No |
+| Library         | Type           | RAM Usage | Browser Required | Recommended |
+| --------------- | -------------- | --------- | ---------------- | ----------- |
+| **Baileys**     | Protocol-based | ~50MB     | No               | ✅ Yes      |
+| whatsapp-web.js | Browser-based  | ~500MB    | Yes (Chromium)   | No          |
 
 ## Quick Start
 
@@ -37,12 +37,12 @@ npm run dev --workspace services/wa-client
 
 ### Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `WA_LIBRARY` | `baileys` | WhatsApp library to use (`baileys` or `wwebjs`) |
-| `WA_HTTP_PORT` | `3001` | HTTP port for health checks and metrics |
-| `WA_AUTH_STRATEGY` | `remote` | Authentication strategy (`local` or `remote`) |
-| `WA_AUTH_CLIENT_ID` | `default` | Client ID for session storage |
+| Variable            | Default   | Description                                     |
+| ------------------- | --------- | ----------------------------------------------- |
+| `WA_LIBRARY`        | `baileys` | WhatsApp library to use (`baileys` or `wwebjs`) |
+| `WA_HTTP_PORT`      | `3001`    | HTTP port for health checks and metrics         |
+| `WA_AUTH_STRATEGY`  | `remote`  | Authentication strategy (`local` or `remote`)   |
+| `WA_AUTH_CLIENT_ID` | `default` | Client ID for session storage                   |
 
 ### Setup Wizard
 
@@ -113,18 +113,21 @@ npm run dev --workspace services/wa-client
 ### From whatsapp-web.js to Baileys
 
 1. **Update environment**:
+
    ```bash
    # In .env
    WA_LIBRARY=baileys
    ```
 
 2. **Clear old session** (optional but recommended):
+
    ```bash
    # Delete old whatsapp-web.js session data
    rm -rf data/remote-session
    ```
 
 3. **Switch entry point**:
+
    ```bash
    # Use the new adapter-based entry point
    npm run dev:adapter --workspace services/wa-client
@@ -139,6 +142,7 @@ npm run dev --workspace services/wa-client
 If you need to rollback:
 
 1. **Update environment**:
+
    ```bash
    WA_LIBRARY=wwebjs
    ```
@@ -166,20 +170,24 @@ After migration, verify:
 ### Common Issues
 
 **1. "Socket not connected" error**
+
 - Ensure Redis is running and accessible
 - Check `REDIS_URL` environment variable
 - Verify network connectivity between containers
 
 **2. QR code not appearing**
+
 - Check `WA_REMOTE_AUTH_DISABLE_QR_FALLBACK` is not set to `true`
 - Ensure terminal supports QR code display
 
 **3. Session not persisting**
+
 - Verify Redis connection
 - Check `WA_AUTH_CLIENT_ID` is consistent
 - Ensure Redis data is not being cleared
 
 **4. Docker networking issues**
+
 - Run `scripts/fix-waydroid-nftables.sh` if using Waydroid
 - Check firewalld configuration
 - Verify inter-container connectivity
@@ -201,6 +209,7 @@ node scripts/preflight-check.mjs
 ```
 
 This verifies:
+
 - Node.js version
 - Required environment variables
 - Package dependencies
@@ -216,17 +225,18 @@ This verifies:
 
 ## Performance Comparison
 
-| Metric | Baileys | whatsapp-web.js |
-|--------|---------|-----------------|
-| Startup time | ~2s | ~10-30s |
-| Memory usage | ~50MB | ~500MB |
-| CPU usage | Low | Medium-High |
-| Dependencies | Minimal | Puppeteer + Chromium |
-| Container size | ~200MB | ~1.5GB |
+| Metric         | Baileys | whatsapp-web.js      |
+| -------------- | ------- | -------------------- |
+| Startup time   | ~2s     | ~10-30s              |
+| Memory usage   | ~50MB   | ~500MB               |
+| CPU usage      | Low     | Medium-High          |
+| Dependencies   | Minimal | Puppeteer + Chromium |
+| Container size | ~200MB  | ~1.5GB               |
 
 ## Support
 
 For issues related to this migration:
+
 1. Check the troubleshooting section above
 2. Run the pre-flight check
 3. Review logs with debug level enabled

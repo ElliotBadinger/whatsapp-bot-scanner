@@ -12,12 +12,12 @@ This report presents the findings of a comprehensive parallel research investiga
 
 ### Key Findings Overview
 
-| Issue | Confidence | Primary Recommendation | Implementation Effort |
-|-------|-----------|----------------------|---------------------|
-| **Docker Bridge Networking on Fedora 42** | High | Delegate networking to firewalld native policies | High |
-| **whatsapp-web.js RemoteAuth Ready State** | High | Switch to Baileys library | High |
-| **ioredis Connection Timing** | High | Use lazyConnect with explicit initialization | Low |
-| **Puppeteer/Chrome Stability** | High | Implement comprehensive Chrome flags + health checks | Medium |
+| Issue                                      | Confidence | Primary Recommendation                               | Implementation Effort |
+| ------------------------------------------ | ---------- | ---------------------------------------------------- | --------------------- |
+| **Docker Bridge Networking on Fedora 42**  | High       | Delegate networking to firewalld native policies     | High                  |
+| **whatsapp-web.js RemoteAuth Ready State** | High       | Switch to Baileys library                            | High                  |
+| **ioredis Connection Timing**              | High       | Use lazyConnect with explicit initialization         | Low                   |
+| **Puppeteer/Chrome Stability**             | High       | Implement comprehensive Chrome flags + health checks | Medium                |
 
 ---
 
@@ -50,7 +50,7 @@ This is the most stable and modern solution for Fedora/RHEL systems, making `fir
 ```json
 // /etc/docker/daemon.json
 {
-    "iptables": false
+  "iptables": false
 }
 ```
 
@@ -103,12 +103,12 @@ sudo sysctl net.bridge.bridge-nf-call-iptables=1
 
 Podman is the native, daemonless container engine for Fedora/RHEL, designed to integrate seamlessly with `firewalld` and SELinux.
 
-| Feature | Podman (Rootless) | Docker Default |
-|---------|------------------|----------------|
-| firewalld/nftables Integration | Seamless (no conflicts) | Poor (ongoing conflicts) |
-| Security | Daemonless architecture | Daemon-based |
-| docker-compose Support | Via podman-compose or podman play kube | Native |
-| Learning Curve | Requires new commands/workflow | Familiar |
+| Feature                        | Podman (Rootless)                      | Docker Default           |
+| ------------------------------ | -------------------------------------- | ------------------------ |
+| firewalld/nftables Integration | Seamless (no conflicts)                | Poor (ongoing conflicts) |
+| Security                       | Daemonless architecture                | Daemon-based             |
+| docker-compose Support         | Via podman-compose or podman play kube | Native                   |
+| Learning Curve                 | Requires new commands/workflow         | Familiar                 |
 
 #### Docker with --network=host
 
@@ -126,14 +126,14 @@ Creates virtual network interfaces with unique MAC/IP addresses on the physical 
 
 ### Decision Matrix
 
-| Feature | Current (Docker Default) | Recommended (Docker + firewalld) | Alternative (Podman) |
-|---------|------------------------|--------------------------------|---------------------|
-| **Fedora/firewalld Integration** | Poor (conflicts) | Excellent (native capabilities) | Excellent (native to Fedora) |
-| **Network Isolation** | High (when working) | High (firewalld policies) | High (Netavark/CNI) |
-| **Inter-Container Communication** | Broken (ETIMEDOUT) | Functional | Functional |
-| **Implementation Effort** | N/A | Medium (config + reboot) | Low (drop-in replacement) |
-| **Maintainability** | Low (breaks on updates) | High (stable) | High (stable) |
-| **docker-compose Compatibility** | High | High | Medium (requires podman-compose) |
+| Feature                           | Current (Docker Default) | Recommended (Docker + firewalld) | Alternative (Podman)             |
+| --------------------------------- | ------------------------ | -------------------------------- | -------------------------------- |
+| **Fedora/firewalld Integration**  | Poor (conflicts)         | Excellent (native capabilities)  | Excellent (native to Fedora)     |
+| **Network Isolation**             | High (when working)      | High (firewalld policies)        | High (Netavark/CNI)              |
+| **Inter-Container Communication** | Broken (ETIMEDOUT)       | Functional                       | Functional                       |
+| **Implementation Effort**         | N/A                      | Medium (config + reboot)         | Low (drop-in replacement)        |
+| **Maintainability**               | Low (breaks on updates)  | High (stable)                    | High (stable)                    |
+| **docker-compose Compatibility**  | High                     | High                             | Medium (requires podman-compose) |
 
 ### Key Sources
 
@@ -177,41 +177,48 @@ Baileys is a WebSocket-based library that implements the WhatsApp Web protocol d
 **Implementation:**
 
 ```typescript
-import makeWASocket, { DisconnectReason, useMultiFileAuthState } from '@whiskeysockets/baileys'
+import makeWASocket, {
+  DisconnectReason,
+  useMultiFileAuthState,
+} from "@whiskeysockets/baileys";
 
 async function connectWhatsApp() {
-    const { state, saveCreds } = await useMultiFileAuthState('auth_info')
-    
-    const sock = makeWASocket({
-        auth: state,
-        printQRInTerminal: true
-    })
-    
-    sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect } = update
-        if(connection === 'close') {
-            const shouldReconnect = (lastDisconnect?.error as any)?.output?.statusCode !== DisconnectReason.loggedOut
-            if(shouldReconnect) {
-                connectWhatsApp()
-            }
-        } else if(connection === 'open') {
-            console.log('WhatsApp connection ready')
-        }
-    })
-    
-    sock.ev.on('creds.update', saveCreds)
-    
-    return sock
+  const { state, saveCreds } = await useMultiFileAuthState("auth_info");
+
+  const sock = makeWASocket({
+    auth: state,
+    printQRInTerminal: true,
+  });
+
+  sock.ev.on("connection.update", (update) => {
+    const { connection, lastDisconnect } = update;
+    if (connection === "close") {
+      const shouldReconnect =
+        (lastDisconnect?.error as any)?.output?.statusCode !==
+        DisconnectReason.loggedOut;
+      if (shouldReconnect) {
+        connectWhatsApp();
+      }
+    } else if (connection === "open") {
+      console.log("WhatsApp connection ready");
+    }
+  });
+
+  sock.ev.on("creds.update", saveCreds);
+
+  return sock;
 }
 ```
 
 **Advantages:**
+
 - Direct protocol implementation (no browser overhead)
 - Better session management and reconnection logic
 - Active maintenance and WhatsApp compatibility updates
 - Lower resource consumption
 
 **Migration Effort:**
+
 - Rewrite WhatsApp client logic
 - Adapt message handling and event listeners
 - Test all bot functionality
@@ -222,46 +229,49 @@ async function connectWhatsApp() {
 Extend the current workaround with more robust polling and timeout handling:
 
 ```typescript
-async function waitForReady(client: Client, maxWaitMs: number = 120000): Promise<void> {
-    const startTime = Date.now()
-    
-    return new Promise((resolve, reject) => {
-        // Set up ready event listener
-        const readyHandler = () => {
-            clearInterval(pollInterval)
-            clearTimeout(timeout)
-            resolve()
+async function waitForReady(
+  client: Client,
+  maxWaitMs: number = 120000,
+): Promise<void> {
+  const startTime = Date.now();
+
+  return new Promise((resolve, reject) => {
+    // Set up ready event listener
+    const readyHandler = () => {
+      clearInterval(pollInterval);
+      clearTimeout(timeout);
+      resolve();
+    };
+    client.once("ready", readyHandler);
+
+    // Aggressive polling for client.info
+    const pollInterval = setInterval(async () => {
+      try {
+        if (client.info?.wid) {
+          clearInterval(pollInterval);
+          clearTimeout(timeout);
+          client.removeListener("ready", readyHandler);
+          resolve();
         }
-        client.once('ready', readyHandler)
-        
-        // Aggressive polling for client.info
-        const pollInterval = setInterval(async () => {
-            try {
-                if (client.info?.wid) {
-                    clearInterval(pollInterval)
-                    clearTimeout(timeout)
-                    client.removeListener('ready', readyHandler)
-                    resolve()
-                }
-                
-                // Force re-evaluation of WhatsApp Web state
-                await client.pupPage?.evaluate(() => {
-                    if (window.Store?.Conn?.isLoggedIn()) {
-                        window.Store.Conn.trigger('change:info')
-                    }
-                })
-            } catch (error) {
-                console.error('Polling error:', error)
-            }
-        }, 2000)
-        
-        // Timeout
-        const timeout = setTimeout(() => {
-            clearInterval(pollInterval)
-            client.removeListener('ready', readyHandler)
-            reject(new Error('Timeout waiting for ready state'))
-        }, maxWaitMs)
-    })
+
+        // Force re-evaluation of WhatsApp Web state
+        await client.pupPage?.evaluate(() => {
+          if (window.Store?.Conn?.isLoggedIn()) {
+            window.Store.Conn.trigger("change:info");
+          }
+        });
+      } catch (error) {
+        console.error("Polling error:", error);
+      }
+    }, 2000);
+
+    // Timeout
+    const timeout = setTimeout(() => {
+      clearInterval(pollInterval);
+      client.removeListener("ready", readyHandler);
+      reject(new Error("Timeout waiting for ready state"));
+    }, maxWaitMs);
+  });
 }
 ```
 
@@ -273,14 +283,14 @@ Use LocalAuth with volume-mounted session files instead of RemoteAuth with Redis
 
 ```typescript
 const client = new Client({
-    authStrategy: new LocalAuth({
-        clientId: 'wa-client-1',
-        dataPath: '/app/sessions'
-    }),
-    puppeteer: {
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-    }
-})
+  authStrategy: new LocalAuth({
+    clientId: "wa-client-1",
+    dataPath: "/app/sessions",
+  }),
+  puppeteer: {
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  },
+});
 ```
 
 ```yaml
@@ -292,11 +302,13 @@ services:
 ```
 
 **Advantages:**
+
 - Simpler session management
 - Fewer moving parts (no Redis dependency for sessions)
 - May avoid RemoteAuth-specific race conditions
 
 **Disadvantages:**
+
 - Loses centralized session storage
 - Harder to scale horizontally
 - Session files need backup strategy
@@ -305,28 +317,28 @@ services:
 
 #### Complete Library Migration: whatsapp-web.js vs Baileys
 
-| Feature | whatsapp-web.js | Baileys |
-|---------|----------------|---------|
-| **Architecture** | Puppeteer-based browser automation | Direct WebSocket protocol implementation |
-| **Resource Usage** | High (full Chrome instance) | Low (Node.js only) |
-| **Reliability** | Fragile (depends on WhatsApp Web UI) | More robust (protocol-level) |
-| **Session Management** | LocalAuth, RemoteAuth, NoAuth | Multi-file auth state, Redis integration |
-| **Maintenance** | Active but reactive to WhatsApp changes | Active with protocol-level updates |
-| **Multi-device Support** | Yes (via WhatsApp Web) | Yes (native) |
-| **Pairing Code Support** | Buggy (current issue) | Stable |
-| **Learning Curve** | Lower (high-level API) | Higher (protocol knowledge helpful) |
-| **Ban Risk** | Medium (browser automation detectable) | Medium (unofficial API usage) |
+| Feature                  | whatsapp-web.js                         | Baileys                                  |
+| ------------------------ | --------------------------------------- | ---------------------------------------- |
+| **Architecture**         | Puppeteer-based browser automation      | Direct WebSocket protocol implementation |
+| **Resource Usage**       | High (full Chrome instance)             | Low (Node.js only)                       |
+| **Reliability**          | Fragile (depends on WhatsApp Web UI)    | More robust (protocol-level)             |
+| **Session Management**   | LocalAuth, RemoteAuth, NoAuth           | Multi-file auth state, Redis integration |
+| **Maintenance**          | Active but reactive to WhatsApp changes | Active with protocol-level updates       |
+| **Multi-device Support** | Yes (via WhatsApp Web)                  | Yes (native)                             |
+| **Pairing Code Support** | Buggy (current issue)                   | Stable                                   |
+| **Learning Curve**       | Lower (high-level API)                  | Higher (protocol knowledge helpful)      |
+| **Ban Risk**             | Medium (browser automation detectable)  | Medium (unofficial API usage)            |
 
 ### Decision Matrix
 
-| Criterion | Current (whatsapp-web.js + RemoteAuth) | Fix 1 (Baileys) | Fix 2 (Aggressive Polling) | Fix 3 (LocalAuth) |
-|-----------|--------------------------------------|----------------|---------------------------|------------------|
-| **Reliability** | Low (ready event fails) | High (protocol-level) | Medium (workaround) | Medium (simpler) |
-| **Implementation Effort** | N/A | High (full rewrite) | Medium (extend current) | Low (config change) |
-| **Resource Usage** | High (Chrome) | Low (WebSocket) | High (Chrome) | High (Chrome) |
-| **Maintainability** | Low (fragile) | High (stable API) | Low (brittle workaround) | Medium |
-| **Scalability** | Medium (Redis sessions) | High (flexible storage) | Medium (Redis sessions) | Low (file-based) |
-| **Risk** | N/A | Medium (new library) | Medium (may break) | Low (proven approach) |
+| Criterion                 | Current (whatsapp-web.js + RemoteAuth) | Fix 1 (Baileys)         | Fix 2 (Aggressive Polling) | Fix 3 (LocalAuth)     |
+| ------------------------- | -------------------------------------- | ----------------------- | -------------------------- | --------------------- |
+| **Reliability**           | Low (ready event fails)                | High (protocol-level)   | Medium (workaround)        | Medium (simpler)      |
+| **Implementation Effort** | N/A                                    | High (full rewrite)     | Medium (extend current)    | Low (config change)   |
+| **Resource Usage**        | High (Chrome)                          | Low (WebSocket)         | High (Chrome)              | High (Chrome)         |
+| **Maintainability**       | Low (fragile)                          | High (stable API)       | Low (brittle workaround)   | Medium                |
+| **Scalability**           | Medium (Redis sessions)                | High (flexible storage) | Medium (Redis sessions)    | Low (file-based)      |
+| **Risk**                  | N/A                                    | Medium (new library)    | Medium (may break)         | Low (proven approach) |
 
 ### Key Sources
 
@@ -366,56 +378,60 @@ Use ioredis's `lazyConnect` option and explicitly connect in the `main()` functi
 
 ```typescript
 // packages/shared/src/redis.ts
-import Redis from 'ioredis'
+import Redis from "ioredis";
 
 export function createRedisConnection(lazyConnect: boolean = true): Redis {
-    return new Redis({
-        host: process.env.REDIS_HOST || 'redis',
-        port: parseInt(process.env.REDIS_PORT || '6379'),
-        lazyConnect: lazyConnect,  // Don't connect immediately
-        retryStrategy(times) {
-            const delay = Math.min(times * 50, 2000)
-            return delay
-        },
-        maxRetriesPerRequest: null,  // Important for BullMQ
-        enableReadyCheck: true,
-        enableOfflineQueue: true
-    })
+  return new Redis({
+    host: process.env.REDIS_HOST || "redis",
+    port: parseInt(process.env.REDIS_PORT || "6379"),
+    lazyConnect: lazyConnect, // Don't connect immediately
+    retryStrategy(times) {
+      const delay = Math.min(times * 50, 2000);
+      return delay;
+    },
+    maxRetriesPerRequest: null, // Important for BullMQ
+    enableReadyCheck: true,
+    enableOfflineQueue: true,
+  });
 }
 
 // services/wa-client/src/index.ts
-import { createRedisConnection } from '@shared/redis'
+import { createRedisConnection } from "@shared/redis";
 
 async function main() {
-    const redis = createRedisConnection(true)  // Lazy connection
-    
-    // Explicit connection with retry logic
-    let connected = false
-    let attempts = 0
-    const maxAttempts = 10
-    
-    while (!connected && attempts < maxAttempts) {
-        try {
-            await redis.connect()
-            connected = true
-            console.log('Redis connected successfully')
-        } catch (error) {
-            attempts++
-            console.error(`Redis connection attempt ${attempts} failed:`, error.message)
-            if (attempts >= maxAttempts) {
-                throw new Error('Failed to connect to Redis after maximum attempts')
-            }
-            await new Promise(resolve => setTimeout(resolve, 2000 * attempts))
-        }
+  const redis = createRedisConnection(true); // Lazy connection
+
+  // Explicit connection with retry logic
+  let connected = false;
+  let attempts = 0;
+  const maxAttempts = 10;
+
+  while (!connected && attempts < maxAttempts) {
+    try {
+      await redis.connect();
+      connected = true;
+      console.log("Redis connected successfully");
+    } catch (error) {
+      attempts++;
+      console.error(
+        `Redis connection attempt ${attempts} failed:`,
+        error.message,
+      );
+      if (attempts >= maxAttempts) {
+        throw new Error("Failed to connect to Redis after maximum attempts");
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000 * attempts));
     }
-    
-    // Rest of initialization...
+  }
+
+  // Rest of initialization...
 }
 
-main().catch(console.error)
+main().catch(console.error);
 ```
 
 **Advantages:**
+
 - Full control over connection timing
 - Explicit retry logic with exponential backoff
 - Graceful error handling before starting other services
@@ -446,11 +462,13 @@ services:
 ```
 
 **Advantages:**
+
 - Ensures Redis is accepting connections before app starts
 - Standard pattern in Docker environments
 - No code changes required
 
 **Disadvantages:**
+
 - Adds external dependency
 - Doesn't handle Redis failures after initial connection
 
@@ -460,34 +478,34 @@ Add event handlers to manage connection state without changing initialization ti
 
 ```typescript
 export function createRedisConnection(): Redis {
-    const redis = new Redis({
-        host: process.env.REDIS_HOST || 'redis',
-        port: parseInt(process.env.REDIS_PORT || '6379'),
-        retryStrategy(times) {
-            if (times > 10) {
-                return null  // Stop retrying after 10 attempts
-            }
-            return Math.min(times * 100, 3000)
-        }
-    })
-    
-    redis.on('error', (err) => {
-        console.error('Redis connection error:', err)
-    })
-    
-    redis.on('connect', () => {
-        console.log('Redis connecting...')
-    })
-    
-    redis.on('ready', () => {
-        console.log('Redis ready')
-    })
-    
-    redis.on('reconnecting', () => {
-        console.log('Redis reconnecting...')
-    })
-    
-    return redis
+  const redis = new Redis({
+    host: process.env.REDIS_HOST || "redis",
+    port: parseInt(process.env.REDIS_PORT || "6379"),
+    retryStrategy(times) {
+      if (times > 10) {
+        return null; // Stop retrying after 10 attempts
+      }
+      return Math.min(times * 100, 3000);
+    },
+  });
+
+  redis.on("error", (err) => {
+    console.error("Redis connection error:", err);
+  });
+
+  redis.on("connect", () => {
+    console.log("Redis connecting...");
+  });
+
+  redis.on("ready", () => {
+    console.log("Redis ready");
+  });
+
+  redis.on("reconnecting", () => {
+    console.log("Redis reconnecting...");
+  });
+
+  return redis;
 }
 ```
 
@@ -500,46 +518,46 @@ export function createRedisConnection(): Redis {
 The official `redis` package (formerly `node-redis`) has different connection semantics that may be more intuitive.
 
 ```typescript
-import { createClient } from 'redis'
+import { createClient } from "redis";
 
 async function createRedisConnection() {
-    const client = createClient({
-        socket: {
-            host: process.env.REDIS_HOST || 'redis',
-            port: parseInt(process.env.REDIS_PORT || '6379'),
-            reconnectStrategy: (retries) => {
-                if (retries > 10) return new Error('Max retries reached')
-                return Math.min(retries * 100, 3000)
-            }
-        }
-    })
-    
-    client.on('error', err => console.error('Redis Client Error', err))
-    
-    await client.connect()
-    return client
+  const client = createClient({
+    socket: {
+      host: process.env.REDIS_HOST || "redis",
+      port: parseInt(process.env.REDIS_PORT || "6379"),
+      reconnectStrategy: (retries) => {
+        if (retries > 10) return new Error("Max retries reached");
+        return Math.min(retries * 100, 3000);
+      },
+    },
+  });
+
+  client.on("error", (err) => console.error("Redis Client Error", err));
+
+  await client.connect();
+  return client;
 }
 ```
 
-| Feature | ioredis | redis (official) |
-|---------|---------|-----------------|
-| **Connection Model** | Auto-connect by default | Explicit connect() required |
-| **BullMQ Support** | Native (BullMQ uses ioredis) | Requires adapter |
-| **API Style** | Callback + Promise | Promise-first |
-| **Cluster Support** | Excellent | Good |
-| **Maintenance** | Active | Active (official) |
+| Feature              | ioredis                      | redis (official)            |
+| -------------------- | ---------------------------- | --------------------------- |
+| **Connection Model** | Auto-connect by default      | Explicit connect() required |
+| **BullMQ Support**   | Native (BullMQ uses ioredis) | Requires adapter            |
+| **API Style**        | Callback + Promise           | Promise-first               |
+| **Cluster Support**  | Excellent                    | Good                        |
+| **Maintenance**      | Active                       | Active (official)           |
 
 **Recommendation:** Stick with ioredis due to BullMQ integration, but use `lazyConnect`.
 
 ### Decision Matrix
 
-| Criterion | Current (Module-level Init) | Fix 1 (Lazy Connect) | Fix 2 (Wait Script) | Alternative (redis pkg) |
-|-----------|---------------------------|---------------------|-------------------|----------------------|
-| **Reliability** | Low (race condition) | High (explicit control) | High (guaranteed ready) | High (explicit) |
-| **Implementation Effort** | N/A | Low (code change) | Medium (Docker change) | High (rewrite + BullMQ) |
-| **Code Clarity** | Low (implicit timing) | High (explicit flow) | Medium (external script) | High (explicit) |
-| **BullMQ Compatibility** | High | High | High | Medium (needs adapter) |
-| **Maintainability** | Low (fragile) | High (standard pattern) | Medium (external dep) | Medium (different API) |
+| Criterion                 | Current (Module-level Init) | Fix 1 (Lazy Connect)    | Fix 2 (Wait Script)      | Alternative (redis pkg) |
+| ------------------------- | --------------------------- | ----------------------- | ------------------------ | ----------------------- |
+| **Reliability**           | Low (race condition)        | High (explicit control) | High (guaranteed ready)  | High (explicit)         |
+| **Implementation Effort** | N/A                         | Low (code change)       | Medium (Docker change)   | High (rewrite + BullMQ) |
+| **Code Clarity**          | Low (implicit timing)       | High (explicit flow)    | Medium (external script) | High (explicit)         |
+| **BullMQ Compatibility**  | High                        | High                    | High                     | Medium (needs adapter)  |
+| **Maintainability**       | Low (fragile)               | High (standard pattern) | Medium (external dep)    | Medium (different API)  |
 
 ### Key Sources
 
@@ -589,95 +607,95 @@ Implement a robust set of Chrome flags specifically for containerized long-runni
 ```typescript
 // services/wa-client/src/index.ts
 const puppeteerOptions = {
-    headless: true,
-    args: [
-        // Essential for Docker
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        
-        // DNS and networking
-        '--disable-features=NetworkService',
-        '--dns-prefetch-disable',
-        '--disable-dns-over-https',
-        
-        // Stability and resource management
-        '--disable-dev-shm-usage',  // Use /tmp instead of /dev/shm
-        '--disable-gpu',
-        '--disable-software-rasterizer',
-        '--disable-extensions',
-        '--disable-background-networking',
-        '--disable-background-timer-throttling',
-        '--disable-backgrounding-occluded-windows',
-        '--disable-breakpad',
-        '--disable-component-extensions-with-background-pages',
-        '--disable-features=TranslateUI',
-        '--disable-ipc-flooding-protection',
-        '--disable-renderer-backgrounding',
-        '--enable-features=NetworkServiceInProcess2',
-        '--force-color-profile=srgb',
-        '--metrics-recording-only',
-        '--mute-audio',
-        '--no-first-run',
-        '--no-default-browser-check',
-        '--no-zygote',
-        
-        // Memory management
-        '--memory-pressure-off',
-        '--max-old-space-size=4096',
-        
-        // Process management
-        '--single-process',  // Reduces zombie process risk
-        
-        // User agent
-        '--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
-    ],
-    executablePath: '/usr/bin/google-chrome-stable',
-    ignoreHTTPSErrors: true,
-    timeout: 30000
-}
+  headless: true,
+  args: [
+    // Essential for Docker
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+
+    // DNS and networking
+    "--disable-features=NetworkService",
+    "--dns-prefetch-disable",
+    "--disable-dns-over-https",
+
+    // Stability and resource management
+    "--disable-dev-shm-usage", // Use /tmp instead of /dev/shm
+    "--disable-gpu",
+    "--disable-software-rasterizer",
+    "--disable-extensions",
+    "--disable-background-networking",
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-breakpad",
+    "--disable-component-extensions-with-background-pages",
+    "--disable-features=TranslateUI",
+    "--disable-ipc-flooding-protection",
+    "--disable-renderer-backgrounding",
+    "--enable-features=NetworkServiceInProcess2",
+    "--force-color-profile=srgb",
+    "--metrics-recording-only",
+    "--mute-audio",
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--no-zygote",
+
+    // Memory management
+    "--memory-pressure-off",
+    "--max-old-space-size=4096",
+
+    // Process management
+    "--single-process", // Reduces zombie process risk
+
+    // User agent
+    "--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+  ],
+  executablePath: "/usr/bin/google-chrome-stable",
+  ignoreHTTPSErrors: true,
+  timeout: 30000,
+};
 
 // Health check and restart logic
 async function monitorChromeHealth(client: Client) {
-    setInterval(async () => {
-        try {
-            const page = await client.pupPage
-            if (!page || page.isClosed()) {
-                console.error('Chrome page is closed, restarting client...')
-                await restartClient(client)
-                return
-            }
-            
-            // Check if page is responsive
-            const isResponsive = await Promise.race([
-                page.evaluate(() => true),
-                new Promise(resolve => setTimeout(() => resolve(false), 5000))
-            ])
-            
-            if (!isResponsive) {
-                console.error('Chrome page is unresponsive, restarting client...')
-                await restartClient(client)
-            }
-        } catch (error) {
-            console.error('Health check failed:', error)
-            await restartClient(client)
-        }
-    }, 60000)  // Check every minute
+  setInterval(async () => {
+    try {
+      const page = await client.pupPage;
+      if (!page || page.isClosed()) {
+        console.error("Chrome page is closed, restarting client...");
+        await restartClient(client);
+        return;
+      }
+
+      // Check if page is responsive
+      const isResponsive = await Promise.race([
+        page.evaluate(() => true),
+        new Promise((resolve) => setTimeout(() => resolve(false), 5000)),
+      ]);
+
+      if (!isResponsive) {
+        console.error("Chrome page is unresponsive, restarting client...");
+        await restartClient(client);
+      }
+    } catch (error) {
+      console.error("Health check failed:", error);
+      await restartClient(client);
+    }
+  }, 60000); // Check every minute
 }
 
 async function restartClient(client: Client) {
-    try {
-        await client.destroy()
-    } catch (error) {
-        console.error('Error destroying client:', error)
-    }
-    
-    // Kill any remaining Chrome processes
-    exec('pkill -9 chrome', (error) => {
-        if (error) console.error('Error killing Chrome processes:', error)
-    })
-    
-    // Restart client initialization
-    await initializeClient()
+  try {
+    await client.destroy();
+  } catch (error) {
+    console.error("Error destroying client:", error);
+  }
+
+  // Kill any remaining Chrome processes
+  exec("pkill -9 chrome", (error) => {
+    if (error) console.error("Error killing Chrome processes:", error);
+  });
+
+  // Restart client initialization
+  await initializeClient();
 }
 ```
 
@@ -702,11 +720,11 @@ CMD ["node", "dist/index.js"]
 # docker-compose.yml
 services:
   wa-client:
-    shm_size: '2gb'  # Increase shared memory
+    shm_size: "2gb" # Increase shared memory
     cap_add:
-      - SYS_ADMIN  # Required for Chrome sandboxing
+      - SYS_ADMIN # Required for Chrome sandboxing
     security_opt:
-      - seccomp:unconfined  # Required for Chrome
+      - seccomp:unconfined # Required for Chrome
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
@@ -730,8 +748,8 @@ services:
       - PREBOOT_CHROME=true
     ports:
       - "3001:3000"
-    shm_size: '2gb'
-  
+    shm_size: "2gb"
+
   wa-client:
     environment:
       - BROWSERLESS_URL=ws://browserless:3000
@@ -740,20 +758,24 @@ services:
 ```typescript
 // services/wa-client/src/index.ts
 const client = new Client({
-    authStrategy: new RemoteAuth({ /* ... */ }),
-    puppeteer: {
-        browserWSEndpoint: process.env.BROWSERLESS_URL || 'ws://browserless:3000'
-    }
-})
+  authStrategy: new RemoteAuth({
+    /* ... */
+  }),
+  puppeteer: {
+    browserWSEndpoint: process.env.BROWSERLESS_URL || "ws://browserless:3000",
+  },
+});
 ```
 
 **Advantages:**
+
 - Professional browser management with health checks
 - Automatic process cleanup and resource management
 - Better isolation between WhatsApp sessions and browser instances
 - Built-in monitoring and metrics
 
 **Disadvantages:**
+
 - Additional service dependency
 - Slightly higher resource usage
 - Cloud version has costs (self-hosted is free)
@@ -764,14 +786,14 @@ Force Chrome to use specific DNS servers and pre-resolve domains.
 
 ```typescript
 const puppeteerOptions = {
-    headless: true,
-    args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--host-resolver-rules=MAP web.whatsapp.com 157.240.0.53',  // WhatsApp IP
-        '--dns-server=8.8.8.8,8.8.4.4'  // Use Google DNS
-    ]
-}
+  headless: true,
+  args: [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--host-resolver-rules=MAP web.whatsapp.com 157.240.0.53", // WhatsApp IP
+    "--dns-server=8.8.8.8,8.8.4.4", // Use Google DNS
+  ],
+};
 ```
 
 **Risk:** Hardcoded IPs can become stale; WhatsApp uses CDN with multiple IPs.
@@ -783,27 +805,27 @@ const puppeteerOptions = {
 Playwright is a modern alternative to Puppeteer with better containerization support.
 
 ```typescript
-import { chromium } from 'playwright'
+import { chromium } from "playwright";
 
 const browser = await chromium.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
-})
+  headless: true,
+  args: ["--no-sandbox", "--disable-setuid-sandbox"],
+});
 
 const context = await browser.newContext({
-    userAgent: 'Mozilla/5.0...'
-})
+  userAgent: "Mozilla/5.0...",
+});
 
-const page = await context.newPage()
+const page = await context.newPage();
 ```
 
-| Feature | Puppeteer | Playwright |
-|---------|-----------|-----------|
-| **Container Support** | Good | Excellent |
-| **Process Management** | Manual | Better built-in |
-| **Multi-browser** | Chrome only | Chrome, Firefox, WebKit |
-| **whatsapp-web.js Support** | Native | Requires fork/adaptation |
-| **Maintenance** | Google (active) | Microsoft (active) |
+| Feature                     | Puppeteer       | Playwright               |
+| --------------------------- | --------------- | ------------------------ |
+| **Container Support**       | Good            | Excellent                |
+| **Process Management**      | Manual          | Better built-in          |
+| **Multi-browser**           | Chrome only     | Chrome, Firefox, WebKit  |
+| **whatsapp-web.js Support** | Native          | Requires fork/adaptation |
+| **Maintenance**             | Google (active) | Microsoft (active)       |
 
 **Note:** whatsapp-web.js is tightly coupled to Puppeteer, so migration would require significant refactoring or using a fork.
 
@@ -813,39 +835,39 @@ Implement a browser instance pool to isolate sessions and enable graceful restar
 
 ```typescript
 class BrowserPool {
-    private browsers: Browser[] = []
-    private maxBrowsers = 3
-    
-    async getBrowser(): Promise<Browser> {
-        // Round-robin or least-loaded selection
-        if (this.browsers.length < this.maxBrowsers) {
-            const browser = await puppeteer.launch(puppeteerOptions)
-            this.browsers.push(browser)
-            return browser
-        }
-        return this.browsers[Math.floor(Math.random() * this.browsers.length)]
+  private browsers: Browser[] = [];
+  private maxBrowsers = 3;
+
+  async getBrowser(): Promise<Browser> {
+    // Round-robin or least-loaded selection
+    if (this.browsers.length < this.maxBrowsers) {
+      const browser = await puppeteer.launch(puppeteerOptions);
+      this.browsers.push(browser);
+      return browser;
     }
-    
-    async restartBrowser(browser: Browser) {
-        const index = this.browsers.indexOf(browser)
-        if (index > -1) {
-            await browser.close()
-            this.browsers[index] = await puppeteer.launch(puppeteerOptions)
-        }
+    return this.browsers[Math.floor(Math.random() * this.browsers.length)];
+  }
+
+  async restartBrowser(browser: Browser) {
+    const index = this.browsers.indexOf(browser);
+    if (index > -1) {
+      await browser.close();
+      this.browsers[index] = await puppeteer.launch(puppeteerOptions);
     }
+  }
 }
 ```
 
 ### Decision Matrix
 
-| Criterion | Current (Basic Setup) | Fix 1 (Comprehensive Flags) | Fix 2 (Browserless) | Alternative (Playwright) |
-|-----------|--------------------|---------------------------|-------------------|----------------------|
-| **Stability** | Low (DNS errors, zombies) | High (robust flags + health checks) | Very High (managed service) | High (better container support) |
-| **Implementation Effort** | N/A | Medium (config + monitoring) | Medium (new service) | High (library migration) |
-| **Resource Usage** | Medium | Medium | Medium-High (separate service) | Medium |
-| **Process Management** | Poor (manual) | Good (dumb-init + monitoring) | Excellent (built-in) | Good (better APIs) |
-| **Maintainability** | Low (fragile) | High (documented flags) | High (managed) | Medium (new library) |
-| **whatsapp-web.js Compatibility** | High | High | High | Low (requires fork) |
+| Criterion                         | Current (Basic Setup)     | Fix 1 (Comprehensive Flags)         | Fix 2 (Browserless)            | Alternative (Playwright)        |
+| --------------------------------- | ------------------------- | ----------------------------------- | ------------------------------ | ------------------------------- |
+| **Stability**                     | Low (DNS errors, zombies) | High (robust flags + health checks) | Very High (managed service)    | High (better container support) |
+| **Implementation Effort**         | N/A                       | Medium (config + monitoring)        | Medium (new service)           | High (library migration)        |
+| **Resource Usage**                | Medium                    | Medium                              | Medium-High (separate service) | Medium                          |
+| **Process Management**            | Poor (manual)             | Good (dumb-init + monitoring)       | Excellent (built-in)           | Good (better APIs)              |
+| **Maintainability**               | Low (fragile)             | High (documented flags)             | High (managed)                 | Medium (new library)            |
+| **whatsapp-web.js Compatibility** | High                      | High                                | High                           | Low (requires fork)             |
 
 ### Key Sources
 
@@ -904,21 +926,21 @@ class BrowserPool {
 
 #### Current Architecture Assessment
 
-| Component | Status | Recommendation |
-|-----------|--------|---------------|
-| **Container Runtime** | Docker on Fedora 42 | Migrate to Podman (native to Fedora) OR implement firewalld policies |
-| **WhatsApp Library** | whatsapp-web.js (fragile) | Evaluate Baileys if issues persist after LocalAuth switch |
-| **Session Storage** | Redis (RemoteAuth) | Switch to LocalAuth short-term, evaluate needs long-term |
-| **Browser Automation** | Puppeteer (basic config) | Implement comprehensive flags + health checks |
+| Component              | Status                    | Recommendation                                                       |
+| ---------------------- | ------------------------- | -------------------------------------------------------------------- |
+| **Container Runtime**  | Docker on Fedora 42       | Migrate to Podman (native to Fedora) OR implement firewalld policies |
+| **WhatsApp Library**   | whatsapp-web.js (fragile) | Evaluate Baileys if issues persist after LocalAuth switch            |
+| **Session Storage**    | Redis (RemoteAuth)        | Switch to LocalAuth short-term, evaluate needs long-term             |
+| **Browser Automation** | Puppeteer (basic config)  | Implement comprehensive flags + health checks                        |
 
 #### Risk Assessment
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|-----------|--------|-----------|
-| **WhatsApp Web UI changes break automation** | High | High | Migrate to Baileys (protocol-level) |
-| **Docker networking continues to fail** | Medium | High | Migrate to Podman or implement firewalld policies |
-| **Chrome crashes in production** | Medium | Medium | Implement health checks + automatic restart |
-| **Session loss during restarts** | Low | Medium | Implement session backup strategy |
+| Risk                                         | Likelihood | Impact | Mitigation                                        |
+| -------------------------------------------- | ---------- | ------ | ------------------------------------------------- |
+| **WhatsApp Web UI changes break automation** | High       | High   | Migrate to Baileys (protocol-level)               |
+| **Docker networking continues to fail**      | Medium     | High   | Migrate to Podman or implement firewalld policies |
+| **Chrome crashes in production**             | Medium     | Medium | Implement health checks + automatic restart       |
+| **Session loss during restarts**             | Low        | Medium | Implement session backup strategy                 |
 
 ---
 

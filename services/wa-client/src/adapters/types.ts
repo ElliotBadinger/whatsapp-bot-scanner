@@ -1,17 +1,21 @@
 /**
  * WhatsApp Adapter Interface
- * 
+ *
  * This module defines the common interface for WhatsApp client adapters.
  * Both Baileys and whatsapp-web.js implementations must conform to this interface.
  */
 
-import type { Logger } from 'pino';
-import type Redis from 'ioredis';
+import type { Logger } from "pino";
+import type Redis from "ioredis";
 
 /**
  * Connection state for the WhatsApp adapter
  */
-export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'ready';
+export type ConnectionState =
+  | "disconnected"
+  | "connecting"
+  | "connected"
+  | "ready";
 
 /**
  * Reason for disconnection
@@ -55,12 +59,12 @@ export interface WAMessage {
  * Content types for sending messages
  */
 export interface TextContent {
-  type: 'text';
+  type: "text";
   text: string;
 }
 
 export interface MediaContent {
-  type: 'image' | 'video' | 'audio' | 'document';
+  type: "image" | "video" | "audio" | "document";
   data: Buffer | string;
   mimetype: string;
   filename?: string;
@@ -68,19 +72,19 @@ export interface MediaContent {
 }
 
 export interface ReactionContent {
-  type: 'reaction';
+  type: "reaction";
   emoji: string;
   messageId: string;
 }
 
 export interface StickerContent {
-  type: 'sticker';
+  type: "sticker";
   data: Buffer | string;
   mimetype?: string;
 }
 
 export interface LocationContent {
-  type: 'location';
+  type: "location";
   latitude: number;
   longitude: number;
   name?: string;
@@ -88,12 +92,18 @@ export interface LocationContent {
 }
 
 export interface ContactContent {
-  type: 'contact';
+  type: "contact";
   vcard: string;
   displayName: string;
 }
 
-export type MessageContent = TextContent | MediaContent | ReactionContent | StickerContent | LocationContent | ContactContent;
+export type MessageContent =
+  | TextContent
+  | MediaContent
+  | ReactionContent
+  | StickerContent
+  | LocationContent
+  | ContactContent;
 
 /**
  * Options for sending messages
@@ -225,17 +235,22 @@ export interface Chat {
 /**
  * Presence/typing status types
  */
-export type PresenceType = 'available' | 'unavailable' | 'composing' | 'recording' | 'paused';
+export type PresenceType =
+  | "available"
+  | "unavailable"
+  | "composing"
+  | "recording"
+  | "paused";
 
 /**
  * WhatsApp Adapter Interface
- * 
+ *
  * All WhatsApp client implementations must implement this interface.
  */
 export interface WhatsAppAdapter {
   /** Current connection state */
   readonly state: ConnectionState;
-  
+
   /** Bot's own JID (available after ready) */
   readonly botId: string | null;
 
@@ -255,7 +270,11 @@ export interface WhatsAppAdapter {
    * @param content - The message content
    * @param options - Optional send options
    */
-  sendMessage(jid: string, content: MessageContent, options?: SendMessageOptions): Promise<SendResult>;
+  sendMessage(
+    jid: string,
+    content: MessageContent,
+    options?: SendMessageOptions,
+  ): Promise<SendResult>;
 
   /**
    * Reply to a message
@@ -446,4 +465,4 @@ export interface WhatsAppAdapter {
 /**
  * Library type for the adapter factory
  */
-export type WhatsAppLibrary = 'baileys' | 'wwebjs';
+export type WhatsAppLibrary = "baileys" | "wwebjs";

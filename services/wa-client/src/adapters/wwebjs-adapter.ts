@@ -1,9 +1,9 @@
 /**
  * whatsapp-web.js WhatsApp Adapter
- * 
+ *
  * This module implements the WhatsAppAdapter interface using the whatsapp-web.js library.
  * whatsapp-web.js uses Puppeteer to automate a Chrome browser running WhatsApp Web.
- * 
+ *
  * Note: This adapter is provided for legacy support. For new deployments,
  * the Baileys adapter is recommended due to lower resource usage and better reliability.
  */
@@ -18,9 +18,9 @@ import {
   Contact as WWebContact,
   type Chat,
   type GroupChat,
-} from 'whatsapp-web.js';
-import type { Logger } from 'pino';
-import type Redis from 'ioredis';
+} from "whatsapp-web.js";
+import type { Logger } from "pino";
+import type Redis from "ioredis";
 
 import {
   type WhatsAppAdapter,
@@ -38,10 +38,13 @@ import {
   type QRCodeHandler,
   type PairingCodeHandler,
   type PresenceType,
-} from './types';
-import { createRemoteAuthStore, type RedisRemoteAuthStore } from '../remoteAuthStore';
-import { loadEncryptionMaterials } from '../crypto/dataKeyProvider';
-import { config } from '@wbscanner/shared';
+} from "./types";
+import {
+  createRemoteAuthStore,
+  type RedisRemoteAuthStore,
+} from "../remoteAuthStore";
+import { loadEncryptionMaterials } from "../crypto/dataKeyProvider";
+import { config } from "@wbscanner/shared";
 
 /**
  * Extended adapter config for WWebJS-specific options
@@ -62,7 +65,7 @@ export class WWebJSAdapter implements WhatsAppAdapter {
   private client: Client | null = null;
   private config: WWebJSAdapterConfig;
   private logger: Logger;
-  private _state: ConnectionState = 'disconnected';
+  private _state: ConnectionState = "disconnected";
   private _botId: string | null = null;
 
   // Event handlers
@@ -77,7 +80,7 @@ export class WWebJSAdapter implements WhatsAppAdapter {
 
   constructor(config: WWebJSAdapterConfig) {
     this.config = config;
-    this.logger = config.logger.child({ adapter: 'wwebjs' });
+    this.logger = config.logger.child({ adapter: "wwebjs" });
   }
 
   get state(): ConnectionState {
@@ -93,11 +96,11 @@ export class WWebJSAdapter implements WhatsAppAdapter {
    */
   async connect(): Promise<void> {
     if (this.client) {
-      this.logger.warn('Client already exists, disconnecting first');
+      this.logger.warn("Client already exists, disconnecting first");
       await this.disconnect();
     }
 
-    this.setState('connecting');
+    this.setState("connecting");
 
     try {
       // Resolve auth strategy
@@ -109,14 +112,14 @@ export class WWebJSAdapter implements WhatsAppAdapter {
         puppeteer: {
           headless: true,
           args: this.config.puppeteerArgs ?? [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--disable-gpu',
-            '--single-process',
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-accelerated-2d-canvas",
+            "--no-first-run",
+            "--no-zygote",
+            "--disable-gpu",
+            "--single-process",
           ],
         },
       });
@@ -125,12 +128,12 @@ export class WWebJSAdapter implements WhatsAppAdapter {
       this.setupEventHandlers();
 
       // Initialize the client
-      this.logger.info('Initializing whatsapp-web.js client...');
+      this.logger.info("Initializing whatsapp-web.js client...");
       await this.client.initialize();
-      this.logger.info('whatsapp-web.js client initialized');
+      this.logger.info("whatsapp-web.js client initialized");
     } catch (err) {
-      this.logger.error({ err }, 'Failed to create whatsapp-web.js client');
-      this.setState('disconnected');
+      this.logger.error({ err }, "Failed to create whatsapp-web.js client");
+      this.setState("disconnected");
       throw err;
     }
   }
@@ -141,8 +144,11 @@ export class WWebJSAdapter implements WhatsAppAdapter {
   private async resolveAuthStrategy(): Promise<LocalAuth | RemoteAuth> {
     if (this.config.useRemoteAuth) {
       // Load encryption materials for RemoteAuth
-      const materials = await loadEncryptionMaterials(config.wa.remoteAuth, this.logger);
-      
+      const materials = await loadEncryptionMaterials(
+        config.wa.remoteAuth,
+        this.logger,
+      );
+
       this.authStore = createRemoteAuthStore({
         redis: this.config.redis,
         logger: this.logger,
@@ -151,19 +157,22 @@ export class WWebJSAdapter implements WhatsAppAdapter {
         clientId: this.config.clientId,
       });
 
-      this.logger.info({ clientId: this.config.clientId }, 'Using RemoteAuth strategy');
-      
+      this.logger.info(
+        { clientId: this.config.clientId },
+        "Using RemoteAuth strategy",
+      );
+
       return new RemoteAuth({
         clientId: this.config.clientId,
-        dataPath: this.config.dataPath ?? './data/remote-session',
+        dataPath: this.config.dataPath ?? "./data/remote-session",
         store: this.authStore,
         backupSyncIntervalMs: config.wa.remoteAuth.backupIntervalMs,
       });
     }
 
-    this.logger.info('Using LocalAuth strategy');
+    this.logger.info("Using LocalAuth strategy");
     return new LocalAuth({
-      dataPath: this.config.dataPath ?? './data/session',
+      dataPath: this.config.dataPath ?? "./data/session",
     });
   }
 
@@ -174,29 +183,29 @@ export class WWebJSAdapter implements WhatsAppAdapter {
     if (!this.client) return;
 
     // QR code event
-    this.client.on('qr', (qr: string) => {
-      this.logger.info('QR code received');
+    this.client.on("qr", (qr: string) => {
+      this.logger.info("QR code received");
       for (const handler of this.qrCodeHandlers) {
         handler(qr);
       }
     });
 
     // Authentication event
-    this.client.on('authenticated', () => {
-      this.logger.info('Client authenticated');
-      this.setState('connected');
+    this.client.on("authenticated", () => {
+      this.logger.info("Client authenticated");
+      this.setState("connected");
     });
 
     // Ready event
-    this.client.on('ready', () => {
+    this.client.on("ready", () => {
       this._botId = this.client?.info?.wid?._serialized ?? null;
-      this.logger.info({ botId: this._botId }, 'Client ready');
-      this.setState('ready');
+      this.logger.info({ botId: this._botId }, "Client ready");
+      this.setState("ready");
     });
 
     // Auth failure event
-    this.client.on('auth_failure', (msg: string) => {
-      this.logger.error({ msg }, 'Authentication failed');
+    this.client.on("auth_failure", (msg: string) => {
+      this.logger.error({ msg }, "Authentication failed");
       const reason: DisconnectReason = {
         code: 401,
         message: msg,
@@ -206,32 +215,32 @@ export class WWebJSAdapter implements WhatsAppAdapter {
       for (const handler of this.disconnectHandlers) {
         handler(reason);
       }
-      this.setState('disconnected');
+      this.setState("disconnected");
     });
 
     // Disconnected event
-    this.client.on('disconnected', (reason: string) => {
-      this.logger.info({ reason }, 'Client disconnected');
+    this.client.on("disconnected", (reason: string) => {
+      this.logger.info({ reason }, "Client disconnected");
       const disconnectReason: DisconnectReason = {
         code: 0,
         message: reason,
-        isLoggedOut: reason === 'LOGOUT',
-        shouldReconnect: reason !== 'LOGOUT',
+        isLoggedOut: reason === "LOGOUT",
+        shouldReconnect: reason !== "LOGOUT",
       };
       for (const handler of this.disconnectHandlers) {
         handler(disconnectReason);
       }
       this._botId = null;
-      this.setState('disconnected');
+      this.setState("disconnected");
     });
 
     // State change event
-    this.client.on('change_state', (state: string) => {
-      this.logger.debug({ state }, 'Client state changed');
+    this.client.on("change_state", (state: string) => {
+      this.logger.debug({ state }, "Client state changed");
     });
 
     // Message event
-    this.client.on('message', async (msg: Message) => {
+    this.client.on("message", async (msg: Message) => {
       const waMessage = await this.convertMessage(msg);
       if (!waMessage) return;
 
@@ -239,13 +248,16 @@ export class WWebJSAdapter implements WhatsAppAdapter {
         try {
           await handler(waMessage);
         } catch (err) {
-          this.logger.error({ err, messageId: waMessage.id }, 'Message handler error');
+          this.logger.error(
+            { err, messageId: waMessage.id },
+            "Message handler error",
+          );
         }
       }
     });
 
     // Message create event (includes own messages)
-    this.client.on('message_create', async (msg: Message) => {
+    this.client.on("message_create", async (msg: Message) => {
       // Only process messages from self
       if (!msg.fromMe) return;
 
@@ -256,7 +268,10 @@ export class WWebJSAdapter implements WhatsAppAdapter {
         try {
           await handler(waMessage);
         } catch (err) {
-          this.logger.error({ err, messageId: waMessage.id }, 'Message handler error');
+          this.logger.error(
+            { err, messageId: waMessage.id },
+            "Message handler error",
+          );
         }
       }
     });
@@ -271,7 +286,7 @@ export class WWebJSAdapter implements WhatsAppAdapter {
       const isGroup = chat.isGroup;
 
       // Get quoted message if present
-      let quotedMessage: WAMessage['quotedMessage'];
+      let quotedMessage: WAMessage["quotedMessage"];
       if (msg.hasQuotedMsg) {
         try {
           const quoted = await msg.getQuotedMessage();
@@ -281,7 +296,7 @@ export class WWebJSAdapter implements WhatsAppAdapter {
             senderId: quoted.from,
           };
         } catch (err) {
-          this.logger.debug({ err }, 'Failed to get quoted message');
+          this.logger.debug({ err }, "Failed to get quoted message");
         }
       }
 
@@ -297,7 +312,10 @@ export class WWebJSAdapter implements WhatsAppAdapter {
         quotedMessage,
       };
     } catch (err) {
-      this.logger.warn({ err, messageId: msg.id?._serialized }, 'Failed to convert message');
+      this.logger.warn(
+        { err, messageId: msg.id?._serialized },
+        "Failed to convert message",
+      );
       return null;
     }
   }
@@ -322,13 +340,13 @@ export class WWebJSAdapter implements WhatsAppAdapter {
       try {
         await this.client.destroy();
       } catch (err) {
-        this.logger.warn({ err }, 'Error destroying client');
+        this.logger.warn({ err }, "Error destroying client");
       }
       this.client = null;
     }
     this._botId = null;
-    this.setState('disconnected');
-    this.logger.info('Disconnected from WhatsApp');
+    this.setState("disconnected");
+    this.logger.info("Disconnected from WhatsApp");
   }
 
   /**
@@ -337,39 +355,41 @@ export class WWebJSAdapter implements WhatsAppAdapter {
   async sendMessage(
     jid: string,
     content: MessageContent,
-    options?: SendMessageOptions
+    options?: SendMessageOptions,
   ): Promise<SendResult> {
     if (!this.client) {
-      throw new Error('Client not connected');
+      throw new Error("Client not connected");
     }
 
     let result: Message;
 
     switch (content.type) {
-      case 'text':
+      case "text":
         result = await this.client.sendMessage(jid, content.text, {
           quotedMessageId: options?.quotedMessageId,
         });
         break;
 
-      case 'image':
-      case 'video':
-      case 'audio':
-      case 'document': {
+      case "image":
+      case "video":
+      case "audio":
+      case "document": {
         const media = new MessageMedia(
           content.mimetype,
-          typeof content.data === 'string' ? content.data : content.data.toString('base64'),
-          content.filename
+          typeof content.data === "string"
+            ? content.data
+            : content.data.toString("base64"),
+          content.filename,
         );
         result = await this.client.sendMessage(jid, media, {
           caption: content.caption,
           quotedMessageId: options?.quotedMessageId,
-          sendMediaAsDocument: content.type === 'document',
+          sendMediaAsDocument: content.type === "document",
         });
         break;
       }
 
-      case 'reaction': {
+      case "reaction": {
         const msg = await this.client.getMessageById(content.messageId);
         if (msg) {
           await msg.react(content.emoji);
@@ -381,10 +401,12 @@ export class WWebJSAdapter implements WhatsAppAdapter {
         };
       }
 
-      case 'sticker': {
+      case "sticker": {
         const stickerMedia = new MessageMedia(
-          content.mimetype ?? 'image/webp',
-          typeof content.data === 'string' ? content.data : content.data.toString('base64')
+          content.mimetype ?? "image/webp",
+          typeof content.data === "string"
+            ? content.data
+            : content.data.toString("base64"),
         );
         result = await this.client.sendMessage(jid, stickerMedia, {
           sendMediaAsSticker: true,
@@ -393,7 +415,7 @@ export class WWebJSAdapter implements WhatsAppAdapter {
         break;
       }
 
-      case 'location': {
+      case "location": {
         const location = new Location(content.latitude, content.longitude, {
           name: content.name,
           address: content.address,
@@ -404,7 +426,7 @@ export class WWebJSAdapter implements WhatsAppAdapter {
         break;
       }
 
-      case 'contact': {
+      case "contact": {
         // For wwebjs, we need to create a Contact object from vCard
         // This is a simplified implementation
         result = await this.client.sendMessage(jid, content.vcard, {
@@ -414,7 +436,9 @@ export class WWebJSAdapter implements WhatsAppAdapter {
       }
 
       default:
-        throw new Error(`Unsupported content type: ${(content as MessageContent).type}`);
+        throw new Error(
+          `Unsupported content type: ${(content as MessageContent).type}`,
+        );
     }
 
     return {
@@ -427,7 +451,10 @@ export class WWebJSAdapter implements WhatsAppAdapter {
   /**
    * Reply to a message
    */
-  async reply(message: WAMessage, content: MessageContent): Promise<SendResult> {
+  async reply(
+    message: WAMessage,
+    content: MessageContent,
+  ): Promise<SendResult> {
     return this.sendMessage(message.chatId, content, {
       quotedMessageId: message.id,
     });
@@ -438,7 +465,7 @@ export class WWebJSAdapter implements WhatsAppAdapter {
    */
   async react(message: WAMessage, emoji: string): Promise<void> {
     if (!this.client) {
-      throw new Error('Client not connected');
+      throw new Error("Client not connected");
     }
 
     const msg = message.raw as Message;
@@ -458,11 +485,11 @@ export class WWebJSAdapter implements WhatsAppAdapter {
    */
   async getGroupMetadata(groupId: string): Promise<GroupMetadata | null> {
     if (!this.client) {
-      throw new Error('Client not connected');
+      throw new Error("Client not connected");
     }
 
     try {
-      const chat = await this.client.getChatById(groupId) as GroupChat;
+      const chat = (await this.client.getChatById(groupId)) as GroupChat;
       if (!chat.isGroup) {
         return null;
       }
@@ -482,7 +509,7 @@ export class WWebJSAdapter implements WhatsAppAdapter {
         createdAt: chat.createdAt ? chat.createdAt.getTime() : undefined,
       };
     } catch (err) {
-      this.logger.warn({ err, groupId }, 'Failed to get group metadata');
+      this.logger.warn({ err, groupId }, "Failed to get group metadata");
       return null;
     }
   }
@@ -492,36 +519,43 @@ export class WWebJSAdapter implements WhatsAppAdapter {
    */
   async isOnWhatsApp(phoneNumber: string): Promise<boolean> {
     if (!this.client) {
-      throw new Error('Client not connected');
+      throw new Error("Client not connected");
     }
 
     try {
       const result = await this.client.isRegisteredUser(phoneNumber);
       return result;
     } catch (err) {
-      this.logger.warn({ err, phoneNumber }, 'Failed to check if number is on WhatsApp');
+      this.logger.warn(
+        { err, phoneNumber },
+        "Failed to check if number is on WhatsApp",
+      );
       return false;
     }
   }
 
   /**
    * Request a pairing code for phone number authentication
-   * 
+   *
    * Note: This requires accessing internal Puppeteer page, which may be unstable.
    */
   async requestPairingCode(phoneNumber: string): Promise<string> {
     if (!this.client) {
-      throw new Error('Client not connected');
+      throw new Error("Client not connected");
     }
 
     // Remove any non-numeric characters
-    const cleanNumber = phoneNumber.replace(/\D/g, '');
+    const cleanNumber = phoneNumber.replace(/\D/g, "");
 
     try {
       // Access the internal Puppeteer page
-      const page = (this.client as unknown as { pupPage?: { evaluate: (fn: string) => Promise<string> } }).pupPage;
+      const page = (
+        this.client as unknown as {
+          pupPage?: { evaluate: (fn: string) => Promise<string> };
+        }
+      ).pupPage;
       if (!page) {
-        throw new Error('Puppeteer page not available');
+        throw new Error("Puppeteer page not available");
       }
 
       // Request pairing code via WhatsApp Web internal API
@@ -544,7 +578,7 @@ export class WWebJSAdapter implements WhatsAppAdapter {
 
       return code;
     } catch (err) {
-      this.logger.error({ err }, 'Failed to request pairing code');
+      this.logger.error({ err }, "Failed to request pairing code");
       throw err;
     }
   }
@@ -579,14 +613,14 @@ export class WWebJSAdapter implements WhatsAppAdapter {
    */
   async getProfilePicUrl(jid: string): Promise<string | null> {
     if (!this.client) {
-      throw new Error('Client not connected');
+      throw new Error("Client not connected");
     }
 
     try {
       const url = await this.client.getProfilePicUrl(jid);
       return url ?? null;
     } catch (err) {
-      this.logger.debug({ err, jid }, 'Failed to get profile picture URL');
+      this.logger.debug({ err, jid }, "Failed to get profile picture URL");
       return null;
     }
   }
@@ -596,26 +630,26 @@ export class WWebJSAdapter implements WhatsAppAdapter {
    */
   async sendPresenceUpdate(type: PresenceType, jid?: string): Promise<void> {
     if (!this.client) {
-      throw new Error('Client not connected');
+      throw new Error("Client not connected");
     }
 
     switch (type) {
-      case 'available':
+      case "available":
         await this.client.sendPresenceAvailable();
         break;
-      case 'unavailable':
+      case "unavailable":
         await this.client.sendPresenceUnavailable();
         break;
-      case 'composing':
-      case 'recording':
-      case 'paused':
+      case "composing":
+      case "recording":
+      case "paused":
         // wwebjs doesn't have direct typing indicator support at client level
         // These would need to be implemented via chat.sendStateTyping()
         if (jid) {
           const chat = await this.client.getChatById(jid);
-          if (type === 'composing') {
+          if (type === "composing") {
             await chat.sendStateTyping();
-          } else if (type === 'recording') {
+          } else if (type === "recording") {
             await chat.sendStateRecording();
           } else {
             await chat.clearState();
@@ -630,7 +664,7 @@ export class WWebJSAdapter implements WhatsAppAdapter {
    */
   async sendSeen(jid: string): Promise<void> {
     if (!this.client) {
-      throw new Error('Client not connected');
+      throw new Error("Client not connected");
     }
 
     await this.client.sendSeen(jid);
@@ -641,11 +675,11 @@ export class WWebJSAdapter implements WhatsAppAdapter {
    */
   async forwardMessage(jid: string, message: WAMessage): Promise<SendResult> {
     if (!this.client) {
-      throw new Error('Client not connected');
+      throw new Error("Client not connected");
     }
 
     const msg = message.raw as Message;
-    const result = await msg.forward(jid) as Message | undefined;
+    const result = (await msg.forward(jid)) as Message | undefined;
 
     return {
       messageId: result?.id?._serialized ?? `forward-${Date.now()}`,
@@ -660,34 +694,37 @@ export class WWebJSAdapter implements WhatsAppAdapter {
   async downloadMedia(message: WAMessage): Promise<Buffer> {
     const msg = message.raw as Message;
     if (!msg.hasMedia) {
-      throw new Error('Message has no media');
+      throw new Error("Message has no media");
     }
 
     const media = await msg.downloadMedia();
     if (!media) {
-      throw new Error('Failed to download media');
+      throw new Error("Failed to download media");
     }
 
-    return Buffer.from(media.data, 'base64');
+    return Buffer.from(media.data, "base64");
   }
 
   /**
    * Create a new group
    */
-  async createGroup(name: string, participants: string[]): Promise<GroupMetadata> {
+  async createGroup(
+    name: string,
+    participants: string[],
+  ): Promise<GroupMetadata> {
     if (!this.client) {
-      throw new Error('Client not connected');
+      throw new Error("Client not connected");
     }
 
     const result = await this.client.createGroup(name, participants);
-    if (typeof result === 'string') {
+    if (typeof result === "string") {
       throw new Error(result);
     }
 
     // Fetch the full group metadata
     const metadata = await this.getGroupMetadata(result.gid._serialized);
     if (!metadata) {
-      throw new Error('Failed to get created group metadata');
+      throw new Error("Failed to get created group metadata");
     }
 
     return metadata;
@@ -696,14 +733,17 @@ export class WWebJSAdapter implements WhatsAppAdapter {
   /**
    * Add participants to a group
    */
-  async addParticipants(groupId: string, participants: string[]): Promise<void> {
+  async addParticipants(
+    groupId: string,
+    participants: string[],
+  ): Promise<void> {
     if (!this.client) {
-      throw new Error('Client not connected');
+      throw new Error("Client not connected");
     }
 
-    const chat = await this.client.getChatById(groupId) as GroupChat;
+    const chat = (await this.client.getChatById(groupId)) as GroupChat;
     if (!chat.isGroup) {
-      throw new Error('Not a group chat');
+      throw new Error("Not a group chat");
     }
 
     await chat.addParticipants(participants);
@@ -712,14 +752,17 @@ export class WWebJSAdapter implements WhatsAppAdapter {
   /**
    * Remove participants from a group
    */
-  async removeParticipants(groupId: string, participants: string[]): Promise<void> {
+  async removeParticipants(
+    groupId: string,
+    participants: string[],
+  ): Promise<void> {
     if (!this.client) {
-      throw new Error('Client not connected');
+      throw new Error("Client not connected");
     }
 
-    const chat = await this.client.getChatById(groupId) as GroupChat;
+    const chat = (await this.client.getChatById(groupId)) as GroupChat;
     if (!chat.isGroup) {
-      throw new Error('Not a group chat');
+      throw new Error("Not a group chat");
     }
 
     await chat.removeParticipants(participants);
@@ -728,14 +771,17 @@ export class WWebJSAdapter implements WhatsAppAdapter {
   /**
    * Promote participants to admin in a group
    */
-  async promoteParticipants(groupId: string, participants: string[]): Promise<void> {
+  async promoteParticipants(
+    groupId: string,
+    participants: string[],
+  ): Promise<void> {
     if (!this.client) {
-      throw new Error('Client not connected');
+      throw new Error("Client not connected");
     }
 
-    const chat = await this.client.getChatById(groupId) as GroupChat;
+    const chat = (await this.client.getChatById(groupId)) as GroupChat;
     if (!chat.isGroup) {
-      throw new Error('Not a group chat');
+      throw new Error("Not a group chat");
     }
 
     await chat.promoteParticipants(participants);
@@ -744,14 +790,17 @@ export class WWebJSAdapter implements WhatsAppAdapter {
   /**
    * Demote admins in a group
    */
-  async demoteParticipants(groupId: string, participants: string[]): Promise<void> {
+  async demoteParticipants(
+    groupId: string,
+    participants: string[],
+  ): Promise<void> {
     if (!this.client) {
-      throw new Error('Client not connected');
+      throw new Error("Client not connected");
     }
 
-    const chat = await this.client.getChatById(groupId) as GroupChat;
+    const chat = (await this.client.getChatById(groupId)) as GroupChat;
     if (!chat.isGroup) {
-      throw new Error('Not a group chat');
+      throw new Error("Not a group chat");
     }
 
     await chat.demoteParticipants(participants);
@@ -762,12 +811,12 @@ export class WWebJSAdapter implements WhatsAppAdapter {
    */
   async setGroupSubject(groupId: string, subject: string): Promise<void> {
     if (!this.client) {
-      throw new Error('Client not connected');
+      throw new Error("Client not connected");
     }
 
-    const chat = await this.client.getChatById(groupId) as GroupChat;
+    const chat = (await this.client.getChatById(groupId)) as GroupChat;
     if (!chat.isGroup) {
-      throw new Error('Not a group chat');
+      throw new Error("Not a group chat");
     }
 
     await chat.setSubject(subject);
@@ -776,14 +825,17 @@ export class WWebJSAdapter implements WhatsAppAdapter {
   /**
    * Update group description
    */
-  async setGroupDescription(groupId: string, description: string): Promise<void> {
+  async setGroupDescription(
+    groupId: string,
+    description: string,
+  ): Promise<void> {
     if (!this.client) {
-      throw new Error('Client not connected');
+      throw new Error("Client not connected");
     }
 
-    const chat = await this.client.getChatById(groupId) as GroupChat;
+    const chat = (await this.client.getChatById(groupId)) as GroupChat;
     if (!chat.isGroup) {
-      throw new Error('Not a group chat');
+      throw new Error("Not a group chat");
     }
 
     await chat.setDescription(description);
@@ -794,12 +846,12 @@ export class WWebJSAdapter implements WhatsAppAdapter {
    */
   async leaveGroup(groupId: string): Promise<void> {
     if (!this.client) {
-      throw new Error('Client not connected');
+      throw new Error("Client not connected");
     }
 
-    const chat = await this.client.getChatById(groupId) as GroupChat;
+    const chat = (await this.client.getChatById(groupId)) as GroupChat;
     if (!chat.isGroup) {
-      throw new Error('Not a group chat');
+      throw new Error("Not a group chat");
     }
 
     await chat.leave();
@@ -810,12 +862,12 @@ export class WWebJSAdapter implements WhatsAppAdapter {
    */
   async getInviteCode(groupId: string): Promise<string> {
     if (!this.client) {
-      throw new Error('Client not connected');
+      throw new Error("Client not connected");
     }
 
-    const chat = await this.client.getChatById(groupId) as GroupChat;
+    const chat = (await this.client.getChatById(groupId)) as GroupChat;
     if (!chat.isGroup) {
-      throw new Error('Not a group chat');
+      throw new Error("Not a group chat");
     }
 
     const code = await chat.getInviteCode();
@@ -827,7 +879,7 @@ export class WWebJSAdapter implements WhatsAppAdapter {
    */
   async acceptInvite(inviteCode: string): Promise<string> {
     if (!this.client) {
-      throw new Error('Client not connected');
+      throw new Error("Client not connected");
     }
 
     const groupId = await this.client.acceptInvite(inviteCode);
@@ -839,7 +891,7 @@ export class WWebJSAdapter implements WhatsAppAdapter {
    */
   async blockContact(jid: string): Promise<void> {
     if (!this.client) {
-      throw new Error('Client not connected');
+      throw new Error("Client not connected");
     }
 
     const contact = await this.client.getContactById(jid);
@@ -851,7 +903,7 @@ export class WWebJSAdapter implements WhatsAppAdapter {
    */
   async unblockContact(jid: string): Promise<void> {
     if (!this.client) {
-      throw new Error('Client not connected');
+      throw new Error("Client not connected");
     }
 
     const contact = await this.client.getContactById(jid);
@@ -863,7 +915,7 @@ export class WWebJSAdapter implements WhatsAppAdapter {
    */
   async getBlockedContacts(): Promise<string[]> {
     if (!this.client) {
-      throw new Error('Client not connected');
+      throw new Error("Client not connected");
     }
 
     const blocked = await this.client.getBlockedContacts();
@@ -876,7 +928,7 @@ export class WWebJSAdapter implements WhatsAppAdapter {
  */
 export async function wwebjsSessionExists(
   redis: Redis,
-  clientId: string
+  clientId: string,
 ): Promise<boolean> {
   const key = `remoteauth:v1:${clientId}:RemoteAuth-${clientId}`;
   const exists = await redis.exists(key);

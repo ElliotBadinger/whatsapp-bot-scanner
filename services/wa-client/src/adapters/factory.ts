@@ -1,18 +1,22 @@
 /**
  * WhatsApp Adapter Factory
- * 
+ *
  * This module provides a factory function to create the appropriate WhatsApp adapter
  * based on configuration. Users can choose between Baileys (recommended) and
  * whatsapp-web.js (legacy) libraries.
  */
 
-import type { Logger } from 'pino';
-import type Redis from 'ioredis';
+import type { Logger } from "pino";
+import type Redis from "ioredis";
 
-import { type WhatsAppAdapter, type AdapterConfig, type WhatsAppLibrary } from './types';
-import { BaileysAdapter } from './baileys-adapter';
-import { WWebJSAdapter, type WWebJSAdapterConfig } from './wwebjs-adapter';
-import { config as appConfig } from '@wbscanner/shared';
+import {
+  type WhatsAppAdapter,
+  type AdapterConfig,
+  type WhatsAppLibrary,
+} from "./types";
+import { BaileysAdapter } from "./baileys-adapter";
+import { WWebJSAdapter, type WWebJSAdapterConfig } from "./wwebjs-adapter";
+import { config as appConfig } from "@wbscanner/shared";
 
 /**
  * Extended factory configuration
@@ -45,28 +49,28 @@ export interface FactoryConfig {
  */
 export function getConfiguredLibrary(): WhatsAppLibrary {
   const envLibrary = process.env.WA_LIBRARY?.toLowerCase();
-  
-  if (envLibrary === 'wwebjs' || envLibrary === 'whatsapp-web.js') {
-    return 'wwebjs';
+
+  if (envLibrary === "wwebjs" || envLibrary === "whatsapp-web.js") {
+    return "wwebjs";
   }
-  
+
   // Default to Baileys (recommended)
-  return 'baileys';
+  return "baileys";
 }
 
 /**
  * Create a WhatsApp adapter based on configuration
- * 
+ *
  * @param config - Factory configuration
  * @returns WhatsApp adapter instance
  */
 export function createWhatsAppAdapter(config: FactoryConfig): WhatsAppAdapter {
   const { library, logger } = config;
 
-  logger.info({ library }, 'Creating WhatsApp adapter');
+  logger.info({ library }, "Creating WhatsApp adapter");
 
   switch (library) {
-    case 'baileys': {
+    case "baileys": {
       const adapterConfig: AdapterConfig = {
         redis: config.redis,
         logger: config.logger,
@@ -74,12 +78,12 @@ export function createWhatsAppAdapter(config: FactoryConfig): WhatsAppAdapter {
         phoneNumber: config.phoneNumber,
         printQRInTerminal: config.printQRInTerminal ?? true,
         dataPath: config.dataPath,
-        browserName: config.browserName ?? 'WBScanner',
+        browserName: config.browserName ?? "WBScanner",
       };
       return new BaileysAdapter(adapterConfig);
     }
 
-    case 'wwebjs': {
+    case "wwebjs": {
       const adapterConfig: WWebJSAdapterConfig = {
         redis: config.redis,
         logger: config.logger,
@@ -88,37 +92,43 @@ export function createWhatsAppAdapter(config: FactoryConfig): WhatsAppAdapter {
         printQRInTerminal: config.printQRInTerminal ?? true,
         dataPath: config.dataPath,
         browserName: config.browserName,
-        useRemoteAuth: config.useRemoteAuth ?? (appConfig.wa.authStrategy === 'remote'),
+        useRemoteAuth:
+          config.useRemoteAuth ?? appConfig.wa.authStrategy === "remote",
         puppeteerArgs: config.puppeteerArgs,
       };
       return new WWebJSAdapter(adapterConfig);
     }
 
     default:
-      throw new Error(`Unknown WhatsApp library: ${library}. Supported: baileys, wwebjs`);
+      throw new Error(
+        `Unknown WhatsApp library: ${library}. Supported: baileys, wwebjs`,
+      );
   }
 }
 
 /**
  * Create a WhatsApp adapter using environment configuration
- * 
+ *
  * @param redis - Redis client
  * @param logger - Logger instance
  * @returns WhatsApp adapter instance
  */
-export function createAdapterFromEnv(redis: Redis, logger: Logger): WhatsAppAdapter {
+export function createAdapterFromEnv(
+  redis: Redis,
+  logger: Logger,
+): WhatsAppAdapter {
   const library = getConfiguredLibrary();
-  
+
   return createWhatsAppAdapter({
     library,
     redis,
     logger,
-    clientId: appConfig.wa.remoteAuth.clientId || 'default',
+    clientId: appConfig.wa.remoteAuth.clientId || "default",
     phoneNumber: appConfig.wa.remoteAuth.phoneNumbers?.[0],
     printQRInTerminal: !appConfig.wa.remoteAuth.disableQrFallback,
     dataPath: appConfig.wa.remoteAuth.dataPath,
-    browserName: 'WBScanner',
-    useRemoteAuth: appConfig.wa.authStrategy === 'remote',
+    browserName: "WBScanner",
+    useRemoteAuth: appConfig.wa.authStrategy === "remote",
   });
 }
 
@@ -127,13 +137,13 @@ export function createAdapterFromEnv(redis: Redis, logger: Logger): WhatsAppAdap
  */
 export const LIBRARY_INFO = {
   baileys: {
-    name: 'Baileys',
-    description: 'Protocol-based, lightweight (~50MB RAM)',
+    name: "Baileys",
+    description: "Protocol-based, lightweight (~50MB RAM)",
     recommended: true,
   },
   wwebjs: {
-    name: 'whatsapp-web.js',
-    description: 'Browser-based, higher resource usage (~500MB RAM)',
+    name: "whatsapp-web.js",
+    description: "Browser-based, higher resource usage (~500MB RAM)",
     recommended: false,
   },
 } as const;

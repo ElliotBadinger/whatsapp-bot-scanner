@@ -1,19 +1,19 @@
 /**
  * Shared Message Handler
- * 
+ *
  * This module provides a unified message handling layer that works with
  * both Baileys and whatsapp-web.js adapters through the WhatsAppAdapter interface.
  */
 
-import type { Logger } from 'pino';
-import type Redis from 'ioredis';
-import type { Queue } from 'bullmq';
+import type { Logger } from "pino";
+import type Redis from "ioredis";
+import type { Queue } from "bullmq";
 
 import {
   type WhatsAppAdapter,
   type WAMessage,
   type MessageHandler as AdapterMessageHandler,
-} from '../adapters/types';
+} from "../adapters/types";
 import {
   extractUrls,
   normalizeUrl,
@@ -21,7 +21,7 @@ import {
   isPrivateHostname,
   config,
   metrics,
-} from '@wbscanner/shared';
+} from "@wbscanner/shared";
 
 /**
  * Configuration for the message handler
@@ -56,7 +56,7 @@ interface MessageContext {
 type CommandHandler = (
   ctx: MessageContext,
   adapter: WhatsAppAdapter,
-  logger: Logger
+  logger: Logger,
 ) => Promise<void>;
 
 /**
@@ -73,7 +73,7 @@ export class SharedMessageHandler {
   constructor(config: MessageHandlerConfig) {
     this.adapter = config.adapter;
     this.redis = config.redis;
-    this.logger = config.logger.child({ component: 'message-handler' });
+    this.logger = config.logger.child({ component: "message-handler" });
     this.scanRequestQueue = config.scanRequestQueue;
     this.processOwnMessages = config.processOwnMessages ?? false;
 
@@ -86,39 +86,39 @@ export class SharedMessageHandler {
    */
   private registerDefaultCommands(): void {
     // Help command
-    this.registerCommand('help', async (ctx, adapter) => {
+    this.registerCommand("help", async (ctx, adapter) => {
       const helpText = [
-        '*WBScanner Bot Commands*',
-        '',
-        '!scanner help - Show this help message',
-        '!scanner status - Show bot status',
-        '!scanner scan <url> - Manually scan a URL',
-        '',
-        '_Links shared in this chat are automatically scanned._',
-      ].join('\n');
+        "*WBScanner Bot Commands*",
+        "",
+        "!scanner help - Show this help message",
+        "!scanner status - Show bot status",
+        "!scanner scan <url> - Manually scan a URL",
+        "",
+        "_Links shared in this chat are automatically scanned._",
+      ].join("\n");
 
-      await adapter.reply(ctx.message, { type: 'text', text: helpText });
+      await adapter.reply(ctx.message, { type: "text", text: helpText });
     });
 
     // Status command
-    this.registerCommand('status', async (ctx, adapter) => {
+    this.registerCommand("status", async (ctx, adapter) => {
       const statusText = [
-        '*WBScanner Status*',
-        '',
+        "*WBScanner Status*",
+        "",
         `State: ${adapter.state}`,
-        `Bot ID: ${adapter.botId ?? 'Unknown'}`,
-        `Library: ${process.env.WA_LIBRARY ?? 'baileys'}`,
-      ].join('\n');
+        `Bot ID: ${adapter.botId ?? "Unknown"}`,
+        `Library: ${process.env.WA_LIBRARY ?? "baileys"}`,
+      ].join("\n");
 
-      await adapter.reply(ctx.message, { type: 'text', text: statusText });
+      await adapter.reply(ctx.message, { type: "text", text: statusText });
     });
 
     // Manual scan command
-    this.registerCommand('scan', async (ctx, adapter, logger) => {
+    this.registerCommand("scan", async (ctx, adapter, logger) => {
       if (!ctx.args || ctx.args.length === 0) {
         await adapter.reply(ctx.message, {
-          type: 'text',
-          text: 'Usage: !scanner scan <url>',
+          type: "text",
+          text: "Usage: !scanner scan <url>",
         });
         return;
       }
@@ -128,8 +128,8 @@ export class SharedMessageHandler {
         const normalized = normalizeUrl(url);
         if (!normalized) {
           await adapter.reply(ctx.message, {
-            type: 'text',
-            text: 'Invalid URL format.',
+            type: "text",
+            text: "Invalid URL format.",
           });
           return;
         }
@@ -138,15 +138,15 @@ export class SharedMessageHandler {
         const parsed = new URL(normalized);
         if (await isPrivateHostname(parsed.hostname)) {
           await adapter.reply(ctx.message, {
-            type: 'text',
-            text: 'Cannot scan private/internal URLs.',
+            type: "text",
+            text: "Cannot scan private/internal URLs.",
           });
           return;
         }
 
         // Queue the scan
         const hash = urlHash(normalized);
-        await this.scanRequestQueue.add('scan', {
+        await this.scanRequestQueue.add("scan", {
           url: normalized,
           urlHash: hash,
           chatId: ctx.message.chatId,
@@ -157,16 +157,16 @@ export class SharedMessageHandler {
         });
 
         await adapter.reply(ctx.message, {
-          type: 'text',
+          type: "text",
           text: `Scanning: ${normalized}`,
         });
 
-        logger.info({ url: normalized, hash }, 'Manual scan queued');
+        logger.info({ url: normalized, hash }, "Manual scan queued");
       } catch (err) {
-        logger.error({ err, url }, 'Failed to queue manual scan');
+        logger.error({ err, url }, "Failed to queue manual scan");
         await adapter.reply(ctx.message, {
-          type: 'text',
-          text: 'Failed to queue scan. Please try again.',
+          type: "text",
+          text: "Failed to queue scan. Please try again.",
         });
       }
     });
@@ -187,7 +187,10 @@ export class SharedMessageHandler {
       try {
         await this.handleMessage(message);
       } catch (err) {
-        this.logger.error({ err, messageId: message.id }, 'Message handler error');
+        this.logger.error(
+          { err, messageId: message.id },
+          "Message handler error",
+        );
       }
     };
   }
@@ -232,7 +235,7 @@ export class SharedMessageHandler {
     const commandMatch = body.match(/^!scanner\s+(\w+)(?:\s+(.*))?$/i);
     if (commandMatch) {
       const command = commandMatch[1].toLowerCase();
-      const argsStr = commandMatch[2]?.trim() ?? '';
+      const argsStr = commandMatch[2]?.trim() ?? "";
       const args = argsStr ? argsStr.split(/\s+/) : [];
 
       return {
@@ -261,13 +264,13 @@ export class SharedMessageHandler {
     if (handler) {
       this.logger.info(
         { command: ctx.command, chatId: ctx.message.chatId },
-        'Executing command'
+        "Executing command",
       );
       // Track command execution (metric may not exist in all configurations)
       await handler(ctx, this.adapter, this.logger);
     } else {
       await this.adapter.reply(ctx.message, {
-        type: 'text',
+        type: "text",
         text: `Unknown command: ${ctx.command}. Use !scanner help for available commands.`,
       });
     }
@@ -283,14 +286,14 @@ export class SharedMessageHandler {
       try {
         const normalized = normalizeUrl(url);
         if (!normalized) {
-          this.logger.debug({ url }, 'Skipping invalid URL');
+          this.logger.debug({ url }, "Skipping invalid URL");
           continue;
         }
 
         // Check if URL is private/internal
         const parsed = new URL(normalized);
         if (await isPrivateHostname(parsed.hostname)) {
-          this.logger.debug({ url: normalized }, 'Skipping private URL');
+          this.logger.debug({ url: normalized }, "Skipping private URL");
           continue;
         }
 
@@ -299,15 +302,20 @@ export class SharedMessageHandler {
         const processedKey = `processed:${message.chatId}:${message.id}:${hash}`;
         const alreadyProcessed = await this.redis.exists(processedKey);
         if (alreadyProcessed) {
-          this.logger.debug({ url: normalized, hash }, 'URL already processed');
+          this.logger.debug({ url: normalized, hash }, "URL already processed");
           continue;
         }
 
         // Mark as processed
-        await this.redis.set(processedKey, '1', 'EX', config.wa.messageLineageTtlSeconds);
+        await this.redis.set(
+          processedKey,
+          "1",
+          "EX",
+          config.wa.messageLineageTtlSeconds,
+        );
 
         // Queue the scan
-        await this.scanRequestQueue.add('scan', {
+        await this.scanRequestQueue.add("scan", {
           url: normalized,
           urlHash: hash,
           chatId: message.chatId,
@@ -319,11 +327,11 @@ export class SharedMessageHandler {
 
         this.logger.info(
           { url: normalized, hash, chatId: message.chatId },
-          'URL queued for scanning'
+          "URL queued for scanning",
         );
         metrics.ingestionRate.inc();
       } catch (err) {
-        this.logger.warn({ err, url }, 'Failed to process URL');
+        this.logger.warn({ err, url }, "Failed to process URL");
       }
     }
   }
@@ -333,13 +341,15 @@ export class SharedMessageHandler {
    */
   start(): void {
     this.adapter.onMessage(this.createHandler());
-    this.logger.info('Message handler started');
+    this.logger.info("Message handler started");
   }
 }
 
 /**
  * Create a shared message handler
  */
-export function createMessageHandler(config: MessageHandlerConfig): SharedMessageHandler {
+export function createMessageHandler(
+  config: MessageHandlerConfig,
+): SharedMessageHandler {
   return new SharedMessageHandler(config);
 }

@@ -3,6 +3,7 @@
 **Official Framework**: https://github.com/entrepeneur4lyf/engineered-meta-cognitive-workflow-architecture
 
 ## Prerequisites
+
 - Windsurf IDE installed and running
 - Access to a project workspace (whatsapp-bot-scanner)
 - Git/curl for downloading official framework files
@@ -10,14 +11,17 @@
 ## Two Setup Approaches
 
 ### Option 1: Official EMCWA Framework (Recommended)
+
 Use the official framework files directly from the GitHub repository for the most authentic implementation.
 
 ### Option 2: Custom Multi-Agent Prompt
+
 Use the streamlined prompt I created for quick testing (what you'll use in this guide).
 
 ## Step 0: Choose Your Approach
 
 ### For Official EMCWA Framework:
+
 ```bash
 # Download official framework
 curl -L https://github.com/entrepeneur4lyf/engineered-meta-cognitive-workflow-architecture/archive/refs/heads/main.zip -o emcwa-framework.zip
@@ -33,6 +37,7 @@ cp .windsurfrules /path/to/whatsapp-bot-scanner/
 ```
 
 ### For Quick Testing (This Guide):
+
 Continue with the custom prompt approach below.
 
 ## Step 1: Copy the Setup Prompt
@@ -47,6 +52,7 @@ Continue with the custom prompt approach below.
 ## Step 2: Monitor Memory Bank Creation
 
 The system will automatically:
+
 - Create `.windsurf/` directory structure
 - Initialize core memory files
 - Load memory layers
@@ -65,16 +71,19 @@ Once initialization completes, the system will demonstrate multi-agent orchestra
 Watch for these indicators that context separation is working:
 
 ### ✅ Clean Agent Transitions
+
 - Master agent focuses only on planning/orchestration
 - Sub-agent sees only implementation context
 - Verifier sees only validation criteria
 
 ### ✅ No Context Pollution
+
 - Agents don't reference information outside their scope
 - Previous agent context doesn't bleed into current agent
 - Memory layers remain isolated per agent role
 
 ### ✅ Sequential Dependencies
+
 - Sub-agent receives clear task assignments from master
 - Verifier receives implementation outputs from sub-agent
 - Master receives validation results from verifier
@@ -82,6 +91,7 @@ Watch for these indicators that context separation is working:
 ## Step 5: Verify Memory Persistence
 
 After the workflow completes:
+
 - Check `.windsurf/task-logs/` for agent-specific logs
 - Verify `.windsurf/core/activeContext.md` updates appropriately
 - Confirm memory bank accumulates knowledge
@@ -89,18 +99,21 @@ After the workflow completes:
 ## Troubleshooting
 
 ### If Context Pollution Occurs
+
 ```
 Symptoms: Agents reference out-of-scope information
 Solution: Execute "context reset" command and reinitialize agent boundaries
 ```
 
 ### If Agent Focus Fails
+
 ```
 Symptoms: Agent performs tasks outside its role
 Solution: Check prompt templates and reinforce role boundaries
 ```
 
 ### If Memory Bank Issues
+
 ```
 Symptoms: Missing files or inconsistent data
 Solution: Run "SessionStart" workflow to recreate structure
@@ -137,6 +150,7 @@ The system is working correctly when:
 ## Next Steps
 
 Once validated, you can:
+
 - Scale to more complex multi-agent workflows
 - Add specialized sub-agents for different tasks
 - Integrate with external tools via MCP
@@ -145,6 +159,7 @@ Once validated, you can:
 ## Performance Monitoring
 
 Track these metrics:
+
 - **Context Pollution Incidents**: Should be 0
 - **Agent Role Violations**: Should be 0
 - **Task Completion Rate**: Should be 100%

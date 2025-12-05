@@ -5,282 +5,352 @@
 [Skip to main content](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#__docusaurus_skipToContent_fallback)
 [ ![WhiskeySo ckets Logo](https://baileys.wiki/img/WhiskeySockets-colorful.png)![WhiskeySo ckets Logo](https://baileys.wiki/img/WhiskeySockets-colorful.png) **Baileys**](https://baileys.wiki/)[Docs](https://baileys.wiki/docs/intro)[API Reference](https://baileys.wiki/docs/api/classes/BinaryInfo)
 [Sponsor](https://purpshell.dev/sponsor "Sponsor")[Discord](https://whiskey.so/discord "Discord")[GitHub](https://github.com/WhiskeySockets/Baileys "GitHub")
-  * [classes](https://baileys.wiki/docs/api/classes/BinaryInfo)
-  * [enumerations](https://baileys.wiki/docs/api/enumerations/DisconnectReason)
-  * [functions](https://baileys.wiki/docs/api/functions/addTransactionCapability)
-    * [Function: addTransactionCapability()](https://baileys.wiki/docs/api/functions/addTransactionCapability)
-    * [Function: aesDecrypt()](https://baileys.wiki/docs/api/functions/aesDecrypt)
-    * [Function: aesDecryptCTR()](https://baileys.wiki/docs/api/functions/aesDecryptCTR)
-    * [Function: aesDecryptGCM()](https://baileys.wiki/docs/api/functions/aesDecryptGCM)
-    * [Function: aesDecryptWithIV()](https://baileys.wiki/docs/api/functions/aesDecryptWithIV)
-    * [Function: aesEncrypWithIV()](https://baileys.wiki/docs/api/functions/aesEncrypWithIV)
-    * [Function: aesEncrypt()](https://baileys.wiki/docs/api/functions/aesEncrypt)
-    * [Function: aesEncryptCTR()](https://baileys.wiki/docs/api/functions/aesEncryptCTR)
-    * [Function: aesEncryptGCM()](https://baileys.wiki/docs/api/functions/aesEncryptGCM)
-    * [Function: aggregateMessageKeysNotFromMe()](https://baileys.wiki/docs/api/functions/aggregateMessageKeysNotFromMe)
-    * [Function: areJidsSameUser()](https://baileys.wiki/docs/api/functions/areJidsSameUser)
-    * [Function: assertMediaContent()](https://baileys.wiki/docs/api/functions/assertMediaContent)
-    * [Function: assertNodeErrorFree()](https://baileys.wiki/docs/api/functions/assertNodeErrorFree)
-    * [Function: binaryNodeToString()](https://baileys.wiki/docs/api/functions/binaryNodeToString)
-    * [Function: bindWaitForConnectionUpdate()](https://baileys.wiki/docs/api/functions/bindWaitForConnectionUpdate)
-    * [Function: bindWaitForEvent()](https://baileys.wiki/docs/api/functions/bindWaitForEvent)
-    * [Function: bytesToCrockford()](https://baileys.wiki/docs/api/functions/bytesToCrockford)
-    * [Function: chatModificationToAppPatch()](https://baileys.wiki/docs/api/functions/chatModificationToAppPatch)
-    * [Function: cleanMessage()](https://baileys.wiki/docs/api/functions/cleanMessage)
-    * [Function: configureSuccessfulPairing()](https://baileys.wiki/docs/api/functions/configureSuccessfulPairing)
-    * [Function: createSignalIdentity()](https://baileys.wiki/docs/api/functions/createSignalIdentity)
-    * [Function: debouncedTimeout()](https://baileys.wiki/docs/api/functions/debouncedTimeout)
-    * [Function: decodeBinaryNode()](https://baileys.wiki/docs/api/functions/decodeBinaryNode)
-    * [Function: decodeDecompressedBinaryNode()](https://baileys.wiki/docs/api/functions/decodeDecompressedBinaryNode)
-    * [Function: decodeMediaRetryNode()](https://baileys.wiki/docs/api/functions/decodeMediaRetryNode)
-    * [Function: decodeMessageNode()](https://baileys.wiki/docs/api/functions/decodeMessageNode)
-    * [Function: decodePatches()](https://baileys.wiki/docs/api/functions/decodePatches)
-    * [Function: decodeSyncdMutations()](https://baileys.wiki/docs/api/functions/decodeSyncdMutations)
-    * [Function: decodeSyncdPatch()](https://baileys.wiki/docs/api/functions/decodeSyncdPatch)
-    * [Function: decodeSyncdSnapshot()](https://baileys.wiki/docs/api/functions/decodeSyncdSnapshot)
-    * [Function: decompressingIfRequired()](https://baileys.wiki/docs/api/functions/decompressingIfRequired)
-    * [Function: decryptEventResponse()](https://baileys.wiki/docs/api/functions/decryptEventResponse)
-    * [Function: decryptMediaRetryData()](https://baileys.wiki/docs/api/functions/decryptMediaRetryData)
-    * [Function: decryptMessageNode()](https://baileys.wiki/docs/api/functions/decryptMessageNode)
-    * [Function: decryptPollVote()](https://baileys.wiki/docs/api/functions/decryptPollVote)
-    * [Function: delay()](https://baileys.wiki/docs/api/functions/delay)
-    * [Function: delayCancellable()](https://baileys.wiki/docs/api/functions/delayCancellable)
-    * [Function: derivePairingCodeKey()](https://baileys.wiki/docs/api/functions/derivePairingCodeKey)
-    * [Function: downloadAndProcessHistorySyncNotification()](https://baileys.wiki/docs/api/functions/downloadAndProcessHistorySyncNotification)
-    * [Function: downloadContentFromMessage()](https://baileys.wiki/docs/api/functions/downloadContentFromMessage)
-    * [Function: downloadEncryptedContent()](https://baileys.wiki/docs/api/functions/downloadEncryptedContent)
-    * [Function: downloadExternalBlob()](https://baileys.wiki/docs/api/functions/downloadExternalBlob)
-    * [Function: downloadExternalPatch()](https://baileys.wiki/docs/api/functions/downloadExternalPatch)
-    * [Function: downloadHistory()](https://baileys.wiki/docs/api/functions/downloadHistory)
-    * [Function: downloadMediaMessage()](https://baileys.wiki/docs/api/functions/downloadMediaMessage)
-    * [Function: encodeBase64EncodedStringForUpload()](https://baileys.wiki/docs/api/functions/encodeBase64EncodedStringForUpload)
-    * [Function: encodeBigEndian()](https://baileys.wiki/docs/api/functions/encodeBigEndian)
-    * [Function: encodeBinaryNode()](https://baileys.wiki/docs/api/functions/encodeBinaryNode)
-    * [Function: encodeNewsletterMessage()](https://baileys.wiki/docs/api/functions/encodeNewsletterMessage)
-    * [Function: encodeSignedDeviceIdentity()](https://baileys.wiki/docs/api/functions/encodeSignedDeviceIdentity)
-    * [Function: encodeSyncdPatch()](https://baileys.wiki/docs/api/functions/encodeSyncdPatch)
-    * [Function: encodeWAM()](https://baileys.wiki/docs/api/functions/encodeWAM)
-    * [Function: encodeWAMessage()](https://baileys.wiki/docs/api/functions/encodeWAMessage)
-    * [Function: encryptMediaRetryRequest()](https://baileys.wiki/docs/api/functions/encryptMediaRetryRequest)
-    * [Function: encryptedStream()](https://baileys.wiki/docs/api/functions/encryptedStream)
-    * [Function: extensionForMediaMessage()](https://baileys.wiki/docs/api/functions/extensionForMediaMessage)
-    * [Function: extractAddressingContext()](https://baileys.wiki/docs/api/functions/extractAddressingContext)
-    * [Function: extractDeviceJids()](https://baileys.wiki/docs/api/functions/extractDeviceJids)
-    * [Function: extractImageThumb()](https://baileys.wiki/docs/api/functions/extractImageThumb)
-    * [Function: extractMessageContent()](https://baileys.wiki/docs/api/functions/extractMessageContent)
-    * [Function: extractSyncdPatches()](https://baileys.wiki/docs/api/functions/extractSyncdPatches)
-    * [Function: extractUrlFromText()](https://baileys.wiki/docs/api/functions/extractUrlFromText)
-    * [Function: fetchLatestBaileysVersion()](https://baileys.wiki/docs/api/functions/fetchLatestBaileysVersion)
-    * [Function: fetchLatestWaWebVersion()](https://baileys.wiki/docs/api/functions/fetchLatestWaWebVersion)
-    * [Function: generateForwardMessageContent()](https://baileys.wiki/docs/api/functions/generateForwardMessageContent)
-    * [Function: generateLinkPreviewIfRequired()](https://baileys.wiki/docs/api/functions/generateLinkPreviewIfRequired)
-    * [Function: generateLoginNode()](https://baileys.wiki/docs/api/functions/generateLoginNode)
-    * [Function: generateMdTagPrefix()](https://baileys.wiki/docs/api/functions/generateMdTagPrefix)
-    * [Function: generateMessageID()](https://baileys.wiki/docs/api/functions/generateMessageID)
-    * [Function: generateMessageIDV2()](https://baileys.wiki/docs/api/functions/generateMessageIDV2)
-    * [Function: generateOrGetPreKeys()](https://baileys.wiki/docs/api/functions/generateOrGetPreKeys)
-    * [Function: generateParticipantHashV2()](https://baileys.wiki/docs/api/functions/generateParticipantHashV2)
-    * [Function: generateProfilePicture()](https://baileys.wiki/docs/api/functions/generateProfilePicture)
-    * [Function: generateRegistrationId()](https://baileys.wiki/docs/api/functions/generateRegistrationId)
-    * [Function: generateRegistrationNode()](https://baileys.wiki/docs/api/functions/generateRegistrationNode)
-    * [Function: generateSignalPubKey()](https://baileys.wiki/docs/api/functions/generateSignalPubKey)
-    * [Function: generateThumbnail()](https://baileys.wiki/docs/api/functions/generateThumbnail)
-    * [Function: generateWAMessage()](https://baileys.wiki/docs/api/functions/generateWAMessage)
-    * [Function: generateWAMessageContent()](https://baileys.wiki/docs/api/functions/generateWAMessageContent)
-    * [Function: generateWAMessageFromContent()](https://baileys.wiki/docs/api/functions/generateWAMessageFromContent)
-    * [Function: getAggregateResponsesInEventMessage()](https://baileys.wiki/docs/api/functions/getAggregateResponsesInEventMessage)
-    * [Function: getAggregateVotesInPollMessage()](https://baileys.wiki/docs/api/functions/getAggregateVotesInPollMessage)
-    * [Function: getAllBinaryNodeChildren()](https://baileys.wiki/docs/api/functions/getAllBinaryNodeChildren)
-    * [Function: getAudioDuration()](https://baileys.wiki/docs/api/functions/getAudioDuration)
-    * [Function: getAudioWaveform()](https://baileys.wiki/docs/api/functions/getAudioWaveform)
-    * [Function: getBinaryNodeChild()](https://baileys.wiki/docs/api/functions/getBinaryNodeChild)
-    * [Function: getBinaryNodeChildBuffer()](https://baileys.wiki/docs/api/functions/getBinaryNodeChildBuffer)
-    * [Function: getBinaryNodeChildString()](https://baileys.wiki/docs/api/functions/getBinaryNodeChildString)
-    * [Function: getBinaryNodeChildUInt()](https://baileys.wiki/docs/api/functions/getBinaryNodeChildUInt)
-    * [Function: getBinaryNodeChildren()](https://baileys.wiki/docs/api/functions/getBinaryNodeChildren)
-    * [Function: getBinaryNodeMessages()](https://baileys.wiki/docs/api/functions/getBinaryNodeMessages)
-    * [Function: getCallStatusFromNode()](https://baileys.wiki/docs/api/functions/getCallStatusFromNode)
-    * [Function: getChatId()](https://baileys.wiki/docs/api/functions/getChatId)
-    * [Function: getCodeFromWSError()](https://baileys.wiki/docs/api/functions/getCodeFromWSError)
-    * [Function: getContentType()](https://baileys.wiki/docs/api/functions/getContentType)
-    * [Function: getDecryptionJid()](https://baileys.wiki/docs/api/functions/getDecryptionJid)
-    * [Function: getDevice()](https://baileys.wiki/docs/api/functions/getDevice)
-    * [Function: getErrorCodeFromStreamError()](https://baileys.wiki/docs/api/functions/getErrorCodeFromStreamError)
-    * [Function: getHistoryMsg()](https://baileys.wiki/docs/api/functions/getHistoryMsg)
-    * [Function: getHttpStream()](https://baileys.wiki/docs/api/functions/getHttpStream)
-    * [Function: getKeyAuthor()](https://baileys.wiki/docs/api/functions/getKeyAuthor)
-    * [Function: getMediaKeys()](https://baileys.wiki/docs/api/functions/getMediaKeys)
-    * [Function: getNextPreKeys()](https://baileys.wiki/docs/api/functions/getNextPreKeys)
-    * [Function: getNextPreKeysNode()](https://baileys.wiki/docs/api/functions/getNextPreKeysNode)
-    * [Function: getPlatformId()](https://baileys.wiki/docs/api/functions/getPlatformId)
-    * [Function: getPreKeys()](https://baileys.wiki/docs/api/functions/getPreKeys)
-    * [Function: getRawMediaUploadData()](https://baileys.wiki/docs/api/functions/getRawMediaUploadData)
-    * [Function: getServerFromDomainType()](https://baileys.wiki/docs/api/functions/getServerFromDomainType)
-    * [Function: getStatusCodeForMediaRetry()](https://baileys.wiki/docs/api/functions/getStatusCodeForMediaRetry)
-    * [Function: getStatusFromReceiptType()](https://baileys.wiki/docs/api/functions/getStatusFromReceiptType)
-    * [Function: getStream()](https://baileys.wiki/docs/api/functions/getStream)
-    * [Function: getUrlFromDirectPath()](https://baileys.wiki/docs/api/functions/getUrlFromDirectPath)
-    * [Function: getUrlInfo()](https://baileys.wiki/docs/api/functions/getUrlInfo)
-    * [Function: getWAUploadToServer()](https://baileys.wiki/docs/api/functions/getWAUploadToServer)
-    * [Function: hkdf()](https://baileys.wiki/docs/api/functions/hkdf)
-    * [Function: hkdfInfoKey()](https://baileys.wiki/docs/api/functions/hkdfInfoKey)
-    * [Function: hmacSign()](https://baileys.wiki/docs/api/functions/hmacSign)
-    * [Function: initAuthCreds()](https://baileys.wiki/docs/api/functions/initAuthCreds)
-    * [Function: isHostedLidUser()](https://baileys.wiki/docs/api/functions/isHostedLidUser)
-    * [Function: isHostedPnUser()](https://baileys.wiki/docs/api/functions/isHostedPnUser)
-    * [Function: isJidBot()](https://baileys.wiki/docs/api/functions/isJidBot)
-    * [Function: isJidBroadcast()](https://baileys.wiki/docs/api/functions/isJidBroadcast)
-    * [Function: isJidGroup()](https://baileys.wiki/docs/api/functions/isJidGroup)
-    * [Function: isJidMetaAI()](https://baileys.wiki/docs/api/functions/isJidMetaAI)
-    * [Function: isJidNewsletter()](https://baileys.wiki/docs/api/functions/isJidNewsletter)
-    * [Function: isJidStatusBroadcast()](https://baileys.wiki/docs/api/functions/isJidStatusBroadcast)
-    * [Function: isLidUser()](https://baileys.wiki/docs/api/functions/isLidUser)
-    * [Function: isPnUser()](https://baileys.wiki/docs/api/functions/isPnUser)
-    * [Function: isRealMessage()](https://baileys.wiki/docs/api/functions/isRealMessage)
-    * [Function: isWABusinessPlatform()](https://baileys.wiki/docs/api/functions/isWABusinessPlatform)
-    * [Function: jidDecode()](https://baileys.wiki/docs/api/functions/jidDecode)
-    * [Function: jidEncode()](https://baileys.wiki/docs/api/functions/jidEncode)
-    * [Function: jidNormalizedUser()](https://baileys.wiki/docs/api/functions/jidNormalizedUser)
-    * [Function: makeCacheableSignalKeyStore()](https://baileys.wiki/docs/api/functions/makeCacheableSignalKeyStore)
-    * [Function: makeEventBuffer()](https://baileys.wiki/docs/api/functions/makeEventBuffer)
-    * [Function: makeNoiseHandler()](https://baileys.wiki/docs/api/functions/makeNoiseHandler)
-    * [Function: makeWASocket()](https://baileys.wiki/docs/api/functions/makeWASocket)
-    * [Function: md5()](https://baileys.wiki/docs/api/functions/md5)
-    * [Function: mediaMessageSHA256B64()](https://baileys.wiki/docs/api/functions/mediaMessageSHA256B64)
-    * [Function: newLTHashState()](https://baileys.wiki/docs/api/functions/newLTHashState)
-    * [Function: normalizeMessageContent()](https://baileys.wiki/docs/api/functions/normalizeMessageContent)
-    * [Function: parseAndInjectE2ESessions()](https://baileys.wiki/docs/api/functions/parseAndInjectE2ESessions)
-    * [Function: prepareDisappearingMessageSettingContent()](https://baileys.wiki/docs/api/functions/prepareDisappearingMessageSettingContent)
-    * [Function: prepareWAMessageMedia()](https://baileys.wiki/docs/api/functions/prepareWAMessageMedia)
-    * [Function: processHistoryMessage()](https://baileys.wiki/docs/api/functions/processHistoryMessage)
-    * [Function: processSyncAction()](https://baileys.wiki/docs/api/functions/processSyncAction)
-    * [Function: promiseTimeout()](https://baileys.wiki/docs/api/functions/promiseTimeout)
-    * [Function: reduceBinaryNodeToDictionary()](https://baileys.wiki/docs/api/functions/reduceBinaryNodeToDictionary)
-    * [Function: sha256()](https://baileys.wiki/docs/api/functions/sha256)
-    * [Function: shouldIncrementChatUnread()](https://baileys.wiki/docs/api/functions/shouldIncrementChatUnread)
-    * [Function: signedKeyPair()](https://baileys.wiki/docs/api/functions/signedKeyPair)
-    * [Function: toBuffer()](https://baileys.wiki/docs/api/functions/toBuffer)
-    * [Function: toNumber()](https://baileys.wiki/docs/api/functions/toNumber)
-    * [Function: toReadable()](https://baileys.wiki/docs/api/functions/toReadable)
-    * [Function: transferDevice()](https://baileys.wiki/docs/api/functions/transferDevice)
-    * [Function: trimUndefined()](https://baileys.wiki/docs/api/functions/trimUndefined)
-    * [Function: unixTimestampSeconds()](https://baileys.wiki/docs/api/functions/unixTimestampSeconds)
-    * [Function: unpadRandomMax16()](https://baileys.wiki/docs/api/functions/unpadRandomMax16)
-    * [Function: updateMessageWithEventResponse()](https://baileys.wiki/docs/api/functions/updateMessageWithEventResponse)
-    * [Function: updateMessageWithPollUpdate()](https://baileys.wiki/docs/api/functions/updateMessageWithPollUpdate)
-    * [Function: updateMessageWithReaction()](https://baileys.wiki/docs/api/functions/updateMessageWithReaction)
-    * [Function: updateMessageWithReceipt()](https://baileys.wiki/docs/api/functions/updateMessageWithReceipt)
-    * [Function: useMultiFileAuthState()](https://baileys.wiki/docs/api/functions/useMultiFileAuthState)
-    * [Function: writeRandomPadMax16()](https://baileys.wiki/docs/api/functions/writeRandomPadMax16)
-    * [Function: xmppPreKey()](https://baileys.wiki/docs/api/functions/xmppPreKey)
-    * [Function: xmppSignedPreKey()](https://baileys.wiki/docs/api/functions/xmppSignedPreKey)
-  * [baileys](https://baileys.wiki/docs/api/)
-  * [interfaces](https://baileys.wiki/docs/api/interfaces/BaileysEventEmitter)
-  * [namespaces](https://baileys.wiki/docs/api/namespaces/proto/)
-  * [type-aliases](https://baileys.wiki/docs/api/type-aliases/AccountSettings)
-  * [variables](https://baileys.wiki/docs/api/variables/ALL_WA_PATCH_NAMES)
 
+- [classes](https://baileys.wiki/docs/api/classes/BinaryInfo)
+- [enumerations](https://baileys.wiki/docs/api/enumerations/DisconnectReason)
+- [functions](https://baileys.wiki/docs/api/functions/addTransactionCapability)
+  - [Function: addTransactionCapability()](https://baileys.wiki/docs/api/functions/addTransactionCapability)
+  - [Function: aesDecrypt()](https://baileys.wiki/docs/api/functions/aesDecrypt)
+  - [Function: aesDecryptCTR()](https://baileys.wiki/docs/api/functions/aesDecryptCTR)
+  - [Function: aesDecryptGCM()](https://baileys.wiki/docs/api/functions/aesDecryptGCM)
+  - [Function: aesDecryptWithIV()](https://baileys.wiki/docs/api/functions/aesDecryptWithIV)
+  - [Function: aesEncrypWithIV()](https://baileys.wiki/docs/api/functions/aesEncrypWithIV)
+  - [Function: aesEncrypt()](https://baileys.wiki/docs/api/functions/aesEncrypt)
+  - [Function: aesEncryptCTR()](https://baileys.wiki/docs/api/functions/aesEncryptCTR)
+  - [Function: aesEncryptGCM()](https://baileys.wiki/docs/api/functions/aesEncryptGCM)
+  - [Function: aggregateMessageKeysNotFromMe()](https://baileys.wiki/docs/api/functions/aggregateMessageKeysNotFromMe)
+  - [Function: areJidsSameUser()](https://baileys.wiki/docs/api/functions/areJidsSameUser)
+  - [Function: assertMediaContent()](https://baileys.wiki/docs/api/functions/assertMediaContent)
+  - [Function: assertNodeErrorFree()](https://baileys.wiki/docs/api/functions/assertNodeErrorFree)
+  - [Function: binaryNodeToString()](https://baileys.wiki/docs/api/functions/binaryNodeToString)
+  - [Function: bindWaitForConnectionUpdate()](https://baileys.wiki/docs/api/functions/bindWaitForConnectionUpdate)
+  - [Function: bindWaitForEvent()](https://baileys.wiki/docs/api/functions/bindWaitForEvent)
+  - [Function: bytesToCrockford()](https://baileys.wiki/docs/api/functions/bytesToCrockford)
+  - [Function: chatModificationToAppPatch()](https://baileys.wiki/docs/api/functions/chatModificationToAppPatch)
+  - [Function: cleanMessage()](https://baileys.wiki/docs/api/functions/cleanMessage)
+  - [Function: configureSuccessfulPairing()](https://baileys.wiki/docs/api/functions/configureSuccessfulPairing)
+  - [Function: createSignalIdentity()](https://baileys.wiki/docs/api/functions/createSignalIdentity)
+  - [Function: debouncedTimeout()](https://baileys.wiki/docs/api/functions/debouncedTimeout)
+  - [Function: decodeBinaryNode()](https://baileys.wiki/docs/api/functions/decodeBinaryNode)
+  - [Function: decodeDecompressedBinaryNode()](https://baileys.wiki/docs/api/functions/decodeDecompressedBinaryNode)
+  - [Function: decodeMediaRetryNode()](https://baileys.wiki/docs/api/functions/decodeMediaRetryNode)
+  - [Function: decodeMessageNode()](https://baileys.wiki/docs/api/functions/decodeMessageNode)
+  - [Function: decodePatches()](https://baileys.wiki/docs/api/functions/decodePatches)
+  - [Function: decodeSyncdMutations()](https://baileys.wiki/docs/api/functions/decodeSyncdMutations)
+  - [Function: decodeSyncdPatch()](https://baileys.wiki/docs/api/functions/decodeSyncdPatch)
+  - [Function: decodeSyncdSnapshot()](https://baileys.wiki/docs/api/functions/decodeSyncdSnapshot)
+  - [Function: decompressingIfRequired()](https://baileys.wiki/docs/api/functions/decompressingIfRequired)
+  - [Function: decryptEventResponse()](https://baileys.wiki/docs/api/functions/decryptEventResponse)
+  - [Function: decryptMediaRetryData()](https://baileys.wiki/docs/api/functions/decryptMediaRetryData)
+  - [Function: decryptMessageNode()](https://baileys.wiki/docs/api/functions/decryptMessageNode)
+  - [Function: decryptPollVote()](https://baileys.wiki/docs/api/functions/decryptPollVote)
+  - [Function: delay()](https://baileys.wiki/docs/api/functions/delay)
+  - [Function: delayCancellable()](https://baileys.wiki/docs/api/functions/delayCancellable)
+  - [Function: derivePairingCodeKey()](https://baileys.wiki/docs/api/functions/derivePairingCodeKey)
+  - [Function: downloadAndProcessHistorySyncNotification()](https://baileys.wiki/docs/api/functions/downloadAndProcessHistorySyncNotification)
+  - [Function: downloadContentFromMessage()](https://baileys.wiki/docs/api/functions/downloadContentFromMessage)
+  - [Function: downloadEncryptedContent()](https://baileys.wiki/docs/api/functions/downloadEncryptedContent)
+  - [Function: downloadExternalBlob()](https://baileys.wiki/docs/api/functions/downloadExternalBlob)
+  - [Function: downloadExternalPatch()](https://baileys.wiki/docs/api/functions/downloadExternalPatch)
+  - [Function: downloadHistory()](https://baileys.wiki/docs/api/functions/downloadHistory)
+  - [Function: downloadMediaMessage()](https://baileys.wiki/docs/api/functions/downloadMediaMessage)
+  - [Function: encodeBase64EncodedStringForUpload()](https://baileys.wiki/docs/api/functions/encodeBase64EncodedStringForUpload)
+  - [Function: encodeBigEndian()](https://baileys.wiki/docs/api/functions/encodeBigEndian)
+  - [Function: encodeBinaryNode()](https://baileys.wiki/docs/api/functions/encodeBinaryNode)
+  - [Function: encodeNewsletterMessage()](https://baileys.wiki/docs/api/functions/encodeNewsletterMessage)
+  - [Function: encodeSignedDeviceIdentity()](https://baileys.wiki/docs/api/functions/encodeSignedDeviceIdentity)
+  - [Function: encodeSyncdPatch()](https://baileys.wiki/docs/api/functions/encodeSyncdPatch)
+  - [Function: encodeWAM()](https://baileys.wiki/docs/api/functions/encodeWAM)
+  - [Function: encodeWAMessage()](https://baileys.wiki/docs/api/functions/encodeWAMessage)
+  - [Function: encryptMediaRetryRequest()](https://baileys.wiki/docs/api/functions/encryptMediaRetryRequest)
+  - [Function: encryptedStream()](https://baileys.wiki/docs/api/functions/encryptedStream)
+  - [Function: extensionForMediaMessage()](https://baileys.wiki/docs/api/functions/extensionForMediaMessage)
+  - [Function: extractAddressingContext()](https://baileys.wiki/docs/api/functions/extractAddressingContext)
+  - [Function: extractDeviceJids()](https://baileys.wiki/docs/api/functions/extractDeviceJids)
+  - [Function: extractImageThumb()](https://baileys.wiki/docs/api/functions/extractImageThumb)
+  - [Function: extractMessageContent()](https://baileys.wiki/docs/api/functions/extractMessageContent)
+  - [Function: extractSyncdPatches()](https://baileys.wiki/docs/api/functions/extractSyncdPatches)
+  - [Function: extractUrlFromText()](https://baileys.wiki/docs/api/functions/extractUrlFromText)
+  - [Function: fetchLatestBaileysVersion()](https://baileys.wiki/docs/api/functions/fetchLatestBaileysVersion)
+  - [Function: fetchLatestWaWebVersion()](https://baileys.wiki/docs/api/functions/fetchLatestWaWebVersion)
+  - [Function: generateForwardMessageContent()](https://baileys.wiki/docs/api/functions/generateForwardMessageContent)
+  - [Function: generateLinkPreviewIfRequired()](https://baileys.wiki/docs/api/functions/generateLinkPreviewIfRequired)
+  - [Function: generateLoginNode()](https://baileys.wiki/docs/api/functions/generateLoginNode)
+  - [Function: generateMdTagPrefix()](https://baileys.wiki/docs/api/functions/generateMdTagPrefix)
+  - [Function: generateMessageID()](https://baileys.wiki/docs/api/functions/generateMessageID)
+  - [Function: generateMessageIDV2()](https://baileys.wiki/docs/api/functions/generateMessageIDV2)
+  - [Function: generateOrGetPreKeys()](https://baileys.wiki/docs/api/functions/generateOrGetPreKeys)
+  - [Function: generateParticipantHashV2()](https://baileys.wiki/docs/api/functions/generateParticipantHashV2)
+  - [Function: generateProfilePicture()](https://baileys.wiki/docs/api/functions/generateProfilePicture)
+  - [Function: generateRegistrationId()](https://baileys.wiki/docs/api/functions/generateRegistrationId)
+  - [Function: generateRegistrationNode()](https://baileys.wiki/docs/api/functions/generateRegistrationNode)
+  - [Function: generateSignalPubKey()](https://baileys.wiki/docs/api/functions/generateSignalPubKey)
+  - [Function: generateThumbnail()](https://baileys.wiki/docs/api/functions/generateThumbnail)
+  - [Function: generateWAMessage()](https://baileys.wiki/docs/api/functions/generateWAMessage)
+  - [Function: generateWAMessageContent()](https://baileys.wiki/docs/api/functions/generateWAMessageContent)
+  - [Function: generateWAMessageFromContent()](https://baileys.wiki/docs/api/functions/generateWAMessageFromContent)
+  - [Function: getAggregateResponsesInEventMessage()](https://baileys.wiki/docs/api/functions/getAggregateResponsesInEventMessage)
+  - [Function: getAggregateVotesInPollMessage()](https://baileys.wiki/docs/api/functions/getAggregateVotesInPollMessage)
+  - [Function: getAllBinaryNodeChildren()](https://baileys.wiki/docs/api/functions/getAllBinaryNodeChildren)
+  - [Function: getAudioDuration()](https://baileys.wiki/docs/api/functions/getAudioDuration)
+  - [Function: getAudioWaveform()](https://baileys.wiki/docs/api/functions/getAudioWaveform)
+  - [Function: getBinaryNodeChild()](https://baileys.wiki/docs/api/functions/getBinaryNodeChild)
+  - [Function: getBinaryNodeChildBuffer()](https://baileys.wiki/docs/api/functions/getBinaryNodeChildBuffer)
+  - [Function: getBinaryNodeChildString()](https://baileys.wiki/docs/api/functions/getBinaryNodeChildString)
+  - [Function: getBinaryNodeChildUInt()](https://baileys.wiki/docs/api/functions/getBinaryNodeChildUInt)
+  - [Function: getBinaryNodeChildren()](https://baileys.wiki/docs/api/functions/getBinaryNodeChildren)
+  - [Function: getBinaryNodeMessages()](https://baileys.wiki/docs/api/functions/getBinaryNodeMessages)
+  - [Function: getCallStatusFromNode()](https://baileys.wiki/docs/api/functions/getCallStatusFromNode)
+  - [Function: getChatId()](https://baileys.wiki/docs/api/functions/getChatId)
+  - [Function: getCodeFromWSError()](https://baileys.wiki/docs/api/functions/getCodeFromWSError)
+  - [Function: getContentType()](https://baileys.wiki/docs/api/functions/getContentType)
+  - [Function: getDecryptionJid()](https://baileys.wiki/docs/api/functions/getDecryptionJid)
+  - [Function: getDevice()](https://baileys.wiki/docs/api/functions/getDevice)
+  - [Function: getErrorCodeFromStreamError()](https://baileys.wiki/docs/api/functions/getErrorCodeFromStreamError)
+  - [Function: getHistoryMsg()](https://baileys.wiki/docs/api/functions/getHistoryMsg)
+  - [Function: getHttpStream()](https://baileys.wiki/docs/api/functions/getHttpStream)
+  - [Function: getKeyAuthor()](https://baileys.wiki/docs/api/functions/getKeyAuthor)
+  - [Function: getMediaKeys()](https://baileys.wiki/docs/api/functions/getMediaKeys)
+  - [Function: getNextPreKeys()](https://baileys.wiki/docs/api/functions/getNextPreKeys)
+  - [Function: getNextPreKeysNode()](https://baileys.wiki/docs/api/functions/getNextPreKeysNode)
+  - [Function: getPlatformId()](https://baileys.wiki/docs/api/functions/getPlatformId)
+  - [Function: getPreKeys()](https://baileys.wiki/docs/api/functions/getPreKeys)
+  - [Function: getRawMediaUploadData()](https://baileys.wiki/docs/api/functions/getRawMediaUploadData)
+  - [Function: getServerFromDomainType()](https://baileys.wiki/docs/api/functions/getServerFromDomainType)
+  - [Function: getStatusCodeForMediaRetry()](https://baileys.wiki/docs/api/functions/getStatusCodeForMediaRetry)
+  - [Function: getStatusFromReceiptType()](https://baileys.wiki/docs/api/functions/getStatusFromReceiptType)
+  - [Function: getStream()](https://baileys.wiki/docs/api/functions/getStream)
+  - [Function: getUrlFromDirectPath()](https://baileys.wiki/docs/api/functions/getUrlFromDirectPath)
+  - [Function: getUrlInfo()](https://baileys.wiki/docs/api/functions/getUrlInfo)
+  - [Function: getWAUploadToServer()](https://baileys.wiki/docs/api/functions/getWAUploadToServer)
+  - [Function: hkdf()](https://baileys.wiki/docs/api/functions/hkdf)
+  - [Function: hkdfInfoKey()](https://baileys.wiki/docs/api/functions/hkdfInfoKey)
+  - [Function: hmacSign()](https://baileys.wiki/docs/api/functions/hmacSign)
+  - [Function: initAuthCreds()](https://baileys.wiki/docs/api/functions/initAuthCreds)
+  - [Function: isHostedLidUser()](https://baileys.wiki/docs/api/functions/isHostedLidUser)
+  - [Function: isHostedPnUser()](https://baileys.wiki/docs/api/functions/isHostedPnUser)
+  - [Function: isJidBot()](https://baileys.wiki/docs/api/functions/isJidBot)
+  - [Function: isJidBroadcast()](https://baileys.wiki/docs/api/functions/isJidBroadcast)
+  - [Function: isJidGroup()](https://baileys.wiki/docs/api/functions/isJidGroup)
+  - [Function: isJidMetaAI()](https://baileys.wiki/docs/api/functions/isJidMetaAI)
+  - [Function: isJidNewsletter()](https://baileys.wiki/docs/api/functions/isJidNewsletter)
+  - [Function: isJidStatusBroadcast()](https://baileys.wiki/docs/api/functions/isJidStatusBroadcast)
+  - [Function: isLidUser()](https://baileys.wiki/docs/api/functions/isLidUser)
+  - [Function: isPnUser()](https://baileys.wiki/docs/api/functions/isPnUser)
+  - [Function: isRealMessage()](https://baileys.wiki/docs/api/functions/isRealMessage)
+  - [Function: isWABusinessPlatform()](https://baileys.wiki/docs/api/functions/isWABusinessPlatform)
+  - [Function: jidDecode()](https://baileys.wiki/docs/api/functions/jidDecode)
+  - [Function: jidEncode()](https://baileys.wiki/docs/api/functions/jidEncode)
+  - [Function: jidNormalizedUser()](https://baileys.wiki/docs/api/functions/jidNormalizedUser)
+  - [Function: makeCacheableSignalKeyStore()](https://baileys.wiki/docs/api/functions/makeCacheableSignalKeyStore)
+  - [Function: makeEventBuffer()](https://baileys.wiki/docs/api/functions/makeEventBuffer)
+  - [Function: makeNoiseHandler()](https://baileys.wiki/docs/api/functions/makeNoiseHandler)
+  - [Function: makeWASocket()](https://baileys.wiki/docs/api/functions/makeWASocket)
+  - [Function: md5()](https://baileys.wiki/docs/api/functions/md5)
+  - [Function: mediaMessageSHA256B64()](https://baileys.wiki/docs/api/functions/mediaMessageSHA256B64)
+  - [Function: newLTHashState()](https://baileys.wiki/docs/api/functions/newLTHashState)
+  - [Function: normalizeMessageContent()](https://baileys.wiki/docs/api/functions/normalizeMessageContent)
+  - [Function: parseAndInjectE2ESessions()](https://baileys.wiki/docs/api/functions/parseAndInjectE2ESessions)
+  - [Function: prepareDisappearingMessageSettingContent()](https://baileys.wiki/docs/api/functions/prepareDisappearingMessageSettingContent)
+  - [Function: prepareWAMessageMedia()](https://baileys.wiki/docs/api/functions/prepareWAMessageMedia)
+  - [Function: processHistoryMessage()](https://baileys.wiki/docs/api/functions/processHistoryMessage)
+  - [Function: processSyncAction()](https://baileys.wiki/docs/api/functions/processSyncAction)
+  - [Function: promiseTimeout()](https://baileys.wiki/docs/api/functions/promiseTimeout)
+  - [Function: reduceBinaryNodeToDictionary()](https://baileys.wiki/docs/api/functions/reduceBinaryNodeToDictionary)
+  - [Function: sha256()](https://baileys.wiki/docs/api/functions/sha256)
+  - [Function: shouldIncrementChatUnread()](https://baileys.wiki/docs/api/functions/shouldIncrementChatUnread)
+  - [Function: signedKeyPair()](https://baileys.wiki/docs/api/functions/signedKeyPair)
+  - [Function: toBuffer()](https://baileys.wiki/docs/api/functions/toBuffer)
+  - [Function: toNumber()](https://baileys.wiki/docs/api/functions/toNumber)
+  - [Function: toReadable()](https://baileys.wiki/docs/api/functions/toReadable)
+  - [Function: transferDevice()](https://baileys.wiki/docs/api/functions/transferDevice)
+  - [Function: trimUndefined()](https://baileys.wiki/docs/api/functions/trimUndefined)
+  - [Function: unixTimestampSeconds()](https://baileys.wiki/docs/api/functions/unixTimestampSeconds)
+  - [Function: unpadRandomMax16()](https://baileys.wiki/docs/api/functions/unpadRandomMax16)
+  - [Function: updateMessageWithEventResponse()](https://baileys.wiki/docs/api/functions/updateMessageWithEventResponse)
+  - [Function: updateMessageWithPollUpdate()](https://baileys.wiki/docs/api/functions/updateMessageWithPollUpdate)
+  - [Function: updateMessageWithReaction()](https://baileys.wiki/docs/api/functions/updateMessageWithReaction)
+  - [Function: updateMessageWithReceipt()](https://baileys.wiki/docs/api/functions/updateMessageWithReceipt)
+  - [Function: useMultiFileAuthState()](https://baileys.wiki/docs/api/functions/useMultiFileAuthState)
+  - [Function: writeRandomPadMax16()](https://baileys.wiki/docs/api/functions/writeRandomPadMax16)
+  - [Function: xmppPreKey()](https://baileys.wiki/docs/api/functions/xmppPreKey)
+  - [Function: xmppSignedPreKey()](https://baileys.wiki/docs/api/functions/xmppSignedPreKey)
+- [baileys](https://baileys.wiki/docs/api/)
+- [interfaces](https://baileys.wiki/docs/api/interfaces/BaileysEventEmitter)
+- [namespaces](https://baileys.wiki/docs/api/namespaces/proto/)
+- [type-aliases](https://baileys.wiki/docs/api/type-aliases/AccountSettings)
+- [variables](https://baileys.wiki/docs/api/variables/ALL_WA_PATCH_NAMES)
 
-  * [](https://baileys.wiki/)
-  * functions
-  * Function: makeNoiseHandler()
-
+- [](https://baileys.wiki/)
+- functions
+- Function: makeNoiseHandler()
 
 On this page
+
 # Function: makeNoiseHandler()
+
 > **makeNoiseHandler**(`__namedParameters`): `object`
-Defined in: [src/Utils/noise-handler.ts:17](https://github.com/WhiskeySockets/Baileys/blob/cb8b3717aaede47460ba700651ee936f268c0ce4/src/Utils/noise-handler.ts#L17)
+> Defined in: [src/Utils/noise-handler.ts:17](https://github.com/WhiskeySockets/Baileys/blob/cb8b3717aaede47460ba700651ee936f268c0ce4/src/Utils/noise-handler.ts#L17)
+
 ## Parameters[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#parameters "Direct link to Parameters")
-### __namedParameters[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#__namedparameters "Direct link to __namedParameters")
+
+### **namedParameters[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#**namedparameters "Direct link to \_\_namedParameters")
+
 #### keyPair[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#keypair "Direct link to keyPair")
+
 [`KeyPair`](https://baileys.wiki/docs/api/type-aliases/KeyPair)
+
 #### logger[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#logger "Direct link to logger")
+
 `ILogger`
+
 #### NOISE_HEADER[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#noise_header "Direct link to NOISE_HEADER")
+
 `Uint8Array`
+
 #### routingInfo?[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#routinginfo "Direct link to routingInfo?")
+
 `Buffer`<`ArrayBufferLike`>
+
 ## Returns[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#returns "Direct link to Returns")
+
 `object`
-### authenticate()[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#authenticate "Direct link to authenticate\(\)")
+
+### authenticate()[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#authenticate "Direct link to authenticate()")
+
 > **authenticate** : (`data`) => `void`
+
 #### Parameters[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#parameters-1 "Direct link to Parameters")
+
 ##### data[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#data "Direct link to data")
+
 `Uint8Array`
+
 #### Returns[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#returns-1 "Direct link to Returns")
+
 `void`
-### decodeFrame()[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#decodeframe "Direct link to decodeFrame\(\)")
+
+### decodeFrame()[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#decodeframe "Direct link to decodeFrame()")
+
 > **decodeFrame** : (`newData`, `onFrame`) => `Promise`<`void`>
+
 #### Parameters[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#parameters-2 "Direct link to Parameters")
+
 ##### newData[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#newdata "Direct link to newData")
+
 `Uint8Array`<`ArrayBufferLike`> | `Buffer`<`ArrayBufferLike`>
+
 ##### onFrame[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#onframe "Direct link to onFrame")
+
 (`buff`) => `void`
+
 #### Returns[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#returns-2 "Direct link to Returns")
+
 `Promise`<`void`>
-### decrypt()[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#decrypt "Direct link to decrypt\(\)")
+
+### decrypt()[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#decrypt "Direct link to decrypt()")
+
 > **decrypt** : (`ciphertext`) => `Buffer`<`ArrayBuffer`>
+
 #### Parameters[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#parameters-3 "Direct link to Parameters")
+
 ##### ciphertext[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#ciphertext "Direct link to ciphertext")
+
 `Uint8Array`
+
 #### Returns[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#returns-3 "Direct link to Returns")
+
 `Buffer`<`ArrayBuffer`>
-### encodeFrame()[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#encodeframe "Direct link to encodeFrame\(\)")
+
+### encodeFrame()[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#encodeframe "Direct link to encodeFrame()")
+
 > **encodeFrame** : (`data`) => `Buffer`<`ArrayBuffer`>
+
 #### Parameters[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#parameters-4 "Direct link to Parameters")
+
 ##### data[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#data-1 "Direct link to data")
+
 `Uint8Array`<`ArrayBufferLike`> | `Buffer`<`ArrayBufferLike`>
+
 #### Returns[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#returns-4 "Direct link to Returns")
+
 `Buffer`<`ArrayBuffer`>
-### encrypt()[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#encrypt "Direct link to encrypt\(\)")
+
+### encrypt()[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#encrypt "Direct link to encrypt()")
+
 > **encrypt** : (`plaintext`) => `Buffer`<`ArrayBuffer`>
+
 #### Parameters[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#parameters-5 "Direct link to Parameters")
+
 ##### plaintext[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#plaintext "Direct link to plaintext")
+
 `Uint8Array`
+
 #### Returns[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#returns-5 "Direct link to Returns")
+
 `Buffer`<`ArrayBuffer`>
-### finishInit()[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#finishinit "Direct link to finishInit\(\)")
+
+### finishInit()[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#finishinit "Direct link to finishInit()")
+
 > **finishInit** : () => `Promise`<`void`>
+
 #### Returns[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#returns-6 "Direct link to Returns")
+
 `Promise`<`void`>
-### mixIntoKey()[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#mixintokey "Direct link to mixIntoKey\(\)")
+
+### mixIntoKey()[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#mixintokey "Direct link to mixIntoKey()")
+
 > **mixIntoKey** : (`data`) => `Promise`<`void`>
+
 #### Parameters[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#parameters-6 "Direct link to Parameters")
+
 ##### data[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#data-2 "Direct link to data")
+
 `Uint8Array`
+
 #### Returns[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#returns-7 "Direct link to Returns")
+
 `Promise`<`void`>
-### processHandshake()[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#processhandshake "Direct link to processHandshake\(\)")
+
+### processHandshake()[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#processhandshake "Direct link to processHandshake()")
+
 > **processHandshake** : (`__namedParameters`, `noiseKey`) => `Promise`<`Buffer`<`ArrayBuffer`>>
+
 #### Parameters[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#parameters-7 "Direct link to Parameters")
-##### __namedParameters[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#__namedparameters-1 "Direct link to __namedParameters")
+
+##### **namedParameters[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#**namedparameters-1 "Direct link to \_\_namedParameters")
+
 [`HandshakeMessage`](https://baileys.wiki/docs/api/namespaces/proto/classes/HandshakeMessage)
+
 ##### noiseKey[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#noisekey "Direct link to noiseKey")
+
 [`KeyPair`](https://baileys.wiki/docs/api/type-aliases/KeyPair)
+
 #### Returns[​](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#returns-8 "Direct link to Returns")
+
 `Promise`<`Buffer`<`ArrayBuffer`>>
 [](https://github.com/WhiskeySockets/baileys.wiki-site/tree/main/docs/api/functions/makeNoiseHandler.md)
 [Previous Function: makeEventBuffer()](https://baileys.wiki/docs/api/functions/makeEventBuffer)[Next Function: makeWASocket()](https://baileys.wiki/docs/api/functions/makeWASocket)
-  * [Parameters](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#parameters)
-    * [__namedParameters](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#__namedparameters)
-  * [Returns](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#returns)
-    * [authenticate()](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#authenticate)
-    * [decodeFrame()](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#decodeframe)
-    * [decrypt()](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#decrypt)
-    * [encodeFrame()](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#encodeframe)
-    * [encrypt()](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#encrypt)
-    * [finishInit()](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#finishinit)
-    * [mixIntoKey()](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#mixintokey)
-    * [processHandshake()](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#processhandshake)
 
+- [Parameters](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#parameters)
+  - [\_\_namedParameters](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#__namedparameters)
+- [Returns](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#returns)
+  - [authenticate()](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#authenticate)
+  - [decodeFrame()](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#decodeframe)
+  - [decrypt()](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#decrypt)
+  - [encodeFrame()](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#encodeframe)
+  - [encrypt()](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#encrypt)
+  - [finishInit()](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#finishinit)
+  - [mixIntoKey()](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#mixintokey)
+  - [processHandshake()](https://baileys.wiki/docs/api/functions/makeNoiseHandler/#processhandshake)
 
 Docs
-  * [Tutorial](https://baileys.wiki/docs/intro)
 
+- [Tutorial](https://baileys.wiki/docs/intro)
 
 More
-  * [GitHub](https://github.com/WhiskeySockets/Baileys)
 
+- [GitHub](https://github.com/WhiskeySockets/Baileys)
 
 ![](https://baileys.wiki/img/Written-By-Human-Not-By-AI-Badge-white.svg)![](https://baileys.wiki/img/Written-By-Human-Not-By-AI-Badge-white.svg)
 Copyright © 2025 Rajeh Taher, WhiskeySockets.
