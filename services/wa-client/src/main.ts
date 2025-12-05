@@ -163,7 +163,12 @@ async function main(): Promise<void> {
   // Pairing code request endpoint
   server.post<{
     Body?: { phoneNumber?: string };
-    Reply: { success: boolean; code?: string; error?: string; qrAvailable?: boolean };
+    Reply: {
+      success: boolean;
+      code?: string;
+      error?: string;
+      qrAvailable?: boolean;
+    };
   }>("/pair", async (request, reply) => {
     if (!adapter) {
       return reply.status(503).send({
@@ -192,11 +197,17 @@ async function main(): Promise<void> {
 
     try {
       const code = await adapter.requestPairingCode(phoneNumber);
-      logger.info({ phoneNumber: phoneNumber.slice(-4) }, "Pairing code requested successfully");
+      logger.info(
+        { phoneNumber: phoneNumber.slice(-4) },
+        "Pairing code requested successfully",
+      );
       return { success: true, code };
     } catch (err) {
       const error = err as Error;
-      logger.error({ err, phoneNumber: phoneNumber.slice(-4) }, "Failed to request pairing code");
+      logger.error(
+        { err, phoneNumber: phoneNumber.slice(-4) },
+        "Failed to request pairing code",
+      );
 
       // Check for rate limiting
       if (error.message?.includes("rate") || error.message?.includes("429")) {

@@ -728,11 +728,27 @@ ${C.primary("  ╚════════════════════�
     const ports = [
       { name: "Redis", port: 6379, env: null },
       { name: "WA Client", port: 3005, env: "WA_CLIENT_PORT" },
-      { name: "Scan Orchestrator", port: getPort("SCAN_ORCHESTRATOR_PORT", "3003"), env: "SCAN_ORCHESTRATOR_PORT" },
-      { name: "Grafana", port: getPort("GRAFANA_PORT", "3002"), env: "GRAFANA_PORT" },
+      {
+        name: "Scan Orchestrator",
+        port: getPort("SCAN_ORCHESTRATOR_PORT", "3003"),
+        env: "SCAN_ORCHESTRATOR_PORT",
+      },
+      {
+        name: "Grafana",
+        port: getPort("GRAFANA_PORT", "3002"),
+        env: "GRAFANA_PORT",
+      },
       { name: "Prometheus", port: 9091, env: null },
-      { name: "Uptime Kuma", port: getPort("UPTIME_KUMA_PORT", "3001"), env: "UPTIME_KUMA_PORT" },
-      { name: "Reverse Proxy", port: getPort("REVERSE_PROXY_PORT", "8088"), env: "REVERSE_PROXY_PORT" },
+      {
+        name: "Uptime Kuma",
+        port: getPort("UPTIME_KUMA_PORT", "3001"),
+        env: "UPTIME_KUMA_PORT",
+      },
+      {
+        name: "Reverse Proxy",
+        port: getPort("REVERSE_PROXY_PORT", "8088"),
+        env: "REVERSE_PROXY_PORT",
+      },
     ];
 
     const conflicts = [];
@@ -759,23 +775,26 @@ ${C.primary("  ╚════════════════════�
       if (!env) {
         // Fixed port (Redis, Prometheus) - can't easily change
         console.log(
-          `  ${ICON.error}  ${C.error(`Port ${port} (${name}) is in use and cannot be auto-reassigned`)}`
+          `  ${ICON.error}  ${C.error(`Port ${port} (${name}) is in use and cannot be auto-reassigned`)}`,
         );
         console.log(
-          `     ${C.muted(`Stop the process using port ${port} or modify docker-compose.yml`)}`
+          `     ${C.muted(`Stop the process using port ${port} or modify docker-compose.yml`)}`,
         );
         continue;
       }
 
       // Find an available alternative port
       let altPort = port + 1;
-      while (!(await this.checkPortAvailable(altPort)) && altPort < port + 100) {
+      while (
+        !(await this.checkPortAvailable(altPort)) &&
+        altPort < port + 100
+      ) {
         altPort++;
       }
 
       if (altPort >= port + 100) {
         console.log(
-          `  ${ICON.error}  ${C.error(`Could not find available port for ${name}`)}`
+          `  ${ICON.error}  ${C.error(`Could not find available port for ${name}`)}`,
         );
         continue;
       }
@@ -784,10 +803,18 @@ ${C.primary("  ╚════════════════════�
         const { action } = await enquirer.prompt({
           type: "select",
           name: "action",
-          message: C.text(`Port ${port} (${name}) is in use. What would you like to do?`),
+          message: C.text(
+            `Port ${port} (${name}) is in use. What would you like to do?`,
+          ),
           choices: [
-            { name: "reassign", message: `${C.success("●")} Use port ${altPort} instead` },
-            { name: "skip", message: `${C.muted("○")} Skip and continue (may fail)` },
+            {
+              name: "reassign",
+              message: `${C.success("●")} Use port ${altPort} instead`,
+            },
+            {
+              name: "skip",
+              message: `${C.muted("○")} Skip and continue (may fail)`,
+            },
             { name: "abort", message: `${C.error("○")} Abort setup` },
           ],
           pointer: C.accent("›"),
@@ -806,7 +833,7 @@ ${C.primary("  ╚════════════════════�
       if (envContent.includes(`${env}=`)) {
         envContent = envContent.replace(
           new RegExp(`${env}=.*`),
-          `${env}=${altPort}`
+          `${env}=${altPort}`,
         );
       } else {
         envContent += `\n${env}=${altPort}`;
@@ -814,7 +841,7 @@ ${C.primary("  ╚════════════════════�
       modified = true;
 
       console.log(
-        `  ${ICON.success}  ${C.success(`${name} port changed from ${port} to ${altPort}`)}`
+        `  ${ICON.success}  ${C.success(`${name} port changed from ${port} to ${altPort}`)}`,
       );
     }
 
@@ -843,14 +870,16 @@ ${C.primary("  ╚════════════════════�
       if (!resolved) {
         throw new Error(
           "Cannot start services due to unresolved port conflicts. " +
-          "Stop conflicting processes or modify port settings."
+            "Stop conflicting processes or modify port settings.",
         );
       }
     } else {
       portSpinner.succeed(C.text("All ports available"));
     }
 
-    console.log(`\n  ${C.muted("This may take 2-5 minutes on first run...")}\n`);
+    console.log(
+      `\n  ${C.muted("This may take 2-5 minutes on first run...")}\n`,
+    );
 
     const spinner = ora({
       text: C.text("Starting Docker containers..."),
@@ -961,12 +990,13 @@ ${C.primary("  ╚════════════════════�
     const envContent = await fs
       .readFile(path.join(ROOT_DIR, ".env"), "utf-8")
       .catch(() => "");
-    const hasPhoneNumber = envContent.includes("WA_REMOTE_AUTH_PHONE_NUMBERS=") &&
+    const hasPhoneNumber =
+      envContent.includes("WA_REMOTE_AUTH_PHONE_NUMBERS=") &&
       !envContent.match(/WA_REMOTE_AUTH_PHONE_NUMBERS=\s*$/m);
 
     // Let user choose pairing method
     let pairingMethod = "qr"; // Default to QR for non-interactive
-    
+
     if (!this.nonInteractive) {
       console.log("");
       const response = await enquirer.prompt({
@@ -977,7 +1007,9 @@ ${C.primary("  ╚════════════════════�
           {
             name: "code",
             message: `${C.success("●")} Pairing Code ${C.muted("(Enter 8-digit code on phone)")}`,
-            disabled: !hasPhoneNumber ? C.muted("(requires phone number in config)") : false,
+            disabled: !hasPhoneNumber
+              ? C.muted("(requires phone number in config)")
+              : false,
           },
           {
             name: "qr",
@@ -1027,9 +1059,10 @@ ${C.primary("  ╚════════════════════�
       const envContent = await fs
         .readFile(path.join(ROOT_DIR, ".env"), "utf-8")
         .catch(() => "");
-      
+
       // wa-client runs on port 3005 (mapped from container port 3001)
-      const waClientPort = envContent.match(/WA_CLIENT_PORT=(\d+)/)?.[1] || "3005";
+      const waClientPort =
+        envContent.match(/WA_CLIENT_PORT=(\d+)/)?.[1] || "3005";
 
       const response = await fetch(`http://127.0.0.1:${waClientPort}/pair`, {
         method: "POST",
@@ -1104,9 +1137,12 @@ ${C.primary("  ╚════════════════════�
 
       logProcess.stdout?.on("data", (data) => {
         const text = data.toString();
-        
+
         // Check for successful connection
-        if (text.includes("Connection opened") || text.includes("WhatsApp client ready")) {
+        if (
+          text.includes("Connection opened") ||
+          text.includes("WhatsApp client ready")
+        ) {
           pairingSuccess = true;
           clearTimeout(timeout);
           spinner.succeed(C.success("WhatsApp connected successfully!"));
@@ -1130,7 +1166,9 @@ ${C.primary("  ╚════════════════════�
       clearTimeout(timeout);
 
       if (pairingSuccess) {
-        console.log(`\n  ${ICON.success}  ${C.success("WhatsApp pairing successful!")}\n`);
+        console.log(
+          `\n  ${ICON.success}  ${C.success("WhatsApp pairing successful!")}\n`,
+        );
       } else if (!qrDisplayed) {
         console.log(`
   ${ICON.warning}  ${C.warning("No QR code appeared in logs.")}

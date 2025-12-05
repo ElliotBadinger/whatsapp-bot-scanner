@@ -123,7 +123,11 @@ describe("WA Client HTTP Endpoints", () => {
       const state = mockAdapter.state;
 
       if (state === "ready") {
-        return { success: true, state, error: "Already connected, no QR needed" };
+        return {
+          success: true,
+          state,
+          error: "Already connected, no QR needed",
+        };
       }
 
       return {
@@ -244,12 +248,14 @@ describe("WA Client HTTP Endpoints", () => {
       });
 
       // Phone number should be cleaned to digits only
-      expect(mockAdapter.requestPairingCode).toHaveBeenCalledWith("27123456789");
+      expect(mockAdapter.requestPairingCode).toHaveBeenCalledWith(
+        "27123456789",
+      );
     });
 
     it("should return 429 on rate limit error", async () => {
       mockAdapter.requestPairingCode.mockRejectedValue(
-        new Error("rate limit exceeded")
+        new Error("rate limit exceeded"),
       );
 
       const response = await server.inject({
@@ -267,7 +273,7 @@ describe("WA Client HTTP Endpoints", () => {
 
     it("should return 500 on other errors", async () => {
       mockAdapter.requestPairingCode.mockRejectedValue(
-        new Error("Connection failed")
+        new Error("Connection failed"),
       );
 
       const response = await server.inject({
