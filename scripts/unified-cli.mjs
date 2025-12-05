@@ -978,23 +978,92 @@ ${C.primary("  ╚════════════════════�
       throw error;
     }
 
-    // Wait for services
+    // Wait for core services (Redis) to be healthy, but not wa-client
+    // wa-client needs WhatsApp pairing (Step 5) before it can be fully healthy
     const healthSpinner = ora({
-      text: C.text("Waiting for services to be healthy..."),
+      text: C.text("Waiting for core services..."),
       color: "cyan",
       spinner: "dots12",
     }).start();
 
-    const isRateLimited = await this.waitForService("wa-client", healthSpinner);
-    healthSpinner.succeed(C.text("Services are healthy"));
+    await this.waitForService("redis", healthSpinner, 60000);
+    healthSpinner.text = C.text("Waiting for wa-client HTTP server...");
 
-    this.state.rateLimited = isRateLimited;
+    // For wa-client, just wait for HTTP server to be accessible (not full health)
+    const waClientReady = await this.waitForWaClientHttp(healthSpinner, 90000);
+    if (!waClientReady.ready) {
+      healthSpinner.warn(
+        C.warning("WA Client starting slowly, proceeding to pairing..."),
+      );
+    } else {
+      healthSpinner.succeed(C.text("Services ready for pairing"));
+    }
+
+    this.state.rateLimited = waClientReady.rateLimited;
     this.markStepComplete(4, "All services running");
+  }
+
+  /**
+   * Wait for wa-client HTTP server to be accessible (not full health)
+   * This allows proceeding to pairing step even if WhatsApp isn't connected yet
+   */
+  async waitForWaClientHttp(spinner, timeoutMs = 90000) {
+    const startTime = Date.now();
+    let rateLimited = false;
+
+    // Get the WA client port from env
+    const envFile = path.join(ROOT_DIR, ".env");
+    const envLocalFile = path.join(ROOT_DIR, ".env.local");
+    let waClientPort = "3005";
+    try {
+      const envContent = await fs.readFile(envFile, "utf-8");
+      const envLocalContent = await fs
+        .readFile(envLocalFile, "utf-8")
+        .catch(() => "");
+      const localMatch = envLocalContent.match(/WA_CLIENT_PORT=["']?(\d+)["']?/);
+      const match = envContent.match(/WA_CLIENT_PORT=(\d+)/);
+      waClientPort = localMatch?.[1] || match?.[1] || "3005";
+    } catch {}
+
+    while (Date.now() - startTime < timeoutMs) {
+      try {
+        // Try to reach the healthz endpoint
+        const response = await fetch(
+          `http://127.0.0.1:${waClientPort}/healthz`,
+          { signal: AbortSignal.timeout(5000) },
+        );
+        if (response.ok) {
+          // Check logs for rate limiting
+          try {
+            const { stdout: logs } = await execa(
+              "docker",
+              ["compose", "logs", "--tail=50", "wa-client"],
+              { cwd: ROOT_DIR },
+            );
+            if (
+              logs.includes("rate-overlimit") ||
+              logs.includes("rate_limit")
+            ) {
+              rateLimited = true;
+            }
+          } catch {}
+          return { ready: true, rateLimited };
+        }
+      } catch {
+        // HTTP not ready yet, continue waiting
+      }
+
+      spinner.text = C.text(
+        `Waiting for wa-client HTTP server... (${Math.round((Date.now() - startTime) / 1000)}s)`,
+      );
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+
+    return { ready: false, rateLimited };
   }
 
   async waitForService(serviceName, spinner, timeoutMs = 120000) {
     const startTime = Date.now();
-    let rateLimitDetected = false;
 
     // Get container name
     let containerName = null;
@@ -1020,29 +1089,13 @@ ${C.primary("  ╚════════════════════�
         const health = stdout.trim();
 
         if (health === "healthy") {
-          // Check for rate limiting in logs
-          if (serviceName === "wa-client") {
-            try {
-              const { stdout: logs } = await execa(
-                "docker",
-                ["compose", "logs", "--tail=50", "wa-client"],
-                { cwd: ROOT_DIR },
-              );
-              if (
-                logs.includes("rate-overlimit") ||
-                logs.includes("rate_limit")
-              ) {
-                rateLimitDetected = true;
-                spinner.text = C.warning(
-                  "WhatsApp rate-limited, will retry automatically",
-                );
-              }
-            } catch {}
-          }
-          return rateLimitDetected;
+          return true;
         }
       } catch {}
 
+      spinner.text = C.text(
+        `Waiting for ${serviceName}... (${Math.round((Date.now() - startTime) / 1000)}s)`,
+      );
       await new Promise((r) => setTimeout(r, 2000));
     }
 
@@ -1136,13 +1189,18 @@ ${C.primary("  ╚════════════════════�
       // Wait for wa-client to be ready
       await new Promise((r) => setTimeout(r, 3000));
 
+      // Get the WA client port from env (.env.local takes precedence)
       const envContent = await fs
         .readFile(path.join(ROOT_DIR, ".env"), "utf-8")
         .catch(() => "");
+      const envLocalContent = await fs
+        .readFile(path.join(ROOT_DIR, ".env.local"), "utf-8")
+        .catch(() => "");
 
-      // wa-client runs on port 3005 (mapped from container port 3001)
-      const waClientPort =
-        envContent.match(/WA_CLIENT_PORT=(\d+)/)?.[1] || "3005";
+      // wa-client runs on configured port (mapped from container port 3001)
+      const localMatch = envLocalContent.match(/WA_CLIENT_PORT=["']?(\d+)["']?/);
+      const match = envContent.match(/WA_CLIENT_PORT=(\d+)/);
+      const waClientPort = localMatch?.[1] || match?.[1] || "3005";
 
       const response = await fetch(`http://127.0.0.1:${waClientPort}/pair`, {
         method: "POST",

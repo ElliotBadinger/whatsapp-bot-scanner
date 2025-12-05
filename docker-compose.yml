@@ -98,9 +98,9 @@ services:
       - ./storage:/app/storage:rw
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL","wget -qO- http://localhost:3001/healthz || exit 1"]
+      test: ["CMD-SHELL", "bun -e \"fetch('http://localhost:3001/healthz').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))\""]
       interval: 30s
-      timeout: 5s
+      timeout: 10s
       retries: 3
       start_period: 60s
     security_opt:
@@ -145,9 +145,9 @@ services:
       - ./storage:/app/storage:rw
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL","wget -qO- http://localhost:3001/healthz || exit 1"]
+      test: ["CMD-SHELL", "bun -e \"fetch('http://localhost:3001/healthz').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))\""]
       interval: 30s
-      timeout: 5s
+      timeout: 10s
       retries: 3
       start_period: 30s
     security_opt:
