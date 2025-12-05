@@ -708,6 +708,38 @@ ${C.primary("  ╚════════════════════�
   }
 
   /**
+   * Check if existing Docker containers are running
+   */
+  async checkExistingContainers() {
+    try {
+      const { stdout } = await execa(
+        "docker",
+        ["compose", "ps", "--format", "{{.Name}} {{.State}}"],
+        { cwd: ROOT_DIR },
+      );
+      const running = stdout
+        .trim()
+        .split("\n")
+        .filter((line) => line.includes("running"));
+      return running.length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Stop existing Docker containers
+   */
+  async stopExistingContainers() {
+    try {
+      await execa("docker", ["compose", "down"], { cwd: ROOT_DIR });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Check all required ports and report conflicts
    */
   async checkRequiredPorts() {
@@ -721,13 +753,17 @@ ${C.primary("  ╚════════════════════�
 
     const getPort = (key, defaultPort) => {
       const match = envContent.match(new RegExp(`${key}=(\\d+)`));
-      return parseInt(match?.[1] ?? defaultPort, 10);
+      return Number.parseInt(match?.[1] ?? defaultPort, 10);
     };
 
-    // Define all ports used by Docker services
+    // Define all ports used by Docker services (all configurable)
+    // Note: Redis and Prometheus use Docker internal network only
     const ports = [
-      { name: "Redis", port: 6379, env: null },
-      { name: "WA Client", port: 3005, env: "WA_CLIENT_PORT" },
+      {
+        name: "WA Client",
+        port: getPort("WA_CLIENT_PORT", "3005"),
+        env: "WA_CLIENT_PORT",
+      },
       {
         name: "Scan Orchestrator",
         port: getPort("SCAN_ORCHESTRATOR_PORT", "3003"),
@@ -738,7 +774,6 @@ ${C.primary("  ╚════════════════════�
         port: getPort("GRAFANA_PORT", "3002"),
         env: "GRAFANA_PORT",
       },
-      { name: "Prometheus", port: 9091, env: null },
       {
         name: "Uptime Kuma",
         port: getPort("UPTIME_KUMA_PORT", "3001"),
@@ -764,25 +799,15 @@ ${C.primary("  ╚════════════════════�
   }
 
   /**
-   * Suggest alternative ports for conflicting services
+   * Auto-reassign ports for conflicting services
    */
   async resolvePortConflicts(conflicts) {
     const envFile = path.join(ROOT_DIR, ".env");
     let envContent = await fs.readFile(envFile, "utf-8").catch(() => "");
     let modified = false;
+    let allResolved = true;
 
     for (const { name, port, env } of conflicts) {
-      if (!env) {
-        // Fixed port (Redis, Prometheus) - can't easily change
-        console.log(
-          `  ${ICON.error}  ${C.error(`Port ${port} (${name}) is in use and cannot be auto-reassigned`)}`,
-        );
-        console.log(
-          `     ${C.muted(`Stop the process using port ${port} or modify docker-compose.yml`)}`,
-        );
-        continue;
-      }
-
       // Find an available alternative port
       let altPort = port + 1;
       while (
@@ -796,40 +821,11 @@ ${C.primary("  ╚════════════════════�
         console.log(
           `  ${ICON.error}  ${C.error(`Could not find available port for ${name}`)}`,
         );
+        allResolved = false;
         continue;
       }
 
-      if (!this.nonInteractive) {
-        const { action } = await enquirer.prompt({
-          type: "select",
-          name: "action",
-          message: C.text(
-            `Port ${port} (${name}) is in use. What would you like to do?`,
-          ),
-          choices: [
-            {
-              name: "reassign",
-              message: `${C.success("●")} Use port ${altPort} instead`,
-            },
-            {
-              name: "skip",
-              message: `${C.muted("○")} Skip and continue (may fail)`,
-            },
-            { name: "abort", message: `${C.error("○")} Abort setup` },
-          ],
-          pointer: C.accent("›"),
-        });
-
-        if (action === "abort") {
-          throw new Error("Setup aborted due to port conflict");
-        }
-
-        if (action === "skip") {
-          continue;
-        }
-      }
-
-      // Update .env with new port
+      // Auto-reassign without prompting
       if (envContent.includes(`${env}=`)) {
         envContent = envContent.replace(
           new RegExp(`${env}=.*`),
@@ -841,7 +837,7 @@ ${C.primary("  ╚════════════════════�
       modified = true;
 
       console.log(
-        `  ${ICON.success}  ${C.success(`${name} port changed from ${port} to ${altPort}`)}`,
+        `  ${ICON.success}  ${C.success(`${name} auto-reassigned from port ${port} to ${altPort}`)}`,
       );
     }
 
@@ -849,13 +845,31 @@ ${C.primary("  ╚════════════════════�
       await fs.writeFile(envFile, envContent);
     }
 
-    return conflicts.length === 0 || modified;
+    return allResolved;
   }
 
   async step4StartServices() {
     this.displayStepHeader(4, "Starting Services", ICON.docker);
 
-    // Check for port conflicts before starting
+    // First, check if existing containers are running and stop them
+    const existingSpinner = ora({
+      text: C.text("Checking for existing containers..."),
+      color: "cyan",
+      spinner: "dots12",
+    }).start();
+
+    const hasExisting = await this.checkExistingContainers();
+    if (hasExisting) {
+      existingSpinner.text = C.text("Stopping existing containers...");
+      await this.stopExistingContainers();
+      existingSpinner.succeed(C.text("Stopped existing containers"));
+      // Wait a moment for ports to be released
+      await new Promise((r) => setTimeout(r, 2000));
+    } else {
+      existingSpinner.succeed(C.text("No existing containers running"));
+    }
+
+    // Check for port conflicts
     const portSpinner = ora({
       text: C.text("Checking for port conflicts..."),
       color: "cyan",

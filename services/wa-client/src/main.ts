@@ -18,7 +18,6 @@ import {
   config,
   logger,
   register,
-  metrics,
   assertEssentialConfig,
   assertControlPlaneToken,
   createRedisConnection,
@@ -265,7 +264,7 @@ async function main(): Promise<void> {
   });
 
   // Start HTTP server
-  const port = parseInt(process.env.WA_HTTP_PORT ?? "3001", 10);
+  const port = Number.parseInt(process.env.WA_HTTP_PORT ?? "3001", 10);
   await server.listen({ port, host: "0.0.0.0" });
   logger.info({ port }, "HTTP server started");
 
@@ -281,7 +280,9 @@ async function main(): Promise<void> {
 }
 
 // Run main
-main().catch((err) => {
+try {
+  await main();
+} catch (err) {
   logger.error({ err }, "Fatal error in main");
   process.exit(1);
-});
+}

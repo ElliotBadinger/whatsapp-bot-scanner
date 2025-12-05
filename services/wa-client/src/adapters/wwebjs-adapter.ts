@@ -15,8 +15,6 @@ import {
   Message,
   MessageMedia,
   Location,
-  Contact as WWebContact,
-  type Chat,
   type GroupChat,
 } from "whatsapp-web.js";
 import type { Logger } from "pino";
@@ -63,17 +61,17 @@ export interface WWebJSAdapterConfig extends AdapterConfig {
  */
 export class WWebJSAdapter implements WhatsAppAdapter {
   private client: Client | null = null;
-  private config: WWebJSAdapterConfig;
-  private logger: Logger;
+  private readonly config: WWebJSAdapterConfig;
+  private readonly logger: Logger;
   private _state: ConnectionState = "disconnected";
   private _botId: string | null = null;
 
   // Event handlers
-  private messageHandlers: MessageHandler[] = [];
-  private connectionHandlers: ConnectionHandler[] = [];
-  private disconnectHandlers: DisconnectHandler[] = [];
-  private qrCodeHandlers: QRCodeHandler[] = [];
-  private pairingCodeHandlers: PairingCodeHandler[] = [];
+  private readonly messageHandlers: MessageHandler[] = [];
+  private readonly connectionHandlers: ConnectionHandler[] = [];
+  private readonly disconnectHandlers: DisconnectHandler[] = [];
+  private readonly qrCodeHandlers: QRCodeHandler[] = [];
+  private readonly pairingCodeHandlers: PairingCodeHandler[] = [];
 
   // Auth store for RemoteAuth
   private authStore: RedisRemoteAuthStore | null = null;
@@ -545,7 +543,7 @@ export class WWebJSAdapter implements WhatsAppAdapter {
     }
 
     // Remove any non-numeric characters
-    const cleanNumber = phoneNumber.replace(/\D/g, "");
+    const cleanNumber = phoneNumber.replaceAll(/\D/g, "");
 
     try {
       // Access the internal Puppeteer page

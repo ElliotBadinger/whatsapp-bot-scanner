@@ -15,8 +15,6 @@ import makeWASocket, {
   downloadMediaMessage,
   generateForwardMessageContent,
   type WASocket,
-  type BaileysEventMap,
-  type ConnectionState as BaileysConnectionState,
   type proto as BaileysProto,
   type WAMessage as BaileysWAMessage,
   type WAPresence,
@@ -51,17 +49,17 @@ import {
  */
 export class BaileysAdapter implements WhatsAppAdapter {
   private socket: WASocket | null = null;
-  private config: AdapterConfig;
-  private logger: Logger;
+  private readonly config: AdapterConfig;
+  private readonly logger: Logger;
   private _state: ConnectionState = "disconnected";
   private _botId: string | null = null;
 
   // Event handlers
-  private messageHandlers: MessageHandler[] = [];
-  private connectionHandlers: ConnectionHandler[] = [];
-  private disconnectHandlers: DisconnectHandler[] = [];
-  private qrCodeHandlers: QRCodeHandler[] = [];
-  private pairingCodeHandlers: PairingCodeHandler[] = [];
+  private readonly messageHandlers: MessageHandler[] = [];
+  private readonly connectionHandlers: ConnectionHandler[] = [];
+  private readonly disconnectHandlers: DisconnectHandler[] = [];
+  private readonly qrCodeHandlers: QRCodeHandler[] = [];
+  private readonly pairingCodeHandlers: PairingCodeHandler[] = [];
 
   // Auth state management
   private saveCreds: (() => Promise<void>) | null = null;
@@ -232,7 +230,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
    */
   private convertMessage(msg: BaileysProto.IWebMessageInfo): WAMessage | null {
     const key = msg.key;
-    if (!key || !key.remoteJid || !key.id) return null;
+    if (!key?.remoteJid || !key.id) return null;
 
     const messageContent = msg.message;
     if (!messageContent) return null;
@@ -543,7 +541,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
     }
 
     // Remove any non-numeric characters
-    const cleanNumber = phoneNumber.replace(/\D/g, "");
+    const cleanNumber = phoneNumber.replaceAll(/\D/g, "");
 
     const code = await this.socket.requestPairingCode(cleanNumber);
 
@@ -689,7 +687,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
       },
     );
 
-    return buffer as Buffer;
+    return buffer;
   }
 
   /**
