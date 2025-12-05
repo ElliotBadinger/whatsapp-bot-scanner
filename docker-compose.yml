@@ -71,7 +71,8 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-      target: wa-client
+      # Use wa-client-baileys for Baileys (lightweight), wa-client for wwebjs (Puppeteer)
+      target: ${WA_BUILD_TARGET:-wa-client-baileys}
       network: host
     env_file: [.env]
     depends_on:
@@ -86,19 +87,20 @@ services:
         hard: 8192
     networks: [internal, public]
     ports:
-      - "3005:3005"
+      - "${WA_CLIENT_PORT:-3005}:3001"
     environment:
-      - PORT=3005
+      - WA_HTTP_PORT=3001
       - NODE_OPTIONS=--max-old-space-size=768
       - REDIS_URL=redis://redis:6379/0
+      - WA_LIBRARY=${WA_LIBRARY:-baileys}
     volumes:
       - wa_session:/app/services/wa-client/data:rw
       - ./storage:/app/storage:rw
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL","wget -qO- http://localhost:3005/healthz || exit 1"]
+      test: ["CMD-SHELL", "bun -e \"fetch('http://localhost:3001/healthz').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))\""]
       interval: 30s
-      timeout: 5s
+      timeout: 10s
       retries: 3
       start_period: 60s
     security_opt:
@@ -143,9 +145,9 @@ services:
       - ./storage:/app/storage:rw
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL","wget -qO- http://localhost:3001/healthz || exit 1"]
+      test: ["CMD-SHELL", "bun -e \"fetch('http://localhost:3001/healthz').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))\""]
       interval: 30s
-      timeout: 5s
+      timeout: 10s
       retries: 3
       start_period: 30s
     security_opt:
@@ -184,10 +186,11 @@ services:
       - ./storage:/app/storage:rw
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL","wget --header=\"Authorization: Bearer ${CONTROL_PLANE_API_TOKEN}\" -qO- http://127.0.0.1:8080/healthz || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 10
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:8080/healthz',{headers:{Authorization:'Bearer '+(process.env.CONTROL_PLANE_API_TOKEN||'')}}).then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -315,7 +318,7 @@ services:
     environment:
       - UPTIME_KUMA_PORT=3001
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3001 || exit 1"]
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3001').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))\""]
       interval: 30s
       timeout: 10s
       retries: 5

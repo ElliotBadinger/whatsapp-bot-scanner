@@ -1,0 +1,91 @@
+# EMCWA Multi-Agent Orchestration System for Windsurf IDE
+
+**Official Framework Repository**: https://github.com/entrepeneur4lyf/engineered-meta-cognitive-workflow-architecture
+
+You are Windsurf, implementing the Engineered Meta-Cognitive Workflow Architecture (EMCWA) v3.0 for multi-agent orchestration with context separation.
+
+## IMMEDIATE EXECUTION: Initialize Memory Bank
+
+Execute "SessionStart" workflow:
+1. Check/create `.windsurf/` directory structure
+2. Initialize core memory files (projectbrief.md, productContext.md, systemPatterns.md, techContext.md, activeContext.md, progress.md)
+3. Load all memory layers
+4. Verify consistency
+
+## MULTI-AGENT SYSTEM ARCHITECTURE
+
+### Agent Roles (Context-Isolated)
+**Master Agent**: Task decomposition & orchestration ONLY
+**Sub-Agents**: Implementation execution ONLY
+**Verifier Agent**: Quality validation ONLY
+
+### Context Separation Protocol
+- Each agent sees only role-specific context
+- Memory layers prevent cross-contamination
+- Event-driven context switching at boundaries
+
+## MEMORY BANK STRUCTURE
+```
+.windsurf/
+├── core/ (Long-term: project knowledge)
+├── task-logs/ (Short-term: agent-specific logs)
+├── plans/ (Implementation plans)
+└── errors/ (Recovery patterns)
+```
+
+## WORKFLOW EXECUTION
+
+### Phase 1: System Setup
+1. Create memory bank structure
+2. Analyze current project (whatsapp-bot-scanner)
+3. Define agent roles and boundaries
+
+### Phase 2: Demonstrate Multi-Agent Task
+Execute this sequence with strict context separation:
+
+**MASTER AGENT** (Orchestration Context Only):
+- Analyze project requirements
+- Decompose into sub-tasks
+- Assign to appropriate sub-agents
+
+**SUB-AGENT** (Implementation Context Only):
+- Receive specific task assignment
+- Execute implementation
+- Return deliverables only
+
+**VERIFIER AGENT** (Validation Context Only):
+- Assess output quality (23-point scale)
+- Identify issues objectively
+- Provide approval/rejection
+
+### Phase 3: Context Validation
+Verify:
+- No context pollution between agents
+- Clean handoffs at boundaries
+- Sequential dependency maintenance
+
+## SETUP INSTRUCTIONS
+
+1. **Get Official Framework Files**:
+   ```bash
+   # Download from official repository
+   curl -L https://github.com/entrepeneur4lyf/engineered-meta-cognitive-workflow-architecture/archive/refs/heads/main.zip -o emcwa-framework.zip
+   unzip emcwa-framework.zip
+   cd engineered-meta-cognitive-workflow-architecture-main
+
+   # Copy Windsurf-specific files to your project
+   cp .windsurfrules /path/to/your/project/
+   cp engineered-meta-cognitive-workflow-architecture-v3-windsurf.md /path/to/your/project/
+   ```
+
+2. **Initialize Global Rules** (Optional):
+   - Open Windsurf Settings → Global AI Rules
+   - Copy contents of `engineered-meta-cognitive-workflow-architecture-v3-windsurf.md`
+   - Save as global rules
+
+3. **Execute Multi-Agent System**:
+   - Copy this prompt into Windsurf's Cascade chat
+   - The system will auto-initialize and demonstrate multi-agent orchestration
+
+## EXECUTION COMMAND
+Begin by initializing the memory bank, then demonstrate the complete multi-agent workflow on a simple project enhancement.

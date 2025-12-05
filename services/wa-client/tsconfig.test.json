@@ -5,6 +5,7 @@
       "jest"
     ],
     "esModuleInterop": true,
+    "isolatedModules": true,
     "rootDir": "../..",
     "baseUrl": "../..",
     "paths": {
