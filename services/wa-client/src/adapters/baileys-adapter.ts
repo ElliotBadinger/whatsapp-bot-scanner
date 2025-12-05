@@ -12,11 +12,14 @@ import makeWASocket, {
   makeCacheableSignalKeyStore,
   isJidGroup,
   jidNormalizedUser,
+  downloadMediaMessage,
+  generateForwardMessageContent,
   type WASocket,
   type BaileysEventMap,
   type ConnectionState as BaileysConnectionState,
   type proto as BaileysProto,
   type WAMessage as BaileysWAMessage,
+  type WAPresence,
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import type { Logger } from 'pino';
@@ -36,6 +39,7 @@ import {
   type DisconnectHandler,
   type QRCodeHandler,
   type PairingCodeHandler,
+  type PresenceType,
 } from './types';
 import { useRedisAuthState, sessionExists } from '../auth/baileys-auth-store';
 
@@ -357,6 +361,30 @@ export class BaileysAdapter implements WhatsAppAdapter {
           timestamp: Date.now(),
           success: true,
         };
+      case 'sticker':
+        messageContent = {
+          sticker: typeof content.data === 'string' ? Buffer.from(content.data, 'base64') : content.data,
+          mimetype: content.mimetype ?? 'image/webp',
+        };
+        break;
+      case 'location':
+        messageContent = {
+          location: {
+            degreesLatitude: content.latitude,
+            degreesLongitude: content.longitude,
+            name: content.name,
+            address: content.address,
+          },
+        };
+        break;
+      case 'contact':
+        messageContent = {
+          contacts: {
+            displayName: content.displayName,
+            contacts: [{ vcard: content.vcard }],
+          },
+        };
+        break;
       default:
         throw new Error(`Unsupported content type: ${(content as MessageContent).type}`);
     }
@@ -511,6 +539,281 @@ export class BaileysAdapter implements WhatsAppAdapter {
 
   onPairingCode(handler: PairingCodeHandler): void {
     this.pairingCodeHandlers.push(handler);
+  }
+
+  // ============================================
+  // Extended Features Implementation
+  // ============================================
+
+  /**
+   * Get profile picture URL for a contact or group
+   */
+  async getProfilePicUrl(jid: string): Promise<string | null> {
+    if (!this.socket) {
+      throw new Error('Socket not connected');
+    }
+
+    try {
+      const url = await this.socket.profilePictureUrl(jid, 'image');
+      return url ?? null;
+    } catch (err) {
+      this.logger.debug({ err, jid }, 'Failed to get profile picture URL');
+      return null;
+    }
+  }
+
+  /**
+   * Send presence update (typing, online, etc.)
+   */
+  async sendPresenceUpdate(type: PresenceType, jid?: string): Promise<void> {
+    if (!this.socket) {
+      throw new Error('Socket not connected');
+    }
+
+    // Map our presence types to Baileys WAPresence
+    const presenceMap: Record<PresenceType, WAPresence> = {
+      available: 'available',
+      unavailable: 'unavailable',
+      composing: 'composing',
+      recording: 'recording',
+      paused: 'paused',
+    };
+
+    await this.socket.sendPresenceUpdate(presenceMap[type], jid);
+  }
+
+  /**
+   * Mark messages as read
+   */
+  async sendSeen(jid: string, messageIds?: string[]): Promise<void> {
+    if (!this.socket) {
+      throw new Error('Socket not connected');
+    }
+
+    if (messageIds && messageIds.length > 0) {
+      const keys = messageIds.map((id) => ({
+        remoteJid: jid,
+        id,
+        fromMe: false,
+      }));
+      await this.socket.readMessages(keys);
+    } else {
+      // Mark all messages in chat as read
+      await this.socket.readMessages([{ remoteJid: jid, id: '', fromMe: false }]);
+    }
+  }
+
+  /**
+   * Forward a message to another chat
+   */
+  async forwardMessage(jid: string, message: WAMessage): Promise<SendResult> {
+    if (!this.socket) {
+      throw new Error('Socket not connected');
+    }
+
+    const rawMsg = message.raw as BaileysWAMessage;
+    if (!rawMsg.message || !rawMsg.key) {
+      throw new Error('Cannot forward message without content');
+    }
+
+    const forwardContent = generateForwardMessageContent(rawMsg, false);
+    const result = await this.socket.sendMessage(jid, forwardContent as Parameters<WASocket['sendMessage']>[1]);
+
+    return {
+      messageId: result?.key?.id ?? '',
+      timestamp: Date.now(),
+      success: !!result?.key?.id,
+    };
+  }
+
+  /**
+   * Download media from a message
+   */
+  async downloadMedia(message: WAMessage): Promise<Buffer> {
+    if (!this.socket) {
+      throw new Error('Socket not connected');
+    }
+
+    const rawMsg = message.raw as BaileysWAMessage;
+    if (!rawMsg.message || !rawMsg.key) {
+      throw new Error('Message has no content');
+    }
+
+    const buffer = await downloadMediaMessage(
+      rawMsg,
+      'buffer',
+      {},
+      {
+        logger: this.logger,
+        reuploadRequest: this.socket.updateMediaMessage,
+      }
+    );
+
+    return buffer as Buffer;
+  }
+
+  /**
+   * Create a new group
+   */
+  async createGroup(name: string, participants: string[]): Promise<GroupMetadata> {
+    if (!this.socket) {
+      throw new Error('Socket not connected');
+    }
+
+    const result = await this.socket.groupCreate(name, participants);
+    return {
+      id: result.id,
+      name: result.subject,
+      description: result.desc ?? undefined,
+      owner: result.owner ?? undefined,
+      participants: result.participants.map((p) => ({
+        id: p.id,
+        isAdmin: p.admin === 'admin' || p.admin === 'superadmin',
+        isSuperAdmin: p.admin === 'superadmin',
+      })),
+      createdAt: result.creation ? result.creation * 1000 : undefined,
+    };
+  }
+
+  /**
+   * Add participants to a group
+   */
+  async addParticipants(groupId: string, participants: string[]): Promise<void> {
+    if (!this.socket) {
+      throw new Error('Socket not connected');
+    }
+
+    await this.socket.groupParticipantsUpdate(groupId, participants, 'add');
+  }
+
+  /**
+   * Remove participants from a group
+   */
+  async removeParticipants(groupId: string, participants: string[]): Promise<void> {
+    if (!this.socket) {
+      throw new Error('Socket not connected');
+    }
+
+    await this.socket.groupParticipantsUpdate(groupId, participants, 'remove');
+  }
+
+  /**
+   * Promote participants to admin in a group
+   */
+  async promoteParticipants(groupId: string, participants: string[]): Promise<void> {
+    if (!this.socket) {
+      throw new Error('Socket not connected');
+    }
+
+    await this.socket.groupParticipantsUpdate(groupId, participants, 'promote');
+  }
+
+  /**
+   * Demote admins in a group
+   */
+  async demoteParticipants(groupId: string, participants: string[]): Promise<void> {
+    if (!this.socket) {
+      throw new Error('Socket not connected');
+    }
+
+    await this.socket.groupParticipantsUpdate(groupId, participants, 'demote');
+  }
+
+  /**
+   * Update group subject/name
+   */
+  async setGroupSubject(groupId: string, subject: string): Promise<void> {
+    if (!this.socket) {
+      throw new Error('Socket not connected');
+    }
+
+    await this.socket.groupUpdateSubject(groupId, subject);
+  }
+
+  /**
+   * Update group description
+   */
+  async setGroupDescription(groupId: string, description: string): Promise<void> {
+    if (!this.socket) {
+      throw new Error('Socket not connected');
+    }
+
+    await this.socket.groupUpdateDescription(groupId, description);
+  }
+
+  /**
+   * Leave a group
+   */
+  async leaveGroup(groupId: string): Promise<void> {
+    if (!this.socket) {
+      throw new Error('Socket not connected');
+    }
+
+    await this.socket.groupLeave(groupId);
+  }
+
+  /**
+   * Get group invite code
+   */
+  async getInviteCode(groupId: string): Promise<string> {
+    if (!this.socket) {
+      throw new Error('Socket not connected');
+    }
+
+    const code = await this.socket.groupInviteCode(groupId);
+    if (!code) {
+      throw new Error('Failed to get invite code');
+    }
+    return code;
+  }
+
+  /**
+   * Accept a group invite
+   */
+  async acceptInvite(inviteCode: string): Promise<string> {
+    if (!this.socket) {
+      throw new Error('Socket not connected');
+    }
+
+    const groupId = await this.socket.groupAcceptInvite(inviteCode);
+    if (!groupId) {
+      throw new Error('Failed to accept invite');
+    }
+    return groupId;
+  }
+
+  /**
+   * Block a contact
+   */
+  async blockContact(jid: string): Promise<void> {
+    if (!this.socket) {
+      throw new Error('Socket not connected');
+    }
+
+    await this.socket.updateBlockStatus(jid, 'block');
+  }
+
+  /**
+   * Unblock a contact
+   */
+  async unblockContact(jid: string): Promise<void> {
+    if (!this.socket) {
+      throw new Error('Socket not connected');
+    }
+
+    await this.socket.updateBlockStatus(jid, 'unblock');
+  }
+
+  /**
+   * Get list of blocked contacts
+   */
+  async getBlockedContacts(): Promise<string[]> {
+    if (!this.socket) {
+      throw new Error('Socket not connected');
+    }
+
+    const blocklist = await this.socket.fetchBlocklist();
+    return blocklist.filter((jid): jid is string => jid !== undefined);
   }
 }
 

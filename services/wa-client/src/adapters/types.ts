@@ -73,7 +73,27 @@ export interface ReactionContent {
   messageId: string;
 }
 
-export type MessageContent = TextContent | MediaContent | ReactionContent;
+export interface StickerContent {
+  type: 'sticker';
+  data: Buffer | string;
+  mimetype?: string;
+}
+
+export interface LocationContent {
+  type: 'location';
+  latitude: number;
+  longitude: number;
+  name?: string;
+  address?: string;
+}
+
+export interface ContactContent {
+  type: 'contact';
+  vcard: string;
+  displayName: string;
+}
+
+export type MessageContent = TextContent | MediaContent | ReactionContent | StickerContent | LocationContent | ContactContent;
 
 /**
  * Options for sending messages
@@ -162,7 +182,50 @@ export interface GroupMetadata {
   }>;
   /** Creation timestamp */
   createdAt?: number;
+  /** Invite code (if available) */
+  inviteCode?: string;
 }
+
+/**
+ * Contact information
+ */
+export interface Contact {
+  /** Contact JID */
+  id: string;
+  /** Contact name (push name) */
+  name?: string;
+  /** Contact short name */
+  shortName?: string;
+  /** Whether this is a business account */
+  isBusiness?: boolean;
+  /** Whether this contact is blocked */
+  isBlocked?: boolean;
+}
+
+/**
+ * Chat information
+ */
+export interface Chat {
+  /** Chat JID */
+  id: string;
+  /** Chat name */
+  name: string;
+  /** Whether this is a group chat */
+  isGroup: boolean;
+  /** Unread message count */
+  unreadCount?: number;
+  /** Last message timestamp */
+  lastMessageTimestamp?: number;
+  /** Whether chat is archived */
+  isArchived?: boolean;
+  /** Whether chat is muted */
+  isMuted?: boolean;
+}
+
+/**
+ * Presence/typing status types
+ */
+export type PresenceType = 'available' | 'unavailable' | 'composing' | 'recording' | 'paused';
 
 /**
  * WhatsApp Adapter Interface
@@ -257,6 +320,127 @@ export interface WhatsAppAdapter {
    * Register a handler for pairing code events
    */
   onPairingCode(handler: PairingCodeHandler): void;
+
+  // ============================================
+  // Extended Features (Optional - may throw if not supported)
+  // ============================================
+
+  /**
+   * Get profile picture URL for a contact or group
+   * @param jid - The JID to get profile picture for
+   */
+  getProfilePicUrl?(jid: string): Promise<string | null>;
+
+  /**
+   * Send presence update (typing, online, etc.)
+   * @param type - The presence type
+   * @param jid - Optional JID to send presence to (for typing indicators)
+   */
+  sendPresenceUpdate?(type: PresenceType, jid?: string): Promise<void>;
+
+  /**
+   * Mark messages as read
+   * @param jid - The chat JID
+   * @param messageIds - Optional specific message IDs to mark as read
+   */
+  sendSeen?(jid: string, messageIds?: string[]): Promise<void>;
+
+  /**
+   * Forward a message to another chat
+   * @param jid - The destination chat JID
+   * @param message - The message to forward
+   */
+  forwardMessage?(jid: string, message: WAMessage): Promise<SendResult>;
+
+  /**
+   * Download media from a message
+   * @param message - The message containing media
+   */
+  downloadMedia?(message: WAMessage): Promise<Buffer>;
+
+  /**
+   * Create a new group
+   * @param name - Group name
+   * @param participants - Array of participant JIDs
+   */
+  createGroup?(name: string, participants: string[]): Promise<GroupMetadata>;
+
+  /**
+   * Add participants to a group
+   * @param groupId - The group JID
+   * @param participants - Array of participant JIDs to add
+   */
+  addParticipants?(groupId: string, participants: string[]): Promise<void>;
+
+  /**
+   * Remove participants from a group
+   * @param groupId - The group JID
+   * @param participants - Array of participant JIDs to remove
+   */
+  removeParticipants?(groupId: string, participants: string[]): Promise<void>;
+
+  /**
+   * Promote participants to admin in a group
+   * @param groupId - The group JID
+   * @param participants - Array of participant JIDs to promote
+   */
+  promoteParticipants?(groupId: string, participants: string[]): Promise<void>;
+
+  /**
+   * Demote admins in a group
+   * @param groupId - The group JID
+   * @param participants - Array of participant JIDs to demote
+   */
+  demoteParticipants?(groupId: string, participants: string[]): Promise<void>;
+
+  /**
+   * Update group subject/name
+   * @param groupId - The group JID
+   * @param subject - New group name
+   */
+  setGroupSubject?(groupId: string, subject: string): Promise<void>;
+
+  /**
+   * Update group description
+   * @param groupId - The group JID
+   * @param description - New group description
+   */
+  setGroupDescription?(groupId: string, description: string): Promise<void>;
+
+  /**
+   * Leave a group
+   * @param groupId - The group JID
+   */
+  leaveGroup?(groupId: string): Promise<void>;
+
+  /**
+   * Get group invite code
+   * @param groupId - The group JID
+   */
+  getInviteCode?(groupId: string): Promise<string>;
+
+  /**
+   * Accept a group invite
+   * @param inviteCode - The invite code
+   */
+  acceptInvite?(inviteCode: string): Promise<string>;
+
+  /**
+   * Block a contact
+   * @param jid - The contact JID to block
+   */
+  blockContact?(jid: string): Promise<void>;
+
+  /**
+   * Unblock a contact
+   * @param jid - The contact JID to unblock
+   */
+  unblockContact?(jid: string): Promise<void>;
+
+  /**
+   * Get list of blocked contacts
+   */
+  getBlockedContacts?(): Promise<string[]>;
 }
 
 /**

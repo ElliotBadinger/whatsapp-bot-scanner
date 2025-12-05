@@ -14,6 +14,8 @@ import {
   RemoteAuth,
   Message,
   MessageMedia,
+  Location,
+  Contact as WWebContact,
   type Chat,
   type GroupChat,
 } from 'whatsapp-web.js';
@@ -35,6 +37,7 @@ import {
   type DisconnectHandler,
   type QRCodeHandler,
   type PairingCodeHandler,
+  type PresenceType,
 } from './types';
 import { createRemoteAuthStore, type RedisRemoteAuthStore } from '../remoteAuthStore';
 import { loadEncryptionMaterials } from '../crypto/dataKeyProvider';
@@ -378,6 +381,38 @@ export class WWebJSAdapter implements WhatsAppAdapter {
         };
       }
 
+      case 'sticker': {
+        const stickerMedia = new MessageMedia(
+          content.mimetype ?? 'image/webp',
+          typeof content.data === 'string' ? content.data : content.data.toString('base64')
+        );
+        result = await this.client.sendMessage(jid, stickerMedia, {
+          sendMediaAsSticker: true,
+          quotedMessageId: options?.quotedMessageId,
+        });
+        break;
+      }
+
+      case 'location': {
+        const location = new Location(content.latitude, content.longitude, {
+          name: content.name,
+          address: content.address,
+        });
+        result = await this.client.sendMessage(jid, location, {
+          quotedMessageId: options?.quotedMessageId,
+        });
+        break;
+      }
+
+      case 'contact': {
+        // For wwebjs, we need to create a Contact object from vCard
+        // This is a simplified implementation
+        result = await this.client.sendMessage(jid, content.vcard, {
+          quotedMessageId: options?.quotedMessageId,
+        });
+        break;
+      }
+
       default:
         throw new Error(`Unsupported content type: ${(content as MessageContent).type}`);
     }
@@ -533,6 +568,306 @@ export class WWebJSAdapter implements WhatsAppAdapter {
 
   onPairingCode(handler: PairingCodeHandler): void {
     this.pairingCodeHandlers.push(handler);
+  }
+
+  // ============================================
+  // Extended Features Implementation
+  // ============================================
+
+  /**
+   * Get profile picture URL for a contact or group
+   */
+  async getProfilePicUrl(jid: string): Promise<string | null> {
+    if (!this.client) {
+      throw new Error('Client not connected');
+    }
+
+    try {
+      const url = await this.client.getProfilePicUrl(jid);
+      return url ?? null;
+    } catch (err) {
+      this.logger.debug({ err, jid }, 'Failed to get profile picture URL');
+      return null;
+    }
+  }
+
+  /**
+   * Send presence update (typing, online, etc.)
+   */
+  async sendPresenceUpdate(type: PresenceType, jid?: string): Promise<void> {
+    if (!this.client) {
+      throw new Error('Client not connected');
+    }
+
+    switch (type) {
+      case 'available':
+        await this.client.sendPresenceAvailable();
+        break;
+      case 'unavailable':
+        await this.client.sendPresenceUnavailable();
+        break;
+      case 'composing':
+      case 'recording':
+      case 'paused':
+        // wwebjs doesn't have direct typing indicator support at client level
+        // These would need to be implemented via chat.sendStateTyping()
+        if (jid) {
+          const chat = await this.client.getChatById(jid);
+          if (type === 'composing') {
+            await chat.sendStateTyping();
+          } else if (type === 'recording') {
+            await chat.sendStateRecording();
+          } else {
+            await chat.clearState();
+          }
+        }
+        break;
+    }
+  }
+
+  /**
+   * Mark messages as read
+   */
+  async sendSeen(jid: string): Promise<void> {
+    if (!this.client) {
+      throw new Error('Client not connected');
+    }
+
+    await this.client.sendSeen(jid);
+  }
+
+  /**
+   * Forward a message to another chat
+   */
+  async forwardMessage(jid: string, message: WAMessage): Promise<SendResult> {
+    if (!this.client) {
+      throw new Error('Client not connected');
+    }
+
+    const msg = message.raw as Message;
+    const result = await msg.forward(jid) as Message | undefined;
+
+    return {
+      messageId: result?.id?._serialized ?? `forward-${Date.now()}`,
+      timestamp: Date.now(),
+      success: true,
+    };
+  }
+
+  /**
+   * Download media from a message
+   */
+  async downloadMedia(message: WAMessage): Promise<Buffer> {
+    const msg = message.raw as Message;
+    if (!msg.hasMedia) {
+      throw new Error('Message has no media');
+    }
+
+    const media = await msg.downloadMedia();
+    if (!media) {
+      throw new Error('Failed to download media');
+    }
+
+    return Buffer.from(media.data, 'base64');
+  }
+
+  /**
+   * Create a new group
+   */
+  async createGroup(name: string, participants: string[]): Promise<GroupMetadata> {
+    if (!this.client) {
+      throw new Error('Client not connected');
+    }
+
+    const result = await this.client.createGroup(name, participants);
+    if (typeof result === 'string') {
+      throw new Error(result);
+    }
+
+    // Fetch the full group metadata
+    const metadata = await this.getGroupMetadata(result.gid._serialized);
+    if (!metadata) {
+      throw new Error('Failed to get created group metadata');
+    }
+
+    return metadata;
+  }
+
+  /**
+   * Add participants to a group
+   */
+  async addParticipants(groupId: string, participants: string[]): Promise<void> {
+    if (!this.client) {
+      throw new Error('Client not connected');
+    }
+
+    const chat = await this.client.getChatById(groupId) as GroupChat;
+    if (!chat.isGroup) {
+      throw new Error('Not a group chat');
+    }
+
+    await chat.addParticipants(participants);
+  }
+
+  /**
+   * Remove participants from a group
+   */
+  async removeParticipants(groupId: string, participants: string[]): Promise<void> {
+    if (!this.client) {
+      throw new Error('Client not connected');
+    }
+
+    const chat = await this.client.getChatById(groupId) as GroupChat;
+    if (!chat.isGroup) {
+      throw new Error('Not a group chat');
+    }
+
+    await chat.removeParticipants(participants);
+  }
+
+  /**
+   * Promote participants to admin in a group
+   */
+  async promoteParticipants(groupId: string, participants: string[]): Promise<void> {
+    if (!this.client) {
+      throw new Error('Client not connected');
+    }
+
+    const chat = await this.client.getChatById(groupId) as GroupChat;
+    if (!chat.isGroup) {
+      throw new Error('Not a group chat');
+    }
+
+    await chat.promoteParticipants(participants);
+  }
+
+  /**
+   * Demote admins in a group
+   */
+  async demoteParticipants(groupId: string, participants: string[]): Promise<void> {
+    if (!this.client) {
+      throw new Error('Client not connected');
+    }
+
+    const chat = await this.client.getChatById(groupId) as GroupChat;
+    if (!chat.isGroup) {
+      throw new Error('Not a group chat');
+    }
+
+    await chat.demoteParticipants(participants);
+  }
+
+  /**
+   * Update group subject/name
+   */
+  async setGroupSubject(groupId: string, subject: string): Promise<void> {
+    if (!this.client) {
+      throw new Error('Client not connected');
+    }
+
+    const chat = await this.client.getChatById(groupId) as GroupChat;
+    if (!chat.isGroup) {
+      throw new Error('Not a group chat');
+    }
+
+    await chat.setSubject(subject);
+  }
+
+  /**
+   * Update group description
+   */
+  async setGroupDescription(groupId: string, description: string): Promise<void> {
+    if (!this.client) {
+      throw new Error('Client not connected');
+    }
+
+    const chat = await this.client.getChatById(groupId) as GroupChat;
+    if (!chat.isGroup) {
+      throw new Error('Not a group chat');
+    }
+
+    await chat.setDescription(description);
+  }
+
+  /**
+   * Leave a group
+   */
+  async leaveGroup(groupId: string): Promise<void> {
+    if (!this.client) {
+      throw new Error('Client not connected');
+    }
+
+    const chat = await this.client.getChatById(groupId) as GroupChat;
+    if (!chat.isGroup) {
+      throw new Error('Not a group chat');
+    }
+
+    await chat.leave();
+  }
+
+  /**
+   * Get group invite code
+   */
+  async getInviteCode(groupId: string): Promise<string> {
+    if (!this.client) {
+      throw new Error('Client not connected');
+    }
+
+    const chat = await this.client.getChatById(groupId) as GroupChat;
+    if (!chat.isGroup) {
+      throw new Error('Not a group chat');
+    }
+
+    const code = await chat.getInviteCode();
+    return code;
+  }
+
+  /**
+   * Accept a group invite
+   */
+  async acceptInvite(inviteCode: string): Promise<string> {
+    if (!this.client) {
+      throw new Error('Client not connected');
+    }
+
+    const groupId = await this.client.acceptInvite(inviteCode);
+    return groupId;
+  }
+
+  /**
+   * Block a contact
+   */
+  async blockContact(jid: string): Promise<void> {
+    if (!this.client) {
+      throw new Error('Client not connected');
+    }
+
+    const contact = await this.client.getContactById(jid);
+    await contact.block();
+  }
+
+  /**
+   * Unblock a contact
+   */
+  async unblockContact(jid: string): Promise<void> {
+    if (!this.client) {
+      throw new Error('Client not connected');
+    }
+
+    const contact = await this.client.getContactById(jid);
+    await contact.unblock();
+  }
+
+  /**
+   * Get list of blocked contacts
+   */
+  async getBlockedContacts(): Promise<string[]> {
+    if (!this.client) {
+      throw new Error('Client not connected');
+    }
+
+    const blocked = await this.client.getBlockedContacts();
+    return blocked.map((c) => c.id._serialized);
   }
 }
 
