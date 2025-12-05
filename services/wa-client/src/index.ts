@@ -930,7 +930,31 @@ async function main() {
   await refreshConsentGauge();
 
   const authResolution = await resolveAuthStrategy(redis);
-  const clientOptions: ClientOptions = {
+  
+  // Initialize phone numbers for Remote Auth (needed before building clientOptions)
+  const remotePhoneNumbers = config.wa.remoteAuth.phoneNumbers.length > 0
+    ? config.wa.remoteAuth.phoneNumbers
+    : (config.wa.remoteAuth.phoneNumber ? [config.wa.remoteAuth.phoneNumber] : []);
+
+  remotePhone = remotePhoneNumbers[0]; // Keep backwards compatibility for single phone variable
+
+  let remoteSessionActive = authResolution.remote?.sessionExists ?? false;
+  
+  // Determine if we should use phone-number pairing mode (suppress QR codes)
+  // This is true when phone numbers are configured and no session exists
+  const shouldUsePhonePairingMode = Boolean(
+    authResolution.remote &&
+    remotePhoneNumbers.length > 0 &&
+    !remoteSessionActive
+  );
+  
+  // Auto-start pairing only if explicitly enabled
+  const shouldAutoStartPairing = shouldUsePhonePairingMode && config.wa.remoteAuth.autoPair;
+
+  // Build client options with optional phone pairing configuration
+  // When pairWithPhoneNumber is set, the library properly exposes onCodeReceivedEvent
+  // and handles the pairing flow internally, ensuring the ready event fires correctly
+  const clientOptions: ClientOptions & { pairWithPhoneNumber?: { phoneNumber: string; showNotification?: boolean } } = {
     puppeteer: {
       headless: config.wa.headless,
       args: config.wa.puppeteerArgs,
@@ -949,12 +973,15 @@ async function main() {
     authStrategy: authResolution.strategy,
   };
 
-  // Initialize phone numbers for Remote Auth
-  const remotePhoneNumbers = config.wa.remoteAuth.phoneNumbers.length > 0
-    ? config.wa.remoteAuth.phoneNumbers
-    : (config.wa.remoteAuth.phoneNumber ? [config.wa.remoteAuth.phoneNumber] : []);
-
-  remotePhone = remotePhoneNumbers[0]; // Keep backwards compatibility for single phone variable
+  // Configure phone pairing mode if we have a phone number and no existing session
+  // This tells the library to use phone pairing instead of QR code authentication
+  if (shouldUsePhonePairingMode && remotePhone) {
+    clientOptions.pairWithPhoneNumber = {
+      phoneNumber: remotePhone,
+      showNotification: true,
+    };
+    logger.info({ phoneNumber: maskPhone(remotePhone) }, 'Configured library for phone-number pairing mode');
+  }
 
   if (remotePhoneNumbers.length > 0) {
     logger.info(
@@ -966,19 +993,6 @@ async function main() {
       'Remote Auth phone numbers configured'
     );
   }
-
-  let remoteSessionActive = authResolution.remote?.sessionExists ?? false;
-  
-  // Determine if we should use phone-number pairing mode (suppress QR codes)
-  // This is true when phone numbers are configured and no session exists
-  const shouldUsePhonePairingMode = Boolean(
-    authResolution.remote &&
-    remotePhoneNumbers.length > 0 &&
-    !remoteSessionActive
-  );
-  
-  // Auto-start pairing only if explicitly enabled
-  const shouldAutoStartPairing = shouldUsePhonePairingMode && config.wa.remoteAuth.autoPair;
   
   if (shouldUsePhonePairingMode) {
     if (config.wa.remoteAuth.autoPair) {
