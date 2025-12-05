@@ -108,10 +108,15 @@ async function main(): Promise<void> {
     logger.info("QR code received - scan with WhatsApp to authenticate");
     // Cache QR for HTTP endpoint
     cachedQr = qr;
-    // Print QR to terminal if configured
+    // Print QR to terminal if configured - use small format for better fit
     if (config.wa.remoteAuth.disableQrFallback !== true) {
       import("qrcode-terminal").then((qrTerminal) => {
+        console.log("\n  ╔════════════════════════════════════╗");
+        console.log("  ║     📱 SCAN QR CODE WITH WHATSAPP  ║");
+        console.log("  ╚════════════════════════════════════╝\n");
+        // small: true generates a compact QR that fits standard terminals
         qrTerminal.generate(qr, { small: true });
+        console.log("\n  Open WhatsApp → Settings → Linked Devices → Link\n");
       });
     }
   });

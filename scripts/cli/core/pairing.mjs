@@ -4,6 +4,9 @@ import { UserInterface } from '../ui/prompts.mjs';
 import { NotificationManager } from '../ui/notifications.mjs';
 import { setTimeout } from 'node:timers/promises';
 import { PairingError, GlobalErrorHandler, ERROR_SEVERITY, TimeoutError, RetryError } from './errors.mjs';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export class PairingManager {
   constructor(dockerOrchestrator, ui, notifications) {
@@ -320,27 +323,62 @@ export class PairingManager {
     this.startCountdownTimer();
   }
 
-  async requestManualPairing() {
+  /**
+   * Get the WA client port from env files
+   */
+  getWaClientPort() {
+    try {
+      const __dirname = dirname(fileURLToPath(import.meta.url));
+      const rootDir = join(__dirname, '..', '..', '..');
+      
+      // Try .env.local first, then .env
+      let port = '3005';
+      try {
+        const envLocal = readFileSync(join(rootDir, '.env.local'), 'utf-8');
+        const localMatch = envLocal.match(/WA_CLIENT_PORT=["']?(\d+)["']?/);
+        if (localMatch) port = localMatch[1];
+      } catch {}
+      
+      try {
+        const env = readFileSync(join(rootDir, '.env'), 'utf-8');
+        const match = env.match(/WA_CLIENT_PORT=(\d+)/);
+        if (match && port === '3005') port = match[1];
+      } catch {}
+      
+      return port;
+    } catch {
+      return '3006'; // Default fallback
+    }
+  }
+
+  async requestManualPairing(options = {}) {
+    const { showQr = false } = options;
+    
     // Check if we can reach the service first
     try {
-      const composeInfo = await this.dockerOrchestrator.getComposeInfo();
-      // We assume port 3005 is mapped as per docker-compose.yml
-      const apiUrl = 'http://localhost:3005/pair';
+      const waClientPort = this.getWaClientPort();
+      const apiUrl = `http://localhost:${waClientPort}/${showQr ? 'qr' : 'pair'}`;
 
       this.ui.progress('Triggering pairing request...');
 
       const response = await fetch(apiUrl, {
-        method: 'POST',
+        method: showQr ? 'GET' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
+        ...(showQr ? {} : { body: JSON.stringify({}) })
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        this.ui.success('Pairing request initiated successfully!');
-        if (data.code) {
+        if (showQr && data.qr) {
+          this.ui.success('QR code retrieved!');
+          await this.displayQrCode(data.qr);
+        } else if (data.code) {
+          this.ui.success('Pairing code received!');
           this.handlePairingCode(data.code, data.phone);
+          await this.startAutoRefresh();
+        } else if (data.success && data.error?.includes('Already connected')) {
+          this.ui.success('WhatsApp is already connected!');
         } else {
           this.ui.info('Waiting for code generation...');
         }
@@ -359,6 +397,128 @@ export class PairingManager {
       this.ui.error(`Failed to connect to wa-client service: ${error.message}`);
       this.ui.info('Ensure the service is running with: docker compose up -d wa-client');
     }
+  }
+
+  /**
+   * Display QR code in terminal with proper scaling
+   */
+  async displayQrCode(qrData) {
+    try {
+      const qrTerminal = await import('qrcode-terminal');
+      
+      console.log('\n');
+      console.log('  ╔════════════════════════════════════════════════╗');
+      console.log('  ║         📱 SCAN THIS QR CODE                   ║');
+      console.log('  ║   Open WhatsApp → Linked Devices → Link       ║');
+      console.log('  ╚════════════════════════════════════════════════╝');
+      console.log('\n');
+      
+      // Use small: true for compact display that fits most terminals
+      qrTerminal.default.generate(qrData, { small: true }, (qrAscii) => {
+        // Center the QR code
+        const lines = qrAscii.split('\n');
+        lines.forEach(line => {
+          console.log('    ' + line);
+        });
+      });
+      
+      console.log('\n');
+      console.log('  Press Ctrl+C to cancel or wait for scan...');
+      console.log('\n');
+      
+      // Poll for connection success
+      await this.pollForConnection();
+      
+    } catch (error) {
+      this.ui.error(`Failed to display QR code: ${error.message}`);
+    }
+  }
+
+  /**
+   * Poll for successful connection after QR/code display
+   */
+  async pollForConnection() {
+    const waClientPort = this.getWaClientPort();
+    const startTime = Date.now();
+    const timeoutMs = 180000; // 3 minutes
+
+    while (Date.now() - startTime < timeoutMs) {
+      try {
+        const response = await fetch(`http://localhost:${waClientPort}/state`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.state === 'ready') {
+            this.ui.success('🎉 WhatsApp connected successfully!');
+            return true;
+          }
+        }
+      } catch {
+        // Continue polling
+      }
+      await new Promise(r => globalThis.setTimeout(r, 3000));
+    }
+    
+    this.ui.warn('Connection timeout - code/QR may have expired');
+    return false;
+  }
+
+  /**
+   * Start auto-refresh loop for pairing codes
+   */
+  async startAutoRefresh() {
+    const waClientPort = this.getWaClientPort();
+    let attempts = 0;
+    const maxAttempts = 5;
+
+    while (attempts < maxAttempts) {
+      // Wait for code expiration or connection
+      const startTime = Date.now();
+      const codeValidMs = 120000; // 2 minutes
+
+      while (Date.now() - startTime < codeValidMs) {
+        try {
+          const response = await fetch(`http://localhost:${waClientPort}/state`);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.state === 'ready') {
+              this.ui.success('🎉 WhatsApp connected successfully!');
+              return true;
+            }
+          }
+        } catch {
+          // Continue polling
+        }
+        
+        const remaining = Math.ceil((codeValidMs - (Date.now() - startTime)) / 1000);
+        if (remaining % 30 === 0 && remaining > 0) {
+          this.ui.info(`Code expires in ${remaining}s...`);
+        }
+        await new Promise(r => globalThis.setTimeout(r, 5000));
+      }
+
+      // Code expired, request new one
+      attempts++;
+      if (attempts < maxAttempts) {
+        this.ui.warn('⏰ Code expired. Requesting new code...');
+        try {
+          const response = await fetch(`http://localhost:${waClientPort}/pair`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+          });
+          const data = await response.json();
+          if (data.success && data.code) {
+            this.ui.success(`New code: ${data.code.split('').join(' ')}`);
+            this.handlePairingCode(data.code, null);
+          }
+        } catch (error) {
+          this.ui.error(`Failed to refresh code: ${error.message}`);
+        }
+      }
+    }
+
+    this.ui.error('Max refresh attempts reached. Run npx whatsapp-bot-scanner pair to try again.');
+    return false;
   }
 
   generateSimulatedPairingCode() {

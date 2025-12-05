@@ -186,10 +186,11 @@ services:
       - ./storage:/app/storage:rw
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL","wget --header=\"Authorization: Bearer ${CONTROL_PLANE_API_TOKEN}\" -qO- http://127.0.0.1:8080/healthz || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 10
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:8080/healthz',{headers:{Authorization:'Bearer '+(process.env.CONTROL_PLANE_API_TOKEN||'')}}).then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -317,7 +318,7 @@ services:
     environment:
       - UPTIME_KUMA_PORT=3001
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3001 || exit 1"]
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3001').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))\""]
       interval: 30s
       timeout: 10s
       retries: 5

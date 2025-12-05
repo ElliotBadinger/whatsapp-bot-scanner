@@ -1684,8 +1684,10 @@ program
 
 program
   .command("pair")
-  .description("Request WhatsApp pairing code")
-  .action(async () => {
+  .description("Request WhatsApp pairing code or QR code")
+  .option("--qr", "Show QR code instead of pairing code")
+  .option("--code", "Show pairing code (default)")
+  .action(async (options) => {
     const ui = new UserInterface(true);
     const notifications = new NotificationManager(ui);
     const dockerOrchestrator = new DockerOrchestrator(ROOT_DIR, ui);
@@ -1695,23 +1697,33 @@ program
       notifications,
     );
 
-    try {
-      await pairingManager.requestManualPairing();
+    // Check if user wants interactive choice
+    const showQr = options.qr === true;
 
-      await pairingManager.monitorForPairingSuccess(
-        (success) => {
-          console.log(C.success("\n✓ Pairing completed successfully!"));
-          process.exit(0);
-        },
-        (error) => {
-          console.error(
-            C.error(
-              `\n✗ Pairing failed: ${error.errorDetails || "Unknown error"}`,
-            ),
-          );
-          process.exit(1);
-        },
-      );
+    console.log(C.textBold("\n📱 WhatsApp Pairing\n"));
+    console.log(C.muted(`Mode: ${showQr ? "QR Code" : "Pairing Code"}`));
+    console.log(C.muted("Use --qr for QR code, --code for pairing code\n"));
+
+    try {
+      await pairingManager.requestManualPairing({ showQr });
+
+      // Only monitor if not using QR (QR has its own polling)
+      if (!showQr) {
+        await pairingManager.monitorForPairingSuccess(
+          (success) => {
+            console.log(C.success("\n✓ Pairing completed successfully!"));
+            process.exit(0);
+          },
+          (error) => {
+            console.error(
+              C.error(
+                `\n✗ Pairing failed: ${error.errorDetails || "Unknown error"}`,
+              ),
+            );
+            process.exit(1);
+          },
+        );
+      }
     } catch (error) {
       console.error(C.error(`\nPairing failed: ${error.message}`));
       console.log(
