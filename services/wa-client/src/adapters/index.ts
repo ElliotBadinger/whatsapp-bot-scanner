@@ -2,7 +2,7 @@
  * WhatsApp Adapters Module
  *
  * This module exports adapter-related types and factory functions.
- * 
+ *
  * Note: Adapter classes (BaileysAdapter, WWebJSAdapter) are NOT directly exported
  * to support conditional loading. Use the factory functions instead:
  *   - createAdapterFromEnv() - Creates adapter based on WA_LIBRARY env var

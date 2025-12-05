@@ -65,7 +65,9 @@ export function getConfiguredLibrary(): WhatsAppLibrary {
  * @param config - Factory configuration
  * @returns WhatsApp adapter instance
  */
-export async function createWhatsAppAdapter(config: FactoryConfig): Promise<WhatsAppAdapter> {
+export async function createWhatsAppAdapter(
+  config: FactoryConfig,
+): Promise<WhatsAppAdapter> {
   const { library, logger } = config;
 
   logger.info({ library }, "Creating WhatsApp adapter");

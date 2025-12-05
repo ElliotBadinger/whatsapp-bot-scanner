@@ -377,10 +377,11 @@ ${C.primary("  ╚════════════════════�
     }
 
     // Update WA_LIBRARY and WA_BUILD_TARGET in .env
-    const buildTarget = selectedLibrary === "baileys" ? "wa-client-baileys" : "wa-client";
+    const buildTarget =
+      selectedLibrary === "baileys" ? "wa-client-baileys" : "wa-client";
     try {
       let envContent = await fs.readFile(envFile, "utf-8");
-      
+
       // Update WA_LIBRARY
       if (envContent.includes("WA_LIBRARY=")) {
         envContent = envContent.replace(
@@ -390,7 +391,7 @@ ${C.primary("  ╚════════════════════�
       } else {
         envContent += `\nWA_LIBRARY=${selectedLibrary}`;
       }
-      
+
       // Update WA_BUILD_TARGET (for Docker build)
       if (envContent.includes("WA_BUILD_TARGET=")) {
         envContent = envContent.replace(
@@ -400,7 +401,7 @@ ${C.primary("  ╚════════════════════�
       } else {
         envContent += `\nWA_BUILD_TARGET=${buildTarget}`;
       }
-      
+
       await fs.writeFile(envFile, envContent);
       console.log(
         `  ${ICON.success}  ${C.success(`WA_LIBRARY set to ${selectedLibrary}`)}`,
