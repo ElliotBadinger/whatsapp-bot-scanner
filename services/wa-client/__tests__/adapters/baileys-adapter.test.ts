@@ -1,6 +1,6 @@
 /**
  * Baileys Adapter Tests
- * 
+ *
  * Comprehensive tests for the BaileysAdapter class, covering:
  * - Connection lifecycle
  * - Message sending
@@ -40,10 +40,12 @@ const mockSocket = {
 
 const mockMakeWASocket = jest.fn().mockReturnValue(mockSocket);
 const mockMakeCacheableSignalKeyStore = jest.fn().mockReturnValue({});
-const mockFetchLatestBaileysVersion = jest.fn<() => Promise<{ version: number[]; isLatest: boolean }>>().mockResolvedValue({
-  version: [2, 3000, 1027934701],
-  isLatest: true,
-});
+const mockFetchLatestBaileysVersion = jest
+  .fn<() => Promise<{ version: number[]; isLatest: boolean }>>()
+  .mockResolvedValue({
+    version: [2, 3000, 1027934701],
+    isLatest: true,
+  });
 
 jest.mock("@whiskeysockets/baileys", () => ({
   default: mockMakeWASocket,
@@ -98,7 +100,7 @@ describe("BaileysAdapter", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    
+
     mockRedis = {
       get: jest.fn(),
       set: jest.fn(),
@@ -158,20 +160,20 @@ describe("BaileysAdapter", () => {
     it("should transition to connecting state", async () => {
       // Start connection (don't await as it may hang waiting for events)
       const connectPromise = adapter.connect();
-      
+
       // Should be in connecting state
       expect(adapter.state).toBe("connecting");
-      
+
       // Cancel the connection
       await adapter.disconnect();
     });
 
     it("should create Baileys socket with correct config", async () => {
       const connectPromise = adapter.connect();
-      
+
       // Verify makeWASocket was called
       expect(mockMakeWASocket).toHaveBeenCalled();
-      
+
       await adapter.disconnect();
     });
   });
@@ -181,7 +183,7 @@ describe("BaileysAdapter", () => {
       // Start and immediately disconnect
       adapter.connect().catch(() => {});
       await adapter.disconnect();
-      
+
       expect(adapter.state).toBe("disconnected");
     });
 
@@ -189,7 +191,7 @@ describe("BaileysAdapter", () => {
       await adapter.disconnect();
       await adapter.disconnect();
       await adapter.disconnect();
-      
+
       expect(adapter.state).toBe("disconnected");
     });
   });
@@ -198,7 +200,7 @@ describe("BaileysAdapter", () => {
     it("should register connection change handler", () => {
       const handler = jest.fn();
       adapter.onConnectionChange(handler);
-      
+
       // Handler should be registered
       expect(handler).not.toHaveBeenCalled();
     });
@@ -206,28 +208,30 @@ describe("BaileysAdapter", () => {
     it("should register disconnect handler", () => {
       const handler = jest.fn();
       adapter.onDisconnect(handler);
-      
+
       expect(handler).not.toHaveBeenCalled();
     });
 
     it("should register QR code handler", () => {
       const handler = jest.fn();
       adapter.onQRCode(handler);
-      
+
       expect(handler).not.toHaveBeenCalled();
     });
 
     it("should register message handler", () => {
-      const handler = jest.fn() as unknown as (msg: import("../../src/adapters/types").WAMessage) => Promise<void>;
+      const handler = jest.fn() as unknown as (
+        msg: import("../../src/adapters/types").WAMessage,
+      ) => Promise<void>;
       adapter.onMessage(handler);
-      
+
       expect(handler).not.toHaveBeenCalled();
     });
 
     it("should register pairing code handler", () => {
       const handler = jest.fn();
       adapter.onPairingCode(handler);
-      
+
       expect(handler).not.toHaveBeenCalled();
     });
   });
@@ -235,7 +239,10 @@ describe("BaileysAdapter", () => {
   describe("sendMessage", () => {
     it("should throw when not connected", async () => {
       await expect(
-        adapter.sendMessage("1234567890@s.whatsapp.net", { type: "text", text: "Hello" })
+        adapter.sendMessage("1234567890@s.whatsapp.net", {
+          type: "text",
+          text: "Hello",
+        }),
       ).rejects.toThrow("Socket not connected");
     });
   });
@@ -243,7 +250,7 @@ describe("BaileysAdapter", () => {
   describe("blockContact", () => {
     it("should throw when not connected", async () => {
       await expect(
-        adapter.blockContact("1234567890@s.whatsapp.net")
+        adapter.blockContact("1234567890@s.whatsapp.net"),
       ).rejects.toThrow("Socket not connected");
     });
   });
@@ -251,23 +258,23 @@ describe("BaileysAdapter", () => {
   describe("unblockContact", () => {
     it("should throw when not connected", async () => {
       await expect(
-        adapter.unblockContact("1234567890@s.whatsapp.net")
+        adapter.unblockContact("1234567890@s.whatsapp.net"),
       ).rejects.toThrow("Socket not connected");
     });
   });
 
   describe("requestPairingCode", () => {
     it("should throw when not connected", async () => {
-      await expect(
-        adapter.requestPairingCode("+1234567890")
-      ).rejects.toThrow("Socket not connected");
+      await expect(adapter.requestPairingCode("+1234567890")).rejects.toThrow(
+        "Socket not connected",
+      );
     });
   });
 
   describe("state management", () => {
     it("should track connection state correctly", () => {
       expect(adapter.state).toBe("disconnected");
-      
+
       // Start connection
       adapter.connect().catch(() => {});
       expect(adapter.state).toBe("connecting");
@@ -282,10 +289,13 @@ describe("BaileysAdapter", () => {
     it("should normalize phone numbers to JID format", async () => {
       // Test through sendMessage which normalizes the JID
       adapter.connect().catch(() => {});
-      
+
       // This will fail but we're testing the normalization
       try {
-        await adapter.sendMessage("1234567890", { type: "text", text: "Hello" });
+        await adapter.sendMessage("1234567890", {
+          type: "text",
+          text: "Hello",
+        });
       } catch {
         // Expected to fail since not connected
       }
