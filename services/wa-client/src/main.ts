@@ -192,7 +192,8 @@ async function main(): Promise<void> {
       // Socket is connecting but QR not yet generated - ask client to retry
       return reply.status(202).send({
         success: false,
-        error: "Socket connecting, waiting for QR generation. Retry in 2 seconds.",
+        error:
+          "Socket connecting, waiting for QR generation. Retry in 2 seconds.",
         retryAfterMs: 2000,
       });
     }

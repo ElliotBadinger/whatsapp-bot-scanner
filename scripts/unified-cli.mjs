@@ -1239,8 +1239,11 @@ ${C.primary("  ╚════════════════════�
       const waClientPort = await this.getWaClientPort();
 
       // Wait for wa-client to be in connecting state
-      const stateResult = await this.waitForConnectingState(waClientPort, spinner);
-      
+      const stateResult = await this.waitForConnectingState(
+        waClientPort,
+        spinner,
+      );
+
       if (stateResult.alreadyConnected) {
         spinner.succeed(C.success("WhatsApp is already connected!"));
         return;
@@ -1261,34 +1264,42 @@ ${C.primary("  ╚════════════════════�
       const maxAttempts = 20; // Socket may need time to stabilize after logout
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
-          const response = await fetch(`http://127.0.0.1:${waClientPort}/pair`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({}),
-          });
+          const response = await fetch(
+            `http://127.0.0.1:${waClientPort}/pair`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({}),
+            },
+          );
 
           const data = await response.json().catch(() => ({}));
-          
 
           // Success - got pairing code
           if (response.ok && data.success && data.code) {
             spinner.stop();
             this.displayPairingCode(data.code);
-            
+
             // Start polling for connection success
             await this.pollForPairingSuccess(waClientPort, data.code);
             return;
           }
 
           // Already connected
-          if (response.ok && data.success && data.error?.includes("Already connected")) {
+          if (
+            response.ok &&
+            data.success &&
+            data.error?.includes("Already connected")
+          ) {
             spinner.succeed(C.success("WhatsApp is already connected!"));
             return;
           }
 
           // Socket still connecting - retry after delay
           if (response.status === 202 && data.retryAfterMs) {
-            spinner.text = C.text(`Socket connecting... (${attempt}/${maxAttempts})`);
+            spinner.text = C.text(
+              `Socket connecting... (${attempt}/${maxAttempts})`,
+            );
             await new Promise((r) => setTimeout(r, data.retryAfterMs));
             continue;
           }
@@ -1306,8 +1317,13 @@ ${C.primary("  ╚════════════════════�
           }
 
           // Connection Closed is transient - socket is reconnecting, wait and retry
-          if (data.error?.includes("Connection Closed") || data.error?.includes("Socket not connected")) {
-            spinner.text = C.text(`Socket reconnecting... (${attempt}/${maxAttempts})`);
+          if (
+            data.error?.includes("Connection Closed") ||
+            data.error?.includes("Socket not connected")
+          ) {
+            spinner.text = C.text(
+              `Socket reconnecting... (${attempt}/${maxAttempts})`,
+            );
             await new Promise((r) => setTimeout(r, 3000));
             continue;
           }
@@ -1318,12 +1334,17 @@ ${C.primary("  ╚════════════════════�
         }
 
         if (attempt < maxAttempts) {
-          spinner.text = C.text(`Waiting for socket... (${attempt + 1}/${maxAttempts})`);
+          spinner.text = C.text(
+            `Waiting for socket... (${attempt + 1}/${maxAttempts})`,
+          );
           await new Promise((r) => setTimeout(r, 2000));
         }
       }
 
-      throw lastError || new Error("Failed to get pairing code - socket did not become ready");
+      throw (
+        lastError ||
+        new Error("Failed to get pairing code - socket did not become ready")
+      );
     } catch (error) {
       spinner.fail(C.error(`Pairing code request failed: ${error.message}`));
       console.log(
@@ -1364,8 +1385,13 @@ ${C.primary("  ╚════════════════════�
       }
 
       const elapsed = Math.round((Date.now() - startTime) / 1000);
-      const remaining = Math.max(0, Math.round((timeoutMs - (Date.now() - startTime)) / 1000));
-      spinner.text = C.text(`Waiting for connection... (${remaining}s remaining)`);
+      const remaining = Math.max(
+        0,
+        Math.round((timeoutMs - (Date.now() - startTime)) / 1000),
+      );
+      spinner.text = C.text(
+        `Waiting for connection... (${remaining}s remaining)`,
+      );
       await new Promise((r) => setTimeout(r, 3000));
     }
 
@@ -1409,7 +1435,9 @@ ${C.primary("  ╚════════════════════�
       while (Date.now() - startTime < timeoutMs && !pairingSuccess) {
         try {
           // Check state first
-          const stateRes = await fetch(`http://127.0.0.1:${waClientPort}/state`);
+          const stateRes = await fetch(
+            `http://127.0.0.1:${waClientPort}/state`,
+          );
           if (stateRes.ok) {
             const stateData = await stateRes.json();
             if (stateData.state === "ready") {
@@ -1425,18 +1453,24 @@ ${C.primary("  ╚════════════════════�
             if (qrData.success && qrData.qr && qrData.qr !== lastQr) {
               lastQr = qrData.qr;
               spinner.stop();
-              
+
               // Display QR code using qrcode-terminal
               const qrTerminal = await import("qrcode-terminal");
               console.log("\n");
-              qrTerminal.default.generate(qrData.qr, { small: true }, (qrAscii) => {
-                console.log(qrAscii);
-              });
+              qrTerminal.default.generate(
+                qrData.qr,
+                { small: true },
+                (qrAscii) => {
+                  console.log(qrAscii);
+                },
+              );
               qrDisplayed = true;
-              
+
               // Show countdown
               spinner.start();
-              spinner.text = C.text("QR code displayed. Waiting for scan... (refreshes every ~20s)");
+              spinner.text = C.text(
+                "QR code displayed. Waiting for scan... (refreshes every ~20s)",
+              );
             }
           }
         } catch {
