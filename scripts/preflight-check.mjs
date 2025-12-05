@@ -227,7 +227,7 @@ async function main() {
   section('Environment Variables');
   checkEnvVar('NODE_ENV', false, 'development');
   checkEnvVar('REDIS_URL', false, 'redis://redis:6379/0');
-  checkEnvVar('CONTROL_PLANE_TOKEN', true);
+  checkEnvVar('CONTROL_PLANE_API_TOKEN', true);
   checkEnvVar('WA_LIBRARY', false, 'baileys');
   checkEnvVar('WA_AUTH_STRATEGY', false, 'remote');
   checkEnvVar('WA_AUTH_CLIENT_ID', false, 'default');

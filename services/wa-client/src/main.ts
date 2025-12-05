@@ -130,15 +130,17 @@ async function main(): Promise<void> {
   // Create Fastify server for health checks and metrics
   const server = Fastify({ logger: false });
 
-  // Health check endpoint
-  server.get('/health', async () => {
+  // Health check endpoint (both /health and /healthz for compatibility)
+  const healthHandler = async () => {
     return {
       status: adapter?.state === 'ready' ? 'healthy' : 'degraded',
       library,
       state: adapter?.state ?? 'unknown',
       botId: adapter?.botId ?? null,
     };
-  });
+  };
+  server.get('/health', healthHandler);
+  server.get('/healthz', healthHandler);
 
   // Metrics endpoint
   server.get('/metrics', async (_, reply) => {
