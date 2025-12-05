@@ -21,6 +21,7 @@ import { UserInterface } from "./cli/ui/prompts.mjs";
 import { NotificationManager } from "./cli/ui/notifications.mjs";
 import { ProgressManager } from "./cli/ui/progress.mjs";
 import enquirer from "enquirer";
+import net from "net";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -685,9 +686,171 @@ ${C.primary("  ╚════════════════════�
   // Step 4: Start Services
   // ─────────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Check if a port is available
+   */
+  async checkPortAvailable(port) {
+    return new Promise((resolve) => {
+      const server = net.createServer();
+      server.once("error", (err) => {
+        if (err.code === "EADDRINUSE") {
+          resolve(false);
+        } else {
+          resolve(true);
+        }
+      });
+      server.once("listening", () => {
+        server.close();
+        resolve(true);
+      });
+      server.listen(port, "0.0.0.0");
+    });
+  }
+
+  /**
+   * Check all required ports and report conflicts
+   */
+  async checkRequiredPorts() {
+    const envFile = path.join(ROOT_DIR, ".env");
+    let envContent = "";
+    try {
+      envContent = await fs.readFile(envFile, "utf-8");
+    } catch {
+      // File doesn't exist yet
+    }
+
+    const getPort = (key, defaultPort) => {
+      const match = envContent.match(new RegExp(`${key}=(\\d+)`));
+      return parseInt(match?.[1] ?? defaultPort, 10);
+    };
+
+    // Define all ports used by Docker services
+    const ports = [
+      { name: "Redis", port: 6379, env: null },
+      { name: "WA Client", port: 3005, env: "WA_CLIENT_PORT" },
+      { name: "Scan Orchestrator", port: getPort("SCAN_ORCHESTRATOR_PORT", "3003"), env: "SCAN_ORCHESTRATOR_PORT" },
+      { name: "Grafana", port: getPort("GRAFANA_PORT", "3002"), env: "GRAFANA_PORT" },
+      { name: "Prometheus", port: 9091, env: null },
+      { name: "Uptime Kuma", port: getPort("UPTIME_KUMA_PORT", "3001"), env: "UPTIME_KUMA_PORT" },
+      { name: "Reverse Proxy", port: getPort("REVERSE_PROXY_PORT", "8088"), env: "REVERSE_PROXY_PORT" },
+    ];
+
+    const conflicts = [];
+
+    for (const { name, port, env } of ports) {
+      const available = await this.checkPortAvailable(port);
+      if (!available) {
+        conflicts.push({ name, port, env });
+      }
+    }
+
+    return conflicts;
+  }
+
+  /**
+   * Suggest alternative ports for conflicting services
+   */
+  async resolvePortConflicts(conflicts) {
+    const envFile = path.join(ROOT_DIR, ".env");
+    let envContent = await fs.readFile(envFile, "utf-8").catch(() => "");
+    let modified = false;
+
+    for (const { name, port, env } of conflicts) {
+      if (!env) {
+        // Fixed port (Redis, Prometheus) - can't easily change
+        console.log(
+          `  ${ICON.error}  ${C.error(`Port ${port} (${name}) is in use and cannot be auto-reassigned`)}`
+        );
+        console.log(
+          `     ${C.muted(`Stop the process using port ${port} or modify docker-compose.yml`)}`
+        );
+        continue;
+      }
+
+      // Find an available alternative port
+      let altPort = port + 1;
+      while (!(await this.checkPortAvailable(altPort)) && altPort < port + 100) {
+        altPort++;
+      }
+
+      if (altPort >= port + 100) {
+        console.log(
+          `  ${ICON.error}  ${C.error(`Could not find available port for ${name}`)}`
+        );
+        continue;
+      }
+
+      if (!this.nonInteractive) {
+        const { action } = await enquirer.prompt({
+          type: "select",
+          name: "action",
+          message: C.text(`Port ${port} (${name}) is in use. What would you like to do?`),
+          choices: [
+            { name: "reassign", message: `${C.success("●")} Use port ${altPort} instead` },
+            { name: "skip", message: `${C.muted("○")} Skip and continue (may fail)` },
+            { name: "abort", message: `${C.error("○")} Abort setup` },
+          ],
+          pointer: C.accent("›"),
+        });
+
+        if (action === "abort") {
+          throw new Error("Setup aborted due to port conflict");
+        }
+
+        if (action === "skip") {
+          continue;
+        }
+      }
+
+      // Update .env with new port
+      if (envContent.includes(`${env}=`)) {
+        envContent = envContent.replace(
+          new RegExp(`${env}=.*`),
+          `${env}=${altPort}`
+        );
+      } else {
+        envContent += `\n${env}=${altPort}`;
+      }
+      modified = true;
+
+      console.log(
+        `  ${ICON.success}  ${C.success(`${name} port changed from ${port} to ${altPort}`)}`
+      );
+    }
+
+    if (modified) {
+      await fs.writeFile(envFile, envContent);
+    }
+
+    return conflicts.length === 0 || modified;
+  }
+
   async step4StartServices() {
     this.displayStepHeader(4, "Starting Services", ICON.docker);
-    console.log(`  ${C.muted("This may take 2-5 minutes on first run...")}\n`);
+
+    // Check for port conflicts before starting
+    const portSpinner = ora({
+      text: C.text("Checking for port conflicts..."),
+      color: "cyan",
+      spinner: "dots12",
+    }).start();
+
+    const conflicts = await this.checkRequiredPorts();
+
+    if (conflicts.length > 0) {
+      portSpinner.warn(C.warning(`Found ${conflicts.length} port conflict(s)`));
+      const resolved = await this.resolvePortConflicts(conflicts);
+      if (!resolved) {
+        throw new Error(
+          "Cannot start services due to unresolved port conflicts. " +
+          "Stop conflicting processes or modify port settings."
+        );
+      }
+    } else {
+      portSpinner.succeed(C.text("All ports available"));
+    }
+
+    console.log(`\n  ${C.muted("This may take 2-5 minutes on first run...")}\n`);
 
     const spinner = ora({
       text: C.text("Starting Docker containers..."),
@@ -794,6 +957,63 @@ ${C.primary("  ╚════════════════════�
       return;
     }
 
+    // Read env to check if phone number is configured
+    const envContent = await fs
+      .readFile(path.join(ROOT_DIR, ".env"), "utf-8")
+      .catch(() => "");
+    const hasPhoneNumber = envContent.includes("WA_REMOTE_AUTH_PHONE_NUMBERS=") &&
+      !envContent.match(/WA_REMOTE_AUTH_PHONE_NUMBERS=\s*$/m);
+
+    // Let user choose pairing method
+    let pairingMethod = "qr"; // Default to QR for non-interactive
+    
+    if (!this.nonInteractive) {
+      console.log("");
+      const response = await enquirer.prompt({
+        type: "select",
+        name: "method",
+        message: C.text("Choose WhatsApp pairing method:"),
+        choices: [
+          {
+            name: "code",
+            message: `${C.success("●")} Pairing Code ${C.muted("(Enter 8-digit code on phone)")}`,
+            disabled: !hasPhoneNumber ? C.muted("(requires phone number in config)") : false,
+          },
+          {
+            name: "qr",
+            message: `${C.accent("●")} QR Code ${C.muted("(Scan with WhatsApp camera)")}`,
+          },
+          {
+            name: "skip",
+            message: `${C.muted("○")} Skip for now ${C.muted("(pair later)")}`,
+          },
+        ],
+        pointer: C.accent("›"),
+      });
+      pairingMethod = response.method;
+    }
+
+    if (pairingMethod === "skip") {
+      console.log(
+        `\n  ${ICON.info}  ${C.text("Skipped. Pair later with:")} ${C.code("npx whatsapp-bot-scanner pair")}`,
+      );
+      this.markStepComplete(5, "Pairing skipped (you can pair later)");
+      return;
+    }
+
+    if (pairingMethod === "code") {
+      await this.requestPairingCode();
+    } else {
+      await this.showQRPairing();
+    }
+
+    this.markStepComplete(5, "WhatsApp pairing initiated");
+  }
+
+  /**
+   * Request a pairing code from the wa-client service
+   */
+  async requestPairingCode() {
     try {
       const spinner = ora({
         text: C.text("Requesting pairing code..."),
@@ -801,56 +1021,136 @@ ${C.primary("  ╚════════════════════�
         spinner: "dots12",
       }).start();
 
-      await new Promise((r) => setTimeout(r, 5000));
+      // Wait for wa-client to be ready
+      await new Promise((r) => setTimeout(r, 3000));
 
       const envContent = await fs
         .readFile(path.join(ROOT_DIR, ".env"), "utf-8")
         .catch(() => "");
-      const waClientPort =
-        envContent.match(/WA_CLIENT_PORT=(\d+)/)?.[1] || "3005";
+      
+      // wa-client runs on port 3005 (mapped from container port 3001)
+      const waClientPort = envContent.match(/WA_CLIENT_PORT=(\d+)/)?.[1] || "3005";
 
       const response = await fetch(`http://127.0.0.1:${waClientPort}/pair`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
       });
 
       if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Server: ${response.status} - ${text}`);
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${response.status}`);
       }
 
       const data = await response.json();
       spinner.stop();
 
-      if (data.code) {
+      if (data.success && data.code) {
         this.displayPairingCode(data.code);
-        if (!this.nonInteractive) {
-          console.log(
-            `  ${ICON.info}  ${C.muted("Keep this window open while you enter the code on your phone.")}`,
-          );
-          console.log(
-            `  ${ICON.info}  ${C.muted("If the code expires or is rejected, run")} ${C.code("npx whatsapp-bot-scanner pair")}`,
-          );
-          console.log(
-            `           ${C.muted("for a richer pairing helper with live countdown and log monitoring.")}\n`,
-          );
-        }
-      } else {
         console.log(
-          `  ${ICON.warning}  ${C.warning("No pairing code received, check logs")}`,
+          `  ${ICON.info}  ${C.muted("Enter this code on your phone within 2-3 minutes.")}`,
         );
+        console.log(
+          `  ${ICON.info}  ${C.muted("If it expires, run:")} ${C.code("npx whatsapp-bot-scanner pair")}\n`,
+        );
+      } else {
+        throw new Error(data.error || "No pairing code received");
       }
     } catch (error) {
       console.log("");
-      console.log(C.error(`  ✗ Pairing request failed: ${error.message}`));
+      console.log(C.error(`  ✗ Pairing code request failed: ${error.message}`));
       console.log(
-        `  ${ICON.info}  ${C.text("You can retry later with:")} ${C.code("npx whatsapp-bot-scanner pair")}\n`,
-      );
-      console.log(
-        `  ${ICON.info}  ${C.text("Run manually:")} ${C.code("npx whatsapp-bot-scanner pair")}`,
+        `  ${ICON.info}  ${C.text("Try QR code instead, or retry later with:")} ${C.code("npx whatsapp-bot-scanner pair")}`,
       );
     }
+  }
 
-    this.markStepComplete(5, "Pairing code requested (verify in WhatsApp)");
+  /**
+   * Show QR code pairing by streaming wa-client logs
+   */
+  async showQRPairing() {
+    console.log(`
+  ${C.textBold("QR Code Pairing Instructions:")}
+
+  ${ICON.arrow}  A QR code will appear below (may take a moment)
+  ${ICON.arrow}  Open WhatsApp on your phone
+  ${ICON.arrow}  Go to Settings → Linked Devices → Link a Device
+  ${ICON.arrow}  Scan the QR code with your phone camera
+
+  ${C.muted("The QR code refreshes every ~20 seconds. Press Ctrl+C when done.")}
+`);
+
+    const spinner = ora({
+      text: C.text("Waiting for QR code from wa-client..."),
+      color: "cyan",
+      spinner: "dots12",
+    }).start();
+
+    try {
+      // Stream logs from wa-client to show QR code
+      const logProcess = execa(
+        "docker",
+        ["compose", "logs", "-f", "--tail=100", "wa-client"],
+        { cwd: ROOT_DIR, reject: false },
+      );
+
+      let qrDisplayed = false;
+      let pairingSuccess = false;
+      const timeout = setTimeout(() => {
+        if (!qrDisplayed && !pairingSuccess) {
+          spinner.warn(C.warning("QR code timeout. Try pairing code instead."));
+          logProcess.kill();
+        }
+      }, 60000);
+
+      logProcess.stdout?.on("data", (data) => {
+        const text = data.toString();
+        
+        // Check for successful connection
+        if (text.includes("Connection opened") || text.includes("WhatsApp client ready")) {
+          pairingSuccess = true;
+          clearTimeout(timeout);
+          spinner.succeed(C.success("WhatsApp connected successfully!"));
+          logProcess.kill();
+          return;
+        }
+
+        // Look for QR code in logs (it gets printed by qrcode-terminal)
+        if (text.includes("█") || text.includes("▀") || text.includes("▄")) {
+          if (!qrDisplayed) {
+            spinner.stop();
+            qrDisplayed = true;
+          }
+          // Print QR code lines
+          process.stdout.write(text);
+        }
+      });
+
+      // Wait for process to complete or be killed
+      await logProcess;
+      clearTimeout(timeout);
+
+      if (pairingSuccess) {
+        console.log(`\n  ${ICON.success}  ${C.success("WhatsApp pairing successful!")}\n`);
+      } else if (!qrDisplayed) {
+        console.log(`
+  ${ICON.warning}  ${C.warning("No QR code appeared in logs.")}
+  
+  ${C.text("This may happen if:")}
+  ${C.muted("  - wa-client is already paired")}
+  ${C.muted("  - QR terminal display is disabled")}
+  ${C.muted("  - Connection is using pairing code mode")}
+
+  ${C.text("Try these alternatives:")}
+  ${C.code("  npx whatsapp-bot-scanner pair")}     ${C.muted("# Request pairing code")}
+  ${C.code("  docker compose logs wa-client")}     ${C.muted("# Check full logs")}
+`);
+      }
+    } catch (error) {
+      spinner.fail(C.error("Failed to stream logs"));
+      console.log(
+        `  ${ICON.info}  ${C.text("Check manually:")} ${C.code("docker compose logs -f wa-client")}`,
+      );
+    }
   }
 
   displayPairingCode(code) {

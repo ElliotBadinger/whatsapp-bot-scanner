@@ -160,6 +160,99 @@ async function main(): Promise<void> {
     };
   });
 
+  // Pairing code request endpoint
+  server.post<{
+    Body?: { phoneNumber?: string };
+    Reply: { success: boolean; code?: string; error?: string; qrAvailable?: boolean };
+  }>("/pair", async (request, reply) => {
+    if (!adapter) {
+      return reply.status(503).send({
+        success: false,
+        error: "WhatsApp adapter not initialized",
+      });
+    }
+
+    // Get phone number from request body or environment
+    let phoneNumber =
+      request.body?.phoneNumber ??
+      process.env.WA_REMOTE_AUTH_PHONE_NUMBERS?.split(",")[0]?.trim() ??
+      process.env.WA_REMOTE_AUTH_PHONE_NUMBER;
+
+    if (!phoneNumber) {
+      return reply.status(400).send({
+        success: false,
+        error:
+          "Phone number required. Set WA_REMOTE_AUTH_PHONE_NUMBERS in .env or provide phoneNumber in request body",
+        qrAvailable: true, // QR code is available as alternative
+      });
+    }
+
+    // Clean the phone number (remove non-digits except leading +)
+    phoneNumber = phoneNumber.replaceAll(/[^\d+]/g, "").replace(/^\+/, "");
+
+    try {
+      const code = await adapter.requestPairingCode(phoneNumber);
+      logger.info({ phoneNumber: phoneNumber.slice(-4) }, "Pairing code requested successfully");
+      return { success: true, code };
+    } catch (err) {
+      const error = err as Error;
+      logger.error({ err, phoneNumber: phoneNumber.slice(-4) }, "Failed to request pairing code");
+
+      // Check for rate limiting
+      if (error.message?.includes("rate") || error.message?.includes("429")) {
+        return reply.status(429).send({
+          success: false,
+          error: "Rate limited by WhatsApp. Wait 15 minutes before retrying.",
+          qrAvailable: true,
+        });
+      }
+
+      return reply.status(500).send({
+        success: false,
+        error: error.message || "Failed to request pairing code",
+        qrAvailable: true,
+      });
+    }
+  });
+
+  // QR code endpoint (returns current QR if available)
+  server.get<{
+    Reply: { success: boolean; qr?: string; state?: string; error?: string };
+  }>("/qr", async (_, reply) => {
+    if (!adapter) {
+      return reply.status(503).send({
+        success: false,
+        error: "WhatsApp adapter not initialized",
+      });
+    }
+
+    // The QR is emitted via event; we can't directly get it
+    // This endpoint is for checking state and giving guidance
+    const state = adapter.state;
+
+    if (state === "ready") {
+      return { success: true, state, error: "Already connected, no QR needed" };
+    }
+
+    return {
+      success: true,
+      state,
+      error:
+        state === "connecting"
+          ? "Connecting... watch terminal for QR code or use /pair for pairing code"
+          : "Not connected. Restart wa-client to generate new QR code",
+    };
+  });
+
+  // Connection state endpoint
+  server.get("/state", async () => {
+    return {
+      state: adapter?.state ?? "unknown",
+      botId: adapter?.botId ?? null,
+      library,
+    };
+  });
+
   // Start HTTP server
   const port = parseInt(process.env.WA_HTTP_PORT ?? "3001", 10);
   await server.listen({ port, host: "0.0.0.0" });
