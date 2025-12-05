@@ -1949,39 +1949,31 @@ async function main() {
           
           // Secondary check: Use Puppeteer to check if window.Store is available
           // and manually trigger the ready state if the library failed to do so
-          const page = getPageHandle(client);
-          if (page && pollCount >= 10) { // Wait at least 20 seconds before trying Puppeteer fallback
+          // Access pupPage directly with a simple evaluate signature
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const pupPage = (client as any).pupPage as { evaluate: (fn: () => unknown) => Promise<unknown> } | undefined;
+          if (pupPage && pollCount >= 10) { // Wait at least 20 seconds before trying Puppeteer fallback
             try {
-              // Define the expected return type for the evaluate function
-              interface StoreCheckResult {
-                hasStore: boolean;
-                hasUser?: boolean;
-                hasWid?: boolean;
-                wid?: string;
-                pushname?: string | null;
-                platform?: string | null;
-              }
-              
-              const storeInfo = await page.evaluate((): StoreCheckResult => {
+              const storeInfo = await pupPage.evaluate(() => {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const win = window as any;
                 
                 // Check if Store is available and has the required data
                 if (typeof win.Store === 'undefined') {
-                  return { hasStore: false };
+                  return { hasStore: false, hasUser: false, hasWid: false, wid: null };
                 }
                 
                 // Check if we have user info
                 const user = win.Store?.User;
                 const conn = win.Store?.Conn;
                 if (!user || !conn) {
-                  return { hasStore: true, hasUser: false };
+                  return { hasStore: true, hasUser: false, hasWid: false, wid: null };
                 }
                 
                 // Try to get the user's WID
                 const wid = user.getMaybeMePnUser?.() || user.getMaybeMeLidUser?.() || user.getMeUser?.();
                 if (!wid) {
-                  return { hasStore: true, hasUser: true, hasWid: false };
+                  return { hasStore: true, hasUser: true, hasWid: false, wid: null };
                 }
                 
                 // Return the serialized WID
@@ -1989,11 +1981,11 @@ async function main() {
                   hasStore: true,
                   hasUser: true,
                   hasWid: true,
-                  wid: typeof wid.toJid === 'function' ? wid.toJid() : (wid._serialized || wid.toString()),
+                  wid: typeof wid.toJid === 'function' ? wid.toJid() : (wid._serialized || String(wid)),
                   pushname: conn.pushname || null,
                   platform: conn.platform || null,
                 };
-              });
+              }) as { hasStore: boolean; hasUser: boolean; hasWid: boolean; wid: string | null; pushname?: string | null; platform?: string | null };
               
               if (storeInfo.hasWid && storeInfo.wid) {
                 logger.info({ pollCount, storeInfo }, 'Puppeteer fallback: Detected window.Store with user info - triggering ready');
