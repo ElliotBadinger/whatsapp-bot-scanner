@@ -1,0 +1,448 @@
+/* Mobile menu styles */
+
+/* Hamburger menu button */
+.mobile-nav-toggle {
+  display: none; /* Hidden by default on desktop */
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  width: 40px;
+  height: 40px;
+  background: rgba(0, 0, 0, 0.1);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  z-index: 1100;
+  padding: 0;
+  font-size: 0;
+}
+
+.dark-mode .mobile-nav-toggle {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.mobile-nav-toggle:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.dark-mode .mobile-nav-toggle:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Hamburger icon */
+.mobile-nav-toggle span {
+  display: block;
+  position: absolute;
+  height: 3px;
+  width: 24px;
+  background: #333;
+  border-radius: 3px;
+  left: 8px;
+  transform-origin: center;
+  transition: transform 0.3s, background 0.3s;
+}
+
+.dark-mode .mobile-nav-toggle span {
+  background: #e6e6e6;
+}
+
+.mobile-nav-toggle span:nth-child(1) {
+  top: 12px;
+}
+
+.mobile-nav-toggle span:nth-child(2) {
+  top: 19px;
+}
+
+.mobile-nav-toggle span:nth-child(3) {
+  top: 26px;
+}
+
+/* Hamburger icon animation for open state */
+.mobile-nav-toggle.is-active span:nth-child(1) {
+  transform: rotate(45deg);
+  top: 19px;
+}
+
+.mobile-nav-toggle.is-active span:nth-child(2) {
+  opacity: 0;
+}
+
+.mobile-nav-toggle.is-active span:nth-child(3) {
+  transform: rotate(-45deg);
+  top: 19px;
+}
+
+/* Mobile drawer */
+.mobile-drawer {
+  position: fixed;
+  top: 0;
+  left: -100%;
+  width: 85%;
+  max-width: 350px;
+  height: 100vh;
+  background-color: #f8f8f8;
+  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.2);
+  transition: left 0.3s ease;
+  z-index: 1050;
+  overflow-y: auto;
+  padding: 60px 20px 20px 20px;
+}
+
+.dark-mode .mobile-drawer {
+  background-color: #252526;
+  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.5);
+}
+
+.mobile-drawer.is-active {
+  left: 0;
+}
+
+/* Mobile drawer contents */
+.mobile-drawer-logo {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.mobile-drawer-logo img {
+  max-width: 100px;
+  height: auto;
+  border-radius: 50%;
+  background-color: white;
+  padding: 5px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+/* Mobile accordion styles */
+.mobile-accordion {
+  width: 100%;
+  margin-top: 10px;
+}
+
+/* Panel styling */
+.mobile-accordion .p-accordion__panel {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease, padding 0.3s ease;
+  padding: 0 10px;
+}
+
+/* Expanded panel styling */
+.mobile-accordion .p-accordion__panel[aria-hidden="false"] {
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: 10px;
+  margin-bottom: 10px;
+  background-color: rgba(0, 0, 0, 0.02);
+  border-radius: 0 0 4px 4px;
+}
+
+.dark-mode .mobile-accordion .p-accordion__panel[aria-hidden="false"] {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+/* Subheadings styling */
+.mobile-accordion .toc-subheadings {
+  margin-top: 8px;
+  border-left: 2px solid #e5e5e5;
+  padding-left: 12px;
+  margin-left: 5px;
+  margin-bottom: 5px;
+}
+
+.dark-mode .mobile-accordion .toc-subheadings {
+  border-left-color: #3a3a3a;
+}
+
+.mobile-accordion .toc-subheadings li {
+  margin-bottom: 10px;
+  border-left: none;
+  padding-left: 0;
+  position: relative;
+}
+
+/* Section overview link styling */
+.toc-overview-link {
+  font-weight: 500;
+  color: #267CB9;
+  margin-bottom: 10px;
+  display: block;
+  padding-bottom: 5px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.dark-mode .toc-overview-link {
+  color: #58a6ff;
+  border-bottom-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Make accordion tabs more touch-friendly */
+.mobile-accordion .p-accordion__tab {
+  padding: 12px 10px;
+  font-size: 16px;
+  margin-bottom: 5px;
+  background-color: rgba(0, 0, 0, 0.03);
+  border-radius: 4px;
+  position: relative;
+  width: 100%;
+  text-align: left;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.dark-mode .mobile-accordion .p-accordion__tab {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Hover and active state for tabs */
+.mobile-accordion .p-accordion__tab:hover {
+  background-color: rgba(38, 124, 185, 0.1);
+}
+
+.dark-mode .mobile-accordion .p-accordion__tab:hover {
+  background-color: rgba(88, 166, 255, 0.1);
+}
+
+.mobile-accordion .p-accordion__tab[aria-expanded="true"] {
+  background-color: rgba(38, 124, 185, 0.15);
+  border-radius: 4px 4px 0 0;
+}
+
+.dark-mode .mobile-accordion .p-accordion__tab[aria-expanded="true"] {
+  background-color: rgba(88, 166, 255, 0.15);
+}
+
+/* Add chevron toggle indicator for all accordions */
+.p-accordion__tab::after {
+  content: '\25BE'; /* Unicode down triangle - consistent across all accordions */
+  position: absolute;
+  right: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: #267CB9;
+  transition: transform 0.3s ease;
+}
+
+.dark-mode .p-accordion__tab::after {
+  color: #58a6ff;
+}
+
+/* Rotate indicator when accordion is expanded */
+.p-accordion__tab[aria-expanded="true"]::after {
+  transform: translateY(-50%) rotate(180deg);
+}
+
+/* Accordion panel links */
+.mobile-accordion a {
+  display: block;
+  padding: 8px 5px;
+  font-size: 15px;
+  color: #267CB9;
+  text-decoration: none;
+  border-radius: 3px;
+  transition: all 0.2s ease;
+}
+
+.dark-mode .mobile-accordion a {
+  color: #58a6ff;
+}
+
+.mobile-accordion a:hover {
+  background-color: rgba(38, 124, 185, 0.05);
+  text-decoration: none;
+}
+
+.dark-mode .mobile-accordion a:hover {
+  background-color: rgba(88, 166, 255, 0.05);
+}
+
+/* Active link styling */
+.mobile-accordion a.active {
+  background-color: rgba(38, 124, 185, 0.1);
+  font-weight: 600;
+}
+
+.dark-mode .mobile-accordion a.active {
+  background-color: rgba(88, 166, 255, 0.1);
+}
+
+/* Scrollbar styling for mobile accordion panels */
+.p-accordion__panel::-webkit-scrollbar {
+  width: 4px;
+}
+
+.p-accordion__panel::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.p-accordion__panel::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 3px;
+}
+
+.dark-mode .p-accordion__panel::-webkit-scrollbar-track {
+  background: #2a2a2a;
+}
+
+.dark-mode .p-accordion__panel::-webkit-scrollbar-thumb {
+  background: #555;
+}
+
+/* Drawer sections */
+.mobile-drawer-section {
+  margin-bottom: 30px;
+}
+
+.mobile-drawer-title {
+  font-size: 1.1em;
+  font-weight: 600;
+  margin-bottom: 10px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.dark-mode .mobile-drawer-title {
+  border-bottom-color: #3a3a3a;
+  color: #fff;
+}
+
+/* Drawer theme toggle */
+.mobile-theme-toggle {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.mobile-theme-toggle button {
+  background: none;
+  border: 1px solid #267CB9;
+  color: #267CB9;
+  padding: 8px 16px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.dark-mode .mobile-theme-toggle button {
+  border-color: #58a6ff;
+  color: #58a6ff;
+}
+
+.mobile-theme-toggle button:hover {
+  background-color: #267CB9;
+  color: white;
+}
+
+.dark-mode .mobile-theme-toggle button:hover {
+  background-color: #58a6ff;
+  color: #252526;
+}
+
+/* Backdrop overlay */
+.mobile-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 1040;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s;
+}
+
+.mobile-backdrop.is-active {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Prevent scrolling when menu is open */
+body.menu-open {
+  overflow: hidden;
+  position: fixed;
+  width: 100%;
+  height: 100%;
+}
+
+  /* Mobile layout and scrolling fixes */
+@media (max-width: 768px) {
+  .back-to-top {
+    bottom: 20px;
+    right: 20px;
+    width: 40px;
+    height: 40px;
+  }
+
+  .theme-toggle-wrapper {
+    display: none; /* Hide the desktop theme toggle on mobile */
+  }
+
+  .mobile-nav-toggle {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Hide desktop sidebar and TOC column by default on mobile */
+  header,
+  .toc-column {
+    display: none;
+  }
+
+  /* Reset grid for mobile */
+  .wrapper {
+    display: block;
+    padding: 10px;
+    width: 100%;
+    max-width: 100%;
+    overflow-y: auto;
+    height: auto;
+    position: static;
+  }
+
+  /* Simple full-width section without touch restrictions */
+  section {
+    width: 100%;
+    padding: 10px 15px;
+    margin-top: 40px; /* Add space for the fixed hamburger menu */
+    overflow: visible;
+    position: static;
+  }
+
+  /* Simple content column with standard behavior */
+  .content-column {
+    width: 100%;
+    height: auto;
+    overflow: visible;
+    position: static;
+    max-width: 100%;
+  }
+
+  /* Basic scrolling settings for body */
+  html, body {
+    overflow-y: auto !important;
+    position: static !important;
+    height: auto !important;
+    width: 100% !important;
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Only prevent scrolling when menu is actually open */
+  body.menu-open {
+    overflow: hidden;
+    position: fixed;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Minimal footer styling */
+  footer {
+    padding: 10px 15px;
+    text-align: center;
+    position: static;
+  }
+}

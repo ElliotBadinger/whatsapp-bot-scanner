@@ -1,0 +1,8 @@
+# Baileys scraper dependencies
+crawl4ai>=0.3.0,<1.0.0
+
+# lxml is required by crawl4ai but may need system dependencies
+# If installation fails, install system packages first:
+#   Fedora/RHEL: sudo dnf install libxml2-devel libxslt-devel
+#   Ubuntu/Debian: sudo apt install libxml2-dev libxslt-dev
+lxml>=4.9.0

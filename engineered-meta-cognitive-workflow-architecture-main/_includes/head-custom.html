@@ -1,0 +1,48 @@
+<!-- start custom head snippets -->
+
+<!-- Custom CSS -->
+<link rel="stylesheet" href="{{ "/assets/css/custom.css?v=" | append: site.github.build_revision | relative_url }}">
+<link rel="stylesheet" href="{{ "/assets/css/accordion.css?v=" | append: site.github.build_revision | relative_url }}">
+<link rel="stylesheet" href="{{ "/assets/css/mobile.css?v=" | append: site.github.build_revision | relative_url }}">
+
+<!-- Syntax Highlighting with highlight.js -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" id="light-syntax">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css" id="dark-syntax" disabled>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // Initialize syntax highlighting
+    document.querySelectorAll('pre code').forEach((block) => {
+      hljs.highlightElement(block);
+    });
+
+    // Function to toggle syntax highlight styles when dark mode changes
+    function updateSyntaxTheme(isDark) {
+      document.getElementById('light-syntax').disabled = isDark;
+      document.getElementById('dark-syntax').disabled = !isDark;
+    }
+
+    // Initial theme based on current mode
+    updateSyntaxTheme(document.body.classList.contains('dark-mode'));
+
+    // Watch for dark mode changes
+    const observer = new MutationObserver(function(mutations) {
+      mutations.forEach(function(mutation) {
+        if (mutation.attributeName === 'class') {
+          updateSyntaxTheme(document.body.classList.contains('dark-mode'));
+        }
+      });
+    });
+
+    observer.observe(document.body, { attributes: true });
+  });
+</script>
+
+<!-- Favicon -->
+<link rel="apple-touch-icon" sizes="180x180" href="{{ '/assets/img/apple-touch-icon.png' | relative_url }}">
+<link rel="icon" type="image/png" sizes="32x32" href="{{ '/assets/img/favicon-32x32.png' | relative_url }}">
+<link rel="icon" type="image/png" sizes="16x16" href="{{ '/assets/img/favicon-16x16.png' | relative_url }}">
+<link rel="manifest" href="{{ '/assets/img/site.webmanifest' | relative_url }}">
+<link rel="shortcut icon" type="image/x-icon" href="{{ '/assets/img/favicon.ico' | relative_url }}">
+
+<!-- end custom head snippets -->
