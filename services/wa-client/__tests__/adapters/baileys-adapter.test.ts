@@ -159,7 +159,9 @@ describe("BaileysAdapter", () => {
   describe("connect", () => {
     it("should transition to connecting state", async () => {
       // Start connection (don't await as it may hang waiting for events)
-      adapter.connect().catch(() => { /* intentionally ignored */ });
+      adapter.connect().catch(() => {
+        /* intentionally ignored */
+      });
 
       // Should be in connecting state
       expect(adapter.state).toBe("connecting");
@@ -169,7 +171,9 @@ describe("BaileysAdapter", () => {
     });
 
     it("should create Baileys socket with correct config", async () => {
-      adapter.connect().catch(() => { /* intentionally ignored */ });
+      adapter.connect().catch(() => {
+        /* intentionally ignored */
+      });
 
       // Verify makeWASocket was called
       expect(mockMakeWASocket).toHaveBeenCalled();
