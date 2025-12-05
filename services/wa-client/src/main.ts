@@ -35,6 +35,7 @@ import { createMessageHandler } from "./handlers/index.js";
 // Global state
 let adapter: WhatsAppAdapter | null = null;
 let scanRequestQueue: Queue | null = null;
+let cachedQr: string | null = null;
 
 /**
  * Graceful shutdown handler
@@ -105,11 +106,20 @@ async function main(): Promise<void> {
 
   adapter.onQRCode((qr) => {
     logger.info("QR code received - scan with WhatsApp to authenticate");
+    // Cache QR for HTTP endpoint
+    cachedQr = qr;
     // Print QR to terminal if configured
     if (config.wa.remoteAuth.disableQrFallback !== true) {
       import("qrcode-terminal").then((qrTerminal) => {
         qrTerminal.generate(qr, { small: true });
       });
+    }
+  });
+
+  // Clear cached QR on successful connection
+  adapter.onConnectionChange((state) => {
+    if (state === "ready") {
+      cachedQr = null;
     }
   });
 
@@ -167,12 +177,30 @@ async function main(): Promise<void> {
       code?: string;
       error?: string;
       qrAvailable?: boolean;
+      retryAfterMs?: number;
     };
   }>("/pair", async (request, reply) => {
     if (!adapter) {
       return reply.status(503).send({
         success: false,
         error: "WhatsApp adapter not initialized",
+      });
+    }
+
+    // Check if socket is ready for pairing (QR should be generated first)
+    if (!cachedQr && adapter.state === "connecting") {
+      // Socket is connecting but QR not yet generated - ask client to retry
+      return reply.status(202).send({
+        success: false,
+        error: "Socket connecting, waiting for QR generation. Retry in 2 seconds.",
+        retryAfterMs: 2000,
+      });
+    }
+
+    if (adapter.state === "ready") {
+      return reply.status(200).send({
+        success: true,
+        error: "Already connected, no pairing needed",
       });
     }
 
@@ -236,20 +264,23 @@ async function main(): Promise<void> {
       });
     }
 
-    // The QR is emitted via event; we can't directly get it
-    // This endpoint is for checking state and giving guidance
     const state = adapter.state;
 
     if (state === "ready") {
       return { success: true, state, error: "Already connected, no QR needed" };
     }
 
+    // Return cached QR if available
+    if (cachedQr) {
+      return { success: true, qr: cachedQr, state };
+    }
+
     return {
-      success: true,
+      success: false,
       state,
       error:
         state === "connecting"
-          ? "Connecting... watch terminal for QR code or use /pair for pairing code"
+          ? "QR code not yet generated. Wait a moment and retry, or use /pair for pairing code"
           : "Not connected. Restart wa-client to generate new QR code",
     };
   });

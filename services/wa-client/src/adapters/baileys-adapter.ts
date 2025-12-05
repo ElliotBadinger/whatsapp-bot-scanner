@@ -179,11 +179,13 @@ export class BaileysAdapter implements WhatsAppAdapter {
           handler(reason);
         }
 
-        // Auto-reconnect if appropriate
-        if (shouldReconnect) {
-          this.logger.info("Attempting to reconnect...");
-          setTimeout(() => this.connect(), 5000);
-        }
+        // Auto-reconnect: always reconnect to generate fresh QR/pairing code
+        // Even after logout, we want to reconnect so user can re-pair
+        this.logger.info(
+          { shouldReconnect, isLoggedOut },
+          "Attempting to reconnect for fresh pairing...",
+        );
+        setTimeout(() => this.connect(), isLoggedOut ? 2000 : 5000);
       } else if (connection === "open") {
         this._botId = this.socket?.user?.id ?? null;
         this.logger.info({ botId: this._botId }, "Connection opened");

@@ -1134,7 +1134,8 @@ ${C.primary("  ╚════════════════════�
       !envContent.match(/WA_REMOTE_AUTH_PHONE_NUMBERS=\s*$/m);
 
     // Let user choose pairing method
-    let pairingMethod = "qr"; // Default to QR for non-interactive
+    // Default to pairing code for non-interactive (more reliable than QR in Docker)
+    let pairingMethod = hasPhoneNumber ? "code" : "qr";
 
     if (!this.nonInteractive) {
       console.log("");
@@ -1182,61 +1183,149 @@ ${C.primary("  ╚════════════════════�
   }
 
   /**
+   * Get the wa-client port from env files
+   */
+  async getWaClientPort() {
+    const envContent = await fs
+      .readFile(path.join(ROOT_DIR, ".env"), "utf-8")
+      .catch(() => "");
+    const envLocalContent = await fs
+      .readFile(path.join(ROOT_DIR, ".env.local"), "utf-8")
+      .catch(() => "");
+    const localMatch = envLocalContent.match(/WA_CLIENT_PORT=["']?(\d+)["']?/);
+    const match = envContent.match(/WA_CLIENT_PORT=(\d+)/);
+    return localMatch?.[1] || match?.[1] || "3005";
+  }
+
+  /**
+   * Wait for wa-client to be in connecting state (ready to accept pairing)
+   */
+  async waitForConnectingState(port, spinner, timeoutMs = 30000) {
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeoutMs) {
+      try {
+        const response = await fetch(`http://127.0.0.1:${port}/state`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.state === "connecting") {
+            return { ready: true, state: data.state };
+          }
+          if (data.state === "ready") {
+            return { ready: true, state: data.state, alreadyConnected: true };
+          }
+        }
+      } catch {
+        // Service not ready yet
+      }
+      spinner.text = C.text(
+        `Waiting for wa-client to be ready... (${Math.round((Date.now() - startTime) / 1000)}s)`,
+      );
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    return { ready: false };
+  }
+
+  /**
    * Request a pairing code from the wa-client service
    */
   async requestPairingCode() {
+    const spinner = ora({
+      text: C.text("Preparing pairing code request..."),
+      color: "cyan",
+      spinner: "dots12",
+    }).start();
+
     try {
-      const spinner = ora({
-        text: C.text("Requesting pairing code..."),
-        color: "cyan",
-        spinner: "dots12",
-      }).start();
+      const waClientPort = await this.getWaClientPort();
 
-      // Wait for wa-client to be ready
-      await new Promise((r) => setTimeout(r, 3000));
-
-      // Get the WA client port from env (.env.local takes precedence)
-      const envContent = await fs
-        .readFile(path.join(ROOT_DIR, ".env"), "utf-8")
-        .catch(() => "");
-      const envLocalContent = await fs
-        .readFile(path.join(ROOT_DIR, ".env.local"), "utf-8")
-        .catch(() => "");
-
-      // wa-client runs on configured port (mapped from container port 3001)
-      const localMatch = envLocalContent.match(
-        /WA_CLIENT_PORT=["']?(\d+)["']?/,
-      );
-      const match = envContent.match(/WA_CLIENT_PORT=(\d+)/);
-      const waClientPort = localMatch?.[1] || match?.[1] || "3005";
-
-      const response = await fetch(`http://127.0.0.1:${waClientPort}/pair`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || `HTTP ${response.status}`);
+      // Wait for wa-client to be in connecting state
+      const stateResult = await this.waitForConnectingState(waClientPort, spinner);
+      
+      if (stateResult.alreadyConnected) {
+        spinner.succeed(C.success("WhatsApp is already connected!"));
+        return;
       }
 
-      const data = await response.json();
-      spinner.stop();
-
-      if (data.success && data.code) {
-        this.displayPairingCode(data.code);
+      if (!stateResult.ready) {
+        spinner.fail(C.error("wa-client not ready for pairing"));
         console.log(
-          `  ${ICON.info}  ${C.muted("Enter this code on your phone within 2-3 minutes.")}`,
+          `  ${ICON.info}  ${C.text("Restart services and try again:")} ${C.code("docker compose restart wa-client")}`,
         );
-        console.log(
-          `  ${ICON.info}  ${C.muted("If it expires, run:")} ${C.code("npx whatsapp-bot-scanner pair")}\n`,
-        );
-      } else {
-        throw new Error(data.error || "No pairing code received");
+        return;
       }
+
+      spinner.text = C.text("Requesting pairing code...");
+
+      // Retry logic for pairing code request (more retries since socket needs time to connect)
+      let lastError = null;
+      const maxAttempts = 20; // Socket may need time to stabilize after logout
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          const response = await fetch(`http://127.0.0.1:${waClientPort}/pair`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          });
+
+          const data = await response.json().catch(() => ({}));
+          
+
+          // Success - got pairing code
+          if (response.ok && data.success && data.code) {
+            spinner.stop();
+            this.displayPairingCode(data.code);
+            
+            // Start polling for connection success
+            await this.pollForPairingSuccess(waClientPort, data.code);
+            return;
+          }
+
+          // Already connected
+          if (response.ok && data.success && data.error?.includes("Already connected")) {
+            spinner.succeed(C.success("WhatsApp is already connected!"));
+            return;
+          }
+
+          // Socket still connecting - retry after delay
+          if (response.status === 202 && data.retryAfterMs) {
+            spinner.text = C.text(`Socket connecting... (${attempt}/${maxAttempts})`);
+            await new Promise((r) => setTimeout(r, data.retryAfterMs));
+            continue;
+          }
+
+          // Check for rate limiting
+          if (response.status === 429 || data.error?.includes("rate")) {
+            spinner.fail(C.error("Rate limited by WhatsApp"));
+            console.log(
+              `  ${ICON.warning}  ${C.warning("Wait 15 minutes before trying again.")}`,
+            );
+            console.log(
+              `  ${ICON.info}  ${C.text("Try QR code instead:")} ${C.code("docker compose logs -f wa-client")}`,
+            );
+            return;
+          }
+
+          // Connection Closed is transient - socket is reconnecting, wait and retry
+          if (data.error?.includes("Connection Closed") || data.error?.includes("Socket not connected")) {
+            spinner.text = C.text(`Socket reconnecting... (${attempt}/${maxAttempts})`);
+            await new Promise((r) => setTimeout(r, 3000));
+            continue;
+          }
+
+          lastError = new Error(data.error || `HTTP ${response.status}`);
+        } catch (err) {
+          lastError = err;
+        }
+
+        if (attempt < maxAttempts) {
+          spinner.text = C.text(`Waiting for socket... (${attempt + 1}/${maxAttempts})`);
+          await new Promise((r) => setTimeout(r, 2000));
+        }
+      }
+
+      throw lastError || new Error("Failed to get pairing code - socket did not become ready");
     } catch (error) {
-      console.log("");
-      console.log(C.error(`  ✗ Pairing code request failed: ${error.message}`));
+      spinner.fail(C.error(`Pairing code request failed: ${error.message}`));
       console.log(
         `  ${ICON.info}  ${C.text("Try QR code instead, or retry later with:")} ${C.code("npx whatsapp-bot-scanner pair")}`,
       );
@@ -1244,7 +1333,51 @@ ${C.primary("  ╚════════════════════�
   }
 
   /**
-   * Show QR code pairing by streaming wa-client logs
+   * Poll for pairing success after displaying code
+   */
+  async pollForPairingSuccess(port, code) {
+    console.log(
+      `  ${ICON.info}  ${C.muted("Enter the code on your phone. Waiting for connection...")}`,
+    );
+
+    const spinner = ora({
+      text: C.text("Waiting for WhatsApp connection..."),
+      color: "cyan",
+      spinner: "dots12",
+    }).start();
+
+    const startTime = Date.now();
+    const timeoutMs = 180000; // 3 minutes
+
+    while (Date.now() - startTime < timeoutMs) {
+      try {
+        const response = await fetch(`http://127.0.0.1:${port}/state`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.state === "ready") {
+            spinner.succeed(C.success("WhatsApp connected successfully!"));
+            return true;
+          }
+        }
+      } catch {
+        // Continue polling
+      }
+
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
+      const remaining = Math.max(0, Math.round((timeoutMs - (Date.now() - startTime)) / 1000));
+      spinner.text = C.text(`Waiting for connection... (${remaining}s remaining)`);
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+
+    spinner.warn(C.warning("Pairing timeout - code may have expired"));
+    console.log(
+      `  ${ICON.info}  ${C.text("Request a new code:")} ${C.code("npx whatsapp-bot-scanner pair")}`,
+    );
+    return false;
+  }
+
+  /**
+   * Show QR code pairing by fetching from HTTP endpoint
    */
   async showQRPairing() {
     console.log(`
@@ -1259,57 +1392,65 @@ ${C.primary("  ╚════════════════════�
 `);
 
     const spinner = ora({
-      text: C.text("Waiting for QR code from wa-client..."),
+      text: C.text("Fetching QR code from wa-client..."),
       color: "cyan",
       spinner: "dots12",
     }).start();
 
     try {
-      // Stream logs from wa-client to show QR code
-      const logProcess = execa(
-        "docker",
-        ["compose", "logs", "-f", "--tail=100", "wa-client"],
-        { cwd: ROOT_DIR, reject: false },
-      );
-
+      const waClientPort = await this.getWaClientPort();
+      const startTime = Date.now();
+      const timeoutMs = 120000; // 2 minutes
       let qrDisplayed = false;
+      let lastQr = null;
       let pairingSuccess = false;
-      const timeout = setTimeout(() => {
-        if (!qrDisplayed && !pairingSuccess) {
-          spinner.warn(C.warning("QR code timeout. Try pairing code instead."));
-          logProcess.kill();
-        }
-      }, 60000);
 
-      logProcess.stdout?.on("data", (data) => {
-        const text = data.toString();
-
-        // Check for successful connection
-        if (
-          text.includes("Connection opened") ||
-          text.includes("WhatsApp client ready")
-        ) {
-          pairingSuccess = true;
-          clearTimeout(timeout);
-          spinner.succeed(C.success("WhatsApp connected successfully!"));
-          logProcess.kill();
-          return;
-        }
-
-        // Look for QR code in logs (it gets printed by qrcode-terminal)
-        if (text.includes("█") || text.includes("▀") || text.includes("▄")) {
-          if (!qrDisplayed) {
-            spinner.stop();
-            qrDisplayed = true;
+      // Poll for QR code and connection status
+      while (Date.now() - startTime < timeoutMs && !pairingSuccess) {
+        try {
+          // Check state first
+          const stateRes = await fetch(`http://127.0.0.1:${waClientPort}/state`);
+          if (stateRes.ok) {
+            const stateData = await stateRes.json();
+            if (stateData.state === "ready") {
+              pairingSuccess = true;
+              break;
+            }
           }
-          // Print QR code lines
-          process.stdout.write(text);
-        }
-      });
 
-      // Wait for process to complete or be killed
-      await logProcess;
-      clearTimeout(timeout);
+          // Try to get QR code
+          const qrRes = await fetch(`http://127.0.0.1:${waClientPort}/qr`);
+          if (qrRes.ok) {
+            const qrData = await qrRes.json();
+            if (qrData.success && qrData.qr && qrData.qr !== lastQr) {
+              lastQr = qrData.qr;
+              spinner.stop();
+              
+              // Display QR code using qrcode-terminal
+              const qrTerminal = await import("qrcode-terminal");
+              console.log("\n");
+              qrTerminal.default.generate(qrData.qr, { small: true }, (qrAscii) => {
+                console.log(qrAscii);
+              });
+              qrDisplayed = true;
+              
+              // Show countdown
+              spinner.start();
+              spinner.text = C.text("QR code displayed. Waiting for scan... (refreshes every ~20s)");
+            }
+          }
+        } catch {
+          // Continue polling
+        }
+
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        if (!qrDisplayed) {
+          spinner.text = C.text(`Waiting for QR code... (${elapsed}s)`);
+        }
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+
+      spinner.stop();
 
       if (pairingSuccess) {
         console.log(
@@ -1317,20 +1458,26 @@ ${C.primary("  ╚════════════════════�
         );
       } else if (!qrDisplayed) {
         console.log(`
-  ${ICON.warning}  ${C.warning("No QR code appeared in logs.")}
+  ${ICON.warning}  ${C.warning("QR code timeout.")}
   
   ${C.text("This may happen if:")}
+  ${C.muted("  - wa-client is still initializing")}
   ${C.muted("  - wa-client is already paired")}
-  ${C.muted("  - QR terminal display is disabled")}
-  ${C.muted("  - Connection is using pairing code mode")}
 
   ${C.text("Try these alternatives:")}
   ${C.code("  npx whatsapp-bot-scanner pair")}     ${C.muted("# Request pairing code")}
-  ${C.code("  docker compose logs wa-client")}     ${C.muted("# Check full logs")}
+  ${C.code("  docker compose restart wa-client")}  ${C.muted("# Restart and try again")}
+`);
+      } else {
+        // QR displayed but not scanned - show timeout message
+        console.log(`
+  ${ICON.warning}  ${C.warning("Pairing timeout - QR code may have expired.")}
+  
+  ${C.text("Run to try again:")} ${C.code("npx whatsapp-bot-scanner pair")}
 `);
       }
     } catch (error) {
-      spinner.fail(C.error("Failed to stream logs"));
+      spinner.fail(C.error("Failed to fetch QR code"));
       console.log(
         `  ${ICON.info}  ${C.text("Check manually:")} ${C.code("docker compose logs -f wa-client")}`,
       );
