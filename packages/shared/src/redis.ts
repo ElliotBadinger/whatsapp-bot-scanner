@@ -24,8 +24,27 @@ export function createRedisConnection(): Redis {
     return new InMemoryRedis() as unknown as Redis;
   }
 
-  // Production Redis connection
-  return new Redis(config.redisUrl, { maxRetriesPerRequest: null });
+  // Production Redis connection with retry configuration
+  // This helps handle cases where Redis is still starting up
+  return new Redis(config.redisUrl, {
+    maxRetriesPerRequest: null,
+    retryStrategy: (times: number) => {
+      // Retry with exponential backoff, max 30 seconds
+      const delay = Math.min(times * 1000, 30000);
+      console.log(`Redis connection retry #${times}, waiting ${delay}ms...`);
+      return delay;
+    },
+    reconnectOnError: (err: Error) => {
+      // Reconnect on connection errors
+      const targetError = 'READONLY';
+      if (err.message.includes(targetError)) {
+        return true;
+      }
+      return 1; // Reconnect for other errors too
+    },
+    connectTimeout: 30000, // 30 second connection timeout
+    lazyConnect: false, // Connect immediately
+  });
 }
 
 /**

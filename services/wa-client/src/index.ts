@@ -1952,15 +1952,28 @@ async function main() {
           const page = getPageHandle(client);
           if (page && pollCount >= 10) { // Wait at least 20 seconds before trying Puppeteer fallback
             try {
-              const storeInfo = await page.evaluate(() => {
+              // Define the expected return type for the evaluate function
+              interface StoreCheckResult {
+                hasStore: boolean;
+                hasUser?: boolean;
+                hasWid?: boolean;
+                wid?: string;
+                pushname?: string | null;
+                platform?: string | null;
+              }
+              
+              const storeInfo = await page.evaluate((): StoreCheckResult => {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const win = window as any;
+                
                 // Check if Store is available and has the required data
-                if (typeof window.Store === 'undefined') {
+                if (typeof win.Store === 'undefined') {
                   return { hasStore: false };
                 }
                 
                 // Check if we have user info
-                const user = window.Store?.User;
-                const conn = window.Store?.Conn;
+                const user = win.Store?.User;
+                const conn = win.Store?.Conn;
                 if (!user || !conn) {
                   return { hasStore: true, hasUser: false };
                 }
