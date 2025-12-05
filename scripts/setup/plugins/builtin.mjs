@@ -1,6 +1,50 @@
 import { registerPlugin } from './registry.mjs';
 
 export function registerBuiltinPlugins() {
+  // WhatsApp Library Selection
+  registerPlugin({
+    id: 'wa-library-selection',
+    title: 'WhatsApp Library Selection',
+    description: 'Choose between Baileys (recommended) or whatsapp-web.js (legacy).',
+    stages: ['environment'],
+    optional: false,
+    isEnabled(context) {
+      return !context.flags.noninteractive;
+    },
+    async run({ context, runtime, output, prompt }) {
+      const env = runtime.envFile;
+      const current = (env.get('WA_LIBRARY') || 'baileys').toLowerCase();
+      
+      const choice = await prompt.select({
+        name: 'waLibrary',
+        message: 'Select WhatsApp library',
+        choices: [
+          { 
+            title: 'Baileys (recommended)', 
+            value: 'baileys',
+            description: 'Protocol-based, ~50MB RAM, no browser required'
+          },
+          { 
+            title: 'whatsapp-web.js (legacy)', 
+            value: 'wwebjs',
+            description: 'Browser-based, ~500MB RAM, requires Chromium'
+          }
+        ],
+        initial: current === 'wwebjs' ? 1 : 0
+      });
+      
+      env.set('WA_LIBRARY', choice);
+      
+      if (choice === 'baileys') {
+        output.info('Using Baileys library. Why this matters: lower resource usage, faster startup, no browser dependency.');
+      } else {
+        output.warn('Using whatsapp-web.js (legacy). Consider migrating to Baileys for better performance.');
+      }
+      
+      context.recordDecision('wa.library', choice);
+    }
+  });
+
   registerPlugin({
     id: 'urlscan-integration',
     title: 'urlscan.io deep scans',
