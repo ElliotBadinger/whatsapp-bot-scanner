@@ -836,14 +836,32 @@ async function main() {
   assertEssentialConfig('wa-client');
   assertControlPlaneToken();
 
-  // Validate Redis connectivity before starting
-  try {
-    await redis.ping();
-    logger.info('Redis connectivity validated');
-  } catch (err) {
-    logger.error({ err }, 'Redis connectivity check failed during startup');
-    // Don't throw, let healthcheck handle it so container doesn't crash loop immediately
-    // throw new Error('Redis is required but unreachable');
+  // Wait for Redis connectivity with retries
+  // This handles the case where wa-client starts before Redis is fully ready
+  const maxRedisRetries = 30;
+  const redisRetryDelayMs = 2000;
+  let redisConnected = false;
+  
+  for (let attempt = 1; attempt <= maxRedisRetries; attempt++) {
+    try {
+      await redis.ping();
+      logger.info('Redis connectivity validated');
+      redisConnected = true;
+      break;
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (attempt < maxRedisRetries) {
+        logger.warn({ attempt, maxRetries: maxRedisRetries, err: errMsg }, 'Redis not ready, waiting...');
+        await new Promise(resolve => setTimeout(resolve, redisRetryDelayMs));
+      } else {
+        logger.error({ err: errMsg }, 'Redis connectivity check failed after all retries');
+      }
+    }
+  }
+  
+  if (!redisConnected) {
+    logger.error('Redis is required but unreachable after retries. Exiting...');
+    process.exit(1);
   }
 
   const app = Fastify();
