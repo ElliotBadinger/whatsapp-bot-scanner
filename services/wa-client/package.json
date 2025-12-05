@@ -15,7 +15,9 @@
     "clean": "rm -rf dist .tsbuildinfo"
   },
   "dependencies": {
+    "@hapi/boom": "^10.0.1",
     "@wbscanner/shared": "file:../../packages/shared",
+    "@whiskeysockets/baileys": "^6.7.16",
     "bullmq": "^5.65.1",
     "fastify": "^5.6.2",
     "ioredis": "^5.8.2",
