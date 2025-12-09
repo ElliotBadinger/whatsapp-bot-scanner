@@ -716,7 +716,7 @@ export class WWebJSAdapter implements WhatsAppAdapter {
 
     const result = await this.client.createGroup(name, participants);
     if (typeof result === "string") {
-      throw new Error(result);
+      throw new TypeError(result);
     }
 
     // Fetch the full group metadata

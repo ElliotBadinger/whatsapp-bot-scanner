@@ -953,7 +953,7 @@ const SAFE_CONTROL_PLANE_DEFAULT = "http://control-plane:8080";
 
 function sanitizeLogValue(value: string | undefined): string | undefined {
   if (!value) return value;
-  return value.replace(/[\r\n\t]+/g, " ").slice(0, 256);
+  return value.replaceAll(/[\r\n\t]+/g, " ").slice(0, 256);
 }
 
 function updateSessionStateGauge(state: string): void {
@@ -1006,6 +1006,7 @@ async function isUrlAllowedForScanning(normalized: string): Promise<boolean> {
     return false;
   }
 }
+
 async function initializeWhatsAppWithRetry(
   client: Client,
   maxAttempts = 5,
@@ -1068,6 +1069,20 @@ async function initializeWhatsAppWithRetry(
       await new Promise((resolve) => setTimeout(resolve, totalDelay));
     }
   }
+}
+
+/**
+ * Get configured remote phone numbers for pairing
+ * @returns Array of phone numbers, empty if none configured
+ */
+function getRemotePhoneNumbers(): string[] {
+  if (config.wa.remoteAuth.phoneNumbers.length > 0) {
+    return config.wa.remoteAuth.phoneNumbers;
+  }
+  if (config.wa.remoteAuth.phoneNumber) {
+    return [config.wa.remoteAuth.phoneNumber];
+  }
+  return [];
 }
 
 async function main() {
@@ -1191,12 +1206,7 @@ async function main() {
   const authResolution = await resolveAuthStrategy(redis);
 
   // Initialize phone numbers for Remote Auth (needed before building clientOptions)
-  const remotePhoneNumbers =
-    config.wa.remoteAuth.phoneNumbers.length > 0
-      ? config.wa.remoteAuth.phoneNumbers
-      : config.wa.remoteAuth.phoneNumber
-        ? [config.wa.remoteAuth.phoneNumber]
-        : [];
+  const remotePhoneNumbers = getRemotePhoneNumbers();
 
   remotePhone = remotePhoneNumbers[0]; // Keep backwards compatibility for single phone variable
 
@@ -1416,7 +1426,7 @@ async function main() {
       try {
         const isReady = await pupPage.evaluate(() => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const win = window as any;
+          const win = globalThis as any;
           return !!win.AuthStore?.PairingCodeLinkUtils?.startAltLinkingFlow;
         });
 
@@ -1534,11 +1544,11 @@ async function main() {
           interval,
         );
         return processPairingOutcome(outcome);
-      } catch (fallbackErr) {
+      } catch (error_) {
         logger.error(
           {
             err:
-              fallbackErr instanceof Error ? fallbackErr.message : fallbackErr,
+              error_ instanceof Error ? error_.message : error_,
             phoneNumber: maskPhone(phone),
           },
           "Puppeteer fallback also failed",
@@ -1582,10 +1592,11 @@ async function main() {
 
   function recordPairingAttemptIfNeeded(): void {
     if (remotePhone) {
+      const phone = remotePhone;
       lastPairingAttemptMs = Date.now();
-      recordPairingAttempt(remotePhone, lastPairingAttemptMs).catch((err) => {
+      recordPairingAttempt(phone, lastPairingAttemptMs).catch((err) => {
         logger.warn(
-          { err, phoneNumber: maskPhone(remotePhone!) },
+          { err, phoneNumber: maskPhone(phone) },
           "Failed to record pairing attempt",
         );
       });
