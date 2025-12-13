@@ -38,7 +38,7 @@ export class LocalThreatDatabase {
     // Schedule periodic updates
     this.updateTimer = setInterval(() => {
       this.updateOpenPhishFeed().catch(err => {
-        logger.error({ err }, 'Failed to update OpenPhish feed');
+        logger.warn({ err }, 'Failed to update OpenPhish feed');
       });
     }, this.options.updateIntervalMs);
 
@@ -129,7 +129,7 @@ export class LocalThreatDatabase {
 
       logger.info({ count: urls.length }, 'OpenPhish feed updated successfully');
     } catch (err) {
-      logger.error({ err }, 'Failed to update OpenPhish feed');
+      logger.warn({ err }, 'Failed to update OpenPhish feed');
       // Don't throw - make this non-fatal to allow service to continue running
     }
   }

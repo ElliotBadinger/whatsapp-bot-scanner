@@ -2,7 +2,7 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--save", "60", "1", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction", "--maxclients", "1000"]
     mem_limit: 512m
     cpus: '0.5'
     pids_limit: 100
@@ -41,6 +41,10 @@ services:
       network: host
     working_dir: /app
     env_file: [.env]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - REDIS_URL=redis://host.docker.internal:6379/0
     mem_limit: 512m
     cpus: '0.5'
     pids_limit: 50
@@ -75,6 +79,8 @@ services:
       target: ${WA_BUILD_TARGET:-wa-client-baileys}
       network: host
     env_file: [.env]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       redis:
         condition: service_healthy
@@ -91,14 +97,14 @@ services:
     environment:
       - WA_HTTP_PORT=3001
       - NODE_OPTIONS=--max-old-space-size=768
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://host.docker.internal:6379/0
       - WA_LIBRARY=${WA_LIBRARY:-baileys}
     volumes:
       - wa_session:/app/services/wa-client/data:rw
       - ./storage:/app/storage:rw
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "bun -e \"fetch('http://localhost:3001/healthz').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))\""]
+      test: ["CMD-SHELL", "(command -v bun >/dev/null 2>&1 && bun -e \"fetch('http://localhost:3001/healthz').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))\") || (command -v node >/dev/null 2>&1 && node -e \"fetch('http://localhost:3001/healthz').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))\")"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -122,6 +128,8 @@ services:
       target: scan-orchestrator
       network: host
     env_file: [.env]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       redis:
         condition: service_healthy
@@ -140,12 +148,12 @@ services:
       - "${SCAN_ORCHESTRATOR_PORT:-3003}:3001"
     environment:
       - NODE_OPTIONS=--max-old-space-size=768
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://host.docker.internal:6379/0
     volumes:
       - ./storage:/app/storage:rw
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "bun -e \"fetch('http://localhost:3001/healthz').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))\""]
+      test: ["CMD-SHELL", "(command -v bun >/dev/null 2>&1 && bun -e \"fetch('http://localhost:3001/healthz').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))\") || (command -v node >/dev/null 2>&1 && node -e \"fetch('http://localhost:3001/healthz').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))\")"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -169,6 +177,8 @@ services:
       target: control-plane
       network: host
     env_file: [.env]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -182,6 +192,7 @@ services:
         hard: 2048
     environment:
       - NODE_OPTIONS=--max-old-space-size=384
+      - REDIS_URL=redis://host.docker.internal:6379/0
     volumes:
       - ./storage:/app/storage:rw
     restart: unless-stopped
@@ -205,6 +216,7 @@ services:
 
   reverse-proxy:
     image: nginx:alpine
+    entrypoint: ["nginx", "-g", "daemon off;"]
     depends_on:
       - control-plane
     mem_limit: 256m
@@ -244,12 +256,20 @@ services:
       - "${GRAFANA_PORT:-3002}:3000"
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/etc/grafana/dashboards:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_FEEDBACK_LINKS_ENABLED=false
+      - GF_PLUGINS_PLUGIN_ADMIN_ENABLED=false
+      - GF_PLUGINS_PREINSTALL_DISABLED=true
+      - GF_PLUGINS_DISABLE_PLUGINS=angulardetectorsprovider
+      - GF_ANGULAR_SUPPORT_ENABLED=false
     networks: [internal]
     restart: unless-stopped
     mem_limit: 512m
@@ -270,6 +290,8 @@ services:
     tmpfs:
       - /tmp
       - /var/lib/grafana/tmp
+      - /etc/grafana/provisioning/plugins
+      - /etc/grafana/provisioning/alerting
 
   prometheus:
     image: prom/prometheus:latest
@@ -339,20 +361,10 @@ services:
 networks:
   internal:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.30.0.0/16
-          ip_range: 172.30.1.0/24
-          gateway: 172.30.1.1
     driver_opts:
       com.docker.network.bridge.enable_icc: "true"
   public:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.31.0.0/16
-          ip_range: 172.31.1.0/24
-          gateway: 172.31.1.1
     driver_opts:
       com.docker.network.bridge.enable_icc: "false"
       com.docker.network.bridge.enable_ip_masquerade: "true"

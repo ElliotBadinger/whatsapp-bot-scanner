@@ -1,7 +1,71 @@
-import Database from 'better-sqlite3';
 import type { Logger } from 'pino';
 import fs from 'fs';
 import path from 'path';
+
+type SqliteStatement = {
+  all: (...params: unknown[]) => unknown[];
+  run: (
+    ...params: unknown[]
+  ) => { changes?: number; lastInsertRowid?: unknown } | unknown;
+};
+
+type SqliteDriver = {
+  prepare: (sql: string) => SqliteStatement;
+  pragma: (pragma: string) => unknown;
+  transaction: <T>(fn: () => T) => () => T;
+  close: () => void;
+};
+
+function createSqliteDriver(dbPath: string): SqliteDriver {
+  let bunSqlite: { Database: new (path: string) => any } | null = null;
+  try {
+    bunSqlite = require('bun:sqlite') as { Database: new (path: string) => any };
+  } catch {
+    bunSqlite = null;
+  }
+
+  if (bunSqlite) {
+    const db = new bunSqlite.Database(dbPath);
+
+    return {
+      prepare(sql: string) {
+        const stmt = db.query(sql);
+        return {
+          all: (...params: unknown[]) => stmt.all(...params),
+          run: (...params: unknown[]) => stmt.run(...params),
+        };
+      },
+      pragma(pragma: string) {
+        return db.exec(`PRAGMA ${pragma}`);
+      },
+      transaction<T>(fn: () => T) {
+        return () => {
+          db.exec('BEGIN');
+          try {
+            const result = fn();
+            db.exec('COMMIT');
+            return result;
+          } catch (err) {
+            db.exec('ROLLBACK');
+            throw err;
+          }
+        };
+      },
+      close() {
+        if (typeof db.close === 'function') {
+          db.close();
+        }
+      },
+    };
+  }
+
+  const requireFunc = (0, eval)('require') as (id: string) => unknown;
+  const moduleName = ['better', 'sqlite3'].join('-');
+  const BetterSqlite3 = requireFunc(moduleName) as unknown as new (
+    path: string,
+  ) => SqliteDriver;
+  return new BetterSqlite3(dbPath);
+}
 
 interface DatabaseConfig {
   dbPath?: string;
@@ -9,7 +73,7 @@ interface DatabaseConfig {
 }
 
 export class SQLiteConnection {
-  private db: Database.Database;
+  private db: SqliteDriver;
   private logger: Logger | undefined;
 
   constructor(config: DatabaseConfig = {}) {
@@ -21,7 +85,7 @@ export class SQLiteConnection {
       fs.mkdirSync(dbDir, { recursive: true });
     }
 
-    this.db = new Database(dbPath);
+    this.db = createSqliteDriver(dbPath);
     this.logger = config.logger;
 
     // Enable WAL mode for better concurrency
@@ -35,7 +99,7 @@ export class SQLiteConnection {
     }
   }
 
-  getDatabase(): Database.Database {
+  getDatabase(): SqliteDriver {
     return this.db;
   }
 
@@ -51,8 +115,16 @@ export class SQLiteConnection {
 
       // Handle INSERT, UPDATE, DELETE queries
       const result = stmt.run(...params);
+      const resultObj =
+        typeof result === 'object' && result !== null
+          ? (result as Record<string, unknown>)
+          : null;
+      const changes =
+        resultObj && typeof resultObj.changes === 'number' ? resultObj.changes : 0;
+      const lastInsertRowid = resultObj ? resultObj.lastInsertRowid : undefined;
+
       return {
-        rows: result.changes > 0 ? [{ affectedRows: result.changes, lastInsertRowid: result.lastInsertRowid }] : []
+        rows: changes > 0 ? [{ affectedRows: changes, lastInsertRowid }] : [],
       };
     } catch (error) {
       if (this.logger) {

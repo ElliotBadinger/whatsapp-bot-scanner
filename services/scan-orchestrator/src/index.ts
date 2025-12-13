@@ -85,15 +85,11 @@ class InMemoryQueue {
   }
 }
 
-const redis = createRedisConnection();
-const scanRequestQueue = createQueue(config.queues.scanRequest, {
-  connection: redis,
-});
-const scanVerdictQueue = createQueue(config.queues.scanVerdict, {
-  connection: redis,
-});
-const urlscanQueue = createQueue(config.queues.urlscan, { connection: redis });
-const deepScanQueue = createQueue("deep-scan", { connection: redis });
+let redis!: Redis;
+let scanRequestQueue!: Queue;
+let scanVerdictQueue!: Queue;
+let urlscanQueue!: Queue;
+let deepScanQueue!: Queue;
 
 function createQueue(name: string, options: { connection: Redis }): Queue {
   if (typeof globalThis !== "undefined") {
@@ -109,20 +105,6 @@ function createQueue(name: string, options: { connection: Redis }): Queue {
   }
   return new Queue(name, options);
 }
-
-const queueMetricsInterval = setInterval(() => {
-  refreshQueueMetrics(scanRequestQueue, config.queues.scanRequest).catch(
-    () => undefined,
-  );
-  refreshQueueMetrics(scanVerdictQueue, config.queues.scanVerdict).catch(
-    () => undefined,
-  );
-  refreshQueueMetrics(urlscanQueue, config.queues.urlscan).catch(
-    () => undefined,
-  );
-  refreshQueueMetrics(deepScanQueue, "deep-scan").catch(() => undefined);
-}, 10_000);
-queueMetricsInterval.unref();
 
 const ANALYSIS_TTLS = {
   gsb: 60 * 60,
@@ -2003,6 +1985,16 @@ async function handleUrlscanCallback(
 async function main() {
   assertEssentialConfig("scan-orchestrator");
 
+  redis = createRedisConnection();
+  scanRequestQueue = createQueue(config.queues.scanRequest, {
+    connection: redis,
+  });
+  scanVerdictQueue = createQueue(config.queues.scanVerdict, {
+    connection: redis,
+  });
+  urlscanQueue = createQueue(config.queues.urlscan, { connection: redis });
+  deepScanQueue = createQueue("deep-scan", { connection: redis });
+
   // Connect to Redis using the lazy connection pattern
   // This defers connection until main() is called, avoiding ETIMEDOUT at module load
   try {
@@ -2024,14 +2016,14 @@ async function main() {
   if (gsbLocal) {
     // Initial update on startup
     gsbLocal!.updateDatabase().catch((err) => {
-      logger.error({ err }, "Failed initial GSB local database update");
+      logger.warn({ err }, "Failed initial GSB local database update");
     });
 
     // Update every hour - capture reference to avoid null check issues in closure
     const gsbInstance = gsbLocal;
     const gsbUpdateInterval = setInterval(() => {
       gsbInstance.updateDatabase().catch((err) => {
-        logger.error({ err }, "Failed scheduled GSB local database update");
+        logger.warn({ err }, "Failed scheduled GSB local database update");
       });
     }, 3600000); // 1 hour
     gsbUpdateInterval.unref();
@@ -2318,7 +2310,13 @@ async function main() {
   process.on("SIGINT", shutdown);
 }
 
-if (process.env.NODE_ENV !== "test") {
+const isTestEnv =
+  process.env.NODE_ENV === "test" || process.env.JEST_WORKER_ID !== undefined;
+
+const isExecutedDirectly =
+  typeof require !== "undefined" && require.main === module;
+
+if (!isTestEnv && isExecutedDirectly) {
   main().catch((err) => {
     logger.error(err, "Fatal in orchestrator");
     process.exit(1);

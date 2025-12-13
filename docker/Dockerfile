@@ -52,9 +52,9 @@ COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusab
 COPY services/control-plane/package.json services/control-plane/tsconfig.json /app/services/control-plane/
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     cd /app/services/control-plane && \
-    bun add /app/packages/shared/*.tgz && \
-    bun add /app/packages/confusable/*.tgz && \
-    bun install
+    sed -i 's|"@wbscanner/shared": "file:../../packages/shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
+    bun install && \
+    python3 -c "import json; p='package.json'; data=json.load(open(p)); open(p,'w').write(json.dumps(data, indent=2, sort_keys=False) + '\n')"
 
 # Copy source and build
 COPY tsconfig.base.json /app/
@@ -79,9 +79,9 @@ COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusab
 COPY services/control-plane/package.json /app/services/control-plane/
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     cd /app/services/control-plane && \
-    bun add /app/packages/shared/*.tgz && \
-    bun add /app/packages/confusable/*.tgz && \
-    bun install --production
+    sed -i 's|"@wbscanner/shared": "file:../../packages/shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
+    bun install --production && \
+    python3 -c "import json; p='package.json'; data=json.load(open(p)); open(p,'w').write(json.dumps(data, indent=2, sort_keys=False) + '\n')"
 
 # =============================================================================
 # Service: Control Plane (Final)
@@ -121,9 +121,9 @@ COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusab
 COPY services/scan-orchestrator/package.json services/scan-orchestrator/tsconfig.json /app/services/scan-orchestrator/
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     cd /app/services/scan-orchestrator && \
-    bun add /app/packages/shared/*.tgz && \
-    bun add /app/packages/confusable/*.tgz && \
-    bun install
+    sed -i 's|"@wbscanner/shared": "file:../../packages/shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
+    bun install && \
+    python3 -c "import json; p='package.json'; data=json.load(open(p)); open(p,'w').write(json.dumps(data, indent=2, sort_keys=False) + '\n')"
 
 # Copy source and build
 COPY tsconfig.base.json /app/
@@ -148,9 +148,9 @@ COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusab
 COPY services/scan-orchestrator/package.json /app/services/scan-orchestrator/
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     cd /app/services/scan-orchestrator && \
-    bun add /app/packages/shared/*.tgz && \
-    bun add /app/packages/confusable/*.tgz && \
-    bun install --production
+    sed -i 's|"@wbscanner/shared": "file:../../packages/shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
+    bun install --production && \
+    python3 -c "import json; p='package.json'; data=json.load(open(p)); open(p,'w').write(json.dumps(data, indent=2, sort_keys=False) + '\n')"
 
 # =============================================================================
 # Service: Scan Orchestrator (Final)
@@ -330,17 +330,20 @@ FROM base AS migrate
 WORKDIR /app
 
 # Install build tools for better-sqlite3 native compilation
-RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y python3 make g++ nodejs npm && \
+    npm install -g node-gyp && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy shared package tarball from builder
 COPY --from=shared-builder /app/packages/shared/*.tgz /app/packages/shared/
-
-# Install dependencies
-COPY package.json /app/
-COPY packages/shared/package.json /app/packages/shared/
+COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusable/
 
 # Install dependencies including shared (production only)
 RUN --mount=type=cache,target=/root/.bun/install/cache \
+    set -e && \
+    printf '{"name":"wbscanner-migrate","private":true,"version":"0.0.0"}\n' > /app/package.json && \
+    bun add /app/packages/confusable/*.tgz && \
+    bun add better-sqlite3 pg && \
     bun add /app/packages/shared/*.tgz && \
     bun install --production
 
@@ -351,4 +354,5 @@ COPY db/migrations /app/db/migrations
 # Setup storage
 RUN mkdir -p /app/storage && chmod 777 /app/storage
 
-CMD ["bun", "run", "scripts/run-migrations.js"]
+ENTRYPOINT []
+CMD ["node", "scripts/run-migrations.js"]

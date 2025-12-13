@@ -285,8 +285,8 @@ export class GsbLocalDatabase {
 
             logger.info({ totalAdditions, threatTypes: Object.keys(state) }, 'GSB local database updated successfully');
         } catch (err) {
-            logger.error({ err }, 'Failed to update GSB local database');
-            throw err;
+            logger.warn({ err }, 'Failed to update GSB local database');
+            return;
         }
     }
 
