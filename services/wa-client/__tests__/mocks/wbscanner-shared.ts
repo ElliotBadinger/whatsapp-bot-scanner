@@ -71,6 +71,7 @@ export const metrics = {
   waVerdictsSent: { inc: noop },
   waVerdictAckTimeouts: { labels: () => ({ inc: noop }) },
   waVerdictRetryAttempts: { labels: () => ({ inc: noop }) },
+  waResponseLatency: histogram(),
 };
 
 export const extractUrls = () => [] as string[];

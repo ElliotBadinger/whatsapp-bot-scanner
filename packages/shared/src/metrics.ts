@@ -309,6 +309,12 @@ export const metrics = {
     buckets: [0.5, 1, 2, 5, 10, 20, 40],
     registers: [register],
   }),
+  waResponseLatency: new client.Histogram({
+    name: 'wbscanner_wa_response_latency_seconds',
+    help: 'End-to-end latency between receiving a WhatsApp message and sending a bot response',
+    buckets: [0.5, 1, 2, 5, 10, 20, 40, 80],
+    registers: [register],
+  }),
   waMessageEdits: new client.Counter({
     name: 'wbscanner_wa_message_edits_total',
     help: 'WhatsApp message edit events handled by cause',

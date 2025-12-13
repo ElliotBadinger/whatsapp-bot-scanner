@@ -70,6 +70,15 @@ export class SharedMessageHandler {
   private processOwnMessages: boolean;
   private commandHandlers: Map<string, CommandHandler> = new Map();
 
+  private async replyWithLatency(
+    message: WAMessage,
+    content: Parameters<WhatsAppAdapter["reply"]>[1],
+  ): Promise<void> {
+    await this.adapter.reply(message, content);
+    const latencySeconds = Math.max(0, (Date.now() - message.timestamp) / 1000);
+    metrics.waResponseLatency.observe(latencySeconds);
+  }
+
   constructor(config: MessageHandlerConfig) {
     this.adapter = config.adapter;
     this.redis = config.redis;
@@ -86,7 +95,7 @@ export class SharedMessageHandler {
    */
   private registerDefaultCommands(): void {
     // Help command
-    this.registerCommand("help", async (ctx, adapter) => {
+    this.registerCommand("help", async (ctx) => {
       const helpText = [
         "*WBScanner Bot Commands*",
         "",
@@ -97,7 +106,7 @@ export class SharedMessageHandler {
         "_Links shared in this chat are automatically scanned._",
       ].join("\n");
 
-      await adapter.reply(ctx.message, { type: "text", text: helpText });
+      await this.replyWithLatency(ctx.message, { type: "text", text: helpText });
     });
 
     // Status command
@@ -110,13 +119,16 @@ export class SharedMessageHandler {
         `Library: ${process.env.WA_LIBRARY ?? "baileys"}`,
       ].join("\n");
 
-      await adapter.reply(ctx.message, { type: "text", text: statusText });
+      await this.replyWithLatency(ctx.message, {
+        type: "text",
+        text: statusText,
+      });
     });
 
     // Manual scan command
-    this.registerCommand("scan", async (ctx, adapter, logger) => {
+    this.registerCommand("scan", async (ctx, _adapter, logger) => {
       if (!ctx.args || ctx.args.length === 0) {
-        await adapter.reply(ctx.message, {
+        await this.replyWithLatency(ctx.message, {
           type: "text",
           text: "Usage: !scanner scan <url>",
         });
@@ -127,7 +139,7 @@ export class SharedMessageHandler {
       try {
         const normalized = normalizeUrl(url);
         if (!normalized) {
-          await adapter.reply(ctx.message, {
+          await this.replyWithLatency(ctx.message, {
             type: "text",
             text: "Invalid URL format.",
           });
@@ -137,7 +149,7 @@ export class SharedMessageHandler {
         // Check if URL is private/internal
         const parsed = new URL(normalized);
         if (await isPrivateHostname(parsed.hostname)) {
-          await adapter.reply(ctx.message, {
+          await this.replyWithLatency(ctx.message, {
             type: "text",
             text: "Cannot scan private/internal URLs.",
           });
@@ -156,7 +168,7 @@ export class SharedMessageHandler {
           manual: true,
         });
 
-        await adapter.reply(ctx.message, {
+        await this.replyWithLatency(ctx.message, {
           type: "text",
           text: `Scanning: ${normalized}`,
         });
@@ -164,7 +176,7 @@ export class SharedMessageHandler {
         logger.info({ url: normalized, hash }, "Manual scan queued");
       } catch (err) {
         logger.error({ err, url }, "Failed to queue manual scan");
-        await adapter.reply(ctx.message, {
+        await this.replyWithLatency(ctx.message, {
           type: "text",
           text: "Failed to queue scan. Please try again.",
         });
@@ -208,6 +220,18 @@ export class SharedMessageHandler {
     if (!message.body || message.body.trim().length === 0) {
       return;
     }
+
+    // Persist message timestamp so downstream verdict delivery can compute
+    // true end-to-end response latency.
+    const timestampKey = `wa:msg_ts:${message.chatId}:${message.id}`;
+    await this.redis
+      .set(
+        timestampKey,
+        String(message.timestamp),
+        "EX",
+        config.wa.messageLineageTtlSeconds,
+      )
+      .catch(() => undefined);
 
     // Parse message context
     const ctx = this.parseMessageContext(message);
@@ -269,7 +293,7 @@ export class SharedMessageHandler {
       // Track command execution (metric may not exist in all configurations)
       await handler(ctx, this.adapter, this.logger);
     } else {
-      await this.adapter.reply(ctx.message, {
+      await this.replyWithLatency(ctx.message, {
         type: "text",
         text: `Unknown command: ${ctx.command}. Use !scanner help for available commands.`,
       });

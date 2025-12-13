@@ -3,6 +3,8 @@ services:
     image: grafana/grafana:latest
     depends_on:
       - prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "3002:3000"
     volumes:
@@ -19,6 +21,8 @@ services:
     image: prom/prometheus:latest
     command: ["--config.file=/etc/prometheus/prometheus.yml"]
     mem_limit: 1g
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus

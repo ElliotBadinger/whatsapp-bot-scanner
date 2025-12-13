@@ -12,11 +12,12 @@
  */
 
 import Fastify from "fastify";
-import { Queue } from "bullmq";
+import { Queue, Worker } from "bullmq";
 
 import {
   config,
   logger,
+  metrics,
   register,
   assertEssentialConfig,
   assertControlPlaneToken,
@@ -37,8 +38,28 @@ import type { DisconnectReason } from "./adapters/types.js";
 // Global state
 let adapter: WhatsAppAdapter | null = null;
 let scanRequestQueue: Queue | null = null;
+let scanVerdictWorker: Worker | null = null;
 let cachedQr: string | null = null;
 let lastDisconnectReason: DisconnectReason | null = null;
+
+interface VerdictJobData {
+  chatId: string;
+  messageId: string;
+  verdict: string;
+  reasons: string[];
+  url: string;
+  urlHash: string;
+  decidedAt?: number;
+}
+
+function formatVerdictMessage(verdict: string, reasons: string[], url: string): string {
+  const level = verdict.toUpperCase();
+  let advice = "Use caution.";
+  if (verdict === "malicious") advice = "Do NOT open.";
+  if (verdict === "benign") advice = "Looks okay, stay vigilant.";
+  const reasonsStr = reasons.slice(0, 3).join("; ");
+  return `Link scan: ${level}\nURL: ${url}\n${advice}${reasonsStr ? `\nWhy: ${reasonsStr}` : ""}`;
+}
 
 /**
  * Graceful shutdown handler
@@ -52,6 +73,9 @@ async function shutdown(signal: string): Promise<void> {
     }
     if (scanRequestQueue) {
       await scanRequestQueue.close();
+    }
+    if (scanVerdictWorker) {
+      await scanVerdictWorker.close();
     }
     logger.info("Graceful shutdown complete");
     process.exit(0);
@@ -90,6 +114,58 @@ async function main(): Promise<void> {
   scanRequestQueue = new Queue(config.queues.scanRequest, {
     connection: redis,
   });
+
+  scanVerdictWorker = new Worker(
+    config.queues.scanVerdict,
+    async (job) => {
+      if (!adapter) {
+        throw new Error("Adapter not initialized");
+      }
+
+      const started = Date.now();
+      const data = job.data as VerdictJobData;
+      const decidedAt = data.decidedAt ?? job.timestamp ?? started;
+
+      const verdictLatencySeconds = Math.max(0, (Date.now() - decidedAt) / 1000);
+      metrics.waVerdictLatency.observe(verdictLatencySeconds);
+
+      const tsKey = `wa:msg_ts:${data.chatId}:${data.messageId}`;
+      const originalTsRaw = await redis.get(tsKey);
+      const originalTs = originalTsRaw ? Number.parseInt(originalTsRaw, 10) : NaN;
+      if (Number.isFinite(originalTs)) {
+        const responseLatencySeconds = Math.max(
+          0,
+          (Date.now() - originalTs) / 1000,
+        );
+        metrics.waResponseLatency.observe(responseLatencySeconds);
+      }
+
+      const text = formatVerdictMessage(data.verdict, data.reasons ?? [], data.url);
+
+      const result = await adapter.sendMessage(
+        data.chatId,
+        { type: "text", text },
+        { quotedMessageId: data.messageId },
+      );
+
+      if (!result.success) {
+        metrics.waVerdictFailures.inc();
+        throw new Error("Failed to send verdict message");
+      }
+
+      metrics.waVerdictsSent.inc();
+      logger.info(
+        {
+          chatId: data.chatId,
+          messageId: data.messageId,
+          verdict: data.verdict,
+          processingMs: Date.now() - started,
+        },
+        "Verdict sent",
+      );
+    },
+    { connection: redis },
+  );
 
   // Create WhatsApp adapter (async to support dynamic imports)
   adapter = await createAdapterFromEnv(redis, logger);

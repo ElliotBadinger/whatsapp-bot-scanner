@@ -197,6 +197,8 @@ services:
       - REDIS_URL=redis://host.docker.internal:6379/0
     volumes:
       - ./storage:/app/storage:rw
+    ports:
+      - "${CONTROL_PLANE_HOST_PORT:-8087}:8080"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:8080/healthz',{headers:{Authorization:'Bearer '+(process.env.CONTROL_PLANE_API_TOKEN||'')}}).then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))\""]
@@ -221,6 +223,8 @@ services:
     entrypoint: ["nginx", "-g", "daemon off;"]
     depends_on:
       - control-plane
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     mem_limit: 256m
     cpus: '0.25'
     pids_limit: 50
@@ -254,6 +258,8 @@ services:
     image: grafana/grafana:latest
     depends_on:
       - prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${GRAFANA_PORT:-3002}:3000"
     volumes:
@@ -307,6 +313,8 @@ services:
         hard: 2048
     ports:
       - "9091:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
