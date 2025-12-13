@@ -9,9 +9,9 @@ describe("computeWaHealthStatus", () => {
   });
 
   it("returns healthy when state is connecting and QR is available", () => {
-    expect(computeWaHealthStatus({ state: "connecting", qrAvailable: true })).toBe(
-      "healthy",
-    );
+    expect(
+      computeWaHealthStatus({ state: "connecting", qrAvailable: true }),
+    ).toBe("healthy");
   });
 
   it("returns degraded when state is connecting but QR is not available", () => {

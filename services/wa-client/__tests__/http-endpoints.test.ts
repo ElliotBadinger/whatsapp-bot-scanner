@@ -75,12 +75,11 @@ describe("WA Client HTTP Endpoints", () => {
         qrAvailable,
         botId: mockAdapter.botId,
         lastError: lastDisconnectReason,
-        hint:
-          lastDisconnectReason?.message?.includes(
-            "Opening handshake has timed out",
-          )
-            ? "Outbound WhatsApp WebSocket handshake timed out. Check outbound connectivity, DNS, and firewall rules."
-            : null,
+        hint: lastDisconnectReason?.message?.includes(
+          "Opening handshake has timed out",
+        )
+          ? "Outbound WhatsApp WebSocket handshake timed out. Check outbound connectivity, DNS, and firewall rules."
+          : null,
       };
     };
 

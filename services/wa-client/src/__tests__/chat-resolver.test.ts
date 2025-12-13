@@ -24,12 +24,14 @@ describe("resolveChatForVerdict", () => {
       }),
     } as any;
 
-    await expect(resolveChatForVerdict({
-      client,
-      logger,
-      chatId: "123@group",
-      messageId: "msg-1",
-    })).rejects.toThrow(ChatLookupError);
+    await expect(
+      resolveChatForVerdict({
+        client,
+        logger,
+        chatId: "123@group",
+        messageId: "msg-1",
+      }),
+    ).rejects.toThrow(ChatLookupError);
 
     expect(client.getChatById).toHaveBeenCalledWith("123@group");
   });
@@ -41,12 +43,14 @@ describe("resolveChatForVerdict", () => {
       getChatById: jest.fn(),
     } as any;
 
-    await expect(resolveChatForVerdict({
-      client,
-      logger,
-      chatId: "123@group",
-      messageId: "msg-1",
-    })).rejects.toThrow(SessionNotReadyError);
+    await expect(
+      resolveChatForVerdict({
+        client,
+        logger,
+        chatId: "123@group",
+        messageId: "msg-1",
+      }),
+    ).rejects.toThrow(SessionNotReadyError);
 
     expect(client.getChatById).not.toHaveBeenCalled();
     expect(client.getMessageById).not.toHaveBeenCalled();

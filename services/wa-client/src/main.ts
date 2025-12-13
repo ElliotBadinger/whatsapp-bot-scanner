@@ -162,10 +162,11 @@ async function main(): Promise<void> {
         }
       : null;
 
-    const hint =
-      lastDisconnectReason?.message?.includes("Opening handshake has timed out")
-        ? "Outbound WhatsApp WebSocket handshake timed out. Check outbound connectivity, DNS, and firewall rules."
-        : null;
+    const hint = lastDisconnectReason?.message?.includes(
+      "Opening handshake has timed out",
+    )
+      ? "Outbound WhatsApp WebSocket handshake timed out. Check outbound connectivity, DNS, and firewall rules."
+      : null;
     return {
       status: computeWaHealthStatus({ state, qrAvailable }),
       library,

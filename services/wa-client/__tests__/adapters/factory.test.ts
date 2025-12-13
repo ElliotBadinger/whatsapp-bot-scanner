@@ -2,7 +2,14 @@
  * Adapter Factory Tests
  */
 
-import { jest, describe, it, expect, beforeEach, afterEach } from "@jest/globals";
+import {
+  jest,
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+} from "@jest/globals";
 
 const BaileysAdapter = jest.fn().mockImplementation(() => ({
   state: "disconnected",

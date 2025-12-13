@@ -76,10 +76,14 @@ export const metrics = {
 export const extractUrls = () => [] as string[];
 export const normalizeUrl = (input: string) => input;
 export const urlHash = (_: string) => "hash";
-export const waSessionStatusGauge = { labels: () => ({ set: () => undefined }) };
+export const waSessionStatusGauge = {
+  labels: () => ({ set: () => undefined }),
+};
 export const isPrivateHostname = () => false;
 
-export const ScanRequestSchema = { safeParse: (_: unknown) => ({ success: true, data: {} }) };
+export const ScanRequestSchema = {
+  safeParse: (_: unknown) => ({ success: true, data: {} }),
+};
 
 export const assertEssentialConfig = () => undefined;
 export const assertControlPlaneToken = (): string =>
