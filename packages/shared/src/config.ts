@@ -10,11 +10,15 @@ if (process.env.NODE_ENV !== 'test') {
   dotenv.config({ path: path.join(rootDir, '.env.local'), override: true });
 }
 
-const urlscanEnabled = (process.env.URLSCAN_ENABLED || 'true') === 'true';
+const urlscanEnabledFlag = (process.env.URLSCAN_ENABLED || 'true') === 'true';
+const urlscanApiKey = (process.env.URLSCAN_API_KEY || '').trim();
+const urlscanCallbackUrl = (process.env.URLSCAN_CALLBACK_URL || '').trim();
 const urlscanCallbackSecret = (process.env.URLSCAN_CALLBACK_SECRET || '').trim();
 
-if (urlscanEnabled && !urlscanCallbackSecret) {
-  throw new Error('URLSCAN_CALLBACK_SECRET must be provided when URLSCAN_ENABLED=true');
+const urlscanEnabled = urlscanEnabledFlag && urlscanApiKey.length > 0;
+
+if (urlscanEnabled && urlscanCallbackUrl && !urlscanCallbackSecret) {
+  throw new Error('URLSCAN_CALLBACK_SECRET must be provided when URLSCAN_ENABLED=true and URLSCAN_CALLBACK_URL is set');
 }
 
 function parseStringList(value: string | undefined): string[] {
@@ -109,11 +113,11 @@ export const config = {
   },
   urlscan: {
     enabled: urlscanEnabled,
-    apiKey: process.env.URLSCAN_API_KEY || '',
+    apiKey: urlscanApiKey,
     baseUrl: process.env.URLSCAN_BASE_URL || 'https://urlscan.io',
     visibility: process.env.URLSCAN_VISIBILITY || 'private',
     tags: (process.env.URLSCAN_TAGS || 'wbscanner').split(',').map(t => t.trim()).filter(Boolean),
-    callbackUrl: process.env.URLSCAN_CALLBACK_URL || '',
+    callbackUrl: urlscanCallbackUrl,
     callbackSecret: urlscanCallbackSecret,
     submitTimeoutMs: parseInt(process.env.URLSCAN_SUBMIT_TIMEOUT_MS || '10000', 10),
     resultPollTimeoutMs: parseInt(process.env.URLSCAN_RESULT_TIMEOUT_MS || '30000', 10),
@@ -327,7 +331,6 @@ export function assertControlPlaneToken(): string {
 export function assertEssentialConfig(serviceName: string): void {
   const missing: string[] = [];
 
-  if (!config.vt.apiKey?.trim()) missing.push('VT_API_KEY');
   if (!config.redisUrl?.trim()) missing.push('REDIS_URL');
 
   if (missing.length > 0) {

@@ -37,13 +37,31 @@ describe('queue configuration validation', () => {
   it('throws when urlscan enabled without callback secret', () => {
     delete process.env.URLSCAN_CALLBACK_SECRET;
     process.env.URLSCAN_ENABLED = 'true';
+    process.env.URLSCAN_API_KEY = 'test-urlscan-key';
+    process.env.URLSCAN_CALLBACK_URL = 'https://example.test/urlscan/callback';
     process.env.CONTROL_PLANE_API_TOKEN = 'test-token';
 
     expect(() => {
       jest.isolateModules(() => {
         require(CONFIG_PATH);
       });
-    }).toThrow(/URLSCAN_CALLBACK_SECRET must be provided/);
+    }).toThrow(
+      /URLSCAN_CALLBACK_SECRET must be provided when URLSCAN_ENABLED=true and URLSCAN_CALLBACK_URL is set/,
+    );
+  });
+
+  it('treats urlscan as disabled when api key missing even if URLSCAN_ENABLED=true', () => {
+    delete process.env.URLSCAN_CALLBACK_SECRET;
+    process.env.URLSCAN_ENABLED = 'true';
+    process.env.URLSCAN_API_KEY = '';
+    process.env.URLSCAN_CALLBACK_URL = 'https://example.test/urlscan/callback';
+    process.env.CONTROL_PLANE_API_TOKEN = 'test-token';
+
+    jest.isolateModules(() => {
+      const { config } = require(CONFIG_PATH) as typeof import('../config');
+      expect(config.urlscan.enabled).toBe(false);
+      expect(config.urlscan.callbackSecret).toBe('');
+    });
   });
 
   it('allows missing secret when urlscan disabled', () => {
