@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import os from 'node:os';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 import { SetupContext } from '../../scripts/setup/core/context.mjs';
 import { parseFlags } from '../../scripts/setup/core/flags.mjs';
@@ -59,14 +60,15 @@ describe('Transcript artifacts', () => {
   it('writes markdown and JSON with redacted secrets', async () => {
     const context = new SetupContext(root);
     await context.initialize();
-    context.log('message', { level: 'info', secretToken: 'abcdef0123456789' });
+    const secretToken = crypto.randomBytes(16).toString('hex');
+    context.log('message', { level: 'info', secretToken });
     const { jsonPath, transcriptPath } = await context.finalize('success');
     const json = JSON.parse(await fs.readFile(jsonPath, 'utf8'));
     const transcript = await fs.readFile(transcriptPath, 'utf8');
 
     expect(json.status).toBe('success');
-    expect(JSON.stringify(json)).not.toContain('abcdef0123456789');
-    expect(transcript).not.toContain('abcdef0123456789');
+    expect(JSON.stringify(json)).not.toContain(secretToken);
+    expect(transcript).not.toContain(secretToken);
     expect(json.events.length).toBeGreaterThan(0);
   });
 });

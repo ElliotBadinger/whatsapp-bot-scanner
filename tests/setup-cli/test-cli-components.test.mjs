@@ -2,7 +2,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import os from 'node:os';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { execa } from 'execa';
+
+vi.mock('execa', () => ({
+  execa: vi.fn(),
+}));
 
 // Import the components to test
 import { EnvironmentDetector } from '../../scripts/cli/core/environment.mjs';
@@ -23,6 +28,14 @@ class MockUI {
 
   error(message) {
     this.messages.push({ type: 'error', message });
+  }
+
+  warn(message) {
+    this.messages.push({ type: 'warn', message });
+  }
+
+  info(message) {
+    this.messages.push({ type: 'info', message });
   }
 
   progress(message) {
@@ -85,14 +98,14 @@ describe('EnvironmentDetector Tests', () => {
       const mockAccess = vi.spyOn(fs, 'access').mockRejectedValue(new Error('File not found'));
 
       // Mock execa to simulate Docker cgroup
-      const mockExeca = vi.fn().mockResolvedValue({ stdout: 'docker' });
-      vi.spyOn(execa, 'execa').mockImplementation(mockExeca);
+      const mockExeca = vi.mocked(execa);
+      mockExeca.mockResolvedValue({ stdout: 'docker' });
 
       const result = await detector.detectContainer();
       expect(result).toBe(true);
 
       mockAccess.mockRestore();
-      vi.restoreAllMocks();
+      mockExeca.mockReset();
     });
 
     it('should not detect container when neither indicator is present', async () => {
@@ -100,102 +113,102 @@ describe('EnvironmentDetector Tests', () => {
       const mockAccess = vi.spyOn(fs, 'access').mockRejectedValue(new Error('File not found'));
 
       // Mock execa to fail
-      const mockExeca = vi.fn().mockRejectedValue(new Error('Command failed'));
-      vi.spyOn(execa, 'execa').mockImplementation(mockExeca);
+      const mockExeca = vi.mocked(execa);
+      mockExeca.mockRejectedValue(new Error('Command failed'));
 
       const result = await detector.detectContainer();
       expect(result).toBe(false);
 
       mockAccess.mockRestore();
-      vi.restoreAllMocks();
+      mockExeca.mockReset();
     });
   });
 
   describe('Package Manager Detection', () => {
     it('should detect yarn when available', async () => {
-      const mockExeca = vi.fn();
+      const mockExeca = vi.mocked(execa);
       mockExeca.mockImplementation((cmd) => {
         if (cmd === 'yarn') return Promise.resolve({ stdout: '1.22.19' });
         return Promise.reject(new Error('Command not found'));
       });
-      vi.spyOn(execa, 'execa').mockImplementation(mockExeca);
 
       const result = await detector.detectPackageManager();
       expect(result).toBe('yarn');
 
-      vi.restoreAllMocks();
+      mockExeca.mockReset();
     });
 
     it('should detect pnpm when yarn is not available', async () => {
-      const mockExeca = vi.fn();
+      const mockExeca = vi.mocked(execa);
       mockExeca.mockImplementation((cmd) => {
         if (cmd === 'pnpm') return Promise.resolve({ stdout: '8.6.0' });
         return Promise.reject(new Error('Command not found'));
       });
-      vi.spyOn(execa, 'execa').mockImplementation(mockExeca);
 
       const result = await detector.detectPackageManager();
       expect(result).toBe('pnpm');
 
-      vi.restoreAllMocks();
+      mockExeca.mockReset();
     });
 
     it('should detect npm when neither yarn nor pnpm are available', async () => {
-      const mockExeca = vi.fn();
+      const mockExeca = vi.mocked(execa);
       mockExeca.mockImplementation((cmd) => {
+        if (cmd === 'bun') return Promise.reject(new Error('Command not found'));
+        if (cmd === 'yarn') return Promise.reject(new Error('Command not found'));
+        if (cmd === 'pnpm') return Promise.reject(new Error('Command not found'));
         if (cmd === 'npm') return Promise.resolve({ stdout: '9.5.1' });
         return Promise.reject(new Error('Command not found'));
       });
-      vi.spyOn(execa, 'execa').mockImplementation(mockExeca);
 
       const result = await detector.detectPackageManager();
       expect(result).toBe('npm');
 
-      vi.restoreAllMocks();
+      mockExeca.mockReset();
     });
 
     it('should return unknown when no package manager is found', async () => {
-      const mockExeca = vi.fn().mockRejectedValue(new Error('Command not found'));
-      vi.spyOn(execa, 'execa').mockImplementation(mockExeca);
+      const mockExeca = vi.mocked(execa);
+      mockExeca.mockRejectedValue(new Error('Command not found'));
 
       const result = await detector.detectPackageManager();
       expect(result).toBe('unknown');
 
-      vi.restoreAllMocks();
+      mockExeca.mockReset();
     });
   });
 
   describe('Init System Detection', () => {
-    it('should detect systemd on Linux', async () => {
+    it('should detect systemd when systemctl is available', async () => {
       const originalPlatform = process.platform;
       Object.defineProperty(process, 'platform', { value: 'linux' });
 
-      const mockExeca = vi.fn().mockResolvedValue({ stdout: 'systemd 249' });
-      vi.spyOn(execa, 'execa').mockImplementation(mockExeca);
+      const mockExeca = vi.mocked(execa);
+      mockExeca.mockResolvedValue({ stdout: 'systemd 249' });
 
       const result = await detector.detectInitSystem();
       expect(result).toBe('systemd');
 
       Object.defineProperty(process, 'platform', { value: originalPlatform });
-      vi.restoreAllMocks();
+      mockExeca.mockReset();
     });
 
-    it('should detect sysvinit when systemd is not available', async () => {
+    it('should detect sysvinit when systemctl is not available but service is available', async () => {
       const originalPlatform = process.platform;
       Object.defineProperty(process, 'platform', { value: 'linux' });
 
-      const mockExeca = vi.fn();
+      const mockExeca = vi.mocked(execa);
       mockExeca.mockImplementation((cmd) => {
+        if (cmd === 'systemctl') return Promise.reject(new Error('Command not found'));
         if (cmd === 'service') return Promise.resolve({ stdout: 'service management' });
         return Promise.reject(new Error('Command not found'));
       });
-      vi.spyOn(execa, 'execa').mockImplementation(mockExeca);
 
       const result = await detector.detectInitSystem();
       expect(result).toBe('sysvinit');
 
       Object.defineProperty(process, 'platform', { value: originalPlatform });
-      vi.restoreAllMocks();
+      mockExeca.mockReset();
     });
 
     it('should detect windows on Windows platform', async () => {
@@ -212,14 +225,14 @@ describe('EnvironmentDetector Tests', () => {
       const originalPlatform = process.platform;
       Object.defineProperty(process, 'platform', { value: 'linux' });
 
-      const mockExeca = vi.fn().mockRejectedValue(new Error('Command not found'));
-      vi.spyOn(execa, 'execa').mockImplementation(mockExeca);
+      const mockExeca = vi.mocked(execa);
+      mockExeca.mockRejectedValue(new Error('Command not found'));
 
       const result = await detector.detectInitSystem();
       expect(result).toBe('unknown');
 
       Object.defineProperty(process, 'platform', { value: originalPlatform });
-      vi.restoreAllMocks();
+      mockExeca.mockReset();
     });
   });
 
@@ -274,23 +287,22 @@ describe('DependencyManager Tests', () => {
   });
 
   describe('Node.js Version Detection', () => {
-    it('should return current Node.js version', () => {
-      const version = dependencyManager.getNodeVersion();
+    it('should return current Node.js version', async () => {
+      const mockExeca = vi.mocked(execa);
+      mockExeca.mockResolvedValue({ stdout: 'v20.0.0' });
+      const version = await dependencyManager.getNodeVersion();
       // Just check that we get some version string
       expect(typeof version).toBe('string');
       expect(version).not.toBeNull();
+      mockExeca.mockReset();
     });
 
-    it('should return null when Node.js is not available', () => {
-      const originalExeca = execa.sync;
-      execa.sync = vi.fn().mockImplementation(() => {
-        throw new Error('Command failed');
-      });
-
-      const version = dependencyManager.getNodeVersion();
+    it('should return null when Node.js is not available', async () => {
+      const mockExeca = vi.mocked(execa);
+      mockExeca.mockRejectedValue(new Error('Command failed'));
+      const version = await dependencyManager.getNodeVersion();
       expect(version).toBeNull();
-
-      execa.sync = originalExeca;
+      mockExeca.mockReset();
     });
   });
 
@@ -310,52 +322,52 @@ describe('DependencyManager Tests', () => {
 
   describe('Docker Detection', () => {
     it('should detect Docker when available', async () => {
-      const mockExeca = vi.fn().mockResolvedValue({ stdout: 'Docker version 20.10.7' });
-      vi.spyOn(execa, 'execa').mockImplementation(mockExeca);
+      const mockExeca = vi.mocked(execa);
+      mockExeca.mockResolvedValue({ stdout: 'Docker version 20.10.7' });
 
       await expect(dependencyManager.ensureDocker()).resolves.not.toThrow();
 
-      vi.restoreAllMocks();
+      mockExeca.mockReset();
     });
 
     it('should throw error when Docker is not available', async () => {
-      const mockExeca = vi.fn().mockRejectedValue(new Error('Docker not found'));
-      vi.spyOn(execa, 'execa').mockImplementation(mockExeca);
+      const mockExeca = vi.mocked(execa);
+      mockExeca.mockRejectedValue(new Error('Docker not found'));
 
       await expect(dependencyManager.ensureDocker()).rejects.toThrow('Docker or Docker Compose not found');
 
-      vi.restoreAllMocks();
+      mockExeca.mockReset();
     });
   });
 
   describe('Dependency Verification', () => {
     it('should pass when all dependencies are available', async () => {
-      const mockExeca = vi.fn().mockResolvedValue({ stdout: 'version info' });
-      vi.spyOn(execa, 'execa').mockImplementation(mockExeca);
+      const mockExeca = vi.mocked(execa);
+      mockExeca.mockResolvedValue({ stdout: 'version info' });
 
       const result = await dependencyManager.verifyDependencies();
       expect(result).toBe(true);
 
-      vi.restoreAllMocks();
+      mockExeca.mockReset();
     });
 
     it('should throw error when dependencies are missing', async () => {
-      const mockExeca = vi.fn().mockRejectedValue(new Error('Command not found'));
-      vi.spyOn(execa, 'execa').mockImplementation(mockExeca);
+      const mockExeca = vi.mocked(execa);
+      mockExeca.mockRejectedValue(new Error('Command not found'));
 
       await expect(dependencyManager.verifyDependencies()).rejects.toThrow('Missing dependencies');
 
-      vi.restoreAllMocks();
+      mockExeca.mockReset();
     });
   });
 });
 
 describe('ConfigurationManager Tests', () => {
-  let configManager;
   let mockUI;
   let tempDir;
 
   beforeEach(async () => {
+    vi.restoreAllMocks();
     mockUI = new MockUI();
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'config-test-'));
 
@@ -376,17 +388,19 @@ GSB_API_KEY=
 
   describe('Configuration Parsing', () => {
     it('should parse .env file correctly', () => {
+      const vtKey = crypto.randomBytes(32).toString('hex');
+      const gsbKey = crypto.randomBytes(32).toString('hex');
       const configContent = `
 # Test config
-VT_API_KEY=test_key_1234567890
-GSB_API_KEY=another_key
+VT_API_KEY=${vtKey}
+GSB_API_KEY=${gsbKey}
       `.trim();
 
       const configManager = new ConfigurationManager(tempDir, mockUI);
       const parsed = configManager.parseConfig(configContent);
 
-      expect(parsed.VT_API_KEY).toBe('test_key_1234567890');
-      expect(parsed.GSB_API_KEY).toBe('another_key');
+      expect(parsed.VT_API_KEY).toBe(vtKey);
+      expect(parsed.GSB_API_KEY).toBe(gsbKey);
     });
 
     it('should ignore comments and empty lines', () => {
@@ -424,66 +438,72 @@ VT_API_KEY=test_key
 
       // Verify .env file was created
       const envPath = path.join(tempDir, '.env');
-      const envExists = await fs.access(envPath).then(() => true).catch(() => false);
-      expect(envExists).toBe(true);
+      await expect(fs.readFile(envPath, 'utf8')).resolves.toBeTypeOf('string');
 
       mockUI.prompt = originalPrompt;
     });
 
     it('should load existing config when .env exists', async () => {
       // Create a test .env file
-      const envContent = `VT_API_KEY=existing_key
-GSB_API_KEY=existing_gsb_key`;
+      const existingVtKey = crypto.randomBytes(12).toString('hex');
+      const existingGsbKey = crypto.randomBytes(12).toString('hex');
+      const envContent = `VT_API_KEY=${existingVtKey}
+GSB_API_KEY=${existingGsbKey}`;
 
       await fs.writeFile(path.join(tempDir, '.env'), envContent);
 
       const configManager = new ConfigurationManager(tempDir, mockUI);
       const config = await configManager.loadOrCreateConfig();
 
-      expect(config.VT_API_KEY).toBe('existing_key');
-      expect(config.GSB_API_KEY).toBe('existing_gsb_key');
+      expect(config.VT_API_KEY).toBe(existingVtKey);
+      expect(config.GSB_API_KEY).toBe(existingGsbKey);
     });
   });
 
   describe('Configuration Updates', () => {
     it('should update existing config values', async () => {
       // Create initial .env file
+      const oldGsbKey = crypto.randomBytes(12).toString('hex');
       const initialContent = `
 VT_API_KEY=old_key
-GSB_API_KEY=old_gsb_key
+GSB_API_KEY=${oldGsbKey}
       `.trim();
 
       await fs.writeFile(path.join(tempDir, '.env'), initialContent);
 
       const configManager = new ConfigurationManager(tempDir, mockUI);
+      const newVtKey = crypto.randomBytes(24).toString('hex');
+      const newGsbKey = crypto.randomBytes(16).toString('hex');
       await configManager.updateConfig({
-        VT_API_KEY: 'new_key_12345678901234567890123456789012',
-        GSB_API_KEY: 'new_gsb_key'
+        VT_API_KEY: newVtKey,
+        GSB_API_KEY: newGsbKey
       });
 
       // Read the updated file
       const updatedContent = await fs.readFile(path.join(tempDir, '.env'), 'utf8');
-      expect(updatedContent).toContain('new_key_12345678901234567890123456789012');
-      expect(updatedContent).toContain('new_gsb_key');
+      expect(updatedContent).toContain(newVtKey);
+      expect(updatedContent).toContain(newGsbKey);
     });
 
     it('should add new config values when they do not exist', async () => {
       // Create initial .env file without GSB_API_KEY
+      const existingVtKey = crypto.randomBytes(12).toString('hex');
       const initialContent = `
-VT_API_KEY=existing_key
+VT_API_KEY=${existingVtKey}
       `.trim();
 
       await fs.writeFile(path.join(tempDir, '.env'), initialContent);
 
       const configManager = new ConfigurationManager(tempDir, mockUI);
+      const newGsbKey = crypto.randomBytes(16).toString('hex');
       await configManager.updateConfig({
-        GSB_API_KEY: 'new_gsb_key_added'
+        GSB_API_KEY: newGsbKey
       });
 
       // Read the updated file
       const updatedContent = await fs.readFile(path.join(tempDir, '.env'), 'utf8');
-      expect(updatedContent).toContain('existing_key');
-      expect(updatedContent).toContain('new_gsb_key_added');
+      expect(updatedContent).toContain(existingVtKey);
+      expect(updatedContent).toContain(newGsbKey);
     });
   });
 });
@@ -624,7 +644,7 @@ describe('Error Handling Tests', () => {
       handleError(error, context);
 
       const messages = mockUI.getMessages();
-      expect(messages.some(m => m.type === 'error' && m.message.includes('Dependency issue'))).toBe(true);
+      expect(messages.some(m => m.type === 'error' && m.message.includes('Dependency error'))).toBe(true);
     });
 
     it('should handle ConfigurationError correctly', () => {
@@ -634,7 +654,7 @@ describe('Error Handling Tests', () => {
       handleError(error, context);
 
       const messages = mockUI.getMessages();
-      expect(messages.some(m => m.type === 'error' && m.message.includes('Configuration problem'))).toBe(true);
+      expect(messages.some(m => m.type === 'error' && m.message.includes('Configuration error'))).toBe(true);
     });
 
     it('should handle DockerError correctly', () => {
@@ -644,7 +664,7 @@ describe('Error Handling Tests', () => {
       handleError(error, context);
 
       const messages = mockUI.getMessages();
-      expect(messages.some(m => m.type === 'error' && m.message.includes('Docker problem'))).toBe(true);
+      expect(messages.some(m => m.type === 'error' && m.message.includes('Docker error'))).toBe(true);
     });
 
     it('should handle PairingError correctly', () => {
@@ -654,7 +674,7 @@ describe('Error Handling Tests', () => {
       handleError(error, context);
 
       const messages = mockUI.getMessages();
-      expect(messages.some(m => m.type === 'error' && m.message.includes('Pairing problem'))).toBe(true);
+      expect(messages.some(m => m.type === 'error' && m.message.includes('Pairing error'))).toBe(true);
     });
 
     it('should handle unknown errors gracefully', () => {

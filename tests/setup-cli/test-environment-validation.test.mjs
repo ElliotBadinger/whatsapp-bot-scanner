@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import os from 'node:os';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 // Import the components to test
 import { EnvironmentDetector } from '../../scripts/cli/core/environment.mjs';
@@ -134,7 +135,6 @@ describe('Environment Detection and Validation - Core Functionality', () => {
   });
 
   describe('ConfigurationManager - Safe Tests', () => {
-    let configManager;
     let mockUI;
     let tempDir;
 
@@ -199,15 +199,17 @@ GSB_API_KEY=old_gsb_key
         await fs.writeFile(path.join(tempDir, '.env'), initialContent);
 
         const configManager = new ConfigurationManager(tempDir, mockUI);
+        const newVtKey = crypto.randomBytes(24).toString('hex');
+        const newGsbKey = crypto.randomBytes(16).toString('hex');
         await configManager.updateConfig({
-          VT_API_KEY: 'new_key_12345678901234567890123456789012',
-          GSB_API_KEY: 'new_gsb_key'
+          VT_API_KEY: newVtKey,
+          GSB_API_KEY: newGsbKey
         });
 
         // Read the updated file
         const updatedContent = await fs.readFile(path.join(tempDir, '.env'), 'utf8');
-        expect(updatedContent).toContain('new_key_12345678901234567890123456789012');
-        expect(updatedContent).toContain('new_gsb_key');
+        expect(updatedContent).toContain(newVtKey);
+        expect(updatedContent).toContain(newGsbKey);
       });
 
       it('should add new config values when they do not exist', async () => {
@@ -219,14 +221,15 @@ VT_API_KEY=existing_key
         await fs.writeFile(path.join(tempDir, '.env'), initialContent);
 
         const configManager = new ConfigurationManager(tempDir, mockUI);
+        const newGsbKey = crypto.randomBytes(16).toString('hex');
         await configManager.updateConfig({
-          GSB_API_KEY: 'new_gsb_key_added'
+          GSB_API_KEY: newGsbKey
         });
 
         // Read the updated file
         const updatedContent = await fs.readFile(path.join(tempDir, '.env'), 'utf8');
         expect(updatedContent).toContain('existing_key');
-        expect(updatedContent).toContain('new_gsb_key_added');
+        expect(updatedContent).toContain(newGsbKey);
       });
     });
   });

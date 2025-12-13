@@ -28,7 +28,7 @@ if (!serviceName) {
 
 // Sanitize service name to prevent path traversal attacks
 // Only allow alphanumeric characters, hyphens, and underscores
-const sanitizedServiceName = serviceName.replace(/[^a-zA-Z0-9_-]/g, '');
+const sanitizedServiceName = serviceName.replaceAll(/[^a-zA-Z0-9_-]/g, '');
 if (sanitizedServiceName !== serviceName || serviceName.includes('..')) {
   console.error(`Invalid service name: ${serviceName}`);
   console.error('Service name must contain only alphanumeric characters, hyphens, and underscores.');
@@ -42,7 +42,7 @@ if (!existsSync(serviceDir)) {
 }
 
 // Read package.json to determine external dependencies
-const pkgPath = join(serviceDir, 'package.json');
+const pkgPath = join(rootDir, 'package.json');
 const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
 
 // Mark all dependencies as external (they're in node_modules)
@@ -106,7 +106,7 @@ try {
 
   // Report bundle size
   const outputs = result.metafile?.outputs || {};
-  for (const [file, info] of Object.entries(outputs)) {
+  for (const info of Object.values(outputs)) {
     const sizeKB = (info.bytes / 1024).toFixed(2);
     console.log(`  Output size: ${sizeKB} KB`);
   }

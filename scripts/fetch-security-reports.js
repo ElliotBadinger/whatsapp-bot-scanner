@@ -20,7 +20,6 @@
  */
 
 const https = require('https');
-const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
@@ -108,11 +107,12 @@ async function sonarqubeRestRequest(endpoint) {
     }
 
     const url = new URL(endpoint, SONARQUBE_URL);
-    const protocol = url.protocol === 'https:' ? https : http;
-
     // Security warning for non-HTTPS connections (acceptable for local dev instances)
     if (url.protocol !== 'https:') {
-        console.warn('⚠️  WARNING: Using insecure HTTP connection to SonarQube. Only use for local instances.');
+        throw new Error(
+            `Refusing to connect to SonarQube over non-HTTPS URL (${url.toString()}). ` +
+            'Set SONARQUBE_URL to an https:// endpoint (recommended: https://sonarcloud.io).'
+        );
     }
 
     const options = {
@@ -125,7 +125,7 @@ async function sonarqubeRestRequest(endpoint) {
 
     return new Promise((resolve, reject) => {
         // deepcode ignore HttpToHttps: Intentional - supports local SonarQube instances. Default URL uses HTTPS.
-        const req = protocol.request(url, options, (res) => {
+        const req = https.request(url, options, (res) => {
             let body = '';
 
             res.on('data', (chunk) => {
