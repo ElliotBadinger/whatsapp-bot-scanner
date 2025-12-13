@@ -1,4 +1,8 @@
-import Fastify, { FastifyRequest, FastifyReply, type FastifyInstance } from "fastify";
+import Fastify, {
+  FastifyRequest,
+  FastifyReply,
+  type FastifyInstance,
+} from "fastify";
 import fs from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import path from "node:path";
@@ -170,9 +174,10 @@ export async function buildServer(options: BuildOptions = {}) {
         return;
       }
       const { chatId } = validation.data;
-      await dbClient.query("UPDATE groups SET muted_until=NULL WHERE chat_id=?", [
-        chatId,
-      ]);
+      await dbClient.query(
+        "UPDATE groups SET muted_until=NULL WHERE chat_id=?",
+        [chatId],
+      );
       reply.send({ ok: true });
     });
 
@@ -218,7 +223,10 @@ export async function buildServer(options: BuildOptions = {}) {
         priority: 1,
         timestamp: Date.now(),
         ...(latestMessage?.chat_id && latestMessage?.message_id
-          ? { chatId: latestMessage.chat_id, messageId: latestMessage.message_id }
+          ? {
+              chatId: latestMessage.chat_id,
+              messageId: latestMessage.message_id,
+            }
           : {}),
       };
 

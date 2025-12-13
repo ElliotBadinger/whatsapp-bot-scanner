@@ -52,7 +52,11 @@ interface VerdictJobData {
   decidedAt?: number;
 }
 
-function formatVerdictMessage(verdict: string, reasons: string[], url: string): string {
+function formatVerdictMessage(
+  verdict: string,
+  reasons: string[],
+  url: string,
+): string {
   const level = verdict.toUpperCase();
   let advice = "Use caution.";
   if (verdict === "malicious") advice = "Do NOT open.";
@@ -126,12 +130,17 @@ async function main(): Promise<void> {
       const data = job.data as VerdictJobData;
       const decidedAt = data.decidedAt ?? job.timestamp ?? started;
 
-      const verdictLatencySeconds = Math.max(0, (Date.now() - decidedAt) / 1000);
+      const verdictLatencySeconds = Math.max(
+        0,
+        (Date.now() - decidedAt) / 1000,
+      );
       metrics.waVerdictLatency.observe(verdictLatencySeconds);
 
       const tsKey = `wa:msg_ts:${data.chatId}:${data.messageId}`;
       const originalTsRaw = await redis.get(tsKey);
-      const originalTs = originalTsRaw ? Number.parseInt(originalTsRaw, 10) : NaN;
+      const originalTs = originalTsRaw
+        ? Number.parseInt(originalTsRaw, 10)
+        : NaN;
       if (Number.isFinite(originalTs)) {
         const responseLatencySeconds = Math.max(
           0,
@@ -140,7 +149,11 @@ async function main(): Promise<void> {
         metrics.waResponseLatency.observe(responseLatencySeconds);
       }
 
-      const text = formatVerdictMessage(data.verdict, data.reasons ?? [], data.url);
+      const text = formatVerdictMessage(
+        data.verdict,
+        data.reasons ?? [],
+        data.url,
+      );
 
       const result = await adapter.sendMessage(
         data.chatId,

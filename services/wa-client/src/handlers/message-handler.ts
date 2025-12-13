@@ -106,7 +106,10 @@ export class SharedMessageHandler {
         "_Links shared in this chat are automatically scanned._",
       ].join("\n");
 
-      await this.replyWithLatency(ctx.message, { type: "text", text: helpText });
+      await this.replyWithLatency(ctx.message, {
+        type: "text",
+        text: helpText,
+      });
     });
 
     // Status command
