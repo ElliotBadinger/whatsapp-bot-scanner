@@ -2061,228 +2061,41 @@ async function main() {
     handleUrlscanCallback(req, reply, dbClient),
   );
 
+
+
   // Refactored scan request worker (complexity 89 -> 15)
   new Worker(
     config.queues.scanRequest,
     async (job) => {
-      const queueName = config.queues.scanRequest;
-      const started = Date.now();
-      const waitSeconds = Math.max(
-        0,
-        (started - (job.timestamp ?? started)) / 1000,
-      );
-      metrics.queueJobWait.labels(queueName).observe(waitSeconds);
-
-      // Validate job data
-      const validationResult = ScanRequestSchema.safeParse(job.data);
-      if (!validationResult.success) {
-        logger.error(
-          { err: validationResult.error, data: job.data },
-          "Invalid scan request job data",
-        );
-        recordQueueMetrics(queueName, started, job.attemptsMade);
-        return;
-      }
-
-      const { chatId, messageId, url, timestamp } = validationResult.data;
-      const rescan = (job.data as { rescan?: boolean }).rescan; // rescan is not in ScanRequestSchema yet, but passed by control-plane
-
-      const ingestionTimestamp =
-        typeof timestamp === "number" ? timestamp : (job.timestamp ?? started);
-      const hasChatContext =
-        typeof chatId === "string" && typeof messageId === "string";
-
-      try {
-        const norm = normalizeUrl(url);
-        if (!norm) {
-          recordQueueMetrics(queueName, started, job.attemptsMade);
-          return;
-        }
-
-        const h = urlHash(norm);
-        const cacheKey = `scan:${h}`;
-
-        // Check for cached verdict
-        const cachedVerdict = await getCachedVerdict(cacheKey);
-        if (cachedVerdict) {
-          await handleCachedVerdict(
-            cachedVerdict,
-            chatId,
-            messageId,
-            hasChatContext,
-            ingestionTimestamp,
-            queueName,
-            started,
-            job.attemptsMade,
-            norm,
-            rescan,
-            job.id,
-          );
-          return;
-        }
-
-        // Process URL and gather signals
-        const urlAnalysis = await analyzeUrl(norm, h);
-        const {
-          finalUrl,
-          finalUrlObj,
-          redirectChain,
-          heurSignals,
-          wasShortened,
-          finalUrlMismatch,
-          shortenerInfo,
-        } = urlAnalysis;
-
-        // Detect homoglyphs
-        const homoglyphResult = detectHomoglyphs(finalUrlObj.hostname);
-        if (homoglyphResult.detected) {
-          metrics.homoglyphDetections.labels(homoglyphResult.riskLevel).inc();
-          logger.info(
-            {
-              hostname: finalUrlObj.hostname,
-              risk: homoglyphResult.riskLevel,
-              confusables: homoglyphResult.confusableChars,
-            },
-            "Homoglyph detection",
-          );
-        }
-
-        // Enhanced security analysis
-        const enhancedSecurityResult = await enhancedSecurity.analyze(
-          finalUrl,
-          h,
-        );
-
-        // Handle high-confidence malicious URLs
-        if (
-          enhancedSecurityResult.verdict === "malicious" &&
-          enhancedSecurityResult.confidence === "high" &&
-          enhancedSecurityResult.skipExternalAPIs
-        ) {
-          await handleHighConfidenceThreat(
-            norm,
-            finalUrl,
-            h,
-            redirectChain,
-            wasShortened,
-            finalUrlMismatch,
-            homoglyphResult,
-            heurSignals,
-            {
-              verdict: enhancedSecurityResult.verdict || "unknown",
-              confidence: enhancedSecurityResult.confidence || "unknown",
-              score: enhancedSecurityResult.score,
-              reasons: enhancedSecurityResult.reasons,
-              skipExternalAPIs: enhancedSecurityResult.skipExternalAPIs,
-            },
-            cacheKey,
-            chatId,
-            messageId,
-            hasChatContext,
-            queueName,
-            started,
-            job.attemptsMade,
-            ingestionTimestamp,
-            dbClient,
-            enhancedSecurity,
-          );
-          return;
-        }
-
-        // External API checks (Blocklists only for Fast Path)
-        const blocklistResults = await performBlocklistChecks(
-          finalUrl,
-          finalUrlObj,
-          h,
-          dbClient,
-        );
-
-        // Generate Fast Verdict
-        const fastVerdictResult = await generateVerdict(
-          {
-            ...blocklistResults,
-            domainIntel: { source: "none" },
-          } as ExternalCheckResults,
-          finalUrl,
-          h,
-          redirectChain,
-          wasShortened,
-          finalUrlMismatch,
-          homoglyphResult,
-          heurSignals,
-          {
-            verdict: enhancedSecurityResult.verdict || "unknown",
-            confidence: enhancedSecurityResult.confidence || "unknown",
-            score: enhancedSecurityResult.score,
-            reasons: enhancedSecurityResult.reasons,
-            skipExternalAPIs: enhancedSecurityResult.skipExternalAPIs,
-          },
-          shortenerInfo,
-        );
-
-        // Store and Dispatch Fast Verdict
-        await storeAndDispatchResults(
-          fastVerdictResult,
-          chatId,
-          messageId,
-          hasChatContext,
-          queueName,
-          started,
-          job.attemptsMade,
-          ingestionTimestamp,
-          finalUrl,
-          {
-            verdict: enhancedSecurityResult.verdict || "unknown",
-            confidence: enhancedSecurityResult.confidence || "unknown",
-            score: enhancedSecurityResult.score,
-            reasons: enhancedSecurityResult.reasons,
-            skipExternalAPIs: enhancedSecurityResult.skipExternalAPIs,
-          },
-          dbClient,
-          enhancedSecurity,
-        );
-
-        // Record Fast Path Metrics
-        metrics.fastPathLatency.observe((Date.now() - started) / 1000);
-        metrics.scanPathCounter.labels("fast", fastVerdictResult.verdict).inc();
-
-        // If Fast Verdict is NOT Malicious, queue Deep Scan
-        if (fastVerdictResult.verdict !== "malicious") {
-          await deepScanQueue.add(
-            "deep-scan",
-            {
-              ...job.data,
-              fastVerdict: fastVerdictResult.verdict,
-              blocklistResults,
-              urlAnalysis: {
-                finalUrl,
-                finalUrlObj,
-                redirectChain,
-                heurSignals,
-                wasShortened,
-                finalUrlMismatch,
-                shortenerInfo,
-              },
-              homoglyphResult,
-              enhancedSecurityResult,
-            },
-            { removeOnComplete: true },
-          );
-        }
-      } catch (e) {
-        metrics.queueFailures.labels(queueName).inc();
-        metrics.queueProcessingDuration
-          .labels(queueName)
-          .observe((Date.now() - started) / 1000);
-        logger.error(e, "scan worker error");
-      } finally {
-        await refreshQueueMetrics(scanRequestQueue, queueName).catch(
-          () => undefined,
-        );
-      }
+      return handleScanRequestJob(job as ScanRequestJobLike, {
+        queueName: config.queues.scanRequest,
+        now: () => Date.now(),
+        logger,
+        metrics,
+        scanRequestQueue,
+        deepScanQueue,
+        dbClient,
+        enhancedSecurity,
+        normalizeUrl,
+        urlHash,
+        getCachedVerdict,
+        handleCachedVerdict,
+        analyzeUrl,
+        detectHomoglyphs,
+        performBlocklistChecks,
+        generateVerdict,
+        storeAndDispatchResults,
+        handleHighConfidenceThreat,
+        recordQueueMetrics,
+        refreshQueueMetrics,
+      });
     },
     { connection: redis, concurrency: config.orchestrator.concurrency },
   );
+
+  // Export for worker-invocation tests (DI style)
+  (__testables as { handleScanRequestJob?: unknown }).handleScanRequestJob =
+    handleScanRequestJob;
 
   // Deep Scan Worker
   new Worker(
@@ -2514,6 +2327,260 @@ if (process.env.NODE_ENV !== "test") {
   });
 }
 
+type ScanRequestJobLike = {
+  id?: string;
+  data: unknown;
+  timestamp?: number;
+  attemptsMade: number;
+};
+
+type ScanRequestWorkerDeps = {
+  queueName: string;
+  now: () => number;
+  logger: typeof logger;
+  metrics: typeof metrics;
+  scanRequestQueue: typeof scanRequestQueue;
+  deepScanQueue: typeof deepScanQueue;
+
+  // Injected dependencies for testability (and to avoid relying on `main()` scope).
+  dbClient: IDatabaseConnection;
+  enhancedSecurity: EnhancedSecurityAnalyzer;
+
+  normalizeUrl: typeof normalizeUrl;
+  urlHash: typeof urlHash;
+
+  getCachedVerdict: typeof getCachedVerdict;
+  handleCachedVerdict: typeof handleCachedVerdict;
+
+  analyzeUrl: typeof analyzeUrl;
+  detectHomoglyphs: typeof detectHomoglyphs;
+
+  performBlocklistChecks: typeof performBlocklistChecks;
+  generateVerdict: typeof generateVerdict;
+  storeAndDispatchResults: typeof storeAndDispatchResults;
+  handleHighConfidenceThreat: typeof handleHighConfidenceThreat;
+
+  recordQueueMetrics: typeof recordQueueMetrics;
+  refreshQueueMetrics: typeof refreshQueueMetrics;
+};
+
+export async function handleScanRequestJob(
+  job: ScanRequestJobLike,
+  deps: ScanRequestWorkerDeps,
+): Promise<void> {
+  const started = deps.now();
+  const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
+  deps.metrics.queueJobWait.labels(deps.queueName).observe(waitSeconds);
+
+  // Validate job data
+  const validationResult = ScanRequestSchema.safeParse(job.data);
+  if (!validationResult.success) {
+    deps.logger.error(
+      { err: validationResult.error, data: job.data },
+      "Invalid scan request job data",
+    );
+    deps.recordQueueMetrics(deps.queueName, started, job.attemptsMade);
+    return;
+  }
+
+  const { chatId, messageId, url, timestamp } = validationResult.data;
+  const rescan = (job.data as { rescan?: boolean }).rescan;
+
+  const ingestionTimestamp =
+    typeof timestamp === "number" ? timestamp : (job.timestamp ?? started);
+  const hasChatContext =
+    typeof chatId === "string" && typeof messageId === "string";
+
+  try {
+    const norm = deps.normalizeUrl(url);
+    if (!norm) {
+      deps.recordQueueMetrics(deps.queueName, started, job.attemptsMade);
+      return;
+    }
+
+    const h = deps.urlHash(norm);
+    const cacheKey = `scan:${h}`;
+
+    // Check for cached verdict
+    const cachedVerdict = await deps.getCachedVerdict(cacheKey);
+    if (cachedVerdict) {
+      await deps.handleCachedVerdict(
+        cachedVerdict,
+        chatId,
+        messageId,
+        hasChatContext,
+        ingestionTimestamp,
+        deps.queueName,
+        started,
+        job.attemptsMade,
+        norm,
+        rescan,
+        job.id,
+      );
+      return;
+    }
+
+    // Process URL and gather signals
+    const urlAnalysis = await deps.analyzeUrl(norm, h);
+    const {
+      finalUrl,
+      finalUrlObj,
+      redirectChain,
+      heurSignals,
+      wasShortened,
+      finalUrlMismatch,
+      shortenerInfo,
+    } = urlAnalysis;
+
+    // Detect homoglyphs
+    const homoglyphResult = deps.detectHomoglyphs(finalUrlObj.hostname);
+    if (homoglyphResult.detected) {
+      deps.metrics.homoglyphDetections.labels(homoglyphResult.riskLevel).inc();
+      deps.logger.info(
+        {
+          hostname: finalUrlObj.hostname,
+          risk: homoglyphResult.riskLevel,
+          confusables: homoglyphResult.confusableChars,
+        },
+        "Homoglyph detection",
+      );
+    }
+
+    // Enhanced security analysis
+    const enhancedSecurityResult = await deps.enhancedSecurity.analyze(
+      finalUrl,
+      h,
+    );
+
+    // Handle high-confidence malicious URLs
+    if (
+      enhancedSecurityResult.verdict === "malicious" &&
+      enhancedSecurityResult.confidence === "high" &&
+      enhancedSecurityResult.skipExternalAPIs
+    ) {
+      await deps.handleHighConfidenceThreat(
+        norm,
+        finalUrl,
+        h,
+        redirectChain,
+        wasShortened,
+        finalUrlMismatch,
+        homoglyphResult,
+        heurSignals,
+        {
+          verdict: enhancedSecurityResult.verdict || "unknown",
+          confidence: enhancedSecurityResult.confidence || "unknown",
+          score: enhancedSecurityResult.score,
+          reasons: enhancedSecurityResult.reasons,
+          skipExternalAPIs: enhancedSecurityResult.skipExternalAPIs,
+        },
+        cacheKey,
+        chatId,
+        messageId,
+        hasChatContext,
+        deps.queueName,
+        started,
+        job.attemptsMade,
+        ingestionTimestamp,
+        deps.dbClient,
+        deps.enhancedSecurity,
+      );
+      return;
+    }
+
+    // External API checks (Blocklists only for Fast Path)
+    const blocklistResults = await deps.performBlocklistChecks(
+      finalUrl,
+      finalUrlObj,
+      h,
+      deps.dbClient,
+    );
+
+    // Generate Fast Verdict
+    const fastVerdictResult = await deps.generateVerdict(
+      {
+        ...blocklistResults,
+        domainIntel: { source: "none" },
+      } as ExternalCheckResults,
+      finalUrl,
+      h,
+      redirectChain,
+      wasShortened,
+      finalUrlMismatch,
+      homoglyphResult,
+      heurSignals,
+      {
+        verdict: enhancedSecurityResult.verdict || "unknown",
+        confidence: enhancedSecurityResult.confidence || "unknown",
+        score: enhancedSecurityResult.score,
+        reasons: enhancedSecurityResult.reasons,
+        skipExternalAPIs: enhancedSecurityResult.skipExternalAPIs,
+      },
+      shortenerInfo,
+    );
+
+    // Store and Dispatch Fast Verdict
+    await deps.storeAndDispatchResults(
+      fastVerdictResult,
+      chatId,
+      messageId,
+      hasChatContext,
+      deps.queueName,
+      started,
+      job.attemptsMade,
+      ingestionTimestamp,
+      finalUrl,
+      {
+        verdict: enhancedSecurityResult.verdict || "unknown",
+        confidence: enhancedSecurityResult.confidence || "unknown",
+        score: enhancedSecurityResult.score,
+        reasons: enhancedSecurityResult.reasons,
+        skipExternalAPIs: enhancedSecurityResult.skipExternalAPIs,
+      },
+      deps.dbClient,
+      deps.enhancedSecurity,
+    );
+
+    // Record Fast Path Metrics
+    deps.metrics.fastPathLatency.observe((deps.now() - started) / 1000);
+    deps.metrics.scanPathCounter.labels("fast", fastVerdictResult.verdict).inc();
+
+    // If Fast Verdict is NOT Malicious, queue Deep Scan
+    if (fastVerdictResult.verdict !== "malicious") {
+      await deps.deepScanQueue.add(
+        "deep-scan",
+        {
+          ...(job.data as Record<string, unknown>),
+          fastVerdict: fastVerdictResult.verdict,
+          blocklistResults,
+          urlAnalysis: {
+            finalUrl,
+            finalUrlObj,
+            redirectChain,
+            heurSignals,
+            wasShortened,
+            finalUrlMismatch,
+            shortenerInfo,
+          },
+          homoglyphResult,
+          enhancedSecurityResult,
+        },
+        { removeOnComplete: true },
+      );
+    }
+  } catch (e) {
+    deps.metrics.queueFailures.labels(deps.queueName).inc();
+    deps.metrics.queueProcessingDuration
+      .labels(deps.queueName)
+      .observe((deps.now() - started) / 1000);
+    deps.logger.error(e, "scan worker error");
+  } finally {
+    await deps.refreshQueueMetrics(deps.scanRequestQueue, deps.queueName).catch(
+      () => undefined,
+    );
+  }
+}
+
 export const __testables = {
   fetchGsbAnalysis,
   fetchPhishtank,
@@ -2525,4 +2592,7 @@ export const __testables = {
   shouldQueryPhishtank,
   extractUrlscanArtifactCandidates,
   normalizeUrlscanArtifactCandidate,
+
+  // Pure DI export for direct invocation tests
+  handleScanRequestJob,
 };
