@@ -10,16 +10,15 @@
     "baseUrl": "../..",
     "paths": {
       "@wbscanner/shared": [
-        "packages/shared/src/index.ts"
+        "services/wa-client/__tests__/mocks/wbscanner-shared.ts"
       ],
       "@wbscanner/shared/*": [
-        "packages/shared/src/*"
+        "services/wa-client/__tests__/mocks/wbscanner-shared.ts"
       ]
     }
   },
   "include": [
-    "src/**/*",
-    "../../packages/shared/src/index.ts"
+    "src/**/*"
   ],
   "exclude": []
 }

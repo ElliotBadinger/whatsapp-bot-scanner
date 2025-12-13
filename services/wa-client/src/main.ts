@@ -31,11 +31,14 @@ import {
   type WhatsAppAdapter,
 } from "./adapters/index.js";
 import { createMessageHandler } from "./handlers/index.js";
+import { computeWaHealthStatus } from "./healthStatus.js";
+import type { DisconnectReason } from "./adapters/types.js";
 
 // Global state
 let adapter: WhatsAppAdapter | null = null;
 let scanRequestQueue: Queue | null = null;
 let cachedQr: string | null = null;
+let lastDisconnectReason: DisconnectReason | null = null;
 
 /**
  * Graceful shutdown handler
@@ -99,6 +102,7 @@ async function main(): Promise<void> {
 
   adapter.onDisconnect((reason) => {
     logger.warn({ reason }, "Disconnected from WhatsApp");
+    lastDisconnectReason = reason;
     if (reason.shouldReconnect) {
       logger.info("Will attempt to reconnect...");
     }
@@ -149,11 +153,27 @@ async function main(): Promise<void> {
 
   // Health check endpoint (both /health and /healthz for compatibility)
   const healthHandler = async () => {
+    const qrAvailable = cachedQr !== null;
+    const state = adapter?.state ?? "unknown";
+    const lastError = lastDisconnectReason
+      ? {
+          code: lastDisconnectReason.code,
+          message: lastDisconnectReason.message,
+        }
+      : null;
+
+    const hint =
+      lastDisconnectReason?.message?.includes("Opening handshake has timed out")
+        ? "Outbound WhatsApp WebSocket handshake timed out. Check outbound connectivity, DNS, and firewall rules."
+        : null;
     return {
-      status: adapter?.state === "ready" ? "healthy" : "degraded",
+      status: computeWaHealthStatus({ state, qrAvailable }),
       library,
-      state: adapter?.state ?? "unknown",
+      state,
+      qrAvailable,
       botId: adapter?.botId ?? null,
+      lastError,
+      hint,
     };
   };
   server.get("/health", healthHandler);
@@ -297,6 +317,12 @@ async function main(): Promise<void> {
       state: adapter?.state ?? "unknown",
       botId: adapter?.botId ?? null,
       library,
+      lastError: lastDisconnectReason
+        ? {
+            code: lastDisconnectReason.code,
+            message: lastDisconnectReason.message,
+          }
+        : null,
     };
   });
 

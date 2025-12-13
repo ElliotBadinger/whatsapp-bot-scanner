@@ -266,6 +266,8 @@ WORKDIR /app
 ENV NODE_ENV=production \
     WA_LIBRARY=baileys
 
+ RUN apt-get update && apt-get install -y nodejs && rm -rf /var/lib/apt/lists/*
+
 # Copy production node_modules from baileys-specific prod-deps stage
 COPY --from=wa-client-baileys-prod-deps /app/services/wa-client/node_modules /app/services/wa-client/node_modules
 

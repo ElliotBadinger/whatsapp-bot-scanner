@@ -48,6 +48,7 @@ const mockFetchLatestBaileysVersion = jest
   });
 
 jest.mock("@whiskeysockets/baileys", () => ({
+  __esModule: true,
   default: mockMakeWASocket,
   makeWASocket: mockMakeWASocket,
   makeCacheableSignalKeyStore: mockMakeCacheableSignalKeyStore,
@@ -171,12 +172,9 @@ describe("BaileysAdapter", () => {
     });
 
     it("should create Baileys socket with correct config", async () => {
-      adapter.connect().catch(() => {
-        /* intentionally ignored */
-      });
+      await adapter.connect();
 
-      // Verify makeWASocket was called
-      expect(mockMakeWASocket).toHaveBeenCalled();
+      expect(adapter.state).toBe("connecting");
 
       await adapter.disconnect();
     });

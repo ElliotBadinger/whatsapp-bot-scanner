@@ -20,6 +20,7 @@ import { createHash } from "node:crypto";
 import { Redis } from "ioredis";
 import path from "node:path";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   config,
   logger,
@@ -57,6 +58,9 @@ import { safeGetGroupChatById } from "./utils/chatLookup.js";
 import { handleSelfMessageRevoke } from "./handlers/selfRevoke.js";
 import { PairingOrchestrator } from "./pairingOrchestrator.js";
 import { SessionManager } from "./session/sessionManager.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const redis = createRedisConnection();
 const scanRequestQueue = new Queue(config.queues.scanRequest, {

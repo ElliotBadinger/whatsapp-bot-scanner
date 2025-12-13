@@ -2,41 +2,31 @@
  * Adapter Factory Tests
  */
 
-import {
-  jest,
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-} from "@jest/globals";
+import { jest, describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 
-// Mock the adapters before importing factory
-jest.mock("../../src/adapters/baileys-adapter", () => ({
-  BaileysAdapter: jest.fn().mockImplementation(() => ({
-    state: "disconnected",
-    botId: null,
-    connect: jest.fn(),
-    disconnect: jest.fn(),
-  })),
+const BaileysAdapter = jest.fn().mockImplementation(() => ({
+  state: "disconnected",
+  botId: null,
+  connect: jest.fn(),
+  disconnect: jest.fn(),
 }));
 
-jest.mock("../../src/adapters/wwebjs-adapter", () => ({
-  WWebJSAdapter: jest.fn().mockImplementation(() => ({
-    state: "disconnected",
-    botId: null,
-    connect: jest.fn(),
-    disconnect: jest.fn(),
-  })),
+const WWebJSAdapter = jest.fn().mockImplementation(() => ({
+  state: "disconnected",
+  botId: null,
+  connect: jest.fn(),
+  disconnect: jest.fn(),
 }));
 
-import {
-  createWhatsAppAdapter,
-  getConfiguredLibrary,
-  LIBRARY_INFO,
-} from "../../src/adapters/factory";
-import { BaileysAdapter } from "../../src/adapters/baileys-adapter";
-import { WWebJSAdapter } from "../../src/adapters/wwebjs-adapter";
+jest.unstable_mockModule("../../src/adapters/baileys-adapter.js", () => ({
+  __esModule: true,
+  BaileysAdapter,
+}));
+
+jest.unstable_mockModule("../../src/adapters/wwebjs-adapter.js", () => ({
+  __esModule: true,
+  WWebJSAdapter,
+}));
 import type Redis from "ioredis";
 import type { Logger } from "pino";
 
@@ -59,37 +49,51 @@ describe("Adapter Factory", () => {
     delete process.env.WA_LIBRARY;
   });
 
+  const importFactory = async () => {
+    return import("../../src/adapters/factory");
+  };
+
   describe("getConfiguredLibrary", () => {
     it("should default to baileys when WA_LIBRARY is not set", () => {
-      expect(getConfiguredLibrary()).toBe("baileys");
+      return importFactory().then(({ getConfiguredLibrary }) => {
+        expect(getConfiguredLibrary()).toBe("baileys");
+      });
     });
 
     it('should return baileys when WA_LIBRARY is "baileys"', () => {
       process.env.WA_LIBRARY = "baileys";
-      expect(getConfiguredLibrary()).toBe("baileys");
+      return importFactory().then(({ getConfiguredLibrary }) => {
+        expect(getConfiguredLibrary()).toBe("baileys");
+      });
     });
 
     it('should return wwebjs when WA_LIBRARY is "wwebjs"', () => {
       process.env.WA_LIBRARY = "wwebjs";
-      expect(getConfiguredLibrary()).toBe("wwebjs");
+      return importFactory().then(({ getConfiguredLibrary }) => {
+        expect(getConfiguredLibrary()).toBe("wwebjs");
+      });
     });
 
     it('should return wwebjs when WA_LIBRARY is "whatsapp-web.js"', () => {
       process.env.WA_LIBRARY = "whatsapp-web.js";
-      expect(getConfiguredLibrary()).toBe("wwebjs");
+      return importFactory().then(({ getConfiguredLibrary }) => {
+        expect(getConfiguredLibrary()).toBe("wwebjs");
+      });
     });
 
     it("should be case-insensitive", () => {
       process.env.WA_LIBRARY = "BAILEYS";
-      expect(getConfiguredLibrary()).toBe("baileys");
-
-      process.env.WA_LIBRARY = "WWEBJS";
-      expect(getConfiguredLibrary()).toBe("wwebjs");
+      return importFactory().then(({ getConfiguredLibrary }) => {
+        expect(getConfiguredLibrary()).toBe("baileys");
+        process.env.WA_LIBRARY = "WWEBJS";
+        expect(getConfiguredLibrary()).toBe("wwebjs");
+      });
     });
   });
 
   describe("createWhatsAppAdapter", () => {
     it('should create a BaileysAdapter when library is "baileys"', async () => {
+      const { createWhatsAppAdapter } = await importFactory();
       const adapter = await createWhatsAppAdapter({
         library: "baileys",
         redis: mockRedis,
@@ -102,6 +106,7 @@ describe("Adapter Factory", () => {
     });
 
     it('should create a WWebJSAdapter when library is "wwebjs"', async () => {
+      const { createWhatsAppAdapter } = await importFactory();
       const adapter = await createWhatsAppAdapter({
         library: "wwebjs",
         redis: mockRedis,
@@ -114,6 +119,7 @@ describe("Adapter Factory", () => {
     });
 
     it("should throw error for unknown library", async () => {
+      const { createWhatsAppAdapter } = await importFactory();
       await expect(
         createWhatsAppAdapter({
           library: "unknown" as any,
@@ -125,6 +131,7 @@ describe("Adapter Factory", () => {
     });
 
     it("should pass configuration to BaileysAdapter", async () => {
+      const { createWhatsAppAdapter } = await importFactory();
       await createWhatsAppAdapter({
         library: "baileys",
         redis: mockRedis,
@@ -147,6 +154,7 @@ describe("Adapter Factory", () => {
     });
 
     it("should pass configuration to WWebJSAdapter", async () => {
+      const { createWhatsAppAdapter } = await importFactory();
       await createWhatsAppAdapter({
         library: "wwebjs",
         redis: mockRedis,
@@ -169,15 +177,19 @@ describe("Adapter Factory", () => {
 
   describe("LIBRARY_INFO", () => {
     it("should have info for baileys", () => {
-      expect(LIBRARY_INFO.baileys).toBeDefined();
-      expect(LIBRARY_INFO.baileys.name).toBe("Baileys");
-      expect(LIBRARY_INFO.baileys.recommended).toBe(true);
+      return importFactory().then(({ LIBRARY_INFO }) => {
+        expect(LIBRARY_INFO.baileys).toBeDefined();
+        expect(LIBRARY_INFO.baileys.name).toBe("Baileys");
+        expect(LIBRARY_INFO.baileys.recommended).toBe(true);
+      });
     });
 
     it("should have info for wwebjs", () => {
-      expect(LIBRARY_INFO.wwebjs).toBeDefined();
-      expect(LIBRARY_INFO.wwebjs.name).toBe("whatsapp-web.js");
-      expect(LIBRARY_INFO.wwebjs.recommended).toBe(false);
+      return importFactory().then(({ LIBRARY_INFO }) => {
+        expect(LIBRARY_INFO.wwebjs).toBeDefined();
+        expect(LIBRARY_INFO.wwebjs.name).toBe("whatsapp-web.js");
+        expect(LIBRARY_INFO.wwebjs.recommended).toBe(false);
+      });
     });
   });
 });

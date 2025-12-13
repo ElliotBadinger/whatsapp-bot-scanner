@@ -104,7 +104,7 @@ services:
       - ./storage:/app/storage:rw
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "(command -v bun >/dev/null 2>&1 && bun -e \"fetch('http://localhost:3001/healthz').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))\") || (command -v node >/dev/null 2>&1 && node -e \"fetch('http://localhost:3001/healthz').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))\")"]
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3001/healthz').then(async r => { if(!r.ok) process.exit(1); const j = await r.json().catch(() => null); process.exit(j && j.status === 'healthy' ? 0 : 1); }).catch(() => process.exit(1))\""]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -1,3 +1,4 @@
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import FakeRedis from './fake-redis';
 import type Redis from 'ioredis';
 
@@ -25,16 +26,22 @@ jest.mock('bottleneck', () => ({
 }), { virtual: true });
 
 describe('handleAdminCommand', () => {
-  const originalFetch = global.fetch;
+  const originalFetch = globalThis.fetch;
+  const fetchMock = jest.fn<(...args: any[]) => Promise<any>>();
 
   beforeEach(() => {
     process.env.CONTROL_PLANE_BASE = 'http://control-plane.test';
     process.env.CONTROL_PLANE_API_TOKEN = 'secret-token';
-    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ scans: 5, malicious: 1 }) }) as unknown as typeof fetch;
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ scans: 5, malicious: 1 }),
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
   });
 
   afterEach(() => {
-    global.fetch = originalFetch;
+    globalThis.fetch = originalFetch;
     jest.clearAllMocks();
   });
 
@@ -52,13 +59,13 @@ describe('handleAdminCommand', () => {
       from: 'user-1',
       author: 'user-1',
       id: { id: 'msg-1', _serialized: 'msg-1' },
-      getChat: jest.fn().mockResolvedValue(mockChat),
-      getContact: jest.fn().mockResolvedValue({ id: { _serialized: 'user-1' } }),
+      getChat: jest.fn(async () => mockChat),
+      getContact: jest.fn(async () => ({ id: { _serialized: 'user-1' } })),
     } as unknown as Message;
 
     await handleAdminCommand({} as Client, mockMessage, undefined, {} as unknown as Redis);
 
-    expect(global.fetch).toHaveBeenCalledWith('http://control-plane.test/groups/group-123/mute', expect.objectContaining({
+    expect(globalThis.fetch).toHaveBeenCalledWith('http://control-plane.test/groups/group-123/mute', expect.objectContaining({
       method: 'POST',
       headers: { authorization: 'Bearer secret-token', 'x-csrf-token': 'secret-token' },
     }));
@@ -71,7 +78,7 @@ describe('handleAdminCommand', () => {
       isGroup: true,
       id: { _serialized: 'group-123' },
       sendMessage,
-      setMessagesAdminsOnly: jest.fn().mockResolvedValue(true),
+      setMessagesAdminsOnly: jest.fn(async () => true),
     } as unknown as GroupChat;
     (mockChat as any).participants = [{ id: { _serialized: 'user-1' }, isAdmin: true, isSuperAdmin: false }];
 
@@ -80,18 +87,18 @@ describe('handleAdminCommand', () => {
       from: 'user-1',
       author: 'user-1',
       id: { id: 'msg-2', _serialized: 'msg-2' },
-      getChat: jest.fn().mockResolvedValue(mockChat),
-      getContact: jest.fn().mockResolvedValue({ id: { _serialized: 'user-1' } }),
+      getChat: jest.fn(async () => mockChat),
+      getContact: jest.fn(async () => ({ id: { _serialized: 'user-1' } })),
     } as unknown as Message;
 
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
+    fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ ok: true, urlHash: 'abc123', jobId: 'job-1' }),
     });
 
     await handleAdminCommand({} as Client, mockMessage, undefined, {} as unknown as Redis);
 
-    expect(global.fetch).toHaveBeenCalledWith('http://control-plane.test/rescan', expect.objectContaining({
+    expect(globalThis.fetch).toHaveBeenCalledWith('http://control-plane.test/rescan', expect.objectContaining({
       method: 'POST',
       headers: expect.objectContaining({ authorization: 'Bearer secret-token', 'x-csrf-token': 'secret-token' }),
     }));
@@ -100,7 +107,7 @@ describe('handleAdminCommand', () => {
 
   it('records consent acknowledgement from admins', async () => {
     const sendMessage = jest.fn();
-    const setMessagesAdminsOnly = jest.fn().mockResolvedValue(true);
+    const setMessagesAdminsOnly = jest.fn(async () => true);
     const mockChat = {
       isGroup: true,
       id: { _serialized: 'group-123' },
@@ -114,8 +121,8 @@ describe('handleAdminCommand', () => {
       from: 'user-1',
       author: 'user-1',
       id: { id: 'msg-3', _serialized: 'msg-3' },
-      getChat: jest.fn().mockResolvedValue(mockChat),
-      getContact: jest.fn().mockResolvedValue({ id: { _serialized: 'user-1' } }),
+      getChat: jest.fn(async () => mockChat),
+      getContact: jest.fn(async () => ({ id: { _serialized: 'user-1' } })),
     } as unknown as Message;
 
     await handleAdminCommand({} as Client, mockMessage, undefined, {} as unknown as Redis);
@@ -126,12 +133,12 @@ describe('handleAdminCommand', () => {
 
   it('approves membership overrides from admins', async () => {
     const sendMessage = jest.fn();
-    const approveMembership = jest.fn().mockResolvedValue(undefined);
+    const approveMembership = jest.fn(async () => undefined);
     const mockChat = {
       isGroup: true,
       id: { _serialized: 'group-456' },
       sendMessage,
-      setMessagesAdminsOnly: jest.fn().mockResolvedValue(true),
+      setMessagesAdminsOnly: jest.fn(async () => true),
     } as unknown as GroupChat;
     (mockChat as any).participants = [{ id: { _serialized: 'admin-1' }, isAdmin: true, isSuperAdmin: false }];
 
@@ -140,8 +147,8 @@ describe('handleAdminCommand', () => {
       from: 'admin-1',
       author: 'admin-1',
       id: { id: 'msg-4', _serialized: 'msg-4' },
-      getChat: jest.fn().mockResolvedValue(mockChat),
-      getContact: jest.fn().mockResolvedValue({ id: { _serialized: 'admin-1' } }),
+      getChat: jest.fn(async () => mockChat),
+      getContact: jest.fn(async () => ({ id: { _serialized: 'admin-1' } })),
     } as unknown as Message;
 
     await handleAdminCommand(
@@ -157,7 +164,7 @@ describe('handleAdminCommand', () => {
 
   it('summarizes governance events for admins', async () => {
     const sendMessage = jest.fn();
-    const setMessagesAdminsOnly = jest.fn().mockResolvedValue(true);
+    const setMessagesAdminsOnly = jest.fn(async () => true);
     const mockChat = {
       isGroup: true,
       id: { _serialized: 'group-789' },
@@ -170,8 +177,8 @@ describe('handleAdminCommand', () => {
       from: 'admin-1',
       author: 'admin-1',
       id: { id: 'msg-5', _serialized: 'msg-5' },
-      getChat: jest.fn().mockResolvedValue(mockChat),
-      getContact: jest.fn().mockResolvedValue({ id: { _serialized: 'admin-1' } }),
+      getChat: jest.fn(async () => mockChat),
+      getContact: jest.fn(async () => ({ id: { _serialized: 'admin-1' } })),
     } as unknown as Message;
 
     await handleAdminCommand({} as Client, { ...baseMessage, body: '!scanner consent' }, undefined, {} as unknown as Redis);

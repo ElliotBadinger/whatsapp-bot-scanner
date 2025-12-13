@@ -1,6 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
+import { describe, it, beforeEach, expect, jest } from '@jest/globals';
 import { forceRemoteSessionReset } from '../../session/cleanup';
 import { resolveChatForVerdict } from '../../utils/chatResolver';
 import { handleSelfMessageRevoke } from '../../events/messageRevoke';
@@ -22,7 +23,7 @@ describe('Functional session flows', () => {
     waMessageRevocations: {
       labels: jest.fn().mockReturnValue({ inc: jest.fn() }),
     },
-  };
+  } as any;
 
   beforeEach(() => {
     resetRuntimeSessionState();
@@ -63,9 +64,9 @@ describe('Functional session flows', () => {
     } as any;
 
     const client = {
-      getMessageById: jest.fn().mockResolvedValue(null),
-      getChatById: jest.fn().mockResolvedValue(chat),
-    };
+      getMessageById: jest.fn(async () => null),
+      getChatById: jest.fn(async () => chat),
+    } as any;
 
     const resolved = await resolveChatForVerdict({
       client,
@@ -120,9 +121,9 @@ describe('Functional session flows', () => {
     } as any;
 
     const client = {
-      getMessageById: jest.fn().mockResolvedValue(null),
-      getChatById: jest.fn().mockResolvedValue(chat),
-    };
+      getMessageById: jest.fn(async () => null),
+      getChatById: jest.fn(async () => chat),
+    } as any;
 
     await resolveChatForVerdict({
       client,

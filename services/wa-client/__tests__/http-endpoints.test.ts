@@ -13,7 +13,10 @@ interface HealthResponse {
   status: string;
   library: string;
   state: string;
+  qrAvailable: boolean;
   botId: string | null;
+  lastError?: { code: number; message: string } | null;
+  hint?: string | null;
 }
 
 interface PairResponse {
@@ -27,6 +30,7 @@ interface StateResponse {
   state: string;
   botId: string | null;
   library: string;
+  lastError?: { code: number; message: string } | null;
 }
 
 interface QrResponse {
@@ -38,6 +42,8 @@ interface QrResponse {
 
 describe("WA Client HTTP Endpoints", () => {
   let server: FastifyInstance;
+  let cachedQr: string | null;
+  let lastDisconnectReason: { code: number; message: string } | null;
 
   // Mock adapter for testing
   const mockAdapter = {
@@ -50,16 +56,33 @@ describe("WA Client HTTP Endpoints", () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    cachedQr = null;
+    lastDisconnectReason = null;
 
     server = Fastify({ logger: false });
 
     // Register test routes that mirror main.ts
-    const healthHandler = async () => ({
-      status: mockAdapter.state === "ready" ? "healthy" : "degraded",
-      library: mockLibrary,
-      state: mockAdapter.state,
-      botId: mockAdapter.botId,
-    });
+    const healthHandler = async () => {
+      const qrAvailable = cachedQr !== null;
+      const state = mockAdapter.state;
+      return {
+        status:
+          state === "ready" || (state === "connecting" && qrAvailable)
+            ? "healthy"
+            : "degraded",
+        library: mockLibrary,
+        state,
+        qrAvailable,
+        botId: mockAdapter.botId,
+        lastError: lastDisconnectReason,
+        hint:
+          lastDisconnectReason?.message?.includes(
+            "Opening handshake has timed out",
+          )
+            ? "Outbound WhatsApp WebSocket handshake timed out. Check outbound connectivity, DNS, and firewall rules."
+            : null,
+      };
+    };
 
     server.get("/health", healthHandler);
     server.get("/healthz", healthHandler);
@@ -144,6 +167,7 @@ describe("WA Client HTTP Endpoints", () => {
       state: mockAdapter.state,
       botId: mockAdapter.botId,
       library: mockLibrary,
+      lastError: lastDisconnectReason,
     }));
 
     await server.ready();
@@ -166,7 +190,23 @@ describe("WA Client HTTP Endpoints", () => {
       const body: HealthResponse = JSON.parse(response.body);
       expect(body.status).toBe("degraded");
       expect(body.state).toBe("disconnected");
+      expect(body.qrAvailable).toBe(false);
       expect(body.library).toBe("baileys");
+      expect(body.lastError ?? null).toBeNull();
+    });
+
+    it("should include lastError and hint when a handshake timeout occurred", async () => {
+      mockAdapter.state = "disconnected";
+      lastDisconnectReason = {
+        code: 408,
+        message: "WebSocket Error (Opening handshake has timed out)",
+      };
+
+      const response = await server.inject({ method: "GET", url: "/healthz" });
+      expect(response.statusCode).toBe(200);
+      const body: HealthResponse = JSON.parse(response.body);
+      expect(body.lastError).toEqual(lastDisconnectReason);
+      expect(body.hint).toContain("handshake timed out");
     });
 
     it("should return healthy status when ready", async () => {
@@ -182,7 +222,39 @@ describe("WA Client HTTP Endpoints", () => {
       const body: HealthResponse = JSON.parse(response.body);
       expect(body.status).toBe("healthy");
       expect(body.state).toBe("ready");
+      expect(body.qrAvailable).toBe(false);
       expect(body.botId).toBe("1234567890@s.whatsapp.net");
+    });
+
+    it("should return degraded status when connecting without QR", async () => {
+      mockAdapter.state = "connecting";
+
+      const response = await server.inject({
+        method: "GET",
+        url: "/healthz",
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body: HealthResponse = JSON.parse(response.body);
+      expect(body.status).toBe("degraded");
+      expect(body.state).toBe("connecting");
+      expect(body.qrAvailable).toBe(false);
+    });
+
+    it("should return healthy status when connecting with QR available", async () => {
+      mockAdapter.state = "connecting";
+      cachedQr = "qr-data";
+
+      const response = await server.inject({
+        method: "GET",
+        url: "/health",
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body: HealthResponse = JSON.parse(response.body);
+      expect(body.status).toBe("healthy");
+      expect(body.state).toBe("connecting");
+      expect(body.qrAvailable).toBe(true);
     });
   });
 
