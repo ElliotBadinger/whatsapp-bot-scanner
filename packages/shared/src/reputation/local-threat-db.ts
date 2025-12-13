@@ -1,6 +1,6 @@
-import { request } from 'undici';
-import { logger } from '../log';
-import type Redis from 'ioredis';
+import { request } from "undici";
+import { logger } from "../log";
+import type Redis from "ioredis";
 
 export interface LocalThreatResult {
   score: number;
@@ -18,9 +18,9 @@ export class LocalThreatDatabase {
   private redis: Redis;
   private options: LocalThreatDatabaseOptions;
   private updateTimer?: NodeJS.Timeout;
-  private readonly OPENPHISH_KEY = 'threat_db:openphish';
-  private readonly COLLABORATIVE_KEY = 'threat_db:collaborative';
-  private readonly LAST_UPDATE_KEY = 'threat_db:last_update';
+  private readonly OPENPHISH_KEY = "threat_db:openphish";
+  private readonly COLLABORATIVE_KEY = "threat_db:collaborative";
+  private readonly LAST_UPDATE_KEY = "threat_db:last_update";
 
   constructor(redis: Redis, options: LocalThreatDatabaseOptions) {
     this.redis = redis;
@@ -32,17 +32,20 @@ export class LocalThreatDatabase {
     try {
       await this.updateOpenPhishFeed();
     } catch (err) {
-      logger.warn({ err }, 'Initial OpenPh feed update failed; will retry on next interval');
+      logger.warn(
+        { err },
+        "Initial OpenPh feed update failed; will retry on next interval",
+      );
     }
 
     // Schedule periodic updates
     this.updateTimer = setInterval(() => {
-      this.updateOpenPhishFeed().catch(err => {
-        logger.warn({ err }, 'Failed to update OpenPhish feed');
+      this.updateOpenPhishFeed().catch((err) => {
+        logger.warn({ err }, "Failed to update OpenPhish feed");
       });
     }, this.options.updateIntervalMs);
 
-    logger.info('Local threat database started');
+    logger.info("Local threat database started");
   }
 
   async stop(): Promise<void> {
@@ -50,7 +53,7 @@ export class LocalThreatDatabase {
       clearInterval(this.updateTimer);
       this.updateTimer = undefined;
     }
-    logger.info('Local threat database stopped');
+    logger.info("Local threat database stopped");
   }
 
   async check(url: string, _hash: string): Promise<LocalThreatResult> {
@@ -63,34 +66,40 @@ export class LocalThreatDatabase {
       const normalizedUrl = this.normalizeUrl(url);
 
       // Check OpenPhish feed
-      const openphishMatch = await this.redis.sismember(this.OPENPHISH_KEY, normalizedUrl);
+      const openphishMatch = await this.redis.sismember(
+        this.OPENPHISH_KEY,
+        normalizedUrl,
+      );
       if (openphishMatch) {
         result.openphishMatch = true;
         result.score += 2.0;
-        result.reasons.push('URL found in OpenPhish feed');
+        result.reasons.push("URL found in OpenPhish feed");
       }
 
       // Check collaborative learning database
-      const collaborativeScore = await this.redis.zscore(this.COLLABORATIVE_KEY, normalizedUrl);
+      const collaborativeScore = await this.redis.zscore(
+        this.COLLABORATIVE_KEY,
+        normalizedUrl,
+      );
       if (collaborativeScore !== null && Number(collaborativeScore) > 0.7) {
         result.collaborativeMatch = true;
         result.score += Math.min(1.5, Number(collaborativeScore));
-        result.reasons.push('URL flagged by collaborative learning');
+        result.reasons.push("URL flagged by collaborative learning");
       }
 
       return result;
     } catch (_err) {
-      logger.warn({ url, err: _err }, 'Local threat database check failed');
+      logger.warn({ url, err: _err }, "Local threat database check failed");
       return result;
     }
   }
 
   async updateOpenPhishFeed(): Promise<void> {
     try {
-      logger.info('Updating OpenPhish feed...');
+      logger.info("Updating OpenPhish feed...");
 
       const response = await request(this.options.feedUrl, {
-        method: 'GET',
+        method: "GET",
         headersTimeout: 10000,
         bodyTimeout: 30000,
         maxRedirections: 5, // Follow redirects
@@ -102,13 +111,13 @@ export class LocalThreatDatabase {
 
       const feedData = await response.body.text();
       const urls = feedData
-        .split('\n')
-        .map(line => line.trim())
-        .filter(line => line && line.startsWith('http'))
-        .map(url => this.normalizeUrl(url));
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line && line.startsWith("http"))
+        .map((url) => this.normalizeUrl(url));
 
       if (urls.length === 0) {
-        throw new Error('No URLs found in OpenPhish feed');
+        throw new Error("No URLs found in OpenPhish feed");
       }
 
       // Update Redis with new feed data
@@ -127,25 +136,28 @@ export class LocalThreatDatabase {
 
       await pipeline.exec();
 
-      logger.info({ count: urls.length }, 'OpenPhish feed updated successfully');
+      logger.info(
+        { count: urls.length },
+        "OpenPhish feed updated successfully",
+      );
     } catch (err) {
-      logger.warn({ err }, 'Failed to update OpenPhish feed');
+      logger.warn({ err }, "Failed to update OpenPhish feed");
       // Don't throw - make this non-fatal to allow service to continue running
     }
   }
 
   async recordVerdict(
     url: string,
-    verdict: 'benign' | 'suspicious' | 'malicious',
-    confidence: number
+    verdict: "benign" | "suspicious" | "malicious",
+    confidence: number,
   ): Promise<void> {
     try {
       const normalizedUrl = this.normalizeUrl(url);
 
       let score = 0;
-      if (verdict === 'malicious') {
+      if (verdict === "malicious") {
         score = confidence;
-      } else if (verdict === 'suspicious') {
+      } else if (verdict === "suspicious") {
         score = confidence * 0.5;
       }
 
@@ -155,11 +167,17 @@ export class LocalThreatDatabase {
         await this.redis.expire(this.COLLABORATIVE_KEY, 30 * 24 * 60 * 60);
       }
     } catch (err) {
-      logger.warn({ url, verdict, err }, 'Failed to record verdict in collaborative database');
+      logger.warn(
+        { url, verdict, err },
+        "Failed to record verdict in collaborative database",
+      );
     }
   }
 
-  async getStats(): Promise<{ openphishCount: number; collaborativeCount: number }> {
+  async getStats(): Promise<{
+    openphishCount: number;
+    collaborativeCount: number;
+  }> {
     try {
       const [openphishCount, collaborativeCount] = await Promise.all([
         this.redis.scard(this.OPENPHISH_KEY),
@@ -171,7 +189,7 @@ export class LocalThreatDatabase {
         collaborativeCount: collaborativeCount || 0,
       };
     } catch (err) {
-      logger.warn({ err }, 'Failed to get threat database stats');
+      logger.warn({ err }, "Failed to get threat database stats");
       return { openphishCount: 0, collaborativeCount: 0 };
     }
   }
@@ -180,8 +198,8 @@ export class LocalThreatDatabase {
     try {
       const parsed = new URL(url);
       // Remove common tracking parameters and fragments
-      parsed.search = '';
-      parsed.hash = '';
+      parsed.search = "";
+      parsed.hash = "";
       return parsed.toString().toLowerCase();
     } catch (_err) {
       return url.toLowerCase();

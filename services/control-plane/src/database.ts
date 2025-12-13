@@ -1,7 +1,7 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import { Pool } from 'pg';
-import type { Logger } from 'pino';
+import * as fs from "fs";
+import * as path from "path";
+import { Pool } from "pg";
+import type { Logger } from "pino";
 
 type SqliteStatement = {
   all: (...params: unknown[]) => unknown[];
@@ -20,7 +20,9 @@ type SqliteDriver = {
 function createSqliteDriver(dbPath: string): SqliteDriver {
   let bunSqlite: { Database: new (path: string) => any } | null = null;
   try {
-    bunSqlite = require('bun:sqlite') as { Database: new (path: string) => any };
+    bunSqlite = require("bun:sqlite") as {
+      Database: new (path: string) => any;
+    };
   } catch {
     bunSqlite = null;
   }
@@ -40,26 +42,28 @@ function createSqliteDriver(dbPath: string): SqliteDriver {
       },
       transaction<T>(fn: () => T) {
         return () => {
-          db.exec('BEGIN');
+          db.exec("BEGIN");
           try {
             const result = fn();
-            db.exec('COMMIT');
+            db.exec("COMMIT");
             return result;
           } catch (err) {
-            db.exec('ROLLBACK');
+            db.exec("ROLLBACK");
             throw err;
           }
         };
       },
       close() {
-        if (typeof db.close === 'function') {
+        if (typeof db.close === "function") {
           db.close();
         }
       },
     };
   }
 
-  const BetterSqlite3 = require('better-sqlite3') as new (path: string) => SqliteDriver;
+  const BetterSqlite3 = require("better-sqlite3") as new (
+    path: string,
+  ) => SqliteDriver;
   return new BetterSqlite3(dbPath);
 }
 
@@ -80,7 +84,8 @@ export class SQLiteConnection implements IDatabaseConnection {
   private logger: Logger | undefined;
 
   constructor(config: DatabaseConfig = {}) {
-    const dbPath = config.dbPath || process.env.SQLITE_DB_PATH || './storage/wbscanner.db';
+    const dbPath =
+      config.dbPath || process.env.SQLITE_DB_PATH || "./storage/wbscanner.db";
 
     // Ensure directory exists
     const dbDir = path.dirname(dbPath);
@@ -92,13 +97,13 @@ export class SQLiteConnection implements IDatabaseConnection {
     this.logger = config.logger;
 
     // Enable WAL mode for better concurrency
-    this.db.pragma('journal_mode = WAL');
-    this.db.pragma('synchronous = NORMAL');
-    this.db.pragma('cache_size = 64000');
-    this.db.pragma('foreign_keys = ON');
+    this.db.pragma("journal_mode = WAL");
+    this.db.pragma("synchronous = NORMAL");
+    this.db.pragma("cache_size = 64000");
+    this.db.pragma("foreign_keys = ON");
 
     if (this.logger) {
-      this.logger.info({ dbPath }, 'SQLite connection established');
+      this.logger.info({ dbPath }, "SQLite connection established");
     }
   }
 
@@ -106,14 +111,17 @@ export class SQLiteConnection implements IDatabaseConnection {
     return this.db;
   }
 
-  async query(sql: string, params: unknown[] = []): Promise<{ rows: unknown[] }> {
+  async query(
+    sql: string,
+    params: unknown[] = [],
+  ): Promise<{ rows: unknown[] }> {
     try {
       // Convert Postgres-style placeholders ($1, $2) to SQLite (?)
-      const sqliteSql = sql.replace(/\$\d+/g, '?');
+      const sqliteSql = sql.replace(/\$\d+/g, "?");
       const stmt = this.db.prepare(sqliteSql);
 
       // Handle SELECT queries
-      if (sql.trim().toLowerCase().startsWith('select')) {
+      if (sql.trim().toLowerCase().startsWith("select")) {
         const rows = stmt.all(...(params as unknown[]));
         return { rows };
       }
@@ -121,18 +129,20 @@ export class SQLiteConnection implements IDatabaseConnection {
       // Handle INSERT, UPDATE, DELETE queries
       const result = stmt.run(...(params as unknown[]));
       const resultObj =
-        typeof result === 'object' && result !== null
+        typeof result === "object" && result !== null
           ? (result as Record<string, unknown>)
           : null;
       const changes =
-        resultObj && typeof resultObj.changes === 'number' ? resultObj.changes : 0;
+        resultObj && typeof resultObj.changes === "number"
+          ? resultObj.changes
+          : 0;
       const lastInsertRowid = resultObj ? resultObj.lastInsertRowid : undefined;
       return {
-        rows: changes > 0 ? [{ affectedRows: changes, lastInsertRowid }] : []
+        rows: changes > 0 ? [{ affectedRows: changes, lastInsertRowid }] : [],
       };
     } catch (error) {
       if (this.logger) {
-        this.logger.error({ error, sql, params }, 'Database query failed');
+        this.logger.error({ error, sql, params }, "Database query failed");
       }
       throw error;
     }
@@ -146,7 +156,7 @@ export class SQLiteConnection implements IDatabaseConnection {
   close(): void {
     this.db.close();
     if (this.logger) {
-      this.logger.info('SQLite connection closed');
+      this.logger.info("SQLite connection closed");
     }
   }
 }
@@ -161,14 +171,14 @@ export class PostgresConnection implements IDatabaseConnection {
       connectionString: process.env.DATABASE_URL,
     });
 
-    this.pool.on('error', (err: Error) => {
+    this.pool.on("error", (err: Error) => {
       if (this.logger) {
-        this.logger.error({ err }, 'Unexpected error on idle client');
+        this.logger.error({ err }, "Unexpected error on idle client");
       }
     });
 
     if (this.logger) {
-      this.logger.info('Postgres connection pool established');
+      this.logger.info("Postgres connection pool established");
     }
   }
 
@@ -176,17 +186,20 @@ export class PostgresConnection implements IDatabaseConnection {
     return this.pool;
   }
 
-  async query(sql: string, params: unknown[] = []): Promise<{ rows: unknown[] }> {
+  async query(
+    sql: string,
+    params: unknown[] = [],
+  ): Promise<{ rows: unknown[] }> {
     try {
       // Convert SQLite-style placeholders (?) to Postgres ($1, $2)
       let paramIndex = 1;
       const pgSql = sql.replace(/\?/g, () => `$${paramIndex++}`);
-      
+
       const result = await this.pool.query(pgSql, params);
       return { rows: result.rows };
     } catch (error) {
       if (this.logger) {
-        this.logger.error({ error, sql, params }, 'Database query failed');
+        this.logger.error({ error, sql, params }, "Database query failed");
       }
       throw error;
     }
@@ -199,7 +212,7 @@ export class PostgresConnection implements IDatabaseConnection {
   close(): void {
     this.pool.end();
     if (this.logger) {
-      this.logger.info('Postgres connection pool closed');
+      this.logger.info("Postgres connection pool closed");
     }
   }
 }
@@ -209,7 +222,10 @@ let sharedConnection: IDatabaseConnection | null = null;
 
 export function getSharedConnection(logger?: Logger): IDatabaseConnection {
   if (!sharedConnection) {
-    if (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('postgres')) {
+    if (
+      process.env.DATABASE_URL &&
+      process.env.DATABASE_URL.startsWith("postgres")
+    ) {
       sharedConnection = new PostgresConnection({ logger });
     } else {
       sharedConnection = new SQLiteConnection({ logger });
@@ -218,8 +234,13 @@ export function getSharedConnection(logger?: Logger): IDatabaseConnection {
   return sharedConnection;
 }
 
-export function createConnection(config: DatabaseConfig = {}): IDatabaseConnection {
-  if (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('postgres')) {
+export function createConnection(
+  config: DatabaseConfig = {},
+): IDatabaseConnection {
+  if (
+    process.env.DATABASE_URL &&
+    process.env.DATABASE_URL.startsWith("postgres")
+  ) {
     return new PostgresConnection(config);
   }
   return new SQLiteConnection(config);
