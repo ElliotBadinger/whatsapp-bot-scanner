@@ -162,12 +162,13 @@ async function main(): Promise<void> {
         }
       : null;
 
-    const hint =
-      lastDisconnectReason?.message?.includes("Opening handshake has timed out")
-        ? "Outbound WhatsApp WebSocket handshake timed out. Check outbound connectivity, DNS, and firewall rules."
-        : lastDisconnectReason?.message?.includes("QR refs attempts ended")
-          ? "QR was not scanned before it expired. Fetch a fresh QR from /qr and scan within ~60s."
-          : null;
+    const hint = lastDisconnectReason?.message?.includes(
+      "Opening handshake has timed out",
+    )
+      ? "Outbound WhatsApp WebSocket handshake timed out. Check outbound connectivity, DNS, and firewall rules."
+      : lastDisconnectReason?.message?.includes("QR refs attempts ended")
+        ? "QR was not scanned before it expired. Fetch a fresh QR from /qr and scan within ~60s."
+        : null;
     return {
       status: computeWaHealthStatus({ state, qrAvailable }),
       library,
