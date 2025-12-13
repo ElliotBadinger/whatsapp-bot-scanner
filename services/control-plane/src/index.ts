@@ -216,6 +216,7 @@ export async function buildServer(options: BuildOptions = {}) {
       urlHash: hash,
       rescan: true,
       priority: 1,
+      timestamp: Date.now(),
       ...(latestMessage?.chat_id && latestMessage?.message_id
         ? { chatId: latestMessage.chat_id, messageId: latestMessage.message_id }
         : {}),

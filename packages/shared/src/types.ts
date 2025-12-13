@@ -1,11 +1,11 @@
 export type Verdict = 'benign' | 'suspicious' | 'malicious';
 
 export interface ScanRequest {
-  chatId: string;
-  messageId: string;
+  chatId?: string;
+  messageId?: string;
   senderIdHash?: string;
   url: string;
-  timestamp: number;
+  timestamp?: number;
 }
 
 export interface ScanResult {

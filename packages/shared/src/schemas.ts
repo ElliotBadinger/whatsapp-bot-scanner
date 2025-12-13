@@ -2,11 +2,15 @@ import { z } from 'zod';
 import { ScanRequest } from './types';
 
 export const ScanRequestSchema: z.ZodType<ScanRequest> = z.object({
-    chatId: z.string().min(1),
-    messageId: z.string().min(1),
+    chatId: z.string().min(1).optional(),
+    messageId: z.string().min(1).optional(),
     senderIdHash: z.string().optional(),
     url: z.string().url(),
-    timestamp: z.number().int().positive(),
+    timestamp: z.number().int().positive().optional(),
+    // Fields passed by control-plane for rescans (ignored by regular scan producers)
+    rescan: z.boolean().optional(),
+    urlHash: z.string().min(1).optional(),
+    priority: z.number().int().optional(),
 });
 
 export const OverrideBodySchema = z.object({
