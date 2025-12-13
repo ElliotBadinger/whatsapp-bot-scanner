@@ -38,7 +38,15 @@ function pushReason(reasons: string[], reason: string) {
 
 function evaluateBlocklistSignals(signals: Signals, score: number, reasons: string[]): number {
   const threatTypes = signals.gsbThreatTypes ?? [];
-  if (threatTypes.includes('MALWARE') || threatTypes.includes('SOCIAL_ENGINEERING')) {
+  const gsbMaliciousThreatTypes = new Set([
+    'MALWARE',
+    'SOCIAL_ENGINEERING',
+    'UNWANTED_SOFTWARE',
+    'MALICIOUS_BINARY',
+    'POTENTIALLY_HARMFUL_APPLICATION',
+  ]);
+
+  if (threatTypes.some(t => gsbMaliciousThreatTypes.has(t))) {
     score += 10;
     pushReason(reasons, `Google Safe Browsing: ${threatTypes.join(', ')}`);
   }

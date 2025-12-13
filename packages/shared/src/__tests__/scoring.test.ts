@@ -6,6 +6,23 @@ test('gsb malware threat is malicious', () => {
   expect(result.score).toBeGreaterThanOrEqual(10);
 });
 
+test('gsb additional threat types are malicious', () => {
+  const unwantedSoftware = scoreFromSignals({ gsbThreatTypes: ['UNWANTED_SOFTWARE'] });
+  expect(unwantedSoftware.level).toBe('malicious');
+  expect(unwantedSoftware.score).toBeGreaterThanOrEqual(10);
+  expect(unwantedSoftware.reasons.some(r => r.includes('Google Safe Browsing:'))).toBe(true);
+
+  const maliciousBinary = scoreFromSignals({ gsbThreatTypes: ['MALICIOUS_BINARY'] });
+  expect(maliciousBinary.level).toBe('malicious');
+  expect(maliciousBinary.score).toBeGreaterThanOrEqual(10);
+  expect(maliciousBinary.reasons.some(r => r.includes('Google Safe Browsing:'))).toBe(true);
+
+  const pha = scoreFromSignals({ gsbThreatTypes: ['POTENTIALLY_HARMFUL_APPLICATION'] });
+  expect(pha.level).toBe('malicious');
+  expect(pha.score).toBeGreaterThanOrEqual(10);
+  expect(pha.reasons.some(r => r.includes('Google Safe Browsing:'))).toBe(true);
+});
+
 test('young domain suspicious', () => {
   const result = scoreFromSignals({ domainAgeDays: 3 });
   expect(result.level).toBe('suspicious');
@@ -13,7 +30,7 @@ test('young domain suspicious', () => {
 
 test('multiple blocklists escalate to malicious', () => {
   const result = scoreFromSignals({
-    gsbThreatTypes: ['PHISHING'],
+    gsbThreatTypes: ['SOCIAL_ENGINEERING'],
     phishtankVerified: true,
     urlhausListed: true,
   });
@@ -151,7 +168,7 @@ test('benign score returns correct level and ttl', () => {
 test('vt malicious count logic', () => {
   const low = scoreFromSignals({ vtMalicious: 1 });
   expect(low.score).toBe(5);
-  
+
   const high = scoreFromSignals({ vtMalicious: 3 });
   expect(high.score).toBe(8);
 });
