@@ -75,7 +75,9 @@ function createEnhancedSecurityStub() {
 describe("scan request worker handler (invocation)", () => {
   it("processes a rescan job without chat context (does not fail validation; reaches cache lookup)", async () => {
     expect(typeof handleScanRequestJob).toBe("function");
-    expect((__testables as any).handleScanRequestJob).toBe(handleScanRequestJob);
+    expect((__testables as any).handleScanRequestJob).toBe(
+      handleScanRequestJob,
+    );
 
     const calls = {
       getCachedVerdict: 0,
@@ -191,7 +193,9 @@ describe("scan request worker handler (invocation)", () => {
 
   it("rejects invalid job data (missing url) and records queue metrics", async () => {
     expect(typeof handleScanRequestJob).toBe("function");
-    expect((__testables as any).handleScanRequestJob).toBe(handleScanRequestJob);
+    expect((__testables as any).handleScanRequestJob).toBe(
+      handleScanRequestJob,
+    );
 
     const nowBase = 1_700_000_000_000;
 
@@ -249,7 +253,9 @@ describe("scan request worker handler (invocation)", () => {
 
   it("skips verdict dispatch when cached verdict exists but no chat context (uses handleCachedVerdict)", async () => {
     expect(typeof handleScanRequestJob).toBe("function");
-    expect((__testables as any).handleScanRequestJob).toBe(handleScanRequestJob);
+    expect((__testables as any).handleScanRequestJob).toBe(
+      handleScanRequestJob,
+    );
 
     const nowBase = 1_700_000_000_000;
 

@@ -33,7 +33,9 @@ describe("ScanRequestSchema", () => {
       // timestamp intentionally omitted
     };
 
-    const result = ScanRequestSchema.safeParse(rescanJobWithChatContextNoTimestamp);
+    const result = ScanRequestSchema.safeParse(
+      rescanJobWithChatContextNoTimestamp,
+    );
     expect(result.success).toBe(true);
 
     if (result.success) {
@@ -72,7 +74,9 @@ describe("ScanRequestSchema", () => {
 
     if (!result.success) {
       // Make sure the error points at `url`
-      const urlIssues = result.error.issues.filter((i) => i.path.join(".") === "url");
+      const urlIssues = result.error.issues.filter(
+        (i) => i.path.join(".") === "url",
+      );
       expect(urlIssues.length).toBeGreaterThan(0);
     }
   });
@@ -86,7 +90,9 @@ describe("ScanRequestSchema", () => {
     expect(result.success).toBe(false);
 
     if (!result.success) {
-      const urlIssues = result.error.issues.filter((i) => i.path.join(".") === "url");
+      const urlIssues = result.error.issues.filter(
+        (i) => i.path.join(".") === "url",
+      );
       expect(urlIssues.length).toBeGreaterThan(0);
     }
   });

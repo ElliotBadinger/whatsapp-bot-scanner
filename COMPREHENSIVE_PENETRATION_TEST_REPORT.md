@@ -50,49 +50,59 @@ This comprehensive penetration test was conducted on the WhatsApp Bot Scanner co
 ### 1. High-Severity Vulnerabilities
 
 #### A. Hardcoded Secrets (9 instances)
+
 **Files Affected:** `.env.local`, `k8s/env-configmap.yaml`, `SafeMode-web-app/.env.local`
 
 **Description:** Multiple hardcoded secrets detected including:
+
 - Generic secrets (5 instances)
 - JWT tokens (2 instances)
 - API keys (2 instances)
 
-**Impact:** 
+**Impact:**
+
 - CWE-798: Use of Hard-coded Credentials
 - OWASP A07:2021 - Identification and Authentication Failures
 - Could lead to unauthorized access and privilege escalation
 
 **Recommendation:**
+
 - Move all secrets to environment variables or secret management systems
 - Use secret scanning tools in CI/CD pipelines
 - Rotate all exposed secrets immediately
 
 #### B. Insecure WebSocket Connections (2 instances)
+
 **Files Affected:** `docs/WhatsApp_Bot_Scanner_Deep_Research_Report.md`
 
 **Description:** WebSocket connections using insecure `ws://` protocol instead of secure `wss://`
 
 **Impact:**
+
 - CWE-319: Cleartext Transmission of Sensitive Information
 - OWASP A02:2021 - Cryptographic Failures
 - Man-in-the-middle attacks possible
 
 **Recommendation:**
+
 - Replace all `ws://` with `wss://`
 - Implement proper certificate validation
 - Use HSTS headers
 
 #### C. TLS Verification Bypass
+
 **Files Affected:** `packages/shared/src/reputation/certificate-intelligence.ts`
 
 **Description:** Code sets `NODE_TLS_REJECT_UNAUTHORIZED=0` which disables TLS certificate verification
 
 **Impact:**
+
 - Vulnerable to man-in-the-middle attacks
 - No protection against malicious certificates
 - Complete breakdown of transport security
 
 **Recommendation:**
+
 - Remove TLS verification bypass
 - Implement proper certificate pinning
 - Use trusted CA certificates
@@ -100,46 +110,55 @@ This comprehensive penetration test was conducted on the WhatsApp Bot Scanner co
 ### 2. Medium-Severity Vulnerabilities
 
 #### A. Path Traversal Vulnerabilities (3 instances)
+
 **Files Affected:** `scripts/cli/core/compatibility.mjs`
 
 **Description:** User input going directly into `path.join()` or `path.resolve()` functions
 
 **Impact:**
+
 - Potential directory traversal attacks
 - Arbitrary file access possible
 - Information disclosure risk
 
 **Recommendation:**
+
 - Sanitize all user input before path operations
 - Use allowlists for valid paths
 - Implement proper path validation
 
 #### B. Curl Pipe to Bash (7 instances)
+
 **Files Affected:** `bootstrap.sh`, `setup.sh`, `setup-hobby-express.sh`
 
 **Description:** Piping curl output directly to bash without integrity verification
 
 **Impact:**
+
 - CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code
 - OWASP A03:2021 - Injection
 - Potential system compromise if server is malicious
 
 **Recommendation:**
+
 - Verify SHA sums of downloaded content
 - Use temporary files instead of direct piping
 - Implement signature verification
 
 #### C. Kubernetes Security Misconfigurations (9 instances)
+
 **Files Affected:** `temp_k8s.yaml`
 
 **Description:** Kubernetes pods with `allowPrivilegeEscalation: true`
 
 **Impact:**
+
 - Privilege escalation attacks possible
 - Container breakout vulnerabilities
 - Increased attack surface
 
 **Recommendation:**
+
 - Set `allowPrivilegeEscalation: false`
 - Use minimal required privileges
 - Implement pod security policies
@@ -149,6 +168,7 @@ This comprehensive penetration test was conducted on the WhatsApp Bot Scanner co
 #### Open Ports Analysis
 
 **Critical Services Exposed:**
+
 - **Port 3000**: Node.js Express framework (potential API endpoint)
 - **Port 3001**: Unknown service (redirects to /dashboard)
 - **Port 3002**: Authentication service (/login endpoint)
@@ -157,11 +177,13 @@ This comprehensive penetration test was conducted on the WhatsApp Bot Scanner co
 - **Port 9091**: Golang HTTP server (potential metrics endpoint)
 
 **Security Concerns:**
+
 1. **Redis Exposure**: Port 6379 open without authentication
 2. **Multiple HTTP Services**: Several web services running on different ports
 3. **Unknown Services**: Ports 3003, 3006, 5555, 15151, 44031 with unidentified services
 
 **Recommendations:**
+
 - Implement authentication for Redis
 - Consolidate web services behind single reverse proxy
 - Identify and secure unknown services
@@ -170,12 +192,14 @@ This comprehensive penetration test was conducted on the WhatsApp Bot Scanner co
 ### 4. SSL/TLS Configuration Issues
 
 **Findings:**
+
 - No TLS/SSL detected on port 8098 (nginx)
 - Multiple services running without encryption
 - No HSTS headers detected
 - Weak cipher suites potentially supported
 
 **Recommendations:**
+
 - Enable TLS on all HTTP services
 - Implement HSTS with preload
 - Use modern cipher suites (TLS 1.2+)
@@ -184,14 +208,17 @@ This comprehensive penetration test was conducted on the WhatsApp Bot Scanner co
 ### 5. Dependency Vulnerabilities
 
 **NPM Audit Results:**
+
 - 0 vulnerabilities found in JavaScript dependencies
 - All dependencies up-to-date
 
 **Python Safety Results:**
+
 - 14 vulnerabilities found in system Python packages
 - No vulnerabilities in project-specific dependencies
 
 **Recommendations:**
+
 - Regular dependency scanning in CI/CD
 - Update system Python packages
 - Implement dependency pinning
@@ -201,11 +228,13 @@ This comprehensive penetration test was conducted on the WhatsApp Bot Scanner co
 ### 1. Authentication and Authorization
 
 **Issues Found:**
+
 - No evidence of TODO/FIXME comments in core code
 - However, security audit revealed timing attack vulnerabilities in token comparison
 - DNS rebinding vulnerabilities in SSRF protection
 
 **Recommendations:**
+
 - Implement constant-time comparison for all security tokens
 - Enhance DNS validation with multiple lookups
 - Add rate limiting to authentication endpoints
@@ -213,11 +242,13 @@ This comprehensive penetration test was conducted on the WhatsApp Bot Scanner co
 ### 2. Error Handling
 
 **Issues Found:**
+
 - Inconsistent error handling patterns
 - Some error messages may expose sensitive information
 - Lack of comprehensive error logging
 
 **Recommendations:**
+
 - Standardize error handling across all services
 - Implement sensitive data filtering in error responses
 - Enhance logging for security events
@@ -225,11 +256,13 @@ This comprehensive penetration test was conducted on the WhatsApp Bot Scanner co
 ### 3. Configuration Management
 
 **Issues Found:**
+
 - Hardcoded configuration values in multiple files
 - Insecure defaults for security-sensitive settings
 - Configuration sprawl across different files
 
 **Recommendations:**
+
 - Centralize configuration management
 - Implement secure defaults
 - Use environment variables for sensitive settings
@@ -251,11 +284,13 @@ This comprehensive penetration test was conducted on the WhatsApp Bot Scanner co
 ### Attack Surface Analysis
 
 **Exposed Attack Vectors:**
+
 - Redis unauthenticated access (port 6379)
 - Multiple web services with potential misconfigurations
 - Hardcoded secrets in configuration files
 
 **Mitigated Attack Vectors:**
+
 - No obvious injection vulnerabilities
 - Proper input validation in most cases
 - Secure coding practices evident
@@ -334,7 +369,7 @@ Other files: 445
 
 ```
 High: 22 findings
-Medium: 39 findings  
+Medium: 39 findings
 Low: 0 findings
 Informational: 0 findings
 ```

@@ -1547,8 +1547,7 @@ async function main() {
       } catch (error_) {
         logger.error(
           {
-            err:
-              error_ instanceof Error ? error_.message : error_,
+            err: error_ instanceof Error ? error_.message : error_,
             phoneNumber: maskPhone(phone),
           },
           "Puppeteer fallback also failed",

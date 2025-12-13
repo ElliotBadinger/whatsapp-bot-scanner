@@ -2061,8 +2061,6 @@ async function main() {
     handleUrlscanCallback(req, reply, dbClient),
   );
 
-
-
   // Refactored scan request worker (complexity 89 -> 15)
   new Worker(
     config.queues.scanRequest,
@@ -2369,7 +2367,10 @@ export async function handleScanRequestJob(
   deps: ScanRequestWorkerDeps,
 ): Promise<void> {
   const started = deps.now();
-  const waitSeconds = Math.max(0, (started - (job.timestamp ?? started)) / 1000);
+  const waitSeconds = Math.max(
+    0,
+    (started - (job.timestamp ?? started)) / 1000,
+  );
   deps.metrics.queueJobWait.labels(deps.queueName).observe(waitSeconds);
 
   // Validate job data
@@ -2543,7 +2544,9 @@ export async function handleScanRequestJob(
 
     // Record Fast Path Metrics
     deps.metrics.fastPathLatency.observe((deps.now() - started) / 1000);
-    deps.metrics.scanPathCounter.labels("fast", fastVerdictResult.verdict).inc();
+    deps.metrics.scanPathCounter
+      .labels("fast", fastVerdictResult.verdict)
+      .inc();
 
     // If Fast Verdict is NOT Malicious, queue Deep Scan
     if (fastVerdictResult.verdict !== "malicious") {
@@ -2575,9 +2578,9 @@ export async function handleScanRequestJob(
       .observe((deps.now() - started) / 1000);
     deps.logger.error(e, "scan worker error");
   } finally {
-    await deps.refreshQueueMetrics(deps.scanRequestQueue, deps.queueName).catch(
-      () => undefined,
-    );
+    await deps
+      .refreshQueueMetrics(deps.scanRequestQueue, deps.queueName)
+      .catch(() => undefined);
   }
 }
 
