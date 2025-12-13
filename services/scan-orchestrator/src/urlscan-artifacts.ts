@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { fetch, Response } from 'undici';
@@ -60,10 +61,30 @@ function sanitizePathComponent(input: string): string {
   return sanitized;
 }
 
+function assertPathWithinDir(dir: string, target: string): void {
+  const resolvedDir = path.resolve(dir);
+  const resolvedTarget = path.resolve(target);
+  const relative = path.relative(resolvedDir, resolvedTarget);
+  if (!relative || (!relative.startsWith('..') && !path.isAbsolute(relative))) {
+    return;
+  }
+  throw new Error('Path traversal detected: artifact path escapes artifact directory');
+}
+
+function hashToHex(input: string): string {
+  return crypto.createHash('sha256').update(input).digest('hex');
+}
+
 export async function downloadUrlscanArtifacts(scanId: string, urlHash: string): Promise<ArtifactPaths> {
   // Sanitize inputs to prevent path traversal (e.g., "../../../etc/passwd")
-  const safeScanId = sanitizePathComponent(scanId);
+  if (!/^[a-fA-F0-9-]{36}$/.test(scanId)) {
+    throw new Error('Invalid scan id');
+  }
+  if (!/^[a-fA-F0-9]{64}$/.test(urlHash)) {
+    throw new Error('Invalid url hash');
+  }
   const safeUrlHash = sanitizePathComponent(urlHash);
+  const safeScanId = hashToHex(scanId);
   
   const screenshotPath = path.join(ARTIFACT_DIR, `${safeUrlHash}_${safeScanId}.png`);
   const domPath = path.join(ARTIFACT_DIR, `${safeUrlHash}_${safeScanId}.html`);
@@ -71,17 +92,14 @@ export async function downloadUrlscanArtifacts(scanId: string, urlHash: string):
   // Additional safety: ensure resolved paths are within ARTIFACT_DIR
   const resolvedScreenshot = path.resolve(screenshotPath);
   const resolvedDom = path.resolve(domPath);
-  const resolvedArtifactDir = path.resolve(ARTIFACT_DIR);
-  
-  if (!resolvedScreenshot.startsWith(resolvedArtifactDir) || !resolvedDom.startsWith(resolvedArtifactDir)) {
-    throw new Error('Path traversal detected: artifact path escapes artifact directory');
-  }
+  assertPathWithinDir(ARTIFACT_DIR, resolvedScreenshot);
+  assertPathWithinDir(ARTIFACT_DIR, resolvedDom);
   
   const baseUrl = (config.urlscan.baseUrl || 'https://urlscan.io').replace(/\/+$/, '');
   const screenshotUrl = `${baseUrl}/screenshots/${scanId}.png`;
   const domUrl = `${baseUrl}/dom/${scanId}/`;
 
-  const screenshotSaved = await downloadToFile('screenshot', screenshotUrl, screenshotPath);
+  const screenshotSaved = await downloadToFile('screenshot', screenshotUrl, resolvedScreenshot);
   if (!screenshotSaved) {
     logger.warn({ scanId, urlHash }, 'Screenshot download failed');
   }
@@ -99,7 +117,7 @@ export async function downloadUrlscanArtifacts(scanId: string, urlHash: string):
     if (response?.ok) {
       const html = await response.text();
       await ensureDirectory();
-      await fs.writeFile(domPath, html, 'utf8');
+      await fs.writeFile(resolvedDom, html, 'utf8');
       domSaved = true;
     } else {
       recordDownloadFailure('dom', `http:${response?.status ?? 'unknown'}`);
@@ -111,7 +129,7 @@ export async function downloadUrlscanArtifacts(scanId: string, urlHash: string):
   }
 
   return {
-    screenshotPath: screenshotSaved ? screenshotPath : null,
-    domPath: domSaved ? domPath : null,
+    screenshotPath: screenshotSaved ? resolvedScreenshot : null,
+    domPath: domSaved ? resolvedDom : null,
   };
 }
