@@ -52,7 +52,6 @@ services:
       context: .
       dockerfile: docker/Dockerfile
       target: migrate
-      network: host
     working_dir: /app
     env_file: [.env]
     extra_hosts:
@@ -91,13 +90,13 @@ services:
       dockerfile: docker/Dockerfile
       # Use wa-client-baileys for Baileys (lightweight), wa-client for wwebjs (Puppeteer)
       target: ${WA_BUILD_TARGET:-wa-client-baileys}
-      network: host
     env_file: [.env]
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       redis:
         condition: service_healthy
+    networks: [internal]
     mem_limit: 1g
     cpus: "1.0"
     pids_limit: 200
@@ -105,16 +104,12 @@ services:
       nofile:
         soft: 4096
         hard: 8192
-    network_mode: host
     environment:
       - WA_HTTP_PORT=${WA_CLIENT_PORT:-3005}
       - NODE_OPTIONS=--max-old-space-size=768 --dns-result-order=ipv4first
-      - REDIS_URL=redis://127.0.0.1:6379/0
+      - REDIS_URL=redis://redis:6379/0
       - WA_LIBRARY=${WA_LIBRARY:-baileys}
-      - CONTROL_PLANE_BASE=http://127.0.0.1:${REVERSE_PROXY_PORT:-8088}
-    dns:
-      - 1.1.1.1
-      - 8.8.8.8
+      - CONTROL_PLANE_BASE=http://reverse-proxy:8088
     volumes:
       - wa_session:/app/services/wa-client/data:rw
       - ./storage:/app/storage:rw
@@ -146,7 +141,6 @@ services:
       context: .
       dockerfile: docker/Dockerfile
       target: scan-orchestrator
-      network: host
     env_file: [.env]
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -202,7 +196,6 @@ services:
       context: .
       dockerfile: docker/Dockerfile
       target: control-plane
-      network: host
     env_file: [.env]
     extra_hosts:
       - "host.docker.internal:host-gateway"
