@@ -24,14 +24,14 @@ interface DNSIntelligenceOptions {
 }
 
 const DNSBL_PROVIDERS = [
-  'zen.spamhaus.org',
-  'bl.spamcop.net',
-  'dnsbl.sorbs.net',
+  "zen.spamhaus.org",
+  "bl.spamcop.net",
+  "dnsbl.sorbs.net",
 ];
 
 export async function dnsIntelligence(
   hostname: string,
-  options: DNSIntelligenceOptions = {}
+  options: DNSIntelligenceOptions = {},
 ): Promise<DNSIntelligenceResult> {
   const {
     dnsblEnabled = true,
@@ -64,30 +64,37 @@ export async function dnsIntelligence(
 
     return result;
   } catch (err) {
-    logger.warn({ hostname, err }, 'DNS intelligence check failed');
+    logger.warn({ hostname, err }, "DNS intelligence check failed");
     return result;
   }
 }
 
 async function performDNSBLChecks(
-  hostname: string, 
-  dnsblTimeoutMs: number, 
-  result: DNSIntelligenceResult
+  hostname: string,
+  dnsblTimeoutMs: number,
+  result: DNSIntelligenceResult,
 ): Promise<void> {
   const dnsblResults = await Promise.allSettled(
-    DNSBL_PROVIDERS.map(provider => checkDNSBL(hostname, provider, dnsblTimeoutMs))
+    DNSBL_PROVIDERS.map((provider) =>
+      checkDNSBL(hostname, provider, dnsblTimeoutMs),
+    ),
   );
 
   for (const dnsblResult of dnsblResults) {
-    if (dnsblResult.status === 'fulfilled' && dnsblResult.value.listed) {
+    if (dnsblResult.status === "fulfilled" && dnsblResult.value.listed) {
       result.dnsblResults.push(dnsblResult.value);
       result.score += 1.0;
-      result.reasons.push(`Domain listed in DNSBL: ${dnsblResult.value.provider}`);
+      result.reasons.push(
+        `Domain listed in DNSBL: ${dnsblResult.value.provider}`,
+      );
     }
   }
 }
 
-async function performDNSSECCheck(hostname: string, result: DNSIntelligenceResult): Promise<void> {
+async function performDNSSECCheck(
+  hostname: string,
+  result: DNSIntelligenceResult,
+): Promise<void> {
   try {
     const dnssecStatus = await checkDNSSEC(hostname);
     if (dnssecStatus === null) {
@@ -104,40 +111,51 @@ async function performDNSSECCheck(hostname: string, result: DNSIntelligenceResul
   }
 }
 
-async function performFastFluxDetection(hostname: string, result: DNSIntelligenceResult): Promise<void> {
+async function performFastFluxDetection(
+  hostname: string,
+  result: DNSIntelligenceResult,
+): Promise<void> {
   try {
     const fastFlux = await detectFastFlux(hostname);
     result.fastFluxDetected = fastFlux;
     if (fastFlux) {
       result.score += 0.8;
-      result.reasons.push('Fast-flux DNS pattern detected');
+      result.reasons.push("Fast-flux DNS pattern detected");
     }
   } catch (err) {
-    logger.debug({ hostname, err }, 'Fast-flux detection failed');
+    logger.debug({ hostname, err }, "Fast-flux detection failed");
   }
 }
 
-async function checkDNSBL(hostname: string, provider: string, timeoutMs: number): Promise<DNSBLResult> {
+async function checkDNSBL(
+  hostname: string,
+  provider: string,
+  timeoutMs: number,
+): Promise<DNSBLResult> {
   try {
     // This is a simplified DNSBL check - in production you'd use proper DNS queries
     const query = `${hostname}.${provider}`;
 
     // Use Promise.race for timeout
     const timeoutPromise = new Promise<never>((_resolve, reject) => {
-      setTimeout(() => reject(new Error('DNS timeout')), timeoutMs);
+      setTimeout(() => reject(new Error("DNS timeout")), timeoutMs);
     });
 
     try {
       await Promise.race([dns.resolve4(query), timeoutPromise]);
-      return { provider, listed: true, reason: 'Listed in DNSBL' };
+      return { provider, listed: true, reason: "Listed in DNSBL" };
     } catch (err: unknown) {
       const error = err as { code?: string; message?: string };
-      if (error.code === 'ENOTFOUND' || error.code === 'ENODATA') {
+      if (error.code === "ENOTFOUND" || error.code === "ENODATA") {
         return { provider, listed: false };
       }
-      if (error.message === 'DNS timeout') {
+      if (error.message === "DNS timeout") {
         // Treat timeout as not listed for this specific check
-        return { provider, listed: false, reason: 'Timeout during DNSBL check' };
+        return {
+          provider,
+          listed: false,
+          reason: "Timeout during DNSBL check",
+        };
       }
       throw err;
     }
