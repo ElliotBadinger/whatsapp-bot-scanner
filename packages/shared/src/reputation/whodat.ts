@@ -21,7 +21,55 @@ export interface WhoDatResponse {
 }
 
 /**
- * Query the self-hosted who-dat WHOIS service
+ * Response structure from the Lissy93/who-dat API
+ * @see https://github.com/Lissy93/who-dat
+ */
+interface WhoDatApiResponse {
+  domain?: {
+    id?: string;
+    domain?: string;
+    punycode?: string;
+    name?: string;
+    extension?: string;
+    whois_server?: string;
+    status?: string[];
+    name_servers?: string[];
+    created_date?: string;
+    created_date_in_time?: string;
+    updated_date?: string;
+    updated_date_in_time?: string;
+    expiration_date?: string;
+    expiration_date_in_time?: string;
+  };
+  registrar?: {
+    id?: string;
+    name?: string;
+    phone?: string;
+    email?: string;
+    referral_url?: string;
+  };
+  registrant?: {
+    name?: string;
+    organization?: string;
+    country?: string;
+    email?: string;
+  };
+  administrative?: {
+    name?: string;
+    organization?: string;
+    email?: string;
+  };
+  technical?: {
+    name?: string;
+    organization?: string;
+    email?: string;
+  };
+  error?: string;
+}
+
+/**
+ * Query the self-hosted who-dat WHOIS service (Lissy93/who-dat)
+ * @see https://github.com/Lissy93/who-dat
  * @param domain - Domain name to query
  * @returns WHOIS record information
  */
@@ -30,7 +78,8 @@ export async function whoDatLookup(domain: string): Promise<WhoDatResponse> {
     throw new FeatureDisabledError('whodat', 'Who-dat WHOIS service disabled');
   }
 
-  const url = new URL(`${config.whodat.baseUrl}/whois/${encodeURIComponent(domain)}`);
+  // who-dat API uses /{domain} endpoint directly
+  const url = new URL(`${config.whodat.baseUrl}/${encodeURIComponent(domain)}`);
 
   metrics.whoisRequests.inc();
   const start = Date.now();
@@ -64,23 +113,20 @@ export async function whoDatLookup(domain: string): Promise<WhoDatResponse> {
       throw err;
     }
 
-    const json = await res.body.json() as {
-      domain_name?: string;
-      created_date?: string;
-      creation_date?: string;
-      updated_date?: string;
-      expiration_date?: string;
-      expires_date?: string;
-      registrar?: string;
-      registrar_name?: string;
-      name_servers?: string[];
-      nameservers?: string[];
-      status?: string[];
-    };
+    const json = await res.body.json() as WhoDatApiResponse;
+
+    // Check for API error response
+    if (json.error) {
+      metrics.whoisResults.labels('error').inc();
+      logger.warn({ domain, error: json.error }, 'Who-dat API returned error');
+      return { record: undefined };
+    }
+
     metrics.whoisResults.labels('success').inc();
 
     // Parse creation date and calculate domain age
-    const createdDate = json.created_date || json.creation_date;
+    // Prefer the ISO timestamp if available
+    const createdDate = json.domain?.created_date_in_time || json.domain?.created_date;
     let ageDays: number | undefined;
 
     if (createdDate) {
@@ -95,14 +141,14 @@ export async function whoDatLookup(domain: string): Promise<WhoDatResponse> {
 
     return {
       record: {
-        domainName: json.domain_name || domain,
+        domainName: json.domain?.domain || domain,
         createdDate: createdDate,
-        updatedDate: json.updated_date,
-        expiresDate: json.expiration_date || json.expires_date,
-        registrarName: json.registrar || json.registrar_name,
+        updatedDate: json.domain?.updated_date_in_time || json.domain?.updated_date,
+        expiresDate: json.domain?.expiration_date_in_time || json.domain?.expiration_date,
+        registrarName: json.registrar?.name,
         estimatedDomainAgeDays: ageDays,
-        nameServers: json.name_servers || json.nameservers || [],
-        status: json.status || [],
+        nameServers: json.domain?.name_servers || [],
+        status: json.domain?.status || [],
       },
     };
   } catch (err) {

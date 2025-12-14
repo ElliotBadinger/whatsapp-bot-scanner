@@ -28,12 +28,12 @@ COPY packages/shared/src /app/packages/shared/src
 # Build each package independently without workspace resolution
 # Replace confusable file reference before building shared package
 RUN --mount=type=cache,target=/root/.bun/install/cache \
-    set -e && \
-    cd /app/packages/confusable && bun install --ignore-scripts && bun pm pack && \
-    cd /app/packages/shared && \
-    sed -i 's|"confusable": "file:../confusable"|"confusable": "file:/app/packages/confusable/confusable-0.1.0.tgz"|g' package.json && \
-    bun install --ignore-scripts && \
-    bun run build && bun pm pack
+  set -e && \
+  cd /app/packages/confusable && bun install --ignore-scripts && bun pm pack && \
+  cd /app/packages/shared && \
+  sed -i 's|"confusable": "file:../confusable"|"confusable": "file:/app/packages/confusable/confusable-0.1.0.tgz"|g' package.json && \
+  bun install --ignore-scripts && \
+  bun run build && bun pm pack
 
 # =============================================================================
 # Service: Control Plane (Builder)
@@ -51,10 +51,10 @@ COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusab
 # Install ALL dependencies (including dev) to build
 COPY services/control-plane/package.json services/control-plane/tsconfig.json /app/services/control-plane/
 RUN --mount=type=cache,target=/root/.bun/install/cache \
-    cd /app/services/control-plane && \
-    sed -i 's|"@wbscanner/shared": "file:../../packages/shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
-    bun install && \
-    python3 -c "import json; p='package.json'; data=json.load(open(p)); open(p,'w').write(json.dumps(data, indent=2, sort_keys=False) + '\n')"
+  cd /app/services/control-plane && \
+  sed -i 's|"@wbscanner/shared": "file:../../packages/shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
+  bun install && \
+  python3 -c "import json; p='package.json'; data=json.load(open(p)); open(p,'w').write(json.dumps(data, indent=2, sort_keys=False) + '\n')"
 
 # Copy source and build
 COPY tsconfig.base.json /app/
@@ -78,10 +78,10 @@ COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusab
 # Install PRODUCTION dependencies only
 COPY services/control-plane/package.json /app/services/control-plane/
 RUN --mount=type=cache,target=/root/.bun/install/cache \
-    cd /app/services/control-plane && \
-    sed -i 's|"@wbscanner/shared": "file:../../packages/shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
-    bun install --production && \
-    python3 -c "import json; p='package.json'; data=json.load(open(p)); open(p,'w').write(json.dumps(data, indent=2, sort_keys=False) + '\n')"
+  cd /app/services/control-plane && \
+  sed -i 's|"@wbscanner/shared": "file:../../packages/shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
+  bun install --production && \
+  python3 -c "import json; p='package.json'; data=json.load(open(p)); open(p,'w').write(json.dumps(data, indent=2, sort_keys=False) + '\n')"
 
 # =============================================================================
 # Service: Control Plane (Final)
@@ -120,10 +120,10 @@ COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusab
 # Install ALL dependencies (including dev) to build
 COPY services/scan-orchestrator/package.json services/scan-orchestrator/tsconfig.json /app/services/scan-orchestrator/
 RUN --mount=type=cache,target=/root/.bun/install/cache \
-    cd /app/services/scan-orchestrator && \
-    sed -i 's|"@wbscanner/shared": "file:../../packages/shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
-    bun install && \
-    python3 -c "import json; p='package.json'; data=json.load(open(p)); open(p,'w').write(json.dumps(data, indent=2, sort_keys=False) + '\n')"
+  cd /app/services/scan-orchestrator && \
+  sed -i 's|"@wbscanner/shared": "file:../../packages/shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
+  bun install && \
+  python3 -c "import json; p='package.json'; data=json.load(open(p)); open(p,'w').write(json.dumps(data, indent=2, sort_keys=False) + '\n')"
 
 # Copy source and build
 COPY tsconfig.base.json /app/
@@ -147,10 +147,10 @@ COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusab
 # Install PRODUCTION dependencies only
 COPY services/scan-orchestrator/package.json /app/services/scan-orchestrator/
 RUN --mount=type=cache,target=/root/.bun/install/cache \
-    cd /app/services/scan-orchestrator && \
-    sed -i 's|"@wbscanner/shared": "file:../../packages/shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
-    bun install --production && \
-    python3 -c "import json; p='package.json'; data=json.load(open(p)); open(p,'w').write(json.dumps(data, indent=2, sort_keys=False) + '\n')"
+  cd /app/services/scan-orchestrator && \
+  sed -i 's|"@wbscanner/shared": "file:../../packages/shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
+  bun install --production && \
+  python3 -c "import json; p='package.json'; data=json.load(open(p)); open(p,'w').write(json.dumps(data, indent=2, sort_keys=False) + '\n')"
 
 # =============================================================================
 # Service: Scan Orchestrator (Final)
@@ -181,8 +181,8 @@ WORKDIR /app
 
 # Install build tools for better-sqlite3 native compilation (need node-gyp)
 RUN apt-get update && apt-get install -y python3 make g++ nodejs npm && \
-    npm install -g node-gyp && \
-    rm -rf /var/lib/apt/lists/*
+  npm install -g node-gyp && \
+  rm -rf /var/lib/apt/lists/*
 
 # Copy shared package tarball from builder
 COPY --from=shared-builder /app/packages/shared/*.tgz /app/packages/shared/
@@ -194,10 +194,10 @@ COPY services/wa-client/package.json services/wa-client/tsconfig.json /app/servi
 COPY services/wa-client/scripts /app/services/wa-client/scripts
 # Replace workspace references with tarball paths, then install
 RUN --mount=type=cache,target=/root/.bun/install/cache \
-    cd /app/services/wa-client && \
-    sed -i 's|"@wbscanner/shared": "file:../../packages/shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
-    sed -i 's|"confusable": "file:../../packages/confusable"|"confusable": "file:/app/packages/confusable/confusable-0.1.0.tgz"|g' package.json && \
-    bun install
+  cd /app/services/wa-client && \
+  sed -i 's|"@wbscanner/shared": "file:../../packages/shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
+  sed -i 's|"confusable": "file:../../packages/confusable"|"confusable": "file:/app/packages/confusable/confusable-0.1.0.tgz"|g' package.json && \
+  bun install
 
 # Copy source and build
 COPY tsconfig.base.json /app/
@@ -213,8 +213,8 @@ WORKDIR /app
 
 # Install build tools for better-sqlite3 native compilation (need node-gyp)
 RUN apt-get update && apt-get install -y python3 make g++ nodejs npm && \
-    npm install -g node-gyp && \
-    rm -rf /var/lib/apt/lists/*
+  npm install -g node-gyp && \
+  rm -rf /var/lib/apt/lists/*
 
 # Copy shared package tarball from builder
 COPY --from=shared-builder /app/packages/shared/*.tgz /app/packages/shared/
@@ -226,10 +226,10 @@ COPY services/wa-client/package.json /app/services/wa-client/
 COPY services/wa-client/scripts /app/services/wa-client/scripts
 # Remove workspace references before installing, then add tarballs
 RUN --mount=type=cache,target=/root/.bun/install/cache \
-    cd /app/services/wa-client && \
-    sed -i 's|"@wbscanner/shared": "file:../../packages/shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
-    sed -i 's|"confusable": "file:../../packages/confusable"|"confusable": "file:/app/packages/confusable/confusable-0.1.0.tgz"|g' package.json && \
-    bun install --production
+  cd /app/services/wa-client && \
+  sed -i 's|"@wbscanner/shared": "file:../../packages/shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
+  sed -i 's|"confusable": "file:../../packages/confusable"|"confusable": "file:/app/packages/confusable/confusable-0.1.0.tgz"|g' package.json && \
+  bun install --production
 
 # =============================================================================
 # Service: WA Client - Baileys (Lightweight Production Dependencies)
@@ -240,8 +240,8 @@ WORKDIR /app
 
 # Install build tools for better-sqlite3 native compilation (need node-gyp)
 RUN apt-get update && apt-get install -y python3 make g++ nodejs npm && \
-    npm install -g node-gyp && \
-    rm -rf /var/lib/apt/lists/*
+  npm install -g node-gyp && \
+  rm -rf /var/lib/apt/lists/*
 
 # Copy shared package tarball from builder
 COPY --from=shared-builder /app/packages/shared/*.tgz /app/packages/shared/
@@ -251,11 +251,11 @@ COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusab
 COPY services/wa-client/package.json /app/services/wa-client/
 COPY services/wa-client/scripts /app/services/wa-client/scripts
 RUN --mount=type=cache,target=/root/.bun/install/cache \
-    cd /app/services/wa-client && \
-    sed -i 's|"@wbscanner/shared": "file:../../packages/shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
-    sed -i 's|"confusable": "file:../../packages/confusable"|"confusable": "file:/app/packages/confusable/confusable-0.1.0.tgz"|g' package.json && \
-    sed -i '/"whatsapp-web.js":/d' package.json && \
-    bun install --production
+  cd /app/services/wa-client && \
+  sed -i 's|"@wbscanner/shared": "file:../../packages/shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
+  sed -i 's|"confusable": "file:../../packages/confusable"|"confusable": "file:/app/packages/confusable/confusable-0.1.0.tgz"|g' package.json && \
+  sed -i '/"whatsapp-web.js":/d' package.json && \
+  bun install --production
 
 # =============================================================================
 # Service: WA Client - Baileys (Final Lightweight Runtime)
@@ -264,9 +264,9 @@ RUN --mount=type=cache,target=/root/.bun/install/cache \
 FROM base AS wa-client-baileys
 WORKDIR /app
 ENV NODE_ENV=production \
-    WA_LIBRARY=baileys
+  WA_LIBRARY=baileys
 
- RUN apt-get update && apt-get install -y nodejs && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y nodejs && rm -rf /var/lib/apt/lists/*
 
 # Copy production node_modules from baileys-specific prod-deps stage
 COPY --from=wa-client-baileys-prod-deps /app/services/wa-client/node_modules /app/services/wa-client/node_modules
@@ -280,8 +280,8 @@ COPY services/wa-client/scripts/entrypoint.sh /app/services/wa-client/entrypoint
 
 # Setup storage and user
 RUN mkdir -p /app/services/wa-client/data /app/storage && \
-    chmod +x /app/services/wa-client/entrypoint.sh && \
-    chown -R bun:bun /app/services/wa-client /app/storage
+  chmod +x /app/services/wa-client/entrypoint.sh && \
+  chown -R bun:bun /app/services/wa-client /app/storage
 USER bun
 VOLUME ["/app/services/wa-client/data"]
 EXPOSE 3000 3005
@@ -296,13 +296,13 @@ FROM ghcr.io/puppeteer/puppeteer:22.13.1 AS wa-client
 USER root
 WORKDIR /app
 ENV NODE_ENV=production \
-    WA_LIBRARY=wwebjs \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome \
-    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+  WA_LIBRARY=wwebjs \
+  PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome \
+  PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
 # Install bun in puppeteer image
 RUN curl -fsSL https://bun.sh/install | bash && \
-    ln -s /root/.bun/bin/bun /usr/local/bin/bun
+  ln -s /root/.bun/bin/bun /usr/local/bin/bun
 
 # Copy production node_modules from prod-deps stage
 COPY --from=wa-client-prod-deps /app/services/wa-client/node_modules /app/services/wa-client/node_modules
@@ -316,8 +316,8 @@ COPY services/wa-client/scripts/entrypoint.sh /app/services/wa-client/entrypoint
 
 # Setup storage and user
 RUN mkdir -p /app/services/wa-client/data /app/storage && \
-    chmod +x /app/services/wa-client/entrypoint.sh && \
-    chown -R pptruser:pptruser /app/services/wa-client /app/storage
+  chmod +x /app/services/wa-client/entrypoint.sh && \
+  chown -R pptruser:pptruser /app/services/wa-client /app/storage
 USER pptruser
 VOLUME ["/app/services/wa-client/data"]
 EXPOSE 3000 3005
@@ -333,8 +333,8 @@ WORKDIR /app
 
 # Install build tools for better-sqlite3 native compilation
 RUN apt-get update && apt-get install -y python3 make g++ nodejs npm && \
-    npm install -g node-gyp && \
-    rm -rf /var/lib/apt/lists/*
+  npm install -g node-gyp && \
+  rm -rf /var/lib/apt/lists/*
 
 # Copy shared package tarball from builder
 COPY --from=shared-builder /app/packages/shared/*.tgz /app/packages/shared/
@@ -342,19 +342,23 @@ COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusab
 
 # Install dependencies including shared (production only)
 RUN --mount=type=cache,target=/root/.bun/install/cache \
-    set -e && \
-    printf '{"name":"wbscanner-migrate","private":true,"version":"0.0.0"}\n' > /app/package.json && \
-    bun add /app/packages/confusable/*.tgz && \
-    bun add better-sqlite3 pg && \
-    bun add /app/packages/shared/*.tgz && \
-    bun install --production
+  set -e && \
+  printf '{"name":"wbscanner-migrate","private":true,"version":"0.0.0"}\n' > /app/package.json && \
+  bun add /app/packages/confusable/*.tgz && \
+  bun add better-sqlite3 pg && \
+  bun add /app/packages/shared/*.tgz && \
+  bun install --production
 
 # Copy migration script and migrations
 COPY scripts/run-migrations.js /app/scripts/
 COPY db/migrations /app/db/migrations
 
-# Setup storage
-RUN mkdir -p /app/storage && chmod 777 /app/storage
+# Setup storage with proper ownership for bun user (UID 1000)
+# This ensures SQLite database files are accessible by all services
+RUN mkdir -p /app/storage && chown -R bun:bun /app/storage && chmod 755 /app/storage
+
+# Run migrations as bun user for consistent file ownership
+USER bun
 
 ENTRYPOINT []
 CMD ["node", "scripts/run-migrations.js"]

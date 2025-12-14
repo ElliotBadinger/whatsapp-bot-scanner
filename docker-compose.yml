@@ -71,7 +71,7 @@ services:
       redis:
         condition: service_healthy
     networks: [internal]
-    restart: "no"
+    restart: on-failure:3
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -393,6 +393,42 @@ services:
     tmpfs:
       - /tmp
       - /app/data/tmp
+
+  # ==========================================================================
+  # who-dat: Self-hosted WHOIS/RDAP lookup service (Lissy93/who-dat)
+  # Provides unlimited, quota-free domain age lookups
+  # Enable via WHODAT_ENABLED=true in .env
+  # ==========================================================================
+  who-dat:
+    image: lissy93/who-dat:latest
+    profiles: ["whodat"]
+    restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    networks: [internal]
+    mem_limit: 256m
+    cpus: "0.25"
+    pids_limit: 50
+    ulimits:
+      nofile:
+        soft: 512
+        hard: 1024
+    environment:
+      - PORT=8080
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
 
 networks:
   internal:
