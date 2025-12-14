@@ -206,7 +206,8 @@ export const config = {
     ),
   },
   whodat: {
-    enabled: (process.env.WHODAT_ENABLED || "true") === "true",
+    // Disabled by default - who-dat service not deployed in standard stack
+    enabled: (process.env.WHODAT_ENABLED || "false") === "true",
     baseUrl: process.env.WHODAT_BASE_URL || "http://who-dat:8080",
     timeoutMs: parseInt(process.env.WHODAT_TIMEOUT_MS || "5000", 10),
   },
