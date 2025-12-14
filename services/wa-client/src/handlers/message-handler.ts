@@ -255,7 +255,8 @@ export class SharedMessageHandler {
     });
 
     this.registerCommand("consentstatus", async (ctx) => {
-      const status = (await this.getConsentStatus(ctx.message.chatId)) ?? "none";
+      const status =
+        (await this.getConsentStatus(ctx.message.chatId)) ?? "none";
       await this.replyWithLatency(ctx.message, {
         type: "text",
         text: `Consent status: ${status}`,
