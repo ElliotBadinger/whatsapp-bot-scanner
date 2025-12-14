@@ -287,6 +287,38 @@ ${C.primary("  ╚════════════════════�
 
     let selectedMode = "hobby";
     let selectedLibrary = "baileys";
+    const envFile = path.join(ROOT_DIR, ".env");
+    let existingEnvContent = "";
+    let reuseExistingConfiguration = false;
+
+    try {
+      existingEnvContent = await fs.readFile(envFile, "utf-8");
+      const existingLibrary =
+        existingEnvContent.match(/WA_LIBRARY=(.*)/)?.[1]?.trim() || "";
+      if (!this.nonInteractive && existingLibrary) {
+        const response = await enquirer.prompt({
+          type: "confirm",
+          name: "reuse",
+          message: C.text(
+            "Existing .env configuration detected. Keep current configuration and skip this step?",
+          ),
+          initial: true,
+        });
+        reuseExistingConfiguration = !!response.reuse;
+        if (reuseExistingConfiguration) {
+          selectedLibrary = existingLibrary;
+        }
+      }
+    } catch {
+      // .env not present yet
+    }
+
+    if (reuseExistingConfiguration) {
+      this.state.mode = "existing";
+      this.state.library = selectedLibrary;
+      this.markStepComplete(2, "Using existing .env configuration");
+      return;
+    }
 
     if (!this.nonInteractive) {
       // Setup mode selection
@@ -346,7 +378,6 @@ ${C.primary("  ╚════════════════════�
     this.state.mode = selectedMode;
     this.state.library = selectedLibrary;
 
-    const envFile = path.join(ROOT_DIR, ".env");
     const templateFile = path.join(
       ROOT_DIR,
       selectedMode === "hobby" ? ".env.hobby" : ".env.example",
@@ -498,6 +529,33 @@ ${C.primary("  ╚════════════════════�
     ensureSecret("WA_REMOTE_AUTH_SHARED_SECRET", () => generateHexSecret());
     ensureSecret("WA_REMOTE_AUTH_DATA_KEY", () => generateBase64Secret(32));
     ensureConfigDefaults();
+
+    const currentVt = getEnvValue("VT_API_KEY");
+    const currentPhone = getEnvValue("WA_REMOTE_AUTH_PHONE_NUMBERS");
+    const vtLooksValid = currentVt && currentVt.length >= 32;
+    const normalizedPhone = (currentPhone || "").replace(/[^\d+]/g, "");
+    const phoneLooksValid = /^\+?[1-9]\d{9,14}$/.test(normalizedPhone);
+
+    if (!this.nonInteractive && vtLooksValid && phoneLooksValid) {
+      const response = await enquirer.prompt({
+        type: "confirm",
+        name: "reuse",
+        message: C.text(
+          "Validated configuration detected. Keep existing values and skip re-confirmation?",
+        ),
+        initial: true,
+      });
+
+      if (response.reuse) {
+        this.state.apiKey = currentVt;
+        this.state.phone = normalizedPhone;
+        if (configChanged) {
+          await fs.writeFile(envFile, envContent);
+        }
+        this.markStepComplete(3, "Configuration complete");
+        return;
+      }
+    }
 
     // Helper to prompt for value with keep/change option
     const promptConfigValue = async (options) => {
@@ -1182,13 +1240,19 @@ ${C.primary("  ╚════════════════════�
       return;
     }
 
-    if (pairingMethod === "code") {
-      await this.requestPairingCode();
-    } else {
-      await this.showQRPairing();
-    }
+    const paired =
+      pairingMethod === "code"
+        ? await this.requestPairingCode()
+        : await this.showQRPairing();
 
-    this.markStepComplete(5, "WhatsApp pairing initiated");
+    if (paired) {
+      this.markStepComplete(5, "WhatsApp pairing successful");
+    } else {
+      this.markStepSkipped(
+        5,
+        "WhatsApp pairing not completed (you can pair later)",
+      );
+    }
   }
 
   /**
@@ -1206,6 +1270,40 @@ ${C.primary("  ╚════════════════════�
     return localMatch?.[1] || match?.[1] || "3005";
   }
 
+  async waClientHttpJson(endpoint, options = {}) {
+    const method = options.method || "GET";
+    const body = options.body ?? null;
+    const timeoutMs = options.timeoutMs || 5000;
+
+    const endpointSafe = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+
+    const bodyLiteral = body ? JSON.stringify(body) : "null";
+    const nodeScript = [
+      "(async()=>{",
+      "try{",
+      "const p=process.env.WA_HTTP_PORT||'3005';",
+      `const u='http://127.0.0.1:'+p+'${endpointSafe}';`,
+      "const ctrl=AbortSignal.timeout(" + Number(timeoutMs) + ");",
+      "const payload=" + bodyLiteral + ";",
+      "const res=await fetch(u,{method:'" + method + "',headers:{'Content-Type':'application/json'},body:(payload?JSON.stringify(payload):undefined),signal:ctrl});",
+      "const text=await res.text().catch(()=> '');",
+      "console.log(JSON.stringify({ok:res.ok,status:res.status,body:text}));",
+      "}catch(e){console.log(JSON.stringify({ok:false,error:String(e)}));}",
+      "})();",
+    ].join("");
+
+    try {
+      const { stdout } = await execa(
+        "docker",
+        ["compose", "exec", "-T", "wa-client", "node", "-e", nodeScript],
+        { cwd: ROOT_DIR },
+      );
+      return JSON.parse(stdout.trim());
+    } catch (error) {
+      return { ok: false, error: String(error) };
+    }
+  }
+
   /**
    * Wait for wa-client to be in connecting state (ready to accept pairing)
    */
@@ -1213,12 +1311,10 @@ ${C.primary("  ╚════════════════════�
     const startTime = Date.now();
     while (Date.now() - startTime < timeoutMs) {
       try {
-        const response = await fetch(`http://127.0.0.1:${port}/state`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.state === "connecting") {
-            return { ready: true, state: data.state };
-          }
+        const res = await this.waClientHttpJson("/state", { timeoutMs: 5000 });
+        if (res.ok && res.body) {
+          const data = JSON.parse(res.body);
+          if (data.state === "connecting") return { ready: true, state: data.state };
           if (data.state === "ready") {
             return { ready: true, state: data.state, alreadyConnected: true };
           }
@@ -1245,17 +1341,11 @@ ${C.primary("  ╚════════════════════�
     }).start();
 
     try {
-      const waClientPort = await this.getWaClientPort();
-
-      // Wait for wa-client to be in connecting state
-      const stateResult = await this.waitForConnectingState(
-        waClientPort,
-        spinner,
-      );
+      const stateResult = await this.waitForConnectingState(null, spinner);
 
       if (stateResult.alreadyConnected) {
         spinner.succeed(C.success("WhatsApp is already connected!"));
-        return;
+        return true;
       }
 
       if (!stateResult.ready) {
@@ -1263,7 +1353,7 @@ ${C.primary("  ╚════════════════════�
         console.log(
           `  ${ICON.info}  ${C.text("Restart services and try again:")} ${C.code("docker compose restart wa-client")}`,
         );
-        return;
+        return false;
       }
 
       spinner.text = C.text("Requesting pairing code...");
@@ -1273,16 +1363,13 @@ ${C.primary("  ╚════════════════════�
       const maxAttempts = 20; // Socket may need time to stabilize after logout
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
-          const response = await fetch(
-            `http://127.0.0.1:${waClientPort}/pair`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({}),
-            },
-          );
+          const response = await this.waClientHttpJson("/pair", {
+            method: "POST",
+            body: {},
+            timeoutMs: 8000,
+          });
 
-          const data = await response.json().catch(() => ({}));
+          const data = response.body ? JSON.parse(response.body) : {};
 
           // Success - got pairing code
           if (response.ok && data.success && data.code) {
@@ -1290,18 +1377,14 @@ ${C.primary("  ╚════════════════════�
             this.displayPairingCode(data.code);
 
             // Start polling for connection success
-            await this.pollForPairingSuccess(waClientPort, data.code);
-            return;
+            const paired = await this.pollForPairingSuccess(null, data.code);
+            return paired;
           }
 
           // Already connected
-          if (
-            response.ok &&
-            data.success &&
-            data.error?.includes("Already connected")
-          ) {
+          if (response.ok && data.success && data.error?.includes("Already connected")) {
             spinner.succeed(C.success("WhatsApp is already connected!"));
-            return;
+            return true;
           }
 
           // Socket still connecting - retry after delay
@@ -1322,7 +1405,7 @@ ${C.primary("  ╚════════════════════�
             console.log(
               `  ${ICON.info}  ${C.text("Try QR code instead:")} ${C.code("docker compose logs -f wa-client")}`,
             );
-            return;
+            return false;
           }
 
           // Connection Closed is transient - socket is reconnecting, wait and retry
@@ -1359,6 +1442,7 @@ ${C.primary("  ╚════════════════════�
       console.log(
         `  ${ICON.info}  ${C.text("Try QR code instead, or retry later with:")} ${C.code("npx whatsapp-bot-scanner pair")}`,
       );
+      return false;
     }
   }
 
@@ -1381,9 +1465,9 @@ ${C.primary("  ╚════════════════════�
 
     while (Date.now() - startTime < timeoutMs) {
       try {
-        const response = await fetch(`http://127.0.0.1:${port}/state`);
-        if (response.ok) {
-          const data = await response.json();
+        const res = await this.waClientHttpJson("/state", { timeoutMs: 5000 });
+        if (res.ok && res.body) {
+          const data = JSON.parse(res.body);
           if (data.state === "ready") {
             spinner.succeed(C.success("WhatsApp connected successfully!"));
             return true;
@@ -1433,22 +1517,40 @@ ${C.primary("  ╚════════════════════�
     }).start();
 
     try {
-      const waClientPort = await this.getWaClientPort();
       const startTime = Date.now();
       const timeoutMs = 120000; // 2 minutes
       let qrDisplayed = false;
       let lastQr = null;
       let pairingSuccess = false;
 
+      const renderQrViaContainer = async (qrText) => {
+        const qrBase64 = Buffer.from(qrText, "utf8").toString("base64");
+        const nodeScript = [
+          "import('qrcode-terminal').then((mod)=>{",
+          "const qt=mod.default??mod;",
+          "if(typeof qt.generate!=='function'){throw new TypeError('qrcode-terminal export did not provide generate()');}",
+          `const qr=Buffer.from('${qrBase64}','base64').toString('utf8');`,
+          "qt.generate(qr,{small:true});",
+          "}).catch((e)=>{console.error(e);process.exit(1);});",
+        ].join("");
+
+        const { stdout } = await execa(
+          "docker",
+          ["compose", "exec", "-T", "wa-client", "node", "-e", nodeScript],
+          { cwd: ROOT_DIR },
+        );
+        if (stdout) {
+          console.log(stdout);
+        }
+      };
+
       // Poll for QR code and connection status
       while (Date.now() - startTime < timeoutMs && !pairingSuccess) {
         try {
           // Check state first
-          const stateRes = await fetch(
-            `http://127.0.0.1:${waClientPort}/state`,
-          );
-          if (stateRes.ok) {
-            const stateData = await stateRes.json();
+          const stateRes = await this.waClientHttpJson("/state", { timeoutMs: 5000 });
+          if (stateRes.ok && stateRes.body) {
+            const stateData = JSON.parse(stateRes.body);
             if (stateData.state === "ready") {
               pairingSuccess = true;
               break;
@@ -1456,26 +1558,17 @@ ${C.primary("  ╚════════════════════�
           }
 
           // Try to get QR code
-          const qrRes = await fetch(`http://127.0.0.1:${waClientPort}/qr`);
-          if (qrRes.ok) {
-            const qrData = await qrRes.json();
+          const qrRes = await this.waClientHttpJson("/qr", { timeoutMs: 5000 });
+          if (qrRes.ok && qrRes.body) {
+            const qrData = JSON.parse(qrRes.body);
             if (qrData.success && qrData.qr && qrData.qr !== lastQr) {
               lastQr = qrData.qr;
               spinner.stop();
 
-              // Display QR code using qrcode-terminal
-              const qrTerminal = await import("qrcode-terminal");
               console.log("\n");
-              qrTerminal.default.generate(
-                qrData.qr,
-                { small: true },
-                (qrAscii) => {
-                  console.log(qrAscii);
-                },
-              );
+              await renderQrViaContainer(qrData.qr);
               qrDisplayed = true;
 
-              // Show countdown
               spinner.start();
               spinner.text = C.text(
                 "QR code displayed. Waiting for scan... (refreshes every ~20s)",
@@ -1499,6 +1592,7 @@ ${C.primary("  ╚════════════════════�
         console.log(
           `\n  ${ICON.success}  ${C.success("WhatsApp pairing successful!")}\n`,
         );
+        return true;
       } else if (!qrDisplayed) {
         console.log(`
   ${ICON.warning}  ${C.warning("QR code timeout.")}
@@ -1511,6 +1605,7 @@ ${C.primary("  ╚════════════════════�
   ${C.code("  npx whatsapp-bot-scanner pair")}     ${C.muted("# Request pairing code")}
   ${C.code("  docker compose restart wa-client")}  ${C.muted("# Restart and try again")}
 `);
+        return false;
       } else {
         // QR displayed but not scanned - show timeout message
         console.log(`
@@ -1518,12 +1613,14 @@ ${C.primary("  ╚════════════════════�
   
   ${C.text("Run to try again:")} ${C.code("npx whatsapp-bot-scanner pair")}
 `);
+        return false;
       }
     } catch (error) {
       spinner.fail(C.error("Failed to fetch QR code"));
       console.log(
         `  ${ICON.info}  ${C.text("Check manually:")} ${C.code("docker compose logs -f wa-client")}`,
       );
+      return false;
     }
   }
 
