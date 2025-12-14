@@ -1285,7 +1285,9 @@ ${C.primary("  ╚════════════════════�
       `const u='http://127.0.0.1:'+p+'${endpointSafe}';`,
       "const ctrl=AbortSignal.timeout(" + Number(timeoutMs) + ");",
       "const payload=" + bodyLiteral + ";",
-      "const res=await fetch(u,{method:'" + method + "',headers:{'Content-Type':'application/json'},body:(payload?JSON.stringify(payload):undefined),signal:ctrl});",
+      "const res=await fetch(u,{method:'" +
+        method +
+        "',headers:{'Content-Type':'application/json'},body:(payload?JSON.stringify(payload):undefined),signal:ctrl});",
       "const text=await res.text().catch(()=> '');",
       "console.log(JSON.stringify({ok:res.ok,status:res.status,body:text}));",
       "}catch(e){console.log(JSON.stringify({ok:false,error:String(e)}));}",
@@ -1314,7 +1316,8 @@ ${C.primary("  ╚════════════════════�
         const res = await this.waClientHttpJson("/state", { timeoutMs: 5000 });
         if (res.ok && res.body) {
           const data = JSON.parse(res.body);
-          if (data.state === "connecting") return { ready: true, state: data.state };
+          if (data.state === "connecting")
+            return { ready: true, state: data.state };
           if (data.state === "ready") {
             return { ready: true, state: data.state, alreadyConnected: true };
           }
@@ -1382,7 +1385,11 @@ ${C.primary("  ╚════════════════════�
           }
 
           // Already connected
-          if (response.ok && data.success && data.error?.includes("Already connected")) {
+          if (
+            response.ok &&
+            data.success &&
+            data.error?.includes("Already connected")
+          ) {
             spinner.succeed(C.success("WhatsApp is already connected!"));
             return true;
           }
@@ -1548,7 +1555,9 @@ ${C.primary("  ╚════════════════════�
       while (Date.now() - startTime < timeoutMs && !pairingSuccess) {
         try {
           // Check state first
-          const stateRes = await this.waClientHttpJson("/state", { timeoutMs: 5000 });
+          const stateRes = await this.waClientHttpJson("/state", {
+            timeoutMs: 5000,
+          });
           if (stateRes.ok && stateRes.body) {
             const stateData = JSON.parse(stateRes.body);
             if (stateData.state === "ready") {
