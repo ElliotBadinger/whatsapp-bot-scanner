@@ -16,43 +16,43 @@
 
 ### Installation Problems
 
-| Issue | Solution |
-|-------|----------|
-| `command not found: npx` | Install Node.js 20.x or later |
-| `Permission denied` | Use `sudo` or fix file permissions |
-| `npm install fails` | Check network connection and npm registry |
-| `Docker not found` | Install Docker and Docker Compose v2 |
+| Issue                    | Solution                                  |
+| ------------------------ | ----------------------------------------- |
+| `command not found: npx` | Install Node.js 20.x or later             |
+| `Permission denied`      | Use `sudo` or fix file permissions        |
+| `npm install fails`      | Check network connection and npm registry |
+| `Docker not found`       | Install Docker and Docker Compose v2      |
 
 ### Dependency Issues
 
-| Issue | Solution |
-|-------|----------|
-| `Node.js version too old` | Upgrade to Node.js 20.x: `nvm install 20` |
-| `Docker daemon not running` | Start Docker: `sudo systemctl start docker` |
-| `Missing system packages` | Install required packages for your OS |
+| Issue                            | Solution                                            |
+| -------------------------------- | --------------------------------------------------- |
+| `Node.js version too old`        | Upgrade to Node.js 20.x: `nvm install 20`           |
+| `Docker daemon not running`      | Start Docker: `sudo systemctl start docker`         |
+| `Missing system packages`        | Install required packages for your OS               |
 | `Dependency verification failed` | Run with `--skip-dependencies` and install manually |
 
 ## ❗ Error Messages
 
 ### CLI Error Messages
 
-| Error Message | Cause | Solution |
-|---------------|-------|----------|
-| `Unified CLI failed: Environment detection failed` | System detection issue | Check system capabilities and permissions |
-| `Dependency error: Node.js not found` | Node.js not installed | Install Node.js 20.x or later |
-| `Dependency error: Docker not found` | Docker not installed | Install Docker and Docker Compose |
-| `Configuration error: Invalid API key` | Malformed API key | Check key format and try again |
-| `Docker error: Container failed to start` | Container configuration issue | Check Docker logs and configuration |
+| Error Message                                      | Cause                         | Solution                                  |
+| -------------------------------------------------- | ----------------------------- | ----------------------------------------- |
+| `Unified CLI failed: Environment detection failed` | System detection issue        | Check system capabilities and permissions |
+| `Dependency error: Node.js not found`              | Node.js not installed         | Install Node.js 20.x or later             |
+| `Dependency error: Docker not found`               | Docker not installed          | Install Docker and Docker Compose         |
+| `Configuration error: Invalid API key`             | Malformed API key             | Check key format and try again            |
+| `Docker error: Container failed to start`          | Container configuration issue | Check Docker logs and configuration       |
 
 ### Service Error Messages
 
-| Error Message | Service | Solution |
-|---------------|---------|----------|
-| `Service unhealthy: wa-client` | wa-client | Check WhatsApp connection and pairing |
+| Error Message                          | Service           | Solution                                |
+| -------------------------------------- | ----------------- | --------------------------------------- |
+| `Service unhealthy: wa-client`         | wa-client         | Check WhatsApp connection and pairing   |
 | `Service unhealthy: scan-orchestrator` | scan-orchestrator | Check API keys and network connectivity |
-| `Service unhealthy: control-plane` | control-plane | Check configuration and ports |
-| `Service unhealthy: redis` | redis | Check Docker resource allocation |
-| `Service unhealthy: postgres` | postgres | Check database initialization |
+| `Service unhealthy: control-plane`     | control-plane     | Check configuration and ports           |
+| `Service unhealthy: redis`             | redis             | Check Docker resource allocation        |
+| `Service unhealthy: postgres`          | postgres          | Check database initialization           |
 
 ## 🚨 Service Problems
 
@@ -96,12 +96,12 @@ npx whatsapp-bot-scanner logs wa-client --tail 100
 
 ### Pairing Error Messages
 
-| Error Message | Cause | Solution |
-|---------------|-------|----------|
-| `Pairing code expired` | Code not used in time | Request new code |
-| `Rate limited: Too many attempts` | Too many pairing attempts | Wait for cooldown period |
-| `Invalid pairing code` | Incorrect code entered | Request new code and try again |
-| `QR code not scanned` | QR code timeout | Generate new QR code |
+| Error Message                     | Cause                     | Solution                       |
+| --------------------------------- | ------------------------- | ------------------------------ |
+| `Pairing code expired`            | Code not used in time     | Request new code               |
+| `Rate limited: Too many attempts` | Too many pairing attempts | Wait for cooldown period       |
+| `Invalid pairing code`            | Incorrect code entered    | Request new code and try again |
+| `QR code not scanned`             | QR code timeout           | Generate new QR code           |
 
 ### Pairing Recovery
 
@@ -128,12 +128,12 @@ docker compose restart wa-client
 
 ### Configuration Error Messages
 
-| Error Message | Cause | Solution |
-|---------------|-------|----------|
-| `Invalid API key format` | Malformed API key | Check key format (32+ alphanumeric) |
-| `API key validation failed` | Invalid or expired key | Verify key with service provider |
-| `Configuration file not found` | Missing .env file | Create from template: `cp .env.example .env` |
-| `Port conflict detected` | Port already in use | Change port or stop conflicting service |
+| Error Message                  | Cause                  | Solution                                     |
+| ------------------------------ | ---------------------- | -------------------------------------------- |
+| `Invalid API key format`       | Malformed API key      | Check key format (32+ alphanumeric)          |
+| `API key validation failed`    | Invalid or expired key | Verify key with service provider             |
+| `Configuration file not found` | Missing .env file      | Create from template: `cp .env.example .env` |
+| `Port conflict detected`       | Port already in use    | Change port or stop conflicting service      |
 
 ### Configuration Validation
 
@@ -162,12 +162,12 @@ nano .env
 
 ### Performance Problems
 
-| Issue | Solution |
-|-------|----------|
-| Slow setup process | Check Docker cache and network speed |
-| High memory usage | Increase Docker resource limits |
-| Slow API responses | Check API key rate limits and quotas |
-| Container startup delays | Check system resource availability |
+| Issue                    | Solution                             |
+| ------------------------ | ------------------------------------ |
+| Slow setup process       | Check Docker cache and network speed |
+| High memory usage        | Increase Docker resource limits      |
+| Slow API responses       | Check API key rate limits and quotas |
+| Container startup delays | Check system resource availability   |
 
 ### Performance Optimization
 
@@ -216,25 +216,25 @@ docker network inspect whatsapp-bot-scanner_default
 
 ### Debugging Tools
 
-| Tool | Purpose | Command |
-|------|---------|---------|
-| `docker logs` | View container logs | `docker logs wa-client` |
+| Tool             | Purpose                   | Command                    |
+| ---------------- | ------------------------- | -------------------------- |
+| `docker logs`    | View container logs       | `docker logs wa-client`    |
 | `docker inspect` | Inspect container details | `docker inspect wa-client` |
-| `docker stats` | Monitor resource usage | `docker stats` |
-| `docker events` | Monitor Docker events | `docker events` |
-| `journalctl` | View system logs | `journalctl -u docker` |
+| `docker stats`   | Monitor resource usage    | `docker stats`             |
+| `docker events`  | Monitor Docker events     | `docker events`            |
+| `journalctl`     | View system logs          | `journalctl -u docker`     |
 
 ## 📜 Log Analysis
 
 ### Log File Locations
 
-| Service | Log Location | View Command |
-|---------|--------------|--------------|
-| wa-client | Docker container | `npx whatsapp-bot-scanner logs wa-client` |
+| Service           | Log Location     | View Command                                      |
+| ----------------- | ---------------- | ------------------------------------------------- |
+| wa-client         | Docker container | `npx whatsapp-bot-scanner logs wa-client`         |
 | scan-orchestrator | Docker container | `npx whatsapp-bot-scanner logs scan-orchestrator` |
-| control-plane | Docker container | `npx whatsapp-bot-scanner logs control-plane` |
-| redis | Docker container | `docker logs redis` |
-| postgres | Docker container | `docker logs postgres` |
+| control-plane     | Docker container | `npx whatsapp-bot-scanner logs control-plane`     |
+| redis             | Docker container | `docker logs redis`                               |
+| postgres          | Docker container | `docker logs postgres`                            |
 
 ### Log Analysis Techniques
 
@@ -254,13 +254,13 @@ npx whatsapp-bot-scanner logs wa-client > wa-client.log
 
 ### Common Log Patterns
 
-| Pattern | Meaning | Action |
-|---------|---------|--------|
-| `Error: Connection refused` | Network connectivity issue | Check network and firewall |
-| `Error: Invalid API key` | API key problem | Validate API keys |
-| `Error: Rate limited` | API rate limit reached | Wait or upgrade plan |
-| `Error: Database connection` | Database issue | Check PostgreSQL service |
-| `Error: WhatsApp session` | Session problem | Restart wa-client |
+| Pattern                      | Meaning                    | Action                     |
+| ---------------------------- | -------------------------- | -------------------------- |
+| `Error: Connection refused`  | Network connectivity issue | Check network and firewall |
+| `Error: Invalid API key`     | API key problem            | Validate API keys          |
+| `Error: Rate limited`        | API rate limit reached     | Wait or upgrade plan       |
+| `Error: Database connection` | Database issue             | Check PostgreSQL service   |
+| `Error: WhatsApp session`    | Session problem            | Restart wa-client          |
 
 ## 🔄 Recovery Procedures
 
@@ -331,6 +331,7 @@ curl -v http://localhost:3000/healthz
 ## Fedora + Docker: containers can’t reach external network (bridge mode) and services log `ConnectionRefused`
 
 ### Symptoms
+
 - `scan-orchestrator` logs `ConnectionRefused` / timeouts for:
   - `https://openphish.com/feed.txt`
   - `https://safebrowsing.googleapis.com/...`
@@ -338,9 +339,11 @@ curl -v http://localhost:3000/healthz
 - A host-networked dev service works (e.g. `scan-orchestrator-host`), confirming app logic is fine.
 
 ### Root cause (Fedora)
+
 On Fedora with `firewalld` + nftables + Docker bridge networking, **bridge netfilter can interfere with container-to-container traffic and/or egress** depending on ruleset/driver behavior. A practical mitigation that restores container networking on affected systems is disabling bridge netfilter processing.
 
 ### Fix (production-safe; does NOT require host networking)
+
 Apply these sysctls on the host:
 
 ```sh
@@ -362,23 +365,28 @@ sudo sysctl --system
 > Note: Disabling bridge netfilter changes how packets traversing Linux bridges are inspected by iptables/nftables. This is a common workaround when Docker bridge networking is broken by bridge netfilter interaction.
 
 ### Verification (quick + production-safe)
-1) Confirm the host can reach external URLs:
+
+1. Confirm the host can reach external URLs:
+
 ```sh
 curl -I https://openphish.com/feed.txt
 ```
 
-2) Confirm container egress works (DNS + HTTPS):
+2. Confirm container egress works (DNS + HTTPS):
+
 ```sh
 docker compose exec -T scan-orchestrator sh -lc "timeout 8s bun -e \"fetch('https://www.google.com').then(r=>console.log('google',r.status)).catch(e=>console.error('google_err',e.code||e.name,e.message))\" || true"
 docker compose exec -T scan-orchestrator sh -lc "timeout 8s bun -e \"fetch('https://openphish.com/feed.txt',{redirect:'follow'}).then(r=>console.log('openphish',r.status,r.url)).catch(e=>console.error('openphish_err',e.code||e.name,e.message))\" || true"
 ```
 
-3) Confirm service logs no longer show `ConnectionRefused` for OpenPhish/GSB:
+3. Confirm service logs no longer show `ConnectionRefused` for OpenPhish/GSB:
+
 ```sh
 docker compose logs --tail 200 scan-orchestrator
 ```
 
 ### Dev-only quick test (optional)
+
 If you need a fast A/B test to separate “Docker bridge egress” from “app logic”, run the host-networked dev service:
 
 ```sh
