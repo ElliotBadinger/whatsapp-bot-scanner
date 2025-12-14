@@ -18,6 +18,9 @@ SafeMode-web-app/out/
 # Env
 .env
 *.local.env
+.env.local
+temp_k8s.yaml
+k8s/env-configmap.yaml
 
 # Logs
 logs/
