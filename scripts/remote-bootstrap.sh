@@ -63,6 +63,7 @@ install_git() {
   fi
   
   success "Git installed"
+  return 0
 }
 
 # -----------------------------------------------------------------------------
@@ -80,11 +81,11 @@ fi
 # Step 2: Clone repository
 step "Step 2/2: Cloning repository..."
 
-if [ -d "$INSTALL_DIR" ]; then
+if [[ -d "$INSTALL_DIR" ]]; then
   warning "Directory $INSTALL_DIR already exists"
   
   # Check if it's a git repo
-  if [ -d "$INSTALL_DIR/.git" ]; then
+  if [[ -d "$INSTALL_DIR/.git" ]]; then
     cd "$INSTALL_DIR"
     git fetch origin "$BRANCH" 2>/dev/null || true
     git reset --hard "origin/$BRANCH" 2>/dev/null || git pull origin "$BRANCH" || true
@@ -92,8 +93,8 @@ if [ -d "$INSTALL_DIR" ]; then
   else
     # Not a git repo, ask to remove
     echo -n "Remove and re-clone? [y/N] "
-    read -r REPLY
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
+    read -r reply
+    if [[ $reply =~ ^[Yy]$ ]]; then
       rm -rf "$INSTALL_DIR"
       git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR"
       success "Repository cloned to $INSTALL_DIR"

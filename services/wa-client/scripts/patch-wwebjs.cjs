@@ -9,8 +9,8 @@
  * based on AuthStore.AppState which doesn't rely on DOM selectors.
  */
 
-const fs = require("fs");
-const path = require("path");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const packageJsonPath = path.join(
   __dirname,

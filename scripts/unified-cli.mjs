@@ -201,10 +201,11 @@ ${C.primary("  ╚════════════════════�
   }
 
   displayStepHeader(stepNum, stepName, icon = "") {
+    const stepLabel = `Step ${stepNum}/5`;
     console.log("");
     console.log(C.muted("  ─".repeat(30)));
     console.log(
-      `  ${C.accentBold(`Step ${stepNum}/5`)}  ${icon} ${C.textBold(stepName)}`,
+      `  ${C.accentBold(stepLabel)}  ${icon} ${C.textBold(stepName)}`,
     );
     console.log(C.muted("  ─".repeat(30)));
   }
@@ -404,11 +405,13 @@ ${C.primary("  ╚════════════════════�
       }
 
       await fs.writeFile(envFile, envContent);
+      const waLibraryMessage = `WA_LIBRARY set to ${selectedLibrary}`;
+      const dockerTargetMessage = `Docker target set to ${buildTarget}`;
       console.log(
-        `  ${ICON.success}  ${C.success(`WA_LIBRARY set to ${selectedLibrary}`)}`,
+        `  ${ICON.success}  ${C.success(waLibraryMessage)}`,
       );
       console.log(
-        `  ${ICON.success}  ${C.success(`Docker target set to ${buildTarget}`)}`,
+        `  ${ICON.success}  ${C.success(dockerTargetMessage)}`,
       );
     } catch (err) {
       console.log(
@@ -473,8 +476,9 @@ ${C.primary("  ╚════════════════════�
       if (!current) {
         const value = generator();
         setEnvValue(key, value);
+        const secretStoredMessage = `${key} generated and stored (redacted)`;
         console.log(
-          `  ${ICON.success}  ${C.success(`${key} generated and stored (redacted)`)}`,
+          `  ${ICON.success}  ${C.success(secretStoredMessage)}`,
         );
       }
     };
@@ -526,8 +530,9 @@ ${C.primary("  ╚════════════════════�
 
       if (hasValue) {
         // Show current value and ask if user wants to change it
+        const labelWithColon = `${label}:`;
         console.log(
-          `\n  ${ICON.info}  ${C.text(`${label}:`)} ${C.muted(maskedCurrent)}`,
+          `\n  ${ICON.info}  ${C.text(labelWithColon)} ${C.muted(maskedCurrent)}`,
         );
 
         const { action } = await enquirer.prompt({
@@ -537,7 +542,10 @@ ${C.primary("  ╚════════════════════�
           choices: [
             {
               name: "keep",
-              message: `${C.success("●")} Keep current value ${C.muted(`(${maskedCurrent})`)}`,
+              message: (() => {
+                const masked = `(${maskedCurrent})`;
+                return `${C.success("●")} Keep current value ${C.muted(masked)}`;
+              })(),
             },
             { name: "change", message: `${C.accent("○")} Enter new value` },
             ...(required
@@ -553,13 +561,15 @@ ${C.primary("  ╚════════════════════�
         });
 
         if (action === "keep") {
-          console.log(`  ${ICON.success}  ${C.text(`${label} unchanged`)}`);
+          const unchangedMessage = `${label} unchanged`;
+          console.log(`  ${ICON.success}  ${C.text(unchangedMessage)}`);
           return currentValue;
         }
 
         if (action === "clear") {
           setEnvValue(key, "");
-          console.log(`  ${ICON.success}  ${C.text(`${label} cleared`)}`);
+          const clearedMessage = `${label} cleared`;
+          console.log(`  ${ICON.success}  ${C.text(clearedMessage)}`);
           return "";
         }
       } else {
@@ -586,8 +596,9 @@ ${C.primary("  ╚════════════════════�
 
       if (newValue || !required) {
         setEnvValue(key, newValue);
+        const savedMessage = `${label} ${hasValue ? "updated" : "saved"}`;
         console.log(
-          `  ${ICON.success}  ${C.success(`${label} ${hasValue ? "updated" : "saved"}`)}`,
+          `  ${ICON.success}  ${C.success(savedMessage)}`,
         );
       }
 
@@ -849,11 +860,13 @@ ${C.primary("  ╚════════════════════�
     for (const { name, port, env } of conflicts) {
       // Skip hardcoded ports (env is null) - these cannot be reassigned
       if (!env) {
+        const hardcodedPortMessage = `Port ${port} (${name}) is hardcoded and cannot be reassigned.`;
+        const stopPortMessage = `Stop the process using port ${port} and try again.`;
         console.log(
-          `  ${ICON.error}  ${C.error(`Port ${port} (${name}) is hardcoded and cannot be reassigned.`)}`,
+          `  ${ICON.error}  ${C.error(hardcodedPortMessage)}`,
         );
         console.log(
-          `  ${ICON.info}  ${C.text(`Stop the process using port ${port} and try again.`)}`,
+          `  ${ICON.info}  ${C.text(stopPortMessage)}`,
         );
         allResolved = false;
         continue;
@@ -873,8 +886,9 @@ ${C.primary("  ╚════════════════════�
       }
 
       if (altPort >= port + 100) {
+        const noPortMessage = `Could not find available port for ${name}`;
         console.log(
-          `  ${ICON.error}  ${C.error(`Could not find available port for ${name}`)}`,
+          `  ${ICON.error}  ${C.error(noPortMessage)}`,
         );
         allResolved = false;
         continue;
@@ -903,9 +917,8 @@ ${C.primary("  ╚════════════════════�
         localModified = true;
       }
 
-      console.log(
-        `  ${ICON.success}  ${C.success(`${name} auto-reassigned from port ${port} to ${altPort}`)}`,
-      );
+      const reassignedMessage = `${name} auto-reassigned from port ${port} to ${altPort}`;
+      console.log(`  ${ICON.success}  ${C.success(reassignedMessage)}`);
     }
 
     if (modified) {
@@ -1520,13 +1533,14 @@ ${C.primary("  ╚════════════════════�
 
   displayPairingCode(code) {
     const formattedCode = code.split("").join(" ");
+    const highlighted = `    ${formattedCode}    `;
 
     console.log(`
 ${C.primary("  ╔════════════════════════════════════════════════════╗")}
 ${C.primary("  ║")}                                                    ${C.primary("║")}
 ${C.primary("  ║")}       ${ICON.key} ${C.accentBold("WHATSAPP PAIRING CODE")}                    ${C.primary("║")}
 ${C.primary("  ║")}                                                    ${C.primary("║")}
-${C.primary("  ║")}       ${C.highlight(`    ${formattedCode}    `)}               ${C.primary("║")}
+${C.primary("  ║")}       ${C.highlight(highlighted)}               ${C.primary("║")}
 ${C.primary("  ║")}                                                    ${C.primary("║")}
 ${C.primary("  ║")}       ${C.muted("Valid for approximately 2–3 minutes.")}        ${C.primary("║")}
 ${C.primary("  ║")}       ${C.muted("If it expires, request a new one.")}           ${C.primary("║")}
@@ -1562,6 +1576,11 @@ ${C.primary("  ╚════════════════════�
       orchestrator: getPort("SCAN_ORCHESTRATOR_PORT", "3003"),
     };
 
+    const dashboardUrl = `http://localhost:${ports.dashboard}`;
+    const uptimeUrl = `http://localhost:${ports.uptime}`;
+    const grafanaUrl = `http://localhost:${ports.grafana}`;
+    const orchestratorUrl = `http://localhost:${ports.orchestrator}/healthz`;
+
     console.log(`
 ${C.success("  ╔════════════════════════════════════════════════════════════════╗")}
 ${C.success("  ║")}                                                                ${C.success("║")}
@@ -1573,10 +1592,10 @@ ${C.success("  ╠════════════════════�
 ${C.success("  ║")}                                                                ${C.success("║")}
 ${C.success("  ║")}   ${C.textBold("Access Points:")}                                             ${C.success("║")}
 ${C.success("  ║")}                                                                ${C.success("║")}
-${C.success("  ║")}   ${ICON.arrow}  Dashboard:       ${C.link(`http://localhost:${ports.dashboard}`)}                 ${C.success("║")}
-${C.success("  ║")}   ${ICON.arrow}  Uptime Monitor:  ${C.link(`http://localhost:${ports.uptime}`)}                 ${C.success("║")}
-${C.success("  ║")}   ${ICON.arrow}  Grafana:         ${C.link(`http://localhost:${ports.grafana}`)} ${C.muted("(admin/admin)")}    ${C.success("║")}
-${C.success("  ║")}   ${ICON.arrow}  Orchestrator:    ${C.link(`http://localhost:${ports.orchestrator}/healthz`)}          ${C.success("║")}
+${C.success("  ║")}   ${ICON.arrow}  Dashboard:       ${C.link(dashboardUrl)}                 ${C.success("║")}
+${C.success("  ║")}   ${ICON.arrow}  Uptime Monitor:  ${C.link(uptimeUrl)}                 ${C.success("║")}
+${C.success("  ║")}   ${ICON.arrow}  Grafana:         ${C.link(grafanaUrl)} ${C.muted("(admin/admin)")}    ${C.success("║")}
+${C.success("  ║")}   ${ICON.arrow}  Orchestrator:    ${C.link(orchestratorUrl)}          ${C.success("║")}
 ${C.success("  ║")}                                                                ${C.success("║")}
 ${C.success("  ╠════════════════════════════════════════════════════════════════╣")}
 ${C.success("  ║")}                                                                ${C.success("║")}
@@ -1633,9 +1652,10 @@ program
   .action((service) => {
     const args = ["compose", "logs", "-f"];
     if (service) args.push(service);
+    const serviceSuffix = service ? ` for ${service}` : "";
     console.log(
       C.primary(
-        `\nStreaming logs${service ? ` for ${service}` : ""}... (Ctrl+C to exit)\n`,
+        `\nStreaming logs${serviceSuffix}... (Ctrl+C to exit)\n`,
       ),
     );
     execa("docker", args, { stdio: "inherit", cwd: ROOT_DIR }).catch(() => {});

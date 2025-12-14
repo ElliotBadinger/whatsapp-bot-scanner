@@ -19,21 +19,29 @@ ERRORS=0
 WARNINGS=0
 
 error() {
-  echo -e "${RED}❌ $1${NC}"
+  local message="${1:-}"
+  echo -e "${RED}❌ ${message}${NC}"
   ERRORS=$((ERRORS + 1))
+  return 0
 }
 
 warning() {
-  echo -e "${YELLOW}⚠️  $1${NC}"
+  local message="${1:-}"
+  echo -e "${YELLOW}⚠️  ${message}${NC}"
   WARNINGS=$((WARNINGS + 1))
+  return 0
 }
 
 success() {
-  echo -e "${GREEN}✓ $1${NC}"
+  local message="${1:-}"
+  echo -e "${GREEN}✓ ${message}${NC}"
+  return 0
 }
 
 info() {
-  echo -e "${BLUE}ℹ️  $1${NC}"
+  local message="${1:-}"
+  echo -e "${BLUE}ℹ️  ${message}${NC}"
+  return 0
 }
 
 echo ""
