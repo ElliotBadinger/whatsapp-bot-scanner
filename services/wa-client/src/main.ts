@@ -203,14 +203,27 @@ async function main(): Promise<void> {
     cachedQr = qr;
     // Print QR to terminal if configured - use small format for better fit
     if (config.wa.remoteAuth.disableQrFallback !== true) {
-      import("qrcode-terminal").then((qrTerminal) => {
-        console.log("\n  ╔════════════════════════════════════╗");
-        console.log("  ║     📱 SCAN QR CODE WITH WHATSAPP  ║");
-        console.log("  ╚════════════════════════════════════╝\n");
-        // small: true generates a compact QR that fits standard terminals
-        qrTerminal.generate(qr, { small: true });
-        console.log("\n  Open WhatsApp → Settings → Linked Devices → Link\n");
-      });
+      import("qrcode-terminal")
+        .then((mod) => {
+          const qrTerminal = (mod as unknown as { default?: unknown }).default ?? mod;
+          const generator = qrTerminal as unknown as {
+            generate?: (text: string, opts?: { small?: boolean }) => void;
+          };
+
+          if (typeof generator.generate !== "function") {
+            throw new TypeError("qrcode-terminal export did not provide generate() ");
+          }
+
+          console.log("\n  ╔════════════════════════════════════╗");
+          console.log("  ║     📱 SCAN QR CODE WITH WHATSAPP  ║");
+          console.log("  ╚════════════════════════════════════╝\n");
+          // small: true generates a compact QR that fits standard terminals
+          generator.generate(qr, { small: true });
+          console.log("\n  Open WhatsApp → Settings → Linked Devices → Link\n");
+        })
+        .catch((err) => {
+          logger.warn({ err }, "Failed to print QR to terminal");
+        });
     }
   });
 
