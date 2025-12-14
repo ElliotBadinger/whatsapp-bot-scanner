@@ -972,7 +972,11 @@ ${C.primary("  ╚════════════════════�
     }).start();
 
     try {
-      await execa("docker", ["compose", "up", "-d"], { cwd: ROOT_DIR });
+      // Ensure images are rebuilt so freshly pulled source changes are reflected
+      // (Codespaces frequently has stale images even after `git pull`).
+      await execa("docker", ["compose", "up", "-d", "--build"], {
+        cwd: ROOT_DIR,
+      });
       spinner.succeed(C.text("Containers started"));
     } catch (error) {
       spinner.fail(C.error("Failed to start containers"));
@@ -1014,49 +1018,54 @@ ${C.primary("  ╚════════════════════�
   async waitForWaClientHttp(spinner, timeoutMs = 90000) {
     const startTime = Date.now();
     let rateLimited = false;
-
-    // Get the WA client port from env
-    const envFile = path.join(ROOT_DIR, ".env");
-    const envLocalFile = path.join(ROOT_DIR, ".env.local");
-    let waClientPort = "3005";
-    try {
-      const envContent = await fs.readFile(envFile, "utf-8");
-      const envLocalContent = await fs
-        .readFile(envLocalFile, "utf-8")
-        .catch(() => "");
-      const localMatch = envLocalContent.match(
-        /WA_CLIENT_PORT=["']?(\d+)["']?/,
-      );
-      const match = envContent.match(/WA_CLIENT_PORT=(\d+)/);
-      waClientPort = localMatch?.[1] || match?.[1] || "3005";
-    } catch {}
+    let crashLoop = false;
 
     while (Date.now() - startTime < timeoutMs) {
       try {
-        // Try to reach the healthz endpoint
-        const response = await fetch(
-          `http://127.0.0.1:${waClientPort}/healthz`,
-          { signal: AbortSignal.timeout(5000) },
+        // Run the check *inside the container*.
+        // wa-client is not always port-mapped to the host, especially in Codespaces.
+        await execa(
+          "docker",
+          [
+            "compose",
+            "exec",
+            "-T",
+            "wa-client",
+            "node",
+            "-e",
+            "const p=process.env.WA_HTTP_PORT||'3001'; fetch('http://127.0.0.1:'+p+'/healthz',{signal:AbortSignal.timeout(5000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1));",
+          ],
+          { cwd: ROOT_DIR },
         );
-        if (response.ok) {
-          // Check logs for rate limiting
-          try {
-            const { stdout: logs } = await execa(
-              "docker",
-              ["compose", "logs", "--tail=50", "wa-client"],
-              { cwd: ROOT_DIR },
-            );
-            if (
-              logs.includes("rate-overlimit") ||
-              logs.includes("rate_limit")
-            ) {
-              rateLimited = true;
-            }
-          } catch {}
-          return { ready: true, rateLimited };
+
+        // If the exec succeeds, the HTTP server is up.
+        // Check logs for crash-loop or rate limiting signals.
+        try {
+          const { stdout: logs } = await execa(
+            "docker",
+            ["compose", "logs", "--tail=80", "wa-client"],
+            { cwd: ROOT_DIR },
+          );
+
+          if (
+            logs.includes("qrTerminal.generate is not a function") ||
+            logs.includes("exited with code")
+          ) {
+            crashLoop = true;
+          }
+
+          if (logs.includes("rate-overlimit") || logs.includes("rate_limit")) {
+            rateLimited = true;
+          }
+        } catch {}
+
+        if (crashLoop) {
+          return { ready: false, rateLimited, crashLoop: true };
         }
+
+        return { ready: true, rateLimited };
       } catch {
-        // HTTP not ready yet, continue waiting
+        // Not ready yet (container not running, exec failed, or HTTP not up)
       }
 
       spinner.text = C.text(
@@ -1065,7 +1074,7 @@ ${C.primary("  ╚════════════════════�
       await new Promise((r) => setTimeout(r, 2000));
     }
 
-    return { ready: false, rateLimited };
+    return { ready: false, rateLimited, crashLoop };
   }
 
   async waitForService(serviceName, spinner, timeoutMs = 120000) {

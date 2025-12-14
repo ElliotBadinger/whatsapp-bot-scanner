@@ -116,7 +116,6 @@ export class BaileysAdapter implements WhatsAppAdapter {
           creds: authState.creds,
           keys: makeCacheableSignalKeyStore(authState.keys, this.logger),
         },
-        printQRInTerminal: this.config.printQRInTerminal ?? false,
         logger: this.logger,
         browser: [this.config.browserName ?? "WBScanner", "Chrome", "120.0.0"],
         generateHighQualityLinkPreview: false,
