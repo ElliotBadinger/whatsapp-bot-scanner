@@ -1,0 +1,42 @@
+services:
+  scan-orchestrator-host:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: scan-orchestrator
+      network: host
+    env_file: [.env]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    mem_limit: 1g
+    cpus: '1.0'
+    pids_limit: 150
+    ulimits:
+      nofile:
+        soft: 2048
+        hard: 4096
+    network_mode: host
+    environment:
+      - NODE_OPTIONS=--max-old-space-size=768
+      - REDIS_URL=redis://127.0.0.1:6379/0
+      - SCAN_ORCHESTRATOR_LISTEN_PORT=3011
+    volumes:
+      - ./storage:/app/storage:rw
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "(command -v bun >/dev/null 2>&1 && bun -e \"fetch('http://localhost:3011/healthz').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))\") || (command -v node >/dev/null 2>&1 && node -e \"fetch('http://localhost:3011/healthz').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))\")"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    read_only: true
+    tmpfs:
+      - /tmp

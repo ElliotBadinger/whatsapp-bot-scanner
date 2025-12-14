@@ -267,7 +267,8 @@ export const config = {
     localThreatDb: {
       enabled: (process.env.LOCAL_THREAT_DB_ENABLED || "true") === "true",
       feedUrl:
-        process.env.OPENPHISH_FEED_URL || "https://openphish.com/feed.txt",
+        process.env.OPENPHISH_FEED_URL ||
+        "https://raw.githubusercontent.com/openphish/public_feed/refs/heads/main/feed.txt",
       updateIntervalMs: parseInt(
         process.env.OPENPHISH_UPDATE_INTERVAL_MS || "7200000",
         10,

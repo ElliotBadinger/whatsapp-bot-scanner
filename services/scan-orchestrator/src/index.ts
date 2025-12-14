@@ -2296,7 +2296,14 @@ async function main() {
     );
   }
 
-  await app.listen({ host: "0.0.0.0", port: 3001 });
+  const listenPortRaw =
+    process.env.SCAN_ORCHESTRATOR_LISTEN_PORT ?? process.env.PORT ?? "3001";
+  const listenPort = Number.parseInt(listenPortRaw, 10);
+
+  await app.listen({
+    host: "0.0.0.0",
+    port: Number.isFinite(listenPort) ? listenPort : 3001,
+  });
 
   const shutdown = async () => {
     logger.info("Shutting down scan orchestrator...");

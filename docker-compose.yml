@@ -2,9 +2,23 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--save", "60", "1", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction", "--maxclients", "1000"]
+    command:
+      [
+        "redis-server",
+        "--save",
+        "60",
+        "1",
+        "--appendonly",
+        "yes",
+        "--maxmemory",
+        "256mb",
+        "--maxmemory-policy",
+        "noeviction",
+        "--maxclients",
+        "1000",
+      ]
     mem_limit: 512m
-    cpus: '0.5'
+    cpus: "0.5"
     pids_limit: 100
     ulimits:
       nofile:
@@ -44,9 +58,9 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      - REDIS_URL=redis://host.docker.internal:6379/0
+      - REDIS_URL=redis://redis:6379/0
     mem_limit: 512m
-    cpus: '0.5'
+    cpus: "0.5"
     pids_limit: 50
     ulimits:
       nofile:
@@ -85,7 +99,7 @@ services:
       redis:
         condition: service_healthy
     mem_limit: 1g
-    cpus: '1.0'
+    cpus: "1.0"
     pids_limit: 200
     ulimits:
       nofile:
@@ -95,7 +109,7 @@ services:
     environment:
       - WA_HTTP_PORT=${WA_CLIENT_PORT:-3005}
       - NODE_OPTIONS=--max-old-space-size=768 --dns-result-order=ipv4first
-      - REDIS_URL=redis://host.docker.internal:6379/0
+      - REDIS_URL=redis://127.0.0.1:6379/0
       - WA_LIBRARY=${WA_LIBRARY:-baileys}
       - CONTROL_PLANE_BASE=http://127.0.0.1:${REVERSE_PROXY_PORT:-8088}
     dns:
@@ -106,7 +120,11 @@ services:
       - ./storage:/app/storage:rw
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"const p=process.env.WA_HTTP_PORT||'3001'; fetch('http://localhost:'+p+'/healthz').then(async r => { if(!r.ok) process.exit(1); const j = await r.json().catch(() => null); process.exit(j && j.status === 'healthy' ? 0 : 1); }).catch(() => process.exit(1))\""]
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "const p=process.env.WA_HTTP_PORT||''3001''; fetch(''http://localhost:''+p+''/healthz'').then(async r => { if(!r.ok) process.exit(1); const j = await r.json().catch(() => null); process.exit(j && j.status === ''healthy'' ? 0 : 1); }).catch(() => process.exit(1))"',
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -139,7 +157,7 @@ services:
         condition: service_completed_successfully
     networks: [internal]
     mem_limit: 1g
-    cpus: '1.0'
+    cpus: "1.0"
     pids_limit: 150
     ulimits:
       nofile:
@@ -150,12 +168,19 @@ services:
       - "${SCAN_ORCHESTRATOR_PORT:-3003}:3001"
     environment:
       - NODE_OPTIONS=--max-old-space-size=768
-      - REDIS_URL=redis://host.docker.internal:6379/0
+      - REDIS_URL=redis://redis:6379/0
+    # dns:
+    #   - 1.1.1.1
+    #   - 8.8.8.8
     volumes:
       - ./storage:/app/storage:rw
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "(command -v bun >/dev/null 2>&1 && bun -e \"fetch('http://localhost:3001/healthz').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))\") || (command -v node >/dev/null 2>&1 && node -e \"fetch('http://localhost:3001/healthz').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))\")"]
+      test:
+        [
+          "CMD-SHELL",
+          '(command -v bun >/dev/null 2>&1 && bun -e "fetch(''http://localhost:3001/healthz'').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))") || (command -v node >/dev/null 2>&1 && node -e "fetch(''http://localhost:3001/healthz'').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))")',
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -186,7 +211,7 @@ services:
         condition: service_completed_successfully
     networks: [internal]
     mem_limit: 512m
-    cpus: '0.5'
+    cpus: "0.5"
     pids_limit: 100
     ulimits:
       nofile:
@@ -194,14 +219,18 @@ services:
         hard: 2048
     environment:
       - NODE_OPTIONS=--max-old-space-size=384
-      - REDIS_URL=redis://host.docker.internal:6379/0
+      - REDIS_URL=redis://redis:6379/0
     volumes:
       - ./storage:/app/storage:rw
     ports:
       - "${CONTROL_PLANE_HOST_PORT:-8087}:8080"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:8080/healthz',{headers:{Authorization:'Bearer '+(process.env.CONTROL_PLANE_API_TOKEN||'')}}).then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))\""]
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "fetch(''http://127.0.0.1:8080/healthz'',{headers:{Authorization:''Bearer ''+(process.env.CONTROL_PLANE_API_TOKEN||'''')}}).then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"',
+        ]
       interval: 15s
       timeout: 10s
       retries: 5
@@ -226,7 +255,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     mem_limit: 256m
-    cpus: '0.25'
+    cpus: "0.25"
     pids_limit: 50
     ulimits:
       nofile:
@@ -281,7 +310,7 @@ services:
     networks: [internal]
     restart: unless-stopped
     mem_limit: 512m
-    cpus: '0.5'
+    cpus: "0.5"
     pids_limit: 100
     ulimits:
       nofile:
@@ -305,7 +334,7 @@ services:
     image: prom/prometheus:latest
     command: ["--config.file=/etc/prometheus/prometheus.yml"]
     mem_limit: 1g
-    cpus: '0.5'
+    cpus: "0.5"
     pids_limit: 100
     ulimits:
       nofile:
@@ -341,7 +370,7 @@ services:
       - "${UPTIME_KUMA_PORT:-3001}:3001"
     networks: [internal]
     mem_limit: 256m
-    cpus: '0.25'
+    cpus: "0.25"
     pids_limit: 50
     ulimits:
       nofile:
@@ -350,7 +379,11 @@ services:
     environment:
       - UPTIME_KUMA_PORT=3001
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3001').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))\""]
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "fetch(''http://localhost:3001'').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"',
+        ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -373,6 +406,7 @@ networks:
     driver: bridge
     driver_opts:
       com.docker.network.bridge.enable_icc: "true"
+      com.docker.network.bridge.enable_ip_masquerade: "true"
   public:
     driver: bridge
     driver_opts:

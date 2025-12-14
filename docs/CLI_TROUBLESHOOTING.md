@@ -326,7 +326,66 @@ docker network inspect whatsapp-bot-scanner_default
 curl -v http://localhost:3000/healthz
 ```
 
-### API Troubleshooting
+# CLI Troubleshooting
+
+## Fedora + Docker: containers can’t reach external network (bridge mode) and services log `ConnectionRefused`
+
+### Symptoms
+- `scan-orchestrator` logs `ConnectionRefused` / timeouts for:
+  - `https://openphish.com/feed.txt`
+  - `https://safebrowsing.googleapis.com/...`
+- In-container requests fail (DNS and/or TCP egress), but the **host** can reach the same URLs.
+- A host-networked dev service works (e.g. `scan-orchestrator-host`), confirming app logic is fine.
+
+### Root cause (Fedora)
+On Fedora with `firewalld` + nftables + Docker bridge networking, **bridge netfilter can interfere with container-to-container traffic and/or egress** depending on ruleset/driver behavior. A practical mitigation that restores container networking on affected systems is disabling bridge netfilter processing.
+
+### Fix (production-safe; does NOT require host networking)
+Apply these sysctls on the host:
+
+```sh
+sudo sysctl -w net.bridge.bridge-nf-call-iptables=0
+sudo sysctl -w net.bridge.bridge-nf-call-ip6tables=0
+```
+
+Persist across reboots:
+
+```sh
+sudo tee /etc/sysctl.d/99-docker-bridge-nf.conf >/dev/null <<'EOF'
+net.bridge.bridge-nf-call-iptables=0
+net.bridge.bridge-nf-call-ip6tables=0
+EOF
+
+sudo sysctl --system
+```
+
+> Note: Disabling bridge netfilter changes how packets traversing Linux bridges are inspected by iptables/nftables. This is a common workaround when Docker bridge networking is broken by bridge netfilter interaction.
+
+### Verification (quick + production-safe)
+1) Confirm the host can reach external URLs:
+```sh
+curl -I https://openphish.com/feed.txt
+```
+
+2) Confirm container egress works (DNS + HTTPS):
+```sh
+docker compose exec -T scan-orchestrator sh -lc "timeout 8s bun -e \"fetch('https://www.google.com').then(r=>console.log('google',r.status)).catch(e=>console.error('google_err',e.code||e.name,e.message))\" || true"
+docker compose exec -T scan-orchestrator sh -lc "timeout 8s bun -e \"fetch('https://openphish.com/feed.txt',{redirect:'follow'}).then(r=>console.log('openphish',r.status,r.url)).catch(e=>console.error('openphish_err',e.code||e.name,e.message))\" || true"
+```
+
+3) Confirm service logs no longer show `ConnectionRefused` for OpenPhish/GSB:
+```sh
+docker compose logs --tail 200 scan-orchestrator
+```
+
+### Dev-only quick test (optional)
+If you need a fast A/B test to separate “Docker bridge egress” from “app logic”, run the host-networked dev service:
+
+```sh
+docker compose -f docker-compose.dev.yml up -d --build scan-orchestrator-host
+docker compose -f docker-compose.dev.yml logs --tail 200 scan-orchestrator-host
+docker compose -f docker-compose.dev.yml down
+```
 
 ```bash
 # Test VirusTotal API
