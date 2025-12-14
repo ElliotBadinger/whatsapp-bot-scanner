@@ -304,6 +304,12 @@ export interface WhatsAppAdapter {
   getGroupMetadata(groupId: string): Promise<GroupMetadata | null>;
 
   /**
+   * Set group message permissions (admins only)
+   * Optional: may not be supported by all adapters.
+   */
+  setMessagesAdminsOnly?(chatId: string, enabled: boolean): Promise<void>;
+
+  /**
    * Check if a number is registered on WhatsApp
    * @param phoneNumber - The phone number to check (with country code)
    */

@@ -70,6 +70,45 @@ export class SharedMessageHandler {
   private processOwnMessages: boolean;
   private commandHandlers: Map<string, CommandHandler> = new Map();
 
+  private consentStatusKey(chatId: string): string {
+    return `wa:consent:status:${chatId}`;
+  }
+
+  private consentPendingSetKey(): string {
+    return "wa:consent:pending";
+  }
+
+  private async refreshConsentGauge(): Promise<void> {
+    try {
+      const pending = await this.redis.scard(this.consentPendingSetKey());
+      metrics.waConsentGauge.set(pending);
+    } catch {
+      // ignore
+    }
+  }
+
+  private async markConsentGranted(chatId: string): Promise<void> {
+    await this.redis.set(
+      this.consentStatusKey(chatId),
+      "granted",
+      "EX",
+      config.wa.messageLineageTtlSeconds,
+    );
+    await this.redis.srem(this.consentPendingSetKey(), chatId);
+    metrics.waGovernanceActions.labels("consent_granted").inc();
+    await this.refreshConsentGauge();
+  }
+
+  private async getConsentStatus(
+    chatId: string,
+  ): Promise<"pending" | "granted" | null> {
+    const status = await this.redis.get(this.consentStatusKey(chatId));
+    if (status === "pending" || status === "granted") {
+      return status;
+    }
+    return null;
+  }
+
   private async replyWithLatency(
     message: WAMessage,
     content: Parameters<WhatsAppAdapter["reply"]>[1],
@@ -102,6 +141,8 @@ export class SharedMessageHandler {
         "!scanner help - Show this help message",
         "!scanner status - Show bot status",
         "!scanner scan <url> - Manually scan a URL",
+        "!scanner consent - Mark group consent as granted",
+        "!scanner consentstatus - Show group consent status",
         "",
         "_Links shared in this chat are automatically scanned._",
       ].join("\n");
@@ -140,7 +181,11 @@ export class SharedMessageHandler {
 
       const url = ctx.args[0];
       try {
-        const normalized = normalizeUrl(url);
+        const normalized =
+          normalizeUrl(url) ??
+          (/^[a-z][a-z0-9+.-]*:\/\//i.test(url)
+            ? null
+            : normalizeUrl(`https://${url}`));
         if (!normalized) {
           await this.replyWithLatency(ctx.message, {
             type: "text",
@@ -184,6 +229,37 @@ export class SharedMessageHandler {
           text: "Failed to queue scan. Please try again.",
         });
       }
+    });
+
+    this.registerCommand("consent", async (ctx, adapter) => {
+      if (!config.wa.consentOnJoin) {
+        await this.replyWithLatency(ctx.message, {
+          type: "text",
+          text: "Consent enforcement is currently disabled.",
+        });
+        return;
+      }
+
+      await this.markConsentGranted(ctx.message.chatId);
+      metrics.waGroupEvents.labels("consent_granted").inc();
+
+      const setMessagesAdminsOnly = adapter.setMessagesAdminsOnly;
+      if (ctx.message.isGroup && setMessagesAdminsOnly) {
+        await setMessagesAdminsOnly(ctx.message.chatId, false);
+      }
+
+      await this.replyWithLatency(ctx.message, {
+        type: "text",
+        text: "Consent recorded. Automated scanning enabled for this group.",
+      });
+    });
+
+    this.registerCommand("consentstatus", async (ctx) => {
+      const status = (await this.getConsentStatus(ctx.message.chatId)) ?? "none";
+      await this.replyWithLatency(ctx.message, {
+        type: "text",
+        text: `Consent status: ${status}`,
+      });
     });
   }
 

@@ -1736,7 +1736,7 @@ async function storeAndDispatchResults(
           gsafebrowsing_hit, domain_age_days, redirect_chain_summary, cache_ttl,
           source_kind, urlscan_status, whois_source, whois_registrar, shortener_provider,
           first_seen_at, last_seen_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         ON CONFLICT(url_hash) DO UPDATE SET
           normalized_url=excluded.normalized_url,
           verdict=excluded.verdict,
@@ -2121,13 +2121,13 @@ async function main() {
       } = job.data;
       const {
         finalUrl,
-        finalUrlObj,
         redirectChain,
         heurSignals,
         wasShortened,
         finalUrlMismatch,
         shortenerInfo,
       } = urlAnalysis;
+      const finalUrlObj = new URL(finalUrl);
       const h = urlHash(normalizeUrl(finalUrl) || finalUrl);
       const hasChatContext =
         typeof chatId === "string" && typeof messageId === "string";
@@ -2556,7 +2556,6 @@ export async function handleScanRequestJob(
           blocklistResults,
           urlAnalysis: {
             finalUrl,
-            finalUrlObj,
             redirectChain,
             heurSignals,
             wasShortened,

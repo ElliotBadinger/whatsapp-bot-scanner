@@ -11,8 +11,23 @@ const TRACKING_PARAMS = new Set(['utm_source', 'utm_medium', 'utm_campaign', 'ut
 export function extractUrls(text: string): string[] {
   if (!text) return [];
   const urlRegex = /((https?:\/\/|www\.)[^\s<>()]+[^\s`!()\[\]{};:'".,<>?«»“”‘’])/gi;
-  const matches = text.match(urlRegex) || [];
-  return Array.from(new Set(matches.map(m => m.startsWith('http') ? m : `http://${m}`)));
+  const bareDomainRegex =
+    /(?<!:\/\/)(?<!@)\b((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?:\/[^{\s<>()`!()\[\]{};:'".,<>?«»“”‘’}]*)?)/gi;
+
+  const matches = new Set<string>();
+  for (const m of text.match(urlRegex) || []) {
+    matches.add(m);
+  }
+  for (const m of text.match(bareDomainRegex) || []) {
+    if (m.startsWith('www.')) continue;
+    matches.add(m);
+  }
+
+  return Array.from(matches).map(m => {
+    if (m.startsWith('http')) return m;
+    if (m.startsWith('www.')) return `http://${m}`;
+    return `https://${m}`;
+  });
 }
 
 export function normalizeUrl(raw: string): string | null {
