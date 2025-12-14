@@ -80,7 +80,7 @@ export async function createWhatsAppAdapter(
         logger: config.logger,
         clientId: config.clientId,
         phoneNumber: config.phoneNumber,
-        printQRInTerminal: config.printQRInTerminal ?? true,
+        printQRInTerminal: false,
         dataPath: config.dataPath,
         browserName: config.browserName ?? "WBScanner",
       };
