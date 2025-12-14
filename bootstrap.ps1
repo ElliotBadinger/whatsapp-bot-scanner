@@ -10,7 +10,8 @@
 
 param(
     [switch]$SkipDocker,
-    [switch]$SkipNode
+    [switch]$SkipNode,
+    [Alias('hobby-mode')][switch]$HobbyMode
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,6 +23,23 @@ function Write-Step { param([string]$Message) Write-Host "▶ $Message" -Foregro
 function Write-Success { param([string]$Message) Write-Host "✓ $Message" -ForegroundColor Green }
 function Write-Warning { param([string]$Message) Write-Host "⚠ $Message" -ForegroundColor Yellow }
 function Write-ErrorMsg { param([string]$Message) Write-Host "❌ $Message" -ForegroundColor Red; exit 1 }
+
+function Refresh-Path {
+    $machine = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+    $user = [System.Environment]::GetEnvironmentVariable("Path", "User")
+    if ($machine -and $user) {
+        $env:Path = "$machine;$user"
+    } elseif ($machine) {
+        $env:Path = $machine
+    } elseif ($user) {
+        $env:Path = $user
+    }
+}
+
+try {
+    Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction Stop
+} catch {
+}
 
 Write-Host ""
 Write-Host "╔═══════════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
@@ -51,10 +69,24 @@ if (-not $SkipNode) {
     if (-not $nodeOk) {
         if ($hasWinget) {
             Write-Host "Installing Node.js via winget..."
-            winget install OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements
-            
-            # Refresh PATH
-            $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+            $installed = $false
+            try {
+                winget install --id OpenJS.NodeJS.LTS -e --source winget --accept-package-agreements --accept-source-agreements
+                $installed = $true
+            } catch {
+                try {
+                    winget install OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements
+                    $installed = $true
+                } catch {
+                    $installed = $false
+                }
+            }
+
+            if (-not $installed) {
+                Write-ErrorMsg "Failed to install Node.js using winget. Please install Node.js 20+ manually and re-run."
+            }
+
+            Refresh-Path
             
             if (Get-Command node -ErrorAction SilentlyContinue) {
                 Write-Success "Node.js installed"
@@ -100,7 +132,22 @@ if (-not $SkipDocker) {
             $response = Read-Host "Docker not found. Install Docker Desktop via winget? [y/N]"
             if ($response -match '^[Yy]') {
                 Write-Host "Installing Docker Desktop via winget..."
-                winget install Docker.DockerDesktop --accept-package-agreements --accept-source-agreements
+                $installed = $false
+                try {
+                    winget install --id Docker.DockerDesktop -e --source winget --accept-package-agreements --accept-source-agreements
+                    $installed = $true
+                } catch {
+                    try {
+                        winget install Docker.DockerDesktop --accept-package-agreements --accept-source-agreements
+                        $installed = $true
+                    } catch {
+                        $installed = $false
+                    }
+                }
+
+                if (-not $installed) {
+                    Write-ErrorMsg "Failed to install Docker Desktop using winget. Please install Docker Desktop manually and re-run."
+                }
                 Write-Warning "Docker Desktop installed. Please restart your computer, start Docker Desktop, then run this script again."
                 exit 0
             }
@@ -146,10 +193,15 @@ Write-Step "Step 4/4: Running npx whatsapp-bot-scanner setup..."
 
 Set-Location $ROOT_DIR
 
+$setupArgs = @()
+if ($HobbyMode) {
+    $setupArgs += "--hobby-mode"
+}
+
 if (Get-Command npx -ErrorAction SilentlyContinue) {
-    & npx whatsapp-bot-scanner setup @args
+    & npx whatsapp-bot-scanner setup @setupArgs
 } elseif (Test-Path "$ROOT_DIR\scripts\unified-cli.mjs") {
-    & node "$ROOT_DIR\scripts\unified-cli.mjs" setup @args
+    & node "$ROOT_DIR\scripts\unified-cli.mjs" setup @setupArgs
 } else {
     Write-ErrorMsg "Could not find setup wizard."
 }
