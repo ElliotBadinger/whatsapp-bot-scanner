@@ -18,6 +18,83 @@ Options:
 const CHECKPOINTS = new Set(['preflight', 'environment', 'containers']);
 const QUICK_ACTIONS = new Set(['preflight', 'resume-docker', 'purge-caches']);
 
+function parseEqualsArg(arg) {
+  const idx = arg.indexOf('=');
+  if (!arg.startsWith('--') || idx === -1) return null;
+  return {
+    key: arg.slice(2, idx),
+    value: arg.slice(idx + 1)
+  };
+}
+
+function assertMode(mode) {
+  if (!['guided', 'expert'].includes(mode)) {
+    throw new Error(`Unknown mode: ${mode}`);
+  }
+}
+
+function assertCheckpoint(checkpoint) {
+  if (!CHECKPOINTS.has(checkpoint)) {
+    throw new Error(`Unknown checkpoint: ${checkpoint}`);
+  }
+}
+
+function assertStopAfterCheckpoint(checkpoint) {
+  if (!CHECKPOINTS.has(checkpoint)) {
+    throw new Error(`Unknown checkpoint for --stop-after: ${checkpoint}`);
+  }
+}
+
+function assertQuickAction(quick) {
+  if (!QUICK_ACTIONS.has(quick)) {
+    throw new Error(`Unknown quick action: ${quick}`);
+  }
+}
+
+const BARE_FLAG_HANDLERS = {
+  '--clean': (flags) => {
+    flags.clean = true;
+  },
+  '--reset': (flags) => {
+    flags.reset = true;
+    flags.clean = true;
+  },
+  '--noninteractive': (flags) => {
+    flags.noninteractive = true;
+  },
+  '--pull': (flags) => {
+    flags.pull = true;
+  },
+  '--dry-run': (flags) => {
+    flags.dryRun = true;
+  }
+};
+
+const KEY_VALUE_HANDLERS = {
+  branch: (flags, value) => {
+    flags.branch = value;
+  },
+  from: (flags, value) => {
+    flags.fromTarball = value;
+  },
+  mode: (flags, value) => {
+    assertMode(value);
+    flags.mode = value;
+  },
+  resume: (flags, value) => {
+    assertCheckpoint(value);
+    flags.resume = value;
+  },
+  'stop-after': (flags, value) => {
+    assertStopAfterCheckpoint(value);
+    flags.stopAfter = value;
+  },
+  quick: (flags, value) => {
+    assertQuickAction(value);
+    flags.quick = value;
+  }
+};
+
 export function parseFlags(argv, env = process.env) {
   const flags = {
     clean: false,
@@ -34,45 +111,28 @@ export function parseFlags(argv, env = process.env) {
   };
 
   for (const arg of argv) {
-    if (arg === '--clean') flags.clean = true;
-    else if (arg === '--reset') {
-      flags.reset = true;
-      flags.clean = true;
-    } else if (arg === '--noninteractive') flags.noninteractive = true;
-    else if (arg === '--pull') flags.pull = true;
-    else if (arg === '--dry-run') flags.dryRun = true;
-    else if (arg.startsWith('--branch=')) flags.branch = arg.split('=')[1];
-    else if (arg.startsWith('--from=')) flags.fromTarball = arg.split('=')[1];
-    else if (arg.startsWith('--mode=')) {
-      const mode = arg.split('=')[1];
-      if (!['guided', 'expert'].includes(mode)) {
-        throw new Error(`Unknown mode: ${mode}`);
-      }
-      flags.mode = mode;
-    } else if (arg.startsWith('--resume=')) {
-      const checkpoint = arg.split('=')[1];
-      if (!CHECKPOINTS.has(checkpoint)) {
-        throw new Error(`Unknown checkpoint: ${checkpoint}`);
-      }
-      flags.resume = checkpoint;
-    } else if (arg.startsWith('--stop-after=')) {
-      const checkpoint = arg.split('=')[1];
-      if (!CHECKPOINTS.has(checkpoint)) {
-        throw new Error(`Unknown checkpoint for --stop-after: ${checkpoint}`);
-      }
-      flags.stopAfter = checkpoint;
-    } else if (arg.startsWith('--quick=')) {
-      const quick = arg.split('=')[1];
-      if (!QUICK_ACTIONS.has(quick)) {
-        throw new Error(`Unknown quick action: ${quick}`);
-      }
-      flags.quick = quick;
-    } else if (arg === '-h' || arg === '--help') {
+    if (arg === '-h' || arg === '--help') {
       console.log(HELP_TEXT);
       process.exit(0);
-    } else {
+    }
+
+    const bareHandler = BARE_FLAG_HANDLERS[arg];
+    if (bareHandler) {
+      bareHandler(flags);
+      continue;
+    }
+
+    const parsed = parseEqualsArg(arg);
+    if (!parsed) {
       throw new Error(`Unknown argument: ${arg}`);
     }
+
+    const handler = KEY_VALUE_HANDLERS[parsed.key];
+    if (!handler) {
+      throw new Error(`Unknown argument: ${arg}`);
+    }
+
+    handler(flags, parsed.value);
   }
 
   if (env.SETUP_NONINTERACTIVE === '1' || env.CI === 'true') {

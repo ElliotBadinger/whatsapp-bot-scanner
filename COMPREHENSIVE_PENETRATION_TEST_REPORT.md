@@ -51,7 +51,7 @@ This comprehensive penetration test was conducted on the WhatsApp Bot Scanner co
 
 #### A. Hardcoded Secrets (9 instances)
 
-**Files Affected:** `.env.local`, `k8s/env-configmap.yaml`, `SafeMode-web-app/.env.local`
+**Files Affected:** `.env.local`, `k8s/env-configmap.example.yaml`, `SafeMode-web-app/.env.local`
 
 **Description:** Multiple hardcoded secrets detected including:
 
@@ -147,7 +147,7 @@ This comprehensive penetration test was conducted on the WhatsApp Bot Scanner co
 
 #### C. Kubernetes Security Misconfigurations (9 instances)
 
-**Files Affected:** `temp_k8s.yaml`
+**Files Affected:** `temp_k8s.yaml` (removed from repository)
 
 **Description:** Kubernetes pods with `allowPrivilegeEscalation: true`
 
