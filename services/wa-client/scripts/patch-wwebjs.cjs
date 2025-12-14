@@ -105,17 +105,15 @@ if (patched) {
   console.log(
     '   New selector includes: [data-icon="chat"], div[role="textbox"], etc.',
   );
-} else {
-  if (content.includes("INTRO_IMG_SELECTOR")) {
-    console.log("⚠️  Found INTRO_IMG_SELECTOR but could not match pattern");
-    const lines = content.split("\n");
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes("INTRO_IMG_SELECTOR")) {
-        console.log(`   Line ${i + 1}: ${lines[i].trim().substring(0, 100)}`);
-      }
+} else if (content.includes("INTRO_IMG_SELECTOR")) {
+  console.log("⚠️  Found INTRO_IMG_SELECTOR but could not match pattern");
+  const lines = content.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].includes("INTRO_IMG_SELECTOR")) {
+      console.log(`   Line ${i + 1}: ${lines[i].trim().substring(0, 100)}`);
     }
-  } else {
-    console.log("ℹ️  INTRO_IMG_SELECTOR not found in Client.js");
-    console.log("   This version may use a different mechanism");
   }
+} else {
+  console.log("ℹ️  INTRO_IMG_SELECTOR not found in Client.js");
+  console.log("   This version may use a different mechanism");
 }
