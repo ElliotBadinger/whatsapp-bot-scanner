@@ -1784,7 +1784,7 @@ async function storeAndDispatchResults(
         const messageSql = `
           INSERT INTO messages (chat_id, message_id, url_hash, verdict, posted_at)
           VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-          ON CONFLICT(chat_id, message_id) DO NOTHING
+          ON CONFLICT(chat_id, message_id, url_hash) DO NOTHING
         `;
         await dbClient.query(messageSql, [chatId, messageId, h, verdict]);
       }

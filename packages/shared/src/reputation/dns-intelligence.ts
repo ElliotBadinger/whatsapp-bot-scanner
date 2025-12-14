@@ -1,5 +1,6 @@
-import { logger } from '../log';
-import dns from 'dns/promises';
+import { logger } from "../log";
+import dns from "node:dns/promises";
+import { parse } from "tldts";
 
 export interface DNSBLResult {
   provider: string;
@@ -88,14 +89,18 @@ async function performDNSBLChecks(
 
 async function performDNSSECCheck(hostname: string, result: DNSIntelligenceResult): Promise<void> {
   try {
-    const dnssecValid = await checkDNSSEC(hostname);
-    result.dnssecValid = dnssecValid;
-    if (!dnssecValid) {
+    const dnssecStatus = await checkDNSSEC(hostname);
+    if (dnssecStatus === null) {
+      return;
+    }
+
+    result.dnssecValid = dnssecStatus;
+    if (!dnssecStatus) {
       result.score += 0.3;
-      result.reasons.push('DNSSEC validation failed');
+      result.reasons.push("DNSSEC not detected");
     }
   } catch (err) {
-    logger.debug({ hostname, err }, 'DNSSEC check failed');
+    logger.debug({ hostname, err }, "DNSSEC check failed");
   }
 }
 
@@ -141,14 +146,25 @@ async function checkDNSBL(hostname: string, provider: string, timeoutMs: number)
   }
 }
 
-async function checkDNSSEC(hostname: string): Promise<boolean> {
+async function checkDNSSEC(hostname: string): Promise<boolean | null> {
   try {
-    // Simplified DNSSEC check - in production you'd use proper DNSSEC validation
-    await dns.resolveTxt(hostname);
-    // This is a placeholder - real DNSSEC validation is more complex
-    return true;
-  } catch (_err) {
-    return false;
+    const parsed = parse(hostname);
+    const zone = parsed.domain || hostname;
+
+    // This is not full DNSSEC validation; it is a "DNSSEC present" signal.
+    // DNSKEY records exist only at the zone apex and resolvers may not support this query.
+    const records = await dns.resolve(zone, "DNSKEY");
+    return Array.isArray(records) && records.length > 0;
+  } catch (err: unknown) {
+    const error = err as { code?: string; message?: string };
+
+    // Domain exists but has no DNSSEC material
+    if (error.code === "ENOTFOUND" || error.code === "ENODATA") {
+      return false;
+    }
+
+    // Resolver/network limitations -> unknown, don't penalize.
+    return null;
   }
 }
 
