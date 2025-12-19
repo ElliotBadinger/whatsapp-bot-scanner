@@ -178,6 +178,20 @@ describe('Scoring Algorithm - Property-Based Tests', () => {
     );
   });
 
+  test('PROPERTY: increasing vtMalicious does not lower score', () => {
+    fc.assert(
+      fc.property(signalsNoOverrideArb, fc.nat(5), (signals, malicious) => {
+        const baseline = { ...signals, vtMalicious: malicious };
+        const elevated = { ...signals, vtMalicious: malicious + 1 };
+        const scoreBaseline = scoreFromSignals(baseline).score;
+        const scoreElevated = scoreFromSignals(elevated).score;
+
+        expect(scoreElevated).toBeGreaterThanOrEqual(scoreBaseline);
+      }),
+      { numRuns: 1000 },
+    );
+  });
+
   test('PROPERTY: increasing redirect count does not lower score', () => {
     fc.assert(
       fc.property(signalsNoOverrideArb, (signals) => {

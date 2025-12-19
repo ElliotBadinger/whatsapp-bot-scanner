@@ -37,6 +37,16 @@ describe('Scoring Algorithm - Edge Cases', () => {
     );
   });
 
+  test('manual allow override ignores heuristics-only flag', () => {
+    const result = scoreFromSignals({
+      heuristicsOnly: true,
+      manualOverride: 'allow',
+    });
+    expect(result.score).toBe(0);
+    expect(result.level).toBe('benign');
+    expect(result.reasons).toEqual(['Manually allowed']);
+  });
+
   test('detected homoglyph with "none" risk still adds low risk score', () => {
     const result = scoreFromSignals({
       homoglyph: {

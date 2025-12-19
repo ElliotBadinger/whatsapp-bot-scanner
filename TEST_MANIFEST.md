@@ -2,17 +2,17 @@
 
 ## File: packages/shared/src/__tests__/scoring.property.test.ts
 - **Coverage:** scoring.ts 91.51% lines, 100% branches, 90% functions (coverage run with `--coverage`).
-- **Test Count:** 9 property tests (9,000 randomized cases total).
+- **Test Count:** 10 property tests (10,000 randomized cases total).
 - **Runtime:** ~7s without coverage, ~12s with coverage.
-- **Edge Cases:** monotonic risk increases across threat signals, verdict band consistency, reason de-duplication.
+- **Edge Cases:** monotonic risk increases across threat signals (including VT malicious counts), verdict band consistency, reason de-duplication.
 - **Discovered Issues:** coverage instrumentation required switching Jest to `coverageProvider: "v8"` for this workspace.
 - **Flakiness:** 0/10 runs failed.
 
 ## File: packages/shared/src/__tests__/scoring.unit.test.ts
 - **Coverage:** scoring.ts 77.12% lines, 63.26% branches (coverage run with `--coverage`).
-- **Test Count:** 9 unit tests.
+- **Test Count:** 10 unit tests.
 - **Runtime:** ~4s without coverage, ~11s with coverage.
-- **Edge Cases:** domain-age bucket boundaries, redirect and URL length thresholds, heuristics-only reasons, homoglyph risk "none", extraHeuristics port/IP/TLD detection.
+- **Edge Cases:** domain-age bucket boundaries, redirect and URL length thresholds, heuristics-only reasons and override precedence, homoglyph risk "none", extraHeuristics port/IP/TLD detection.
 - **Discovered Issues:** None.
 - **Flakiness:** 0/10 runs failed.
 
