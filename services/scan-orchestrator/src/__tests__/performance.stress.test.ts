@@ -1,9 +1,9 @@
 /**
  * @fileoverview Stress testing to find breaking points
- * 
+ *
  * These tests intentionally push the system to its limits
  * to identify maximum capacity and failure modes.
- * 
+ *
  * Tests focus on:
  * - Memory usage under load
  * - System behavior at capacity
@@ -11,7 +11,7 @@
  * - Breaking point identification
  */
 
-import { performance } from 'node:perf_hooks';
+import { performance } from "node:perf_hooks";
 import {
   scoreFromSignals,
   normalizeUrl,
@@ -22,24 +22,24 @@ import {
   CircuitBreaker,
   CircuitState,
   type Signals,
-} from '@wbscanner/shared';
+} from "@wbscanner/shared";
 
-describe('Stress Testing', () => {
-  describe('Memory Usage Under Load', () => {
-    test('does not leak memory with 10K sequential scoring operations', () => {
+describe("Stress Testing", () => {
+  describe("Memory Usage Under Load", () => {
+    test("does not leak memory with 10K sequential scoring operations", () => {
       const signals: Signals = {
         vtMalicious: 5,
-        gsbThreatTypes: ['MALWARE'],
+        gsbThreatTypes: ["MALWARE"],
         domainAgeDays: 30,
         homoglyph: {
           detected: true,
           isPunycode: false,
           mixedScript: false,
-          unicodeHostname: 'test.com',
-          normalizedDomain: 'test.com',
+          unicodeHostname: "test.com",
+          normalizedDomain: "test.com",
           confusableChars: [],
-          riskLevel: 'medium',
-          riskReasons: ['Test reason'],
+          riskLevel: "medium",
+          riskReasons: ["Test reason"],
         },
       };
 
@@ -50,16 +50,16 @@ describe('Stress Testing', () => {
 
       const initialHeap = process.memoryUsage().heapUsed;
       const results: ReturnType<typeof scoreFromSignals>[] = [];
-      
+
       for (let i = 0; i < 10000; i++) {
         results.push(scoreFromSignals(signals));
-        
+
         // Force GC every 1000 operations
         if (i % 1000 === 0 && globalThis.gc) {
           globalThis.gc();
         }
       }
-      
+
       // Clear results to allow GC
       results.length = 0;
 
@@ -71,7 +71,9 @@ describe('Stress Testing', () => {
       const leakMB = (finalHeap - initialHeap) / 1024 / 1024;
 
       console.log(`\n📊 Stress Test: Memory (10K scoring operations)`);
-      console.log(`   Initial heap: ${(initialHeap / 1024 / 1024).toFixed(2)}MB`);
+      console.log(
+        `   Initial heap: ${(initialHeap / 1024 / 1024).toFixed(2)}MB`,
+      );
       console.log(`   Final heap: ${(finalHeap / 1024 / 1024).toFixed(2)}MB`);
       console.log(`   Difference: ${leakMB.toFixed(2)}MB`);
 
@@ -79,13 +81,13 @@ describe('Stress Testing', () => {
       expect(Math.abs(leakMB)).toBeLessThan(20);
     });
 
-    test('does not leak memory with 5K URL processing operations', () => {
+    test("does not leak memory with 5K URL processing operations", () => {
       if (globalThis.gc) {
         globalThis.gc();
       }
 
       const initialHeap = process.memoryUsage().heapUsed;
-      
+
       for (let i = 0; i < 5000; i++) {
         const url = `https://example${i}.com/path/${i}?query=${i}`;
         const normalized = normalizeUrl(url);
@@ -95,12 +97,12 @@ describe('Stress Testing', () => {
           extraHeuristics(parsedUrl);
           detectHomoglyphs(parsedUrl.hostname);
         }
-        
+
         if (i % 500 === 0 && globalThis.gc) {
           globalThis.gc();
         }
       }
-      
+
       if (globalThis.gc) {
         globalThis.gc();
       }
@@ -109,31 +111,34 @@ describe('Stress Testing', () => {
       const leakMB = (finalHeap - initialHeap) / 1024 / 1024;
 
       console.log(`\n📊 Stress Test: Memory (5K URL processing)`);
-      console.log(`   Initial heap: ${(initialHeap / 1024 / 1024).toFixed(2)}MB`);
+      console.log(
+        `   Initial heap: ${(initialHeap / 1024 / 1024).toFixed(2)}MB`,
+      );
       console.log(`   Final heap: ${(finalHeap / 1024 / 1024).toFixed(2)}MB`);
       console.log(`   Difference: ${leakMB.toFixed(2)}MB`);
 
       expect(Math.abs(leakMB)).toBeLessThan(50);
     });
 
-    test('cache handles 10K entries without excessive memory', () => {
+    test("cache handles 10K entries without excessive memory", () => {
       const cache = new VerdictCache({ ttlSeconds: 3600, maxKeys: 15000 });
-      
+
       if (globalThis.gc) {
         globalThis.gc();
       }
 
       const initialHeap = process.memoryUsage().heapUsed;
-      
+
       for (let i = 0; i < 10000; i++) {
         cache.set(`stress_hash_${i}`, {
-          verdict: i % 3 === 0 ? 'malicious' : i % 2 === 0 ? 'suspicious' : 'benign',
+          verdict:
+            i % 3 === 0 ? "malicious" : i % 2 === 0 ? "suspicious" : "benign",
           confidence: 0.8 + (i % 20) / 100,
           timestamp: Date.now(),
-          sources: ['test1', 'test2'],
+          sources: ["test1", "test2"],
         });
       }
-      
+
       const afterPopulateHeap = process.memoryUsage().heapUsed;
       const memoryUsedMB = (afterPopulateHeap - initialHeap) / 1024 / 1024;
       const stats = cache.getStats();
@@ -141,7 +146,9 @@ describe('Stress Testing', () => {
       console.log(`\n📊 Stress Test: Cache memory (10K entries)`);
       console.log(`   Entries: ${stats.keys}`);
       console.log(`   Memory used: ${memoryUsedMB.toFixed(2)}MB`);
-      console.log(`   Per entry: ${((memoryUsedMB * 1024) / stats.keys).toFixed(2)}KB`);
+      console.log(
+        `   Per entry: ${((memoryUsedMB * 1024) / stats.keys).toFixed(2)}KB`,
+      );
 
       // Should use less than 100MB for 10K entries
       expect(memoryUsedMB).toBeLessThan(100);
@@ -151,21 +158,21 @@ describe('Stress Testing', () => {
     });
   });
 
-  describe('Cache Stress Tests', () => {
-    test('cache handles rapid write/evict cycles', () => {
+  describe("Cache Stress Tests", () => {
+    test("cache handles rapid write/evict cycles", () => {
       const cache = new VerdictCache({ ttlSeconds: 3600, maxKeys: 1000 });
-      
+
       const start = performance.now();
-      
+
       // Write 5000 entries - will trigger evictions after 1000
       for (let i = 0; i < 5000; i++) {
         cache.set(`evict_hash_${i}`, {
-          verdict: 'benign',
+          verdict: "benign",
           confidence: 0.9,
           timestamp: Date.now(),
         });
       }
-      
+
       const elapsed = performance.now() - start;
       const stats = cache.getStats();
 
@@ -181,25 +188,25 @@ describe('Stress Testing', () => {
       cache.close();
     });
 
-    test('cache handles burst read after populate', () => {
+    test("cache handles burst read after populate", () => {
       const cache = new VerdictCache({ ttlSeconds: 3600, maxKeys: 5000 });
-      
+
       // Populate
       for (let i = 0; i < 5000; i++) {
         cache.set(`burst_hash_${i}`, {
-          verdict: 'benign',
+          verdict: "benign",
           confidence: 0.95,
           timestamp: Date.now(),
         });
       }
 
       const start = performance.now();
-      
+
       // Burst read all entries
       for (let i = 0; i < 5000; i++) {
         cache.get(`burst_hash_${i}`);
       }
-      
+
       const elapsed = performance.now() - start;
       const stats = cache.getStats();
 
@@ -216,14 +223,14 @@ describe('Stress Testing', () => {
     });
   });
 
-  describe('Circuit Breaker Stress', () => {
-    test('circuit breaker handles rapid state transitions', async () => {
+  describe("Circuit Breaker Stress", () => {
+    test("circuit breaker handles rapid state transitions", async () => {
       const breaker = new CircuitBreaker({
         failureThreshold: 3,
         successThreshold: 2,
         timeoutMs: 50,
         windowMs: 100,
-        name: 'stress-circuit',
+        name: "stress-circuit",
       });
 
       let transitions = 0;
@@ -231,13 +238,13 @@ describe('Stress Testing', () => {
       let successes = 0;
 
       const start = performance.now();
-      
+
       for (let cycle = 0; cycle < 10; cycle++) {
         // Trigger failures to open circuit
         for (let i = 0; i < 5; i++) {
           try {
             await breaker.execute(async () => {
-              throw new Error('fail');
+              throw new Error("fail");
             });
           } catch {
             failures++;
@@ -245,12 +252,12 @@ describe('Stress Testing', () => {
         }
 
         // Wait for timeout
-        await new Promise(resolve => setTimeout(resolve, 60));
+        await new Promise((resolve) => setTimeout(resolve, 60));
 
         // Recover with successes
         for (let i = 0; i < 5; i++) {
           try {
-            await breaker.execute(async () => 'success');
+            await breaker.execute(async () => "success");
             successes++;
           } catch {
             failures++;
@@ -259,7 +266,7 @@ describe('Stress Testing', () => {
 
         transitions++;
       }
-      
+
       const elapsed = performance.now() - start;
 
       console.log(`\n📊 Stress Test: Circuit breaker transitions`);
@@ -272,25 +279,25 @@ describe('Stress Testing', () => {
       expect(transitions).toBe(10);
     });
 
-    test('circuit breaker handles concurrent access', async () => {
+    test("circuit breaker handles concurrent access", async () => {
       const breaker = new CircuitBreaker({
         failureThreshold: 10,
         successThreshold: 5,
         timeoutMs: 1000,
         windowMs: 5000,
-        name: 'concurrent-circuit',
+        name: "concurrent-circuit",
       });
 
       const concurrency = 100;
       let completed = 0;
 
       const start = performance.now();
-      
+
       const promises = Array.from({ length: concurrency }, async (_, i) => {
         try {
           await breaker.execute(async () => {
             // Simulate varying work
-            await new Promise(resolve => setTimeout(resolve, i % 10));
+            await new Promise((resolve) => setTimeout(resolve, i % 10));
             return `result-${i}`;
           });
           completed++;
@@ -300,7 +307,7 @@ describe('Stress Testing', () => {
       });
 
       await Promise.all(promises);
-      
+
       const elapsed = performance.now() - start;
 
       console.log(`\n📊 Stress Test: Concurrent circuit breaker access`);
@@ -313,35 +320,42 @@ describe('Stress Testing', () => {
     });
   });
 
-  describe('Processing Pipeline Stress', () => {
-    test('handles 500 URLs in batch without degradation', async () => {
-      const urls = Array.from({ length: 500 }, (_, i) => 
-        `https://stress-test-${i}.example.com/path/${i}?id=${i}&token=${Math.random()}`
+  describe("Processing Pipeline Stress", () => {
+    test("handles 500 URLs in batch without degradation", async () => {
+      const urls = Array.from(
+        { length: 500 },
+        (_, i) =>
+          `https://stress-test-${i}.example.com/path/${i}?id=${i}&token=${Math.random()}`,
       );
 
       const timings: number[] = [];
       const batchSize = 50;
-      
+
       for (let batch = 0; batch < urls.length / batchSize; batch++) {
-        const batchUrls = urls.slice(batch * batchSize, (batch + 1) * batchSize);
+        const batchUrls = urls.slice(
+          batch * batchSize,
+          (batch + 1) * batchSize,
+        );
         const start = performance.now();
-        
-        await Promise.all(batchUrls.map(async (url) => {
-          const normalized = normalizeUrl(url);
-          if (!normalized) return null;
 
-          const hash = urlHash(normalized);
-          const parsedUrl = new URL(normalized);
-          const heuristics = extraHeuristics(parsedUrl);
-          const homoglyph = detectHomoglyphs(parsedUrl.hostname);
+        await Promise.all(
+          batchUrls.map(async (url) => {
+            const normalized = normalizeUrl(url);
+            if (!normalized) return null;
 
-          return scoreFromSignals({
-            ...heuristics,
-            homoglyph,
-            domainAgeDays: parseInt(hash.slice(0, 4), 16) % 365,
-          });
-        }));
-        
+            const hash = urlHash(normalized);
+            const parsedUrl = new URL(normalized);
+            const heuristics = extraHeuristics(parsedUrl);
+            const homoglyph = detectHomoglyphs(parsedUrl.hostname);
+
+            return scoreFromSignals({
+              ...heuristics,
+              homoglyph,
+              domainAgeDays: parseInt(hash.slice(0, 4), 16) % 365,
+            });
+          }),
+        );
+
         timings.push(performance.now() - start);
       }
 
@@ -354,14 +368,16 @@ describe('Stress Testing', () => {
       console.log(`   Avg batch time: ${avgBatchTime.toFixed(2)}ms`);
       console.log(`   Min batch time: ${minBatchTime.toFixed(2)}ms`);
       console.log(`   Max batch time: ${maxBatchTime.toFixed(2)}ms`);
-      console.log(`   Variance: ${((maxBatchTime - minBatchTime) / avgBatchTime * 100).toFixed(1)}%`);
+      console.log(
+        `   Variance: ${(((maxBatchTime - minBatchTime) / avgBatchTime) * 100).toFixed(1)}%`,
+      );
 
       // Performance should be consistent (no more than 3x variance)
       expect(maxBatchTime).toBeLessThan(avgBatchTime * 3);
       expect(avgBatchTime).toBeLessThan(500); // <500ms per batch of 50
     });
 
-    test('handles mixed complexity workload', async () => {
+    test("handles mixed complexity workload", async () => {
       const workloads = {
         simple: Array.from({ length: 100 }, (_, i) => ({
           url: `https://simple${i}.com/`,
@@ -379,7 +395,7 @@ describe('Stress Testing', () => {
           url: `https://complex${i}.org/deep/path/${i}?many=params&here=true`,
           signals: {
             vtMalicious: i % 5,
-            gsbThreatTypes: i % 10 === 0 ? ['MALWARE'] : [],
+            gsbThreatTypes: i % 10 === 0 ? ["MALWARE"] : [],
             phishtankVerified: i % 20 === 0,
             domainAgeDays: i % 30,
             redirectCount: i % 6,
@@ -390,7 +406,7 @@ describe('Stress Testing', () => {
               unicodeHostname: `complex${i}.org`,
               normalizedDomain: `complex${i}.org`,
               confusableChars: [],
-              riskLevel: 'medium' as const,
+              riskLevel: "medium" as const,
               riskReasons: [],
             },
           } as Signals,
@@ -401,14 +417,16 @@ describe('Stress Testing', () => {
 
       for (const [complexity, items] of Object.entries(workloads)) {
         const start = performance.now();
-        
-        await Promise.all(items.map(async ({ url, signals }) => {
-          const normalized = normalizeUrl(url);
-          if (!normalized) return null;
-          urlHash(normalized);
-          return scoreFromSignals(signals);
-        }));
-        
+
+        await Promise.all(
+          items.map(async ({ url, signals }) => {
+            const normalized = normalizeUrl(url);
+            if (!normalized) return null;
+            urlHash(normalized);
+            return scoreFromSignals(signals);
+          }),
+        );
+
         results[complexity] = {
           elapsed: performance.now() - start,
           count: items.length,
@@ -417,7 +435,9 @@ describe('Stress Testing', () => {
 
       console.log(`\n📊 Stress Test: Mixed complexity workload`);
       for (const [complexity, { elapsed, count }] of Object.entries(results)) {
-        console.log(`   ${complexity}: ${elapsed.toFixed(2)}ms for ${count} items (${(elapsed / count).toFixed(4)}ms/item)`);
+        console.log(
+          `   ${complexity}: ${elapsed.toFixed(2)}ms for ${count} items (${(elapsed / count).toFixed(4)}ms/item)`,
+        );
       }
 
       // All complexity levels should complete in reasonable time
@@ -427,11 +447,11 @@ describe('Stress Testing', () => {
     });
   });
 
-  describe('Breaking Point Detection', () => {
-    test('identifies scoring throughput limit', () => {
+  describe("Breaking Point Detection", () => {
+    test("identifies scoring throughput limit", () => {
       const signals: Signals = {
         vtMalicious: 3,
-        gsbThreatTypes: ['MALWARE'],
+        gsbThreatTypes: ["MALWARE"],
         domainAgeDays: 15,
         redirectCount: 4,
       };
@@ -442,69 +462,82 @@ describe('Stress Testing', () => {
       for (const duration of durations) {
         let count = 0;
         const end = performance.now() + duration;
-        
+
         while (performance.now() < end) {
           scoreFromSignals(signals);
           count++;
         }
-        
+
         throughputs.push(count / (duration / 1000));
       }
 
-      const avgThroughput = throughputs.reduce((a, b) => a + b, 0) / throughputs.length;
+      const avgThroughput =
+        throughputs.reduce((a, b) => a + b, 0) / throughputs.length;
       const minThroughput = Math.min(...throughputs);
 
       console.log(`\n📊 Breaking Point: Scoring throughput`);
-      console.log(`   Throughputs: ${throughputs.map(t => Math.floor(t).toLocaleString()).join(', ')} ops/sec`);
-      console.log(`   Average: ${Math.floor(avgThroughput).toLocaleString()} ops/sec`);
-      console.log(`   Minimum: ${Math.floor(minThroughput).toLocaleString()} ops/sec`);
+      console.log(
+        `   Throughputs: ${throughputs.map((t) => Math.floor(t).toLocaleString()).join(", ")} ops/sec`,
+      );
+      console.log(
+        `   Average: ${Math.floor(avgThroughput).toLocaleString()} ops/sec`,
+      );
+      console.log(
+        `   Minimum: ${Math.floor(minThroughput).toLocaleString()} ops/sec`,
+      );
 
       // Should maintain at least 100K ops/sec consistently
       expect(minThroughput).toBeGreaterThan(100000);
     });
 
-    test('identifies homoglyph detection limit', () => {
+    test("identifies homoglyph detection limit", () => {
       const domains = [
-        'example.com',
-        'gооgle.com',
-        'раyраl.соm',
-        'microsoft.com',
-        'xn--n3h.example.com',
+        "example.com",
+        "gооgle.com",
+        "раyраl.соm",
+        "microsoft.com",
+        "xn--n3h.example.com",
       ];
 
       const iterations = 5000;
       const start = performance.now();
-      
+
       for (let i = 0; i < iterations; i++) {
         detectHomoglyphs(domains[i % domains.length]);
       }
-      
+
       const elapsed = performance.now() - start;
       const throughput = iterations / (elapsed / 1000);
 
       console.log(`\n📊 Breaking Point: Homoglyph detection`);
       console.log(`   Iterations: ${iterations.toLocaleString()}`);
       console.log(`   Elapsed: ${elapsed.toFixed(2)}ms`);
-      console.log(`   Throughput: ${Math.floor(throughput).toLocaleString()} ops/sec`);
+      console.log(
+        `   Throughput: ${Math.floor(throughput).toLocaleString()} ops/sec`,
+      );
 
       // Should handle at least 1K ops/sec (homoglyph detection is CPU-intensive with confusable library)
       expect(throughput).toBeGreaterThan(1000);
     });
 
-    test('identifies cache capacity limit', () => {
+    test("identifies cache capacity limit", () => {
       const cache = new VerdictCache({ ttlSeconds: 3600, maxKeys: 50000 });
-      
+
       const targetEntries = [1000, 5000, 10000, 25000, 50000];
-      const results: Array<{ entries: number; writeTime: number; readTime: number }> = [];
+      const results: Array<{
+        entries: number;
+        writeTime: number;
+        readTime: number;
+      }> = [];
 
       for (const target of targetEntries) {
         // Clear and repopulate
         cache.clear();
-        
+
         const writeStart = performance.now();
         for (let i = 0; i < target; i++) {
           cache.set(`limit_${target}_${i}`, {
-            verdict: 'benign',
+            verdict: "benign",
             confidence: 0.9,
             timestamp: Date.now(),
           });
@@ -522,14 +555,20 @@ describe('Stress Testing', () => {
 
       console.log(`\n📊 Breaking Point: Cache capacity`);
       for (const { entries, writeTime, readTime } of results) {
-        console.log(`   ${entries.toLocaleString()} entries: write=${writeTime.toFixed(0)}ms, read=${readTime.toFixed(2)}ms`);
+        console.log(
+          `   ${entries.toLocaleString()} entries: write=${writeTime.toFixed(0)}ms, read=${readTime.toFixed(2)}ms`,
+        );
       }
 
       // Write time should scale linearly (not exponentially)
-      const scaleFactor = results[results.length - 1].writeTime / results[0].writeTime;
-      const entriesFactor = targetEntries[targetEntries.length - 1] / targetEntries[0];
-      
-      console.log(`   Scale factor: ${scaleFactor.toFixed(2)}x (entries: ${entriesFactor}x)`);
+      const scaleFactor =
+        results[results.length - 1].writeTime / results[0].writeTime;
+      const entriesFactor =
+        targetEntries[targetEntries.length - 1] / targetEntries[0];
+
+      console.log(
+        `   Scale factor: ${scaleFactor.toFixed(2)}x (entries: ${entriesFactor}x)`,
+      );
 
       // Should not scale worse than 1.5x the linear expectation (allow for GC overhead)
       expect(scaleFactor).toBeLessThan(entriesFactor * 1.5);
@@ -538,10 +577,10 @@ describe('Stress Testing', () => {
     });
   });
 
-  describe('Recovery Tests', () => {
-    test('recovers performance after stress', async () => {
+  describe("Recovery Tests", () => {
+    test("recovers performance after stress", async () => {
       const signals: Signals = { domainAgeDays: 100 };
-      
+
       // Baseline
       const baselineStart = performance.now();
       for (let i = 0; i < 1000; i++) {
@@ -552,21 +591,21 @@ describe('Stress Testing', () => {
       // Stress phase - heavy allocation
       const heavySignals: Signals = {
         vtMalicious: 10,
-        gsbThreatTypes: ['MALWARE', 'SOCIAL_ENGINEERING'],
+        gsbThreatTypes: ["MALWARE", "SOCIAL_ENGINEERING"],
         homoglyph: {
           detected: true,
           isPunycode: true,
           mixedScript: true,
-          unicodeHostname: 'test.com',
-          normalizedDomain: 'test.com',
+          unicodeHostname: "test.com",
+          normalizedDomain: "test.com",
           confusableChars: Array.from({ length: 10 }, (_, i) => ({
             original: String.fromCharCode(0x400 + i),
             confusedWith: String.fromCharCode(0x61 + i),
             position: i,
-            script: 'Cyrillic',
+            script: "Cyrillic",
             alternatives: [],
           })),
-          riskLevel: 'high',
+          riskLevel: "high",
           riskReasons: Array.from({ length: 5 }, (_, i) => `Reason ${i}`),
         },
       };
