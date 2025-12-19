@@ -1,7 +1,7 @@
-import { request } from 'undici';
-import { LocalThreatDatabase } from '../../reputation/local-threat-db';
+import { request } from "undici";
+import { LocalThreatDatabase } from "../../reputation/local-threat-db";
 
-jest.mock('undici', () => ({
+jest.mock("undici", () => ({
   request: jest.fn(),
 }));
 
@@ -14,31 +14,31 @@ class FakePipeline {
   }
 
   del(key: string) {
-    this.calls.push({ method: 'del', args: [key] });
+    this.calls.push({ method: "del", args: [key] });
     this.redis.del(key);
     return this;
   }
 
   sadd(key: string, ...members: string[]) {
-    this.calls.push({ method: 'sadd', args: [key, members] });
+    this.calls.push({ method: "sadd", args: [key, members] });
     this.redis.sadd(key, ...members);
     return this;
   }
 
   set(key: string, value: string | number) {
-    this.calls.push({ method: 'set', args: [key, value] });
+    this.calls.push({ method: "set", args: [key, value] });
     this.redis.set(key, String(value));
     return this;
   }
 
   expire(key: string, ttl: number) {
-    this.calls.push({ method: 'expire', args: [key, ttl] });
+    this.calls.push({ method: "expire", args: [key, ttl] });
     this.redis.expire(key, ttl);
     return this;
   }
 
   async exec() {
-    return this.calls.map(() => [null, 'OK']);
+    return this.calls.map(() => [null, "OK"]);
   }
 }
 
@@ -58,7 +58,7 @@ class FakeRedis {
 
   async set(key: string, value: string) {
     this.store.set(key, value);
-    return 'OK';
+    return "OK";
   }
 
   async del(key: string) {
@@ -104,40 +104,40 @@ class FakeRedis {
   }
 }
 
-describe('LocalThreatDatabase', () => {
+describe("LocalThreatDatabase", () => {
   const undiciRequest = request as jest.MockedFunction<typeof request>;
 
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('scores matches from OpenPhish and collaborative data', async () => {
+  it("scores matches from OpenPhish and collaborative data", async () => {
     const redis = new FakeRedis();
     const db = new LocalThreatDatabase(redis as any, {
-      feedUrl: 'https://example.com/feed.txt',
+      feedUrl: "https://example.com/feed.txt",
       updateIntervalMs: 60000,
     });
 
-    await redis.sadd('threat_db:openphish', 'http://example.com/path');
-    await redis.zadd('threat_db:collaborative', 0.9, 'http://example.com/path');
+    await redis.sadd("threat_db:openphish", "http://example.com/path");
+    await redis.zadd("threat_db:collaborative", 0.9, "http://example.com/path");
 
-    const result = await db.check('http://example.com/path?utm=123', 'hash');
+    const result = await db.check("http://example.com/path?utm=123", "hash");
 
     expect(result.openphishMatch).toBe(true);
     expect(result.collaborativeMatch).toBe(true);
     expect(result.score).toBeGreaterThan(2);
     expect(result.reasons).toEqual(
       expect.arrayContaining([
-        'URL found in OpenPhish feed',
-        'URL flagged by collaborative learning',
+        "URL found in OpenPhish feed",
+        "URL flagged by collaborative learning",
       ]),
     );
   });
 
-  it('updates the OpenPhish feed and normalizes URLs', async () => {
+  it("updates the OpenPhish feed and normalizes URLs", async () => {
     const redis = new FakeRedis();
     const db = new LocalThreatDatabase(redis as any, {
-      feedUrl: 'https://example.com/feed.txt',
+      feedUrl: "https://example.com/feed.txt",
       updateIntervalMs: 60000,
     });
 
@@ -146,62 +146,79 @@ describe('LocalThreatDatabase', () => {
       body: {
         text: async () =>
           [
-            'http://Example.com/path?utm=1#frag',
-            'not-a-url',
-            'https://example.com/second',
-          ].join('\n'),
+            "http://Example.com/path?utm=1#frag",
+            "not-a-url",
+            "https://example.com/second",
+          ].join("\n"),
       },
     } as any);
 
     await db.updateOpenPhishFeed();
 
-    const normalized = await redis.sismember('threat_db:openphish', 'http://example.com/path');
-    const normalizedSecond = await redis.sismember('threat_db:openphish', 'https://example.com/second');
+    const normalized = await redis.sismember(
+      "threat_db:openphish",
+      "http://example.com/path",
+    );
+    const normalizedSecond = await redis.sismember(
+      "threat_db:openphish",
+      "https://example.com/second",
+    );
     expect(normalized).toBe(1);
     expect(normalizedSecond).toBe(1);
   });
 
-  it('handles OpenPhish failures without throwing', async () => {
+  it("handles OpenPhish failures without throwing", async () => {
     const redis = new FakeRedis();
     const db = new LocalThreatDatabase(redis as any, {
-      feedUrl: 'https://example.com/feed.txt',
+      feedUrl: "https://example.com/feed.txt",
       updateIntervalMs: 60000,
     });
 
     undiciRequest.mockResolvedValue({
       statusCode: 500,
       body: {
-        text: async () => 'error',
+        text: async () => "error",
       },
     } as any);
 
     await expect(db.updateOpenPhishFeed()).resolves.toBeUndefined();
   });
 
-  it('records collaborative verdicts for suspicious and malicious URLs', async () => {
+  it("records collaborative verdicts for suspicious and malicious URLs", async () => {
     const redis = new FakeRedis();
     const db = new LocalThreatDatabase(redis as any, {
-      feedUrl: 'https://example.com/feed.txt',
+      feedUrl: "https://example.com/feed.txt",
       updateIntervalMs: 60000,
     });
 
-    await db.recordVerdict('http://example.com/path?utm=1', 'suspicious', 0.8);
-    await db.recordVerdict('http://example.com/path2', 'malicious', 0.9);
-    await db.recordVerdict('http://example.com/benign', 'benign', 0.7);
+    await db.recordVerdict("http://example.com/path?utm=1", "suspicious", 0.8);
+    await db.recordVerdict("http://example.com/path2", "malicious", 0.9);
+    await db.recordVerdict("http://example.com/benign", "benign", 0.7);
 
-    expect(await redis.zscore('threat_db:collaborative', 'http://example.com/path')).toBe(0.4);
-    expect(await redis.zscore('threat_db:collaborative', 'http://example.com/path2')).toBe(0.9);
-    expect(await redis.zscore('threat_db:collaborative', 'http://example.com/benign')).toBeNull();
+    expect(
+      await redis.zscore("threat_db:collaborative", "http://example.com/path"),
+    ).toBe(0.4);
+    expect(
+      await redis.zscore("threat_db:collaborative", "http://example.com/path2"),
+    ).toBe(0.9);
+    expect(
+      await redis.zscore(
+        "threat_db:collaborative",
+        "http://example.com/benign",
+      ),
+    ).toBeNull();
     expect(redis.expireCalls.length).toBe(2);
   });
 
-  it('returns zeroed stats on redis errors', async () => {
+  it("returns zeroed stats on redis errors", async () => {
     const redis = new FakeRedis();
     const db = new LocalThreatDatabase(redis as any, {
-      feedUrl: 'https://example.com/feed.txt',
+      feedUrl: "https://example.com/feed.txt",
       updateIntervalMs: 60000,
     });
-    const scardSpy = jest.spyOn(redis, 'scard').mockRejectedValue(new Error('fail'));
+    const scardSpy = jest
+      .spyOn(redis, "scard")
+      .mockRejectedValue(new Error("fail"));
 
     const stats = await db.getStats();
 

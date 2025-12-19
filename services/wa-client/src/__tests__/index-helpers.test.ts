@@ -1,4 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  jest,
+} from "@jest/globals";
 import type { Client } from "whatsapp-web.js";
 import { config, __setPrivateHostnameResult } from "@wbscanner/shared";
 import { __testables, formatGroupVerdict } from "../index";
@@ -102,7 +109,9 @@ describe("wa-client index helpers", () => {
 
   it("normalizes control-plane base URLs and validates protocols", () => {
     process.env.CONTROL_PLANE_BASE = "http://example.com/scan/";
-    expect(__testables.resolveControlPlaneBase()).toBe("http://example.com/scan");
+    expect(__testables.resolveControlPlaneBase()).toBe(
+      "http://example.com/scan",
+    );
 
     process.env.CONTROL_PLANE_BASE = "ftp://bad.example.com";
     expect(__testables.resolveControlPlaneBase()).toBe(
@@ -167,7 +176,10 @@ describe("wa-client index helpers", () => {
     const chat = {
       id: { _serialized: "chat-1" },
       isGroup: true,
-      sendMessage: jest.fn(async () => ({ id: { _serialized: "v-1" }, ack: 0 })),
+      sendMessage: jest.fn(async () => ({
+        id: { _serialized: "v-1" },
+        ack: 0,
+      })),
     };
     const client = {
       getMessageById: jest.fn(async () => null),

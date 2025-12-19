@@ -141,9 +141,7 @@ describe("EnhancedSecurityAnalyzer", () => {
     (advancedHeuristics as jest.Mock).mockRejectedValue(new Error("boom"));
     (dnsIntelligence as jest.Mock).mockRejectedValue(new Error("dns"));
     localThreatDbMock.check.mockRejectedValueOnce(new Error("local"));
-    (certificateIntelligence as jest.Mock).mockRejectedValue(
-      new Error("cert"),
-    );
+    (certificateIntelligence as jest.Mock).mockRejectedValue(new Error("cert"));
     (httpFingerprinting as jest.Mock).mockResolvedValue({
       suspicionScore: 0.2,
       reasons: ["http"],

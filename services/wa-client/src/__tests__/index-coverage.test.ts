@@ -194,9 +194,9 @@ describe("wa-client index coverage", () => {
       "123@c.us",
     ]);
     expect(__testables.expandWidVariants("123")).toEqual(["123"]);
-    expect(__testables.contextKey({ chatId: "c1", messageId: "m1", urlHash: "h1" })).toBe(
-      "c1:m1:h1",
-    );
+    expect(
+      __testables.contextKey({ chatId: "c1", messageId: "m1", urlHash: "h1" }),
+    ).toBe("c1:m1:h1");
   });
 
   it("resolves auth strategy and handles force reset fallback", async () => {
@@ -209,10 +209,7 @@ describe("wa-client index coverage", () => {
     const redis = __testables.redis as {
       set: (key: string, value: string) => Promise<unknown>;
     };
-    await redis.set(
-      "remoteauth:v1:test-client:RemoteAuth-test-client",
-      "1",
-    );
+    await redis.set("remoteauth:v1:test-client:RemoteAuth-test-client", "1");
 
     await __testables.resolveAuthStrategy(redis as any);
     expect(shared.config.wa.remoteAuth.forceNewSession).toBe(false);
@@ -260,12 +257,10 @@ describe("wa-client index coverage", () => {
   it("collects verdict media and sends corrections", async () => {
     const { __testables } = mod;
 
-    const fetchSpy = jest
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue({
-        ok: true,
-        arrayBuffer: async () => new TextEncoder().encode("image").buffer,
-      } as Response);
+    const fetchSpy = jest.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      arrayBuffer: async () => new TextEncoder().encode("image").buffer,
+    } as Response);
 
     __testables.setSessionSnapshotForTests("ready", "bot@c.us");
 
@@ -441,7 +436,11 @@ describe("wa-client index coverage", () => {
       id: { id: "msg-1", _serialized: "msg-1" },
       getChat: jest.fn(async () => chat),
     } as unknown as Message;
-    await client.emit("message_revoke_everyone", revokedMessage, revokedMessage);
+    await client.emit(
+      "message_revoke_everyone",
+      revokedMessage,
+      revokedMessage,
+    );
 
     client.getMessageById = jest.fn(async () => ({
       getChat: jest.fn(async () => chat),
@@ -453,11 +452,7 @@ describe("wa-client index coverage", () => {
       timestamp: 1,
     });
 
-    await client.emit(
-      "message_ack",
-      { id: { _serialized: "ack-1" } },
-      2,
-    );
+    await client.emit("message_ack", { id: { _serialized: "ack-1" } }, 2);
 
     await client.emit("group_join", {
       author: "user-1",
