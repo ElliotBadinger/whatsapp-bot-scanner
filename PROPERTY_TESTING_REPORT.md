@@ -2,11 +2,18 @@
 
 ## Executive Summary
 
-**Date:** 2025-12-19T18:15:00Z  
-**Property Tests:** 38 (13 existing + 25 new)  
+**Date:** 2025-12-19T20:45:00Z  
+**Property Tests:** 120 (13 existing + 107 new)  
 **Runs Per Test:** 10,000 (CI) / 1,000 (local)  
-**Total Test Cases:** 380,000  
+**Total Test Cases:** 1,200,000 (CI mode)  
 **Status:** ✅ All properties hold
+
+### Testing Categories
+- **Model-Based Testing:** CircuitBreaker state machine (9 tests)
+- **Stateful Property Tests:** VerdictCache behavior (12 tests)
+- **Metamorphic Testing:** Score transformations (15 tests)
+- **Fuzz Testing:** Crash resistance & boundary values (14 tests)
+- **Core Property Tests:** Scoring, Homoglyph, URL (70 tests)
 
 ---
 
@@ -239,8 +246,82 @@ The scoring algorithm is order-independent, allowing parallel evaluation of sign
 | File | Description | Tests |
 |------|-------------|-------|
 | `packages/shared/src/__tests__/scoring.property.test.ts` | Original property tests (enhanced) | 13 |
-| `packages/shared/src/__tests__/scoring.advanced.property.test.ts` | New advanced property tests | 25 |
+| `packages/shared/src/__tests__/scoring.advanced.property.test.ts` | Advanced scoring invariants | 25 |
+| `packages/shared/src/__tests__/scoring.metamorphic.test.ts` | Metamorphic transformations | 15 |
+| `packages/shared/src/__tests__/circuit-breaker.property.test.ts` | Model-based state machine tests | 9 |
+| `packages/shared/src/__tests__/verdict-cache.property.test.ts` | Stateful cache behavior | 12 |
+| `packages/shared/src/__tests__/homoglyph.property.test.ts` | Homoglyph detection properties | 14 |
+| `packages/shared/src/__tests__/url.property.test.ts` | URL function properties | 18 |
+| `packages/shared/src/__tests__/fuzz.property.test.ts` | Fuzz testing / crash resistance | 14 |
 | `packages/shared/src/__tests__/arbitraries.ts` | Custom generators and shrinking | N/A |
+
+---
+
+## Advanced Testing Strategies
+
+### 1. Model-Based Testing (CircuitBreaker)
+
+Tests state machine transitions using property-based commands:
+
+```
+CLOSED → OPEN (on failure threshold)
+OPEN → HALF_OPEN (after timeout)
+HALF_OPEN → CLOSED (on success threshold)  
+HALF_OPEN → OPEN (on failure)
+```
+
+**Properties Verified:**
+- Initial state is always CLOSED
+- State is always one of three valid values
+- Failure threshold is respected
+- State change callbacks fire with correct arguments
+
+### 2. Stateful Property Tests (VerdictCache)
+
+Tests cache behavior over sequences of operations:
+
+**Properties Verified:**
+- Set/Get consistency (retrieved value equals stored value)
+- Delete removes entries correctly
+- Clear resets all state
+- Hit/miss statistics are accurate
+- Random operation sequences maintain consistency
+
+### 3. Metamorphic Testing (Scoring)
+
+Tests score relationships under transformations (MR = Metamorphic Relation):
+
+| ID | Relation | Description |
+|----|----------|-------------|
+| MR1 | Additive | Adding threat signal never decreases score |
+| MR2 | Subtractive | Removing threat signal never increases score |
+| MR3 | Domain Age | Older domain age never increases score |
+| MR4 | VT Diminishing | VT malicious count has diminishing returns |
+| MR5 | Redirect Threshold | Threshold effect at 3 redirects |
+| MR6 | Homoglyph Composition | Risk levels compose: none ≤ low ≤ medium ≤ high |
+| MR7 | Overflow Protection | Multiple blocklist hits don't overflow score |
+| MR8-9 | Override Invariance | Allow/deny overrides are absolute |
+| MR10 | Heuristics Flag | heuristicsOnly adds reason but not score |
+| MR11-15 | Cache/Symmetry | Consistent verdicts and TTL behavior |
+
+### 4. Fuzz Testing Integration
+
+JavaScript-native fuzzing using fast-check:
+
+**Boundary Value Testing:**
+- Extreme numeric values (-1M to +1M)
+- Domain age edge cases (NaN, Infinity, null)
+- Boolean field combinations
+
+**Unicode Edge Cases:**
+- Mixed script combinations (Latin + Cyrillic + Greek)
+- Punycode edge cases
+- Empty and whitespace inputs
+
+**Crash Resistance:**
+- Malformed URLs handled gracefully
+- Arbitrary signals never crash
+- Large input stress testing
 
 ---
 
@@ -269,24 +350,35 @@ npm test -- --testPathPattern="scoring.advanced.property" -t "idempotent"
 1. ✅ **Integrate into CI pipeline** - Already configured for 10K runs when CI=true
 2. ✅ **Document invariants** - All 8 discovered invariants documented above
 
+### Completed Enhancements ✅
+1. ✅ **Model-based testing** - CircuitBreaker state machine tests (9 tests)
+2. ✅ **Stateful property tests** - VerdictCache behavior over time (12 tests)
+3. ✅ **Metamorphic testing** - Score relationships under transformations (15 tests)
+4. ✅ **Fuzz testing integration** - JavaScript-native fuzzing with fast-check (14 tests)
+
 ### Future Enhancements
-1. **Add model-based testing** - Generate valid signal sequences and verify state transitions
-2. **Stateful property tests** - Test caching behavior over time
-3. **Metamorphic testing** - Verify score relationships under transformations
-4. **Fuzz testing integration** - Connect with AFL/libFuzzer for deeper coverage
+1. **AFL/libFuzzer integration** - Native fuzzing for C/C++ dependencies
+2. **Mutation testing integration** - Combine with Stryker for mutation coverage
+3. **Performance property tests** - Verify O(n) complexity bounds
 
 ---
 
 ## Conclusion
 
-Property-based testing has been significantly enhanced:
+Property-based testing has been comprehensively enhanced with advanced testing strategies:
 
-- **29× more test cases** (380K vs 13K in CI mode)
-- **192% more property tests** (38 vs 13)
+- **92× more test cases** (1.2M vs 13K in CI mode)
+- **823% more property tests** (120 vs 13)
+- **4 advanced testing strategies** implemented:
+  - Model-based testing for state machines
+  - Stateful property tests for caching
+  - Metamorphic testing for score transformations
+  - Fuzz testing for crash resistance
 - **8 documented invariants** for optimization opportunities
 - **7 custom generators** for targeted testing scenarios
 - **Shrinking strategies** for efficient debugging
+- **Full module coverage**: Scoring, CircuitBreaker, VerdictCache, Homoglyph, URL
 
-All properties hold under extensive randomized testing with 10,000 iterations per test.
+All 120 properties hold under extensive randomized testing with 10,000 iterations per test.
 
 **Status:** ✅ PRODUCTION READY
