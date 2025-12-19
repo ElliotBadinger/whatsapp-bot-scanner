@@ -183,14 +183,21 @@ describe("Scoring Algorithm - Property-Based Tests", () => {
 
   test("PROPERTY: increasing vtMalicious does not lower score", () => {
     fc.assert(
-      fc.property(signalsNoOverrideArb, fc.nat(5), (signals, malicious) => {
-        const baseline = { ...signals, vtMalicious: malicious };
-        const elevated = { ...signals, vtMalicious: malicious + 1 };
-        const scoreBaseline = scoreFromSignals(baseline).score;
-        const scoreElevated = scoreFromSignals(elevated).score;
+      fc.property(
+        signalsNoOverrideArb,
+        fc.oneof(
+          fc.constantFrom(0, 1, 2, 3, 4, 5, 9, 10, 19, 20),
+          fc.integer({ min: 0, max: 100 }),
+        ),
+        (signals, malicious) => {
+          const baseline = { ...signals, vtMalicious: malicious };
+          const elevated = { ...signals, vtMalicious: malicious + 1 };
+          const scoreBaseline = scoreFromSignals(baseline).score;
+          const scoreElevated = scoreFromSignals(elevated).score;
 
-        expect(scoreElevated).toBeGreaterThanOrEqual(scoreBaseline);
-      }),
+          expect(scoreElevated).toBeGreaterThanOrEqual(scoreBaseline);
+        },
+      ),
       { numRuns: 1000 },
     );
   });
