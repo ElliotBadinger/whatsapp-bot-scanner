@@ -15,12 +15,12 @@ test("GSB score is exactly 10 (mutation boundary)", () => {
 test("redirect count exactly 3 triggers suspicious", () => {
   const result = scoreFromSignals({ redirectCount: 3 });
   expect(result.score).toBeGreaterThanOrEqual(2);
-  expect(result.reasons.some(r => r.includes("redirect"))).toBe(true);
+  expect(result.reasons.some((r) => r.includes("redirect"))).toBe(true);
 });
 
 test("redirect count exactly 2 does not trigger redirect warning", () => {
   const result = scoreFromSignals({ redirectCount: 2 });
-  expect(result.reasons.some(r => r.includes("redirect"))).toBe(false);
+  expect(result.reasons.some((r) => r.includes("redirect"))).toBe(false);
 });
 
 test("gsb additional threat types are malicious", () => {
