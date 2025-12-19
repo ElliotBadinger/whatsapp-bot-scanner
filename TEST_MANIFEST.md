@@ -62,3 +62,162 @@
 - **Edge Cases:** interval suppression, concurrent invocation guard.
 - **Discovered Issues:** wa-client Jest coverage required `coverageProvider: "v8"`.
 - **Flakiness:** 0/10 runs failed.
+
+## File: packages/shared/src/**tests**/reputation/local-threat-db.test.ts
+
+- **Coverage:** local-threat-db.ts 83.65% lines, 78.26% branches (coverage run with `--coverage`).
+- **Test Count:** 5 unit tests.
+- **Runtime:** ~2.6s without coverage, ~6.9s with coverage.
+- **Edge Cases:** OpenPhish feed parsing/normalization, collaborative scoring thresholds, feed errors, stats error fallback.
+- **Discovered Issues:** ts-jest warns about deprecated `globals` config during runs.
+- **Flakiness:** 0/10 runs failed.
+
+## File: services/wa-client/src/**tests**/dataKeyProvider.test.ts
+
+- **Coverage:** dataKeyProvider.ts 87.87% lines, 69.23% branches (coverage run with `--coverage`).
+- **Test Count:** 4 unit tests.
+- **Runtime:** ~0.7s without coverage, ~1.0s with coverage.
+- **Edge Cases:** KMS/Vault/env key resolution, cache reuse, missing configuration error.
+- **Discovered Issues:** Node emits Experimental VM Modules warning under ESM tests.
+- **Flakiness:** 0/10 runs failed.
+
+## File: services/wa-client/src/**tests**/baileys-auth-store.test.ts
+
+- **Coverage:** baileys-auth-store.ts 96.41% lines, 83.33% branches (coverage run with `--coverage`).
+- **Test Count:** 4 unit tests.
+- **Runtime:** ~1.3s without coverage, ~1.8s with coverage.
+- **Edge Cases:** existing vs new creds, key store set/get/delete, session existence check.
+- **Discovered Issues:** Node emits Experimental VM Modules warning under ESM tests.
+- **Flakiness:** 0/10 runs failed.
+
+## File: services/wa-client/src/**tests**/pairing-orchestrator.test.ts
+
+- **Coverage:** pairingOrchestrator.ts 74.41% lines, 73.01% branches (coverage run with `--coverage`).
+- **Test Count:** 5 unit tests.
+- **Runtime:** ~0.6s without coverage, ~1.0s with coverage.
+- **Edge Cases:** success scheduling, rate-limit backoff, manual-only guard, max-attempt fallback/forced retry.
+- **Discovered Issues:** Node emits Experimental VM Modules warning under ESM tests.
+- **Flakiness:** 0/10 runs failed.
+
+## File: services/scan-orchestrator/src/**tests**/blocklists.test.ts
+
+- **Coverage:** blocklists.ts 93.89% lines, 66.66% branches (coverage run with `--coverage`).
+- **Test Count:** 3 unit tests.
+- **Runtime:** ~2.7s without coverage, ~7.2s with coverage.
+- **Edge Cases:** GSB clean redundancy, disabled Phishtank path, fallback scenarios with errors/missing API key.
+- **Discovered Issues:** ts-jest warns about deprecated `globals` config during runs.
+- **Flakiness:** 0/10 runs failed.
+
+## File: services/control-plane/src/**tests**/database.test.ts
+
+- **Coverage:** database.ts 76.92% lines (coverage run with `--coverage`).
+- **Test Count:** 4 unit tests.
+- **Runtime:** ~2.3s without coverage, ~6.7s with coverage.
+- **Edge Cases:** migration lock behavior, pool re-use, retry handling.
+- **Discovered Issues:** ts-jest warns about deprecated `globals` config during runs.
+- **Flakiness:** 0/10 runs failed.
+
+## File: services/control-plane/src/**tests**/control-plane-extra.test.ts
+
+- **Coverage:** index.ts 55.36% lines (coverage run with `--coverage`).
+- **Test Count:** 7 HTTP route tests.
+- **Runtime:** ~3.1s without coverage, ~8.3s with coverage.
+- **Edge Cases:** scan request schema enforcement, admin auth errors, verdict cache invalidation.
+- **Discovered Issues:** ts-jest warns about deprecated `globals` config during runs.
+- **Flakiness:** 0/10 runs failed.
+
+## File: services/scan-orchestrator/src/**tests**/database.test.ts
+
+- **Coverage:** database.ts 80.89% lines (coverage run with `--coverage`).
+- **Test Count:** 5 unit tests.
+- **Runtime:** ~2.4s without coverage, ~7.1s with coverage.
+- **Edge Cases:** pool creation guard, health check behavior, teardown handling.
+- **Discovered Issues:** ts-jest warns about deprecated `globals` config during runs.
+- **Flakiness:** 0/10 runs failed.
+
+## File: services/scan-orchestrator/src/**tests**/enhanced-security.test.ts
+
+- **Coverage:** enhanced-security.ts 86.98% lines (coverage run with `--coverage`).
+- **Test Count:** 6 unit tests.
+- **Runtime:** ~2.9s without coverage, ~8.1s with coverage.
+- **Edge Cases:** VT positive ratios, early exits when disabled, evidence aggregation.
+- **Discovered Issues:** ts-jest warns about deprecated `globals` config during runs.
+- **Flakiness:** 0/10 runs failed.
+
+## File: services/scan-orchestrator/src/**tests**/index-coverage.test.ts
+
+- **Coverage:** index.ts 39.58% lines (coverage run with `--coverage`).
+- **Test Count:** 5 unit tests.
+- **Runtime:** ~3.4s without coverage, ~8.2s with coverage.
+- **Edge Cases:** cached verdict handling, degraded mode verdict generation, queue metrics updates.
+- **Discovered Issues:** ts-jest warns about deprecated `globals` config during runs.
+- **Flakiness:** 0/10 runs failed.
+
+## File: services/scan-orchestrator/src/**tests**/scan-worker.test.ts
+
+- **Coverage:** overall 20.2% lines in scan-orchestrator for this focused run (coverage run with `--coverage`).
+- **Test Count:** 4 unit tests.
+- **Runtime:** ~3.2s without coverage, ~8.5s with coverage.
+- **Edge Cases:** invalid job metrics, cached verdict short-circuit, deep-scan enqueue behavior.
+- **Discovered Issues:** ts-jest warns about deprecated `globals` config during runs.
+- **Flakiness:** 0/10 runs failed.
+
+## File: services/scan-orchestrator/src/**tests**/urlscan-artifacts.test.ts
+
+- **Coverage:** urlscan-artifacts.ts 85.54% lines, 67.85% branches (coverage run with `--coverage`).
+- **Test Count:** 3 unit tests.
+- **Runtime:** ~3.7s without coverage, ~7.1s with coverage.
+- **Edge Cases:** invalid identifier rejection, partial download failures, null screenshot handling.
+- **Discovered Issues:** ts-jest warns about deprecated `globals` config during runs.
+- **Flakiness:** 0/10 runs failed.
+
+## File: services/scan-orchestrator/src/**tests**/verdict-generation.test.ts
+
+- **Coverage:** overall 26.07% lines in scan-orchestrator for this focused run (coverage run with `--coverage`).
+- **Test Count:** 5 unit tests.
+- **Runtime:** ~3.9s without coverage, ~11.5s with coverage.
+- **Edge Cases:** cached verdict routing, retry metrics, manual overrides, degraded mode queueing.
+- **Discovered Issues:** ts-jest warns about deprecated `globals` config during runs.
+- **Flakiness:** 0/10 runs failed.
+
+## File: services/wa-client/src/**tests**/admin-commands.test.ts
+
+- **Coverage:** overall 27.56% lines in wa-client for this focused run (coverage run with `--coverage`).
+- **Test Count:** 5 unit tests.
+- **Runtime:** ~0.95s without coverage, ~1.5s with coverage.
+- **Edge Cases:** non-admin rejection, command routing for mute/rescan/consent/pairing, unknown command fallback.
+- **Discovered Issues:** Node emits Experimental VM Modules warning under ESM tests.
+- **Flakiness:** 0/10 runs failed.
+
+## File: services/wa-client/src/**tests**/baileys-adapter-coverage.test.ts
+
+- **Coverage:** baileys-adapter.ts 79.88% lines, 44% branches (coverage run with `--coverage`).
+- **Test Count:** 8 unit tests.
+- **Runtime:** ~0.53s without coverage, ~1.0s with coverage.
+- **Edge Cases:** connection updates, message conversion, supported send paths, group membership operations.
+- **Discovered Issues:** Node emits Experimental VM Modules warning under ESM tests.
+- **Flakiness:** 0/10 runs failed.
+
+## File: services/wa-client/src/**tests**/index-coverage.test.ts
+
+- **Coverage:** overall 61.07% lines in wa-client for this focused run (coverage run with `--coverage`).
+- **Test Count:** 6 unit tests.
+- **Runtime:** ~0.68s without coverage, ~1.3s with coverage.
+- **Edge Cases:** pairing cache helpers, auth strategy resolution, verdict media attachments, ack retry scheduling.
+- **Discovered Issues:** Node emits Experimental VM Modules warning under ESM tests.
+- **Flakiness:** 0/10 runs failed.
+
+## File: services/wa-client/src/**tests**/index-helpers.test.ts
+
+- **Coverage:** overall 35.61% lines in wa-client for this focused run (coverage run with `--coverage`).
+- **Test Count:** 13 unit tests.
+- **Runtime:** ~1.1s without coverage, ~1.5s with coverage.
+- **Edge Cases:** pairing cache reads, consent tracking, allow-list matching, verdict messaging/attachments.
+- **Discovered Issues:** Node emits Experimental VM Modules warning under ESM tests.
+- **Flakiness:** 0/10 runs failed.
+
+## Suite: npm run test:coverage
+
+- **Coverage:** global lines 90.16% (7317/8116 lines covered).
+- **Runtime:** full workspace run.
+- **Warnings:** ts-jest `globals` deprecation warning in scan-orchestrator/control-plane; Node Experimental VM Modules warning in wa-client tests; intermittent Jest worker exit warning in shared tests.

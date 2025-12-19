@@ -4,6 +4,11 @@ module.exports = {
   testEnvironment: "node",
   coverageProvider: "v8",
   testMatch: ["**/__tests__/**/*.test.ts"],
+  coveragePathIgnorePatterns: [
+    "<rootDir>/src/index.ts",
+    "<rootDir>/src/__tests__/",
+    "<rootDir>/__tests__/mocks/",
+  ],
   extensionsToTreatAsEsm: [".ts"],
   transform: {
     "^.+\\.tsx?$": [

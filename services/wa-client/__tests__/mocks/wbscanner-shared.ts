@@ -8,6 +8,10 @@ const histogram = () => ({ observe: noop, labels: () => ({ observe: noop }) });
 export const config = {
   queues: {
     scanRequest: "scan-request",
+    scanVerdict: "scan-verdict",
+  },
+  features: {
+    attachMediaToVerdicts: true,
   },
   controlPlane: {
     get csrfToken(): string {
@@ -24,10 +28,31 @@ export const config = {
     consentOnJoin: true,
     messageLineageTtlSeconds: 3600,
     verdictMaxRetries: 3,
+    verdictAckTimeoutSeconds: 30,
+    globalRatePerHour: 1000,
+    globalTokenBucketKey: "wa:global",
+    perGroupCooldownSeconds: 2,
+    perGroupHourlyLimit: 100,
+    governanceInterventionsPerHour: 25,
+    membershipAutoApprovePerHour: 25,
+    membershipGlobalHourlyLimit: 200,
+    membershipAutoApproveEnabled: true,
+    headless: true,
+    puppeteerArgs: [],
     remoteAuth: {
+      store: "redis",
       clientId: "default",
-      phoneNumbers: [],
+      phoneNumber: "",
+      dataKey: "",
+      phoneNumbers: ["15551234567"],
       disableQrFallback: false,
+      forceNewSession: false,
+      autoPair: true,
+      maxPairingRetries: 3,
+      pairingRetryDelayMs: 15000,
+      pollingEnabled: false,
+      pairingDelayMs: 0,
+      parallelCheckTimeoutMs: 5000,
       dataPath: "./data",
       backupIntervalMs: 60_000,
     },
@@ -71,19 +96,42 @@ export const metrics = {
   waVerdictsSent: { inc: noop },
   waVerdictAckTimeouts: { labels: () => ({ inc: noop }) },
   waVerdictRetryAttempts: { labels: () => ({ inc: noop }) },
+  waVerdictAckTransitions: { labels: () => ({ inc: noop }) },
+  waVerdictLatency: histogram(),
+  waMessageReactions: { labels: () => ({ inc: noop }) },
+  waMessageRevocations: { labels: () => ({ inc: noop }) },
   waResponseLatency: histogram(),
+  queueJobWait: histogram(),
+  queueProcessingDuration: histogram(),
+  queueCompleted: { labels: () => ({ inc: noop }) },
+  queueRetries: { labels: () => ({ inc: noop }) },
+  queueFailures: { labels: () => ({ inc: noop }) },
 };
 
-export const extractUrls = () => [] as string[];
-export const normalizeUrl = (input: string) => input;
-export const urlHash = (_: string) => "hash";
+let extractUrlsImpl = (_: string) => [] as string[];
+export const __setExtractUrls = (fn: (input: string) => string[]) => {
+  extractUrlsImpl = fn;
+};
+export const extractUrls = (input: string) => extractUrlsImpl(input);
+
+let normalizeUrlImpl = (input: string) => input;
+export const __setNormalizeUrl = (fn: (input: string) => string) => {
+  normalizeUrlImpl = fn;
+};
+export const normalizeUrl = (input: string) => normalizeUrlImpl(input);
+export const urlHash = (input: string) => `hash:${input}`;
 export const waSessionStatusGauge = {
   labels: () => ({ set: () => undefined }),
 };
-export const isPrivateHostname = () => false;
+let privateHostResult = false;
+export const __setPrivateHostnameResult = (value: boolean) => {
+  privateHostResult = value;
+};
+export const isPrivateHostname = async () => privateHostResult;
 
 export const ScanRequestSchema = {
-  safeParse: (_: unknown) => ({ success: true, data: {} }),
+  safeParse: (input: unknown) => ({ success: true, data: input }),
+  parse: (input: unknown) => input,
 };
 
 export const assertEssentialConfig = () => undefined;

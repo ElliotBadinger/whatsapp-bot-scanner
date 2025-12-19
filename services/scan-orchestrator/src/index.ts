@@ -2592,6 +2592,26 @@ function setRedisForTests(client: Redis): void {
   redis = client;
 }
 
+function setQueuesForTests(queues: {
+  scanRequestQueue?: Queue;
+  scanVerdictQueue?: Queue;
+  urlscanQueue?: Queue;
+  deepScanQueue?: Queue;
+}): void {
+  if (queues.scanRequestQueue) {
+    scanRequestQueue = queues.scanRequestQueue;
+  }
+  if (queues.scanVerdictQueue) {
+    scanVerdictQueue = queues.scanVerdictQueue;
+  }
+  if (queues.urlscanQueue) {
+    urlscanQueue = queues.urlscanQueue;
+  }
+  if (queues.deepScanQueue) {
+    deepScanQueue = queues.deepScanQueue;
+  }
+}
+
 export const __testables = {
   fetchGsbAnalysis,
   fetchPhishtank,
@@ -2605,7 +2625,14 @@ export const __testables = {
   extractUrlscanArtifactCandidates,
   normalizeUrlscanArtifactCandidate,
   buildProviderStates,
+  performBlocklistChecks,
+  generateVerdict,
+  handleCachedVerdict,
+  recordQueueMetrics,
+  recordVerdictMetrics,
+  getCachedVerdict,
   setRedisForTests,
+  setQueuesForTests,
 
   // Pure DI export for direct invocation tests
   handleScanRequestJob,

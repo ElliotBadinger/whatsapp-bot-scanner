@@ -350,6 +350,23 @@ function snapshotSession(): SessionSnapshot {
   return { state: currentWaState, wid: botWid };
 }
 
+function setSessionSnapshotForTests(state: string | null, wid: string | null) {
+  currentWaState = state;
+  botWid = wid;
+}
+
+function setPairingContextForTests(options: {
+  pairingOrchestrator?: PairingOrchestrator | null;
+  remotePhone?: string | undefined;
+}) {
+  if ("pairingOrchestrator" in options) {
+    pairingOrchestrator = options.pairingOrchestrator ?? null;
+  }
+  if ("remotePhone" in options) {
+    remotePhone = options.remotePhone;
+  }
+}
+
 function hydrateParticipantList(chat: GroupChat): Promise<GroupParticipant[]> {
   const maybeParticipants = (
     chat as unknown as { participants?: GroupParticipant[] }
@@ -4038,6 +4055,53 @@ export async function handleAdminCommand(
     );
   }
 }
+
+export const __testables = {
+  cachePairingCode,
+  getCachedPairingCode,
+  recordPairingAttempt,
+  getLastPairingAttempt,
+  resolveAuthStrategy,
+  main,
+  snapshotSession,
+  setSessionSnapshotForTests,
+  setPairingContextForTests,
+  hydrateParticipantList,
+  expandWidVariants,
+  contextKey,
+  loadConsentTemplate,
+  refreshConsentGauge,
+  markConsentPending,
+  markConsentGranted,
+  clearConsentState,
+  getConsentStatus,
+  addPendingMembership,
+  removePendingMembership,
+  listPendingMemberships,
+  collectVerdictMedia,
+  collectScreenshotAttachment,
+  createIocAttachment,
+  buildIocTextLines,
+  deliverVerdictMessage,
+  clearAckWatchForContext,
+  scheduleAckWatch,
+  rehydrateAckWatchers,
+  sanitizeLogValue,
+  updateSessionStateGauge,
+  resolveControlPlaneBase,
+  validateUrlProtocol,
+  normalizeUrlString,
+  isUrlAllowedForScanning,
+  initializeWhatsAppWithRetry,
+  getRemotePhoneNumbers,
+  sha256,
+  redactDomain,
+  maskPhone,
+  processedKey,
+  messageStore,
+  groupStore,
+  redis,
+};
 
 if (process.env.NODE_ENV !== "test") {
   main().catch((err) => {

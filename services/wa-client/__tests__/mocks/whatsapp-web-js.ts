@@ -24,9 +24,27 @@ export class Location {
 
 export class Client {
   public info: any = { wid: { _serialized: "mock@c.us" } };
-  constructor(_: any = {}) {}
+  public handlers = new Map<string, Array<(...args: any[]) => unknown>>();
+  static instances: Client[] = [];
+  static clearInstances() {
+    Client.instances = [];
+  }
 
-  on(): void {}
+  constructor(_: any = {}) {
+    Client.instances.push(this);
+  }
+
+  on(event: string, handler: (...args: any[]) => unknown): void {
+    const existing = this.handlers.get(event) ?? [];
+    existing.push(handler);
+    this.handlers.set(event, existing);
+  }
+  async emit(event: string, ...args: any[]): Promise<void> {
+    const handlers = this.handlers.get(event) ?? [];
+    for (const handler of handlers) {
+      await handler(...args);
+    }
+  }
   initialize(): Promise<void> {
     return Promise.resolve();
   }
@@ -41,6 +59,15 @@ export class Client {
   }
   getChatById(): Promise<any> {
     return Promise.resolve(null);
+  }
+  getState(): Promise<string> {
+    return Promise.resolve("CONNECTED");
+  }
+  requestPairingCode(): Promise<string> {
+    return Promise.resolve("123-456");
+  }
+  approveGroupMembershipRequests(): Promise<void> {
+    return Promise.resolve();
   }
 }
 

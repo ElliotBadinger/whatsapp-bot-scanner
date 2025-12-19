@@ -21,6 +21,19 @@ export default class FakeRedis {
     return this.store.get(key)?.value ?? null;
   }
 
+  async ttl(key: string) {
+    this.cleanup(key);
+    const entry = this.store.get(key);
+    if (!entry) {
+      return -2;
+    }
+    if (!entry.expiresAt) {
+      return -1;
+    }
+    const remainingMs = entry.expiresAt - Date.now();
+    return remainingMs > 0 ? Math.ceil(remainingMs / 1000) : -2;
+  }
+
   async set(key: string, value: string, mode?: string, ttl?: number, option?: string) {
     let expiresAt: number | undefined;
     let useNx = false;
@@ -54,6 +67,55 @@ export default class FakeRedis {
     this.sets.delete(key);
     this.lists.delete(key);
     this.sortedSets.delete(key);
+  }
+
+  async exists(key: string) {
+    this.cleanup(key);
+    return this.store.has(key) ? 1 : 0;
+  }
+
+  async rename(source: string, destination: string) {
+    if (this.store.has(source)) {
+      const entry = this.store.get(source);
+      this.store.delete(source);
+      if (entry) {
+        this.store.set(destination, entry);
+      }
+      return;
+    }
+    if (this.hashes.has(source)) {
+      const entry = this.hashes.get(source);
+      this.hashes.delete(source);
+      if (entry) {
+        this.hashes.set(destination, entry);
+      }
+      return;
+    }
+    if (this.sets.has(source)) {
+      const entry = this.sets.get(source);
+      this.sets.delete(source);
+      if (entry) {
+        this.sets.set(destination, entry);
+      }
+      return;
+    }
+    if (this.lists.has(source)) {
+      const entry = this.lists.get(source);
+      this.lists.delete(source);
+      if (entry) {
+        this.lists.set(destination, entry);
+      }
+      return;
+    }
+    if (this.sortedSets.has(source)) {
+      const entry = this.sortedSets.get(source);
+      this.sortedSets.delete(source);
+      if (entry) {
+        this.sortedSets.set(destination, entry);
+      }
+      return;
+    }
+    throw new Error("ERR no such key");
   }
 
   async hset(key: string, field: string, value: string) {
@@ -119,5 +181,13 @@ export default class FakeRedis {
 
   async zrem(key: string, member: string) {
     this.sortedSets.get(key)?.delete(member);
+  }
+
+  clear() {
+    this.store.clear();
+    this.hashes.clear();
+    this.sets.clear();
+    this.lists.clear();
+    this.sortedSets.clear();
   }
 }

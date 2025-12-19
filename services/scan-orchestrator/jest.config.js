@@ -3,6 +3,7 @@ module.exports = {
   testEnvironment: 'node',
   coverageProvider: 'v8',
   testMatch: ['**/__tests__/**/*.test.ts'],
+  coveragePathIgnorePatterns: ['<rootDir>/src/index.ts'],
   globals: {
     'ts-jest': {
       tsconfig: '<rootDir>/tsconfig.test.json',
