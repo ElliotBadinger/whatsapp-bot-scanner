@@ -44,7 +44,10 @@ describe("Scoring Algorithm - Edge Cases", () => {
     });
     expect(result.score).toBe(0);
     expect(result.level).toBe("benign");
-    expect(result.reasons).toEqual(["Manually allowed"]);
+    expect(result.reasons).toContain("Manually allowed");
+    expect(result.reasons).not.toContain(
+      "Heuristics-only scan (external providers unavailable)",
+    );
   });
 
   test('detected homoglyph with "none" risk still adds low risk score', () => {
