@@ -250,4 +250,87 @@ describe("control-plane extra routes", () => {
       await app.close();
     }
   });
+
+  it("handles DOM file ENOENT error", async () => {
+    const domPath = "/tmp/urlscan-artifacts/missing.html";
+    const dbClient = {
+      query: jest.fn(async (sql: string) => {
+        if (sql.includes("urlscan_dom_path")) {
+          return { rows: [{ urlscan_dom_path: domPath }] };
+        }
+        return { rows: [] };
+      }),
+    };
+    const redisClient = createMockRedis();
+    const queue = createMockQueue("scan-request");
+    const { app } = await buildServer({
+      dbClient,
+      redisClient: redisClient as any,
+      queue: queue as any,
+    });
+    const validHash = "f".repeat(64);
+
+    try {
+      fsPromises.readFile.mockRejectedValueOnce({ code: "ENOENT" });
+      const res = await app.inject({
+        method: "GET",
+        url: `/scans/${validHash}/urlscan-artifacts/dom`,
+        headers: authHeader,
+      });
+      expect(res.statusCode).toBe(404);
+      expect(JSON.parse(res.payload).error).toBe("dom_not_found");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("rejects rescan with invalid body schema", async () => {
+    const dbClient = {
+      query: jest.fn(async () => ({ rows: [] })),
+    };
+    const redisClient = createMockRedis();
+    const queue = createMockQueue("scan-request");
+    const { app } = await buildServer({
+      dbClient,
+      redisClient: redisClient as any,
+      queue: queue as any,
+    });
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/rescan",
+        headers: authHeader,
+        payload: { invalid_field: "no url field" },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(JSON.parse(res.payload).error).toBe("invalid_body");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("exposes metrics endpoint without auth", async () => {
+    const dbClient = {
+      query: jest.fn(async () => ({ rows: [] })),
+    };
+    const redisClient = createMockRedis();
+    const queue = createMockQueue("scan-request");
+    const { app } = await buildServer({
+      dbClient,
+      redisClient: redisClient as any,
+      queue: queue as any,
+    });
+
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: "/metrics",
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.headers["content-type"]).toContain("text/plain");
+    } finally {
+      await app.close();
+    }
+  });
 });

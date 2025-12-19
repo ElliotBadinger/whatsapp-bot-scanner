@@ -215,4 +215,169 @@ describe("EnhancedSecurityAnalyzer", () => {
     await analyzer.updateFeeds();
     expect(localThreatDbMock.updateOpenPhishFeed).not.toHaveBeenCalled();
   });
+
+  it("skips cert intel for non-HTTPS URLs", async () => {
+    (advancedHeuristics as jest.Mock).mockResolvedValue({
+      score: 0.1,
+      reasons: [],
+    });
+    (dnsIntelligence as jest.Mock).mockResolvedValue({
+      score: 0.1,
+      reasons: [],
+      dnsblResults: [],
+    });
+    localThreatDbMock.check.mockResolvedValueOnce({
+      score: 0.1,
+      reasons: [] as string[],
+    });
+    (httpFingerprinting as jest.Mock).mockResolvedValue({
+      suspicionScore: 0.1,
+      reasons: [],
+    });
+
+    const analyzer = new EnhancedSecurityAnalyzer({} as any);
+    const result = await analyzer.analyze("http://example.com", "hash");
+    
+    expect(certificateIntelligence).not.toHaveBeenCalled();
+    expect(result.tier2Results?.certIntel).toBeDefined();
+    expect(result.tier2Results?.certIntel.isValid).toBe(true);
+  });
+
+  it("uses fallback values when dnsbl is disabled", async () => {
+    config.enhancedSecurity.dnsbl.enabled = false;
+    (advancedHeuristics as jest.Mock).mockResolvedValue({
+      score: 0.1,
+      reasons: [],
+    });
+    localThreatDbMock.check.mockResolvedValueOnce({
+      score: 0.1,
+      reasons: [] as string[],
+    });
+    (certificateIntelligence as jest.Mock).mockResolvedValue({
+      suspicionScore: 0.1,
+      reasons: [],
+    });
+    (httpFingerprinting as jest.Mock).mockResolvedValue({
+      suspicionScore: 0.1,
+      reasons: [],
+    });
+
+    const analyzer = new EnhancedSecurityAnalyzer({} as any);
+    const result = await analyzer.analyze("https://example.com", "hash");
+    
+    expect(dnsIntelligence).not.toHaveBeenCalled();
+    expect(result.tier1Results?.dnsIntel).toBeDefined();
+  });
+
+  it("uses fallback values when certIntel is disabled", async () => {
+    config.enhancedSecurity.certIntel.enabled = false;
+    (advancedHeuristics as jest.Mock).mockResolvedValue({
+      score: 0.1,
+      reasons: [],
+    });
+    (dnsIntelligence as jest.Mock).mockResolvedValue({
+      score: 0.1,
+      reasons: [],
+      dnsblResults: [],
+    });
+    localThreatDbMock.check.mockResolvedValueOnce({
+      score: 0.1,
+      reasons: [] as string[],
+    });
+    (httpFingerprinting as jest.Mock).mockResolvedValue({
+      suspicionScore: 0.1,
+      reasons: [],
+    });
+
+    const analyzer = new EnhancedSecurityAnalyzer({} as any);
+    const result = await analyzer.analyze("https://example.com", "hash");
+    
+    expect(certificateIntelligence).not.toHaveBeenCalled();
+    expect(result.tier2Results?.certIntel.issuer).toBe("unknown");
+  });
+
+  it("uses fallback values when httpFingerprint is disabled", async () => {
+    config.enhancedSecurity.httpFingerprint.enabled = false;
+    (advancedHeuristics as jest.Mock).mockResolvedValue({
+      score: 0.1,
+      reasons: [],
+    });
+    (dnsIntelligence as jest.Mock).mockResolvedValue({
+      score: 0.1,
+      reasons: [],
+      dnsblResults: [],
+    });
+    localThreatDbMock.check.mockResolvedValueOnce({
+      score: 0.1,
+      reasons: [] as string[],
+    });
+    (certificateIntelligence as jest.Mock).mockResolvedValue({
+      suspicionScore: 0.1,
+      reasons: [],
+    });
+
+    const analyzer = new EnhancedSecurityAnalyzer({} as any);
+    const result = await analyzer.analyze("https://example.com", "hash");
+    
+    expect(httpFingerprinting).not.toHaveBeenCalled();
+    expect(result.tier2Results?.httpFingerprint.statusCode).toBe(0);
+  });
+
+  it("handles tier2 provider rejections with fallback data", async () => {
+    (advancedHeuristics as jest.Mock).mockResolvedValue({
+      score: 0.1,
+      reasons: [],
+    });
+    (dnsIntelligence as jest.Mock).mockResolvedValue({
+      score: 0.1,
+      reasons: [],
+      dnsblResults: [],
+    });
+    localThreatDbMock.check.mockResolvedValueOnce({
+      score: 0.1,
+      reasons: [] as string[],
+    });
+    (certificateIntelligence as jest.Mock).mockRejectedValue(new Error("cert error"));
+    (httpFingerprinting as jest.Mock).mockRejectedValue(new Error("http error"));
+
+    const analyzer = new EnhancedSecurityAnalyzer({} as any);
+    const result = await analyzer.analyze("https://example.com", "hash");
+    
+    expect(result.tier2Results?.certIntel.isValid).toBe(true);
+    expect(result.tier2Results?.httpFingerprint.statusCode).toBe(0);
+  });
+
+  it("does not start local threat db when enhanced security disabled", async () => {
+    config.enhancedSecurity.enabled = false;
+    const analyzer = new EnhancedSecurityAnalyzer({} as any);
+    await analyzer.start();
+    expect(localThreatDbMock.start).not.toHaveBeenCalled();
+  });
+
+  it("uses fallback values when localThreatDb is disabled during analyze", async () => {
+    config.enhancedSecurity.localThreatDb.enabled = false;
+    (advancedHeuristics as jest.Mock).mockResolvedValue({
+      score: 0.1,
+      reasons: [],
+    });
+    (dnsIntelligence as jest.Mock).mockResolvedValue({
+      score: 0.1,
+      reasons: [],
+      dnsblResults: [],
+    });
+    (certificateIntelligence as jest.Mock).mockResolvedValue({
+      suspicionScore: 0.1,
+      reasons: [],
+    });
+    (httpFingerprinting as jest.Mock).mockResolvedValue({
+      suspicionScore: 0.1,
+      reasons: [],
+    });
+
+    const analyzer = new EnhancedSecurityAnalyzer({} as any);
+    const result = await analyzer.analyze("https://example.com", "hash");
+    
+    expect(localThreatDbMock.check).not.toHaveBeenCalled();
+    expect(result.tier1Results?.localThreats).toEqual({ score: 0, reasons: [] });
+  });
 });

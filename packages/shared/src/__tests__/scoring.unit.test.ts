@@ -68,6 +68,46 @@ describe("Scoring Algorithm - Edge Cases", () => {
   });
 });
 
+describe("Verdict Threshold Boundaries", () => {
+  test("score exactly 3 maps to benign verdict", () => {
+    // This test catches mutations that change the benign threshold (<=3)
+    const result = scoreFromSignals({ vtMalicious: 0, isIpLiteral: true });
+    // isIpLiteral adds +3, so score should be exactly 3
+    expect(result.score).toBe(3);
+    expect(result.level).toBe("benign");
+  });
+
+  test("score exactly 4 maps to suspicious verdict", () => {
+    // Score of 4 should be suspicious, not benign
+    const result = scoreFromSignals({ domainAgeDays: 13, isIpLiteral: true });
+    // domainAgeDays 13 adds +4, isIpLiteral adds +3 = 7, but capped behavior
+    // Let's use a simpler combination: 4 total
+    const result2 = scoreFromSignals({ 
+      domainAgeDays: 29, // +2
+      hasSuspiciousTld: true // +2
+    });
+    expect(result2.score).toBe(4);
+    expect(result2.level).toBe("suspicious");
+  });
+
+  test("score exactly 7 maps to suspicious verdict", () => {
+    const result = scoreFromSignals({
+      domainAgeDays: 6, // +6
+      wasShortened: true, // +1
+    });
+    expect(result.score).toBe(7);
+    expect(result.level).toBe("suspicious");
+  });
+
+  test("score exactly 8 maps to malicious verdict", () => {
+    const result = scoreFromSignals({
+      vtMalicious: 3, // +8
+    });
+    expect(result.score).toBe(8);
+    expect(result.level).toBe("malicious");
+  });
+});
+
 describe("extraHeuristics", () => {
   test("flags IP literals, uncommon ports, and executables", () => {
     const signals = extraHeuristics(new URL("http://127.0.0.1:8081/file.exe"));

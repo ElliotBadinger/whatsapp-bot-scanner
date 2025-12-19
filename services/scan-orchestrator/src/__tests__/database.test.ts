@@ -18,9 +18,11 @@ import {
 
 describe("scan-orchestrator database", () => {
   beforeEach(() => {
-    queryMock.mockClear();
-    onMock.mockClear();
-    endMock.mockClear();
+    jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   it("runs SQLite queries and handles errors", async () => {
