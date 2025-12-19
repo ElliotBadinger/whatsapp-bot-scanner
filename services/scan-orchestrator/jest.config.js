@@ -1,6 +1,7 @@
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
+  coverageProvider: 'v8',
   testMatch: ['**/__tests__/**/*.test.ts'],
   globals: {
     'ts-jest': {

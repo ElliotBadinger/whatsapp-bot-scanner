@@ -1,6 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    "rootDir": "../..",
     "paths": {
       "@wbscanner/shared": [
         "../../packages/shared/src/index.ts"
@@ -12,7 +13,8 @@
   },
   "include": [
     "src/**/*",
-    "src/__tests__/**/*"
+    "src/__tests__/**/*",
+    "../../test-utils/**/*.ts"
   ],
   "exclude": []
 }

@@ -2,6 +2,7 @@ module.exports = {
   rootDir: __dirname,
   preset: "ts-jest/presets/default-esm",
   testEnvironment: "node",
+  coverageProvider: "v8",
   testMatch: ["**/__tests__/**/*.test.ts"],
   extensionsToTreatAsEsm: [".ts"],
   transform: {

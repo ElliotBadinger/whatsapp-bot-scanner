@@ -2588,6 +2588,10 @@ export async function handleScanRequestJob(
   }
 }
 
+function setRedisForTests(client: Redis): void {
+  redis = client;
+}
+
 export const __testables = {
   fetchGsbAnalysis,
   fetchPhishtank,
@@ -2599,6 +2603,7 @@ export const __testables = {
   shouldQueryPhishtank,
   extractUrlscanArtifactCandidates,
   normalizeUrlscanArtifactCandidate,
+  setRedisForTests,
 
   // Pure DI export for direct invocation tests
   handleScanRequestJob,
