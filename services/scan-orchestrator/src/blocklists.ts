@@ -35,7 +35,7 @@ export function shouldQueryPhishtank({
 }: PhishtankDecisionInput): boolean {
   if (!phishtankEnabled) return false;
   if (!gsbHit) return true;
-  if (gsbError) return true;
+  if (gsbError) return false;
   if (!gsbApiKeyPresent) return true;
   if (!gsbFromCache && gsbDurationMs > fallbackLatencyMs) return true;
   return false;

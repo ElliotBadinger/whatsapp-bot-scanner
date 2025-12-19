@@ -63,3 +63,6 @@ SETUP_FIXES_SUMMARY.md
 
 # Snyk Security Extension - AI Rules (auto-generated)
 .windsurf/rules/snyk_rules.md
+
+# stryker temp files
+.stryker-tmp
