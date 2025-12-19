@@ -70,6 +70,70 @@ describe('CircuitBreaker', () => {
   });
 });
 
+describe('CircuitBreaker mutation boundary tests', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('opens exactly at failureThreshold (boundary test)', async () => {
+    const breaker = new CircuitBreaker({
+      name: 'boundary-test',
+      failureThreshold: 3,
+      successThreshold: 1,
+      timeoutMs: 1000,
+      windowMs: 5000,
+    });
+
+    // 1st failure - should stay closed
+    await expect(breaker.execute(async () => {
+      throw new Error('fail1');
+    })).rejects.toThrow('fail1');
+    expect(breaker.getState()).toBe(CircuitState.CLOSED);
+
+    // 2nd failure - should stay closed
+    await expect(breaker.execute(async () => {
+      throw new Error('fail2');
+    })).rejects.toThrow('fail2');
+    expect(breaker.getState()).toBe(CircuitState.CLOSED);
+
+    // 3rd failure - should NOW open (>= threshold, not > threshold)
+    await expect(breaker.execute(async () => {
+      throw new Error('fail3');
+    })).rejects.toThrow('fail3');
+    expect(breaker.getState()).toBe(CircuitState.OPEN);
+  });
+
+  it('recovery uses elapsed time correctly (Date.now() - lastFailure)', async () => {
+    const breaker = new CircuitBreaker({
+      name: 'recovery-test',
+      failureThreshold: 1,
+      successThreshold: 1,
+      timeoutMs: 1000,
+      windowMs: 5000,
+    });
+
+    // Trigger circuit open
+    await expect(breaker.execute(async () => {
+      throw new Error('trigger');
+    })).rejects.toThrow('trigger');
+    expect(breaker.getState()).toBe(CircuitState.OPEN);
+
+    // Advance time by 500ms - still open (less than timeoutMs)
+    jest.advanceTimersByTime(500);
+    await expect(breaker.execute(async () => 'should-fail')).rejects.toThrow('Circuit recovery-test is open');
+
+    // Advance time by another 501ms (total 1001ms) - should allow probe
+    jest.advanceTimersByTime(501);
+    const result = await breaker.execute(async () => 'recovered');
+    expect(result).toBe('recovered');
+    expect(breaker.getState()).toBe(CircuitState.CLOSED);
+  });
+});
+
 describe('withRetry', () => {
   it('retries retryable errors with exponential backoff', async () => {
     jest.useRealTimers();

@@ -268,4 +268,58 @@ describe("Scoring Algorithm - Property-Based Tests", () => {
       { numRuns: 1000 },
     );
   });
+
+  test("PROPERTY: suspicious TLD adds to score", () => {
+    fc.assert(
+      fc.property(signalsNoOverrideArb, (signals) => {
+        const without = scoreFromSignals({
+          ...signals,
+          hasSuspiciousTld: false,
+        }).score;
+        const with_ = scoreFromSignals({
+          ...signals,
+          hasSuspiciousTld: true,
+        }).score;
+
+        expect(with_).toBeGreaterThanOrEqual(without);
+      }),
+      { numRuns: 1000 },
+    );
+  });
+
+  test("PROPERTY: IP literal adds to score", () => {
+    fc.assert(
+      fc.property(signalsNoOverrideArb, (signals) => {
+        const without = scoreFromSignals({
+          ...signals,
+          isIpLiteral: false,
+        }).score;
+        const with_ = scoreFromSignals({
+          ...signals,
+          isIpLiteral: true,
+        }).score;
+
+        expect(with_).toBeGreaterThanOrEqual(without);
+      }),
+      { numRuns: 1000 },
+    );
+  });
+
+  test("PROPERTY: uncommon port adds to score", () => {
+    fc.assert(
+      fc.property(signalsNoOverrideArb, (signals) => {
+        const without = scoreFromSignals({
+          ...signals,
+          hasUncommonPort: false,
+        }).score;
+        const with_ = scoreFromSignals({
+          ...signals,
+          hasUncommonPort: true,
+        }).score;
+
+        expect(with_).toBeGreaterThanOrEqual(without);
+      }),
+      { numRuns: 1000 },
+    );
+  });
 });

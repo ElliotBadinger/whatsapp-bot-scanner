@@ -48,6 +48,19 @@ describe('UrlValidator', () => {
       expect(result.riskLevel).toBe('high');
     });
 
+    test('rejects all 10.x.x.x ranges (mutation boundary)', async () => {
+      // Test various 10.x IPs to ensure regex matches 10.* not 11.*
+      const ip10_1 = await validator.validateUrl('http://10.1.2.3/');
+      expect(ip10_1.isValid).toBe(false);
+      
+      const ip10_255 = await validator.validateUrl('http://10.255.255.255/');
+      expect(ip10_255.isValid).toBe(false);
+      
+      // 11.x.x.x should be allowed (not private)
+      const ip11 = await validator.validateUrl('http://11.0.0.1/');
+      expect(ip11.isValid).toBe(true);
+    });
+
     test('rejects private IP 172.16-31.x.x', async () => {
       const result = await validator.validateUrl('http://172.16.0.1/');
       expect(result.isValid).toBe(false);
@@ -67,6 +80,19 @@ describe('UrlValidator', () => {
       const result = await validator.validateUrl('http://127.0.0.1:8080/');
       expect(result.isValid).toBe(false);
       expect(result.riskLevel).toBe('high');
+    });
+
+    test('rejects all 127.x.x.x loopback ranges (mutation boundary)', async () => {
+      // Ensure 127.0.0.1 specifically is rejected, not 127.0.0.2
+      const ip127_0_0_1 = await validator.validateUrl('http://127.0.0.1/');
+      expect(ip127_0_0_1.isValid).toBe(false);
+      
+      const ip127_1_1_1 = await validator.validateUrl('http://127.1.1.1/');
+      expect(ip127_1_1_1.isValid).toBe(false);
+      
+      // 128.x.x.x should be allowed (not loopback)
+      const ip128 = await validator.validateUrl('http://128.0.0.1/');
+      expect(ip128.isValid).toBe(true);
     });
 
     test('rejects link-local IP 169.254.x.x', async () => {
