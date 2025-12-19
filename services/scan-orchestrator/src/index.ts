@@ -237,7 +237,7 @@ function makeCircuit(name: string) {
   const breaker = new CircuitBreaker({
     ...CIRCUIT_DEFAULTS,
     name,
-    onStateChange: (state, from) => {
+    onStateChange: (state: CircuitState, from?: CircuitState | null) => {
       circuitStates.labels(name).set(state);
       circuitBreakerTransitionCounter
         .labels(name, String(from ?? ""), String(state))
@@ -1999,7 +1999,7 @@ async function main() {
   // This defers connection until main() is called, avoiding ETIMEDOUT at module load
   try {
     await connectRedis(redis, "scan-orchestrator");
-  } catch (err) {
+  } catch (err: unknown) {
     logger.error({ err }, "Failed to connect to Redis. Exiting...");
     process.exit(1);
   }
@@ -2015,14 +2015,14 @@ async function main() {
   // Schedule GSB database updates (every hour)
   if (gsbLocal) {
     // Initial update on startup
-    gsbLocal!.updateDatabase().catch((err) => {
+    gsbLocal!.updateDatabase().catch((err: unknown) => {
       logger.warn({ err }, "Failed initial GSB local database update");
     });
 
     // Update every hour - capture reference to avoid null check issues in closure
     const gsbInstance = gsbLocal;
     const gsbUpdateInterval = setInterval(() => {
-      gsbInstance.updateDatabase().catch((err) => {
+      gsbInstance.updateDatabase().catch((err: unknown) => {
         logger.warn({ err }, "Failed scheduled GSB local database update");
       });
     }, 3600000); // 1 hour
@@ -2038,7 +2038,7 @@ async function main() {
       // Check Redis connectivity
       await redis.ping();
       return { ok: true, redis: "connected" };
-    } catch (err) {
+    } catch (err: unknown) {
       logger.warn({ err }, "Health check failed - Redis connectivity issue");
       reply.code(503);
       return { ok: false, redis: "disconnected", error: "Redis unreachable" };
