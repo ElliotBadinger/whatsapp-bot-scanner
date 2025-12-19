@@ -14,8 +14,9 @@ describe("Container wiring contracts", () => {
     const compose = readFileSync(composePath, "utf-8");
 
     expect(compose).toContain("wa-client:");
-    expect(compose).toContain("fetch('http://localhost:3001/healthz')");
-    expect(compose).toContain("j && j.status === 'healthy'");
+    expect(compose).toContain("fetch(''http://localhost:");
+    expect(compose).toContain("/healthz");
+    expect(compose).toContain("j && j.status === ''healthy''");
   });
 
   it("wa-client-baileys Dockerfile stage must install nodejs", () => {

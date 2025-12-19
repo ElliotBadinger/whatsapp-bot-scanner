@@ -2599,10 +2599,12 @@ export const __testables = {
   fetchUrlhaus,
   shouldRetry,
   classifyError,
+  normalizeVerdictReason,
   checkBlocklistsWithRedundancy,
   shouldQueryPhishtank,
   extractUrlscanArtifactCandidates,
   normalizeUrlscanArtifactCandidate,
+  buildProviderStates,
   setRedisForTests,
 
   // Pure DI export for direct invocation tests

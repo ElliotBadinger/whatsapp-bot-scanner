@@ -32,6 +32,14 @@
 - **Discovered Issues:** None.
 - **Flakiness:** 0/10 runs failed.
 
+## File: services/scan-orchestrator/src/__tests__/index-helpers.test.ts
+- **Coverage:** index.ts 23.46% lines, 83.87% branches (coverage run with `--coverage`).
+- **Test Count:** 6 helper tests.
+- **Runtime:** ~6s without coverage, ~11s with coverage.
+- **Edge Cases:** verdict reason normalization, retry/error classification, urlscan artifact URL validation and de-duplication, provider state synthesis.
+- **Discovered Issues:** None.
+- **Flakiness:** 0/10 runs failed.
+
 ## File: services/control-plane/src/__tests__/control-plane.test.ts
 - **Coverage:** index.ts 68.07% lines, 70% branches (coverage run with `--coverage`).
 - **Test Count:** 9 HTTP route tests.
