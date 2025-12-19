@@ -188,6 +188,7 @@ describe("Scoring Algorithm - Property-Based Tests", () => {
         fc.oneof(
           fc.constantFrom(0, 1, 2, 3, 4, 5, 9, 10, 19, 20),
           fc.integer({ min: 0, max: 100 }),
+          fc.integer({ min: 101, max: 10_000 }),
         ),
         (signals, malicious) => {
           const baseline = { ...signals, vtMalicious: malicious };
