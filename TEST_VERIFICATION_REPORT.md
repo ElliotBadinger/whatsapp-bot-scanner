@@ -8,19 +8,19 @@
 
 ### Overall Assessment - AFTER IMPROVEMENTS
 
-| Metric | Before | After | Target | Status |
-|--------|--------|-------|--------|--------|
-| Total Tests | 452 | **483** | - | +31 tests |
-| Line Coverage (shared) | 94.34% | 94.34% | 90% | ✅ PASS |
-| Line Coverage (scan-orchestrator) | 88.93% | **92.21%** | 90% | ✅ PASS |
-| Line Coverage (control-plane) | 84.19% | **85.02%** | 90% | ⚠️ IMPROVED |
-| Line Coverage (wa-client) | ~87% | ~87% | 90% | ⚠️ CLOSE |
-| Branch Coverage (scan-orchestrator) | 82.06% | **85.13%** | 85% | ✅ PASS |
-| Branch Coverage (control-plane) | 77.39% | **80.16%** | 85% | ⚠️ IMPROVED |
-| enhanced-security.ts | 86.98% | **96.19%** | 90% | ✅ EXCELLENT |
-| Mutation Score | N/A | **100%** (3/3) | 80% | ✅ PASS |
-| Runtime | ~40s | ~60s | <60s | ✅ PASS |
-| Flakiness | 0/10 | 0/10 | 0% | ✅ PASS |
+| Metric                              | Before | After          | Target | Status       |
+| ----------------------------------- | ------ | -------------- | ------ | ------------ |
+| Total Tests                         | 452    | **483**        | -      | +31 tests    |
+| Line Coverage (shared)              | 94.34% | 94.34%         | 90%    | ✅ PASS      |
+| Line Coverage (scan-orchestrator)   | 88.93% | **92.21%**     | 90%    | ✅ PASS      |
+| Line Coverage (control-plane)       | 84.19% | **85.02%**     | 90%    | ⚠️ IMPROVED  |
+| Line Coverage (wa-client)           | ~87%   | ~87%           | 90%    | ⚠️ CLOSE     |
+| Branch Coverage (scan-orchestrator) | 82.06% | **85.13%**     | 85%    | ✅ PASS      |
+| Branch Coverage (control-plane)     | 77.39% | **80.16%**     | 85%    | ⚠️ IMPROVED  |
+| enhanced-security.ts                | 86.98% | **96.19%**     | 90%    | ✅ EXCELLENT |
+| Mutation Score                      | N/A    | **100%** (3/3) | 80%    | ✅ PASS      |
+| Runtime                             | ~40s   | ~60s           | <60s   | ✅ PASS      |
+| Flakiness                           | 0/10   | 0/10           | 0%     | ✅ PASS      |
 
 ---
 
@@ -43,37 +43,41 @@ Breakdown by Workspace:
 ### 1.2 Coverage Analysis
 
 #### packages/shared (94.34% lines, 84.02% branches) ✅
-| File | Lines | Branches | Status |
-|------|-------|----------|--------|
-| scoring.ts | 100% | 100% | ✅ Excellent |
-| validation.ts | 100% | 97.22% | ✅ Excellent |
-| circuit-breaker.ts | 99.11% | 93.93% | ✅ Excellent |
-| homoglyph.ts | 98.07% | 88.31% | ✅ Good |
-| log.ts | 68% | 44.44% | ❌ Needs work |
-| url-shortener.ts | 86.83% | 70.58% | ⚠️ Improve |
-| dns-intelligence.ts | 85.34% | 57.14% | ⚠️ Improve |
-| local-threat-db.ts | 85.09% | 80% | ⚠️ Improve |
+
+| File                | Lines  | Branches | Status        |
+| ------------------- | ------ | -------- | ------------- |
+| scoring.ts          | 100%   | 100%     | ✅ Excellent  |
+| validation.ts       | 100%   | 97.22%   | ✅ Excellent  |
+| circuit-breaker.ts  | 99.11% | 93.93%   | ✅ Excellent  |
+| homoglyph.ts        | 98.07% | 88.31%   | ✅ Good       |
+| log.ts              | 68%    | 44.44%   | ❌ Needs work |
+| url-shortener.ts    | 86.83% | 70.58%   | ⚠️ Improve    |
+| dns-intelligence.ts | 85.34% | 57.14%   | ⚠️ Improve    |
+| local-threat-db.ts  | 85.09% | 80%      | ⚠️ Improve    |
 
 #### services/scan-orchestrator (88.93% lines, 82.06% branches) ⚠️
-| File | Lines | Branches | Status |
-|------|-------|----------|--------|
-| blocklists.ts | 96.18% | 88.46% | ✅ Good |
-| urlscan-artifacts.ts | 97.1% | 80.55% | ✅ Good |
-| enhanced-security.ts | 86.98% | 85.29% | ⚠️ Improve |
-| database.ts | 82.39% | 77.55% | ⚠️ Improve |
+
+| File                 | Lines  | Branches | Status     |
+| -------------------- | ------ | -------- | ---------- |
+| blocklists.ts        | 96.18% | 88.46%   | ✅ Good    |
+| urlscan-artifacts.ts | 97.1%  | 80.55%   | ✅ Good    |
+| enhanced-security.ts | 86.98% | 85.29%   | ⚠️ Improve |
+| database.ts          | 82.39% | 77.55%   | ⚠️ Improve |
 
 #### services/control-plane (84.19% lines, 77.39% branches) ❌
-| File | Lines | Branches | Status |
-|------|-------|----------|--------|
-| index.ts | 89.26% | 80% | ⚠️ Improve |
-| database.ts | 76.92% | 73.33% | ❌ Needs work |
+
+| File        | Lines  | Branches | Status        |
+| ----------- | ------ | -------- | ------------- |
+| index.ts    | 89.26% | 80%      | ⚠️ Improve    |
+| database.ts | 76.92% | 73.33%   | ❌ Needs work |
 
 #### services/wa-client (~87% lines) ⚠️
-| File | Lines | Branches | Status |
-|------|-------|----------|--------|
-| baileys-adapter.ts | 87.11% | 51.04% | ⚠️ Low branch coverage |
-| session/cleanup.ts | 73.74% | 47.05% | ❌ Needs work |
-| crypto/dataKeyProvider.ts | 87.87% | 70.37% | ⚠️ Improve |
+
+| File                      | Lines  | Branches | Status                 |
+| ------------------------- | ------ | -------- | ---------------------- |
+| baileys-adapter.ts        | 87.11% | 51.04%   | ⚠️ Low branch coverage |
+| session/cleanup.ts        | 73.74% | 47.05%   | ❌ Needs work          |
+| crypto/dataKeyProvider.ts | 87.87% | 70.37%   | ⚠️ Improve             |
 
 ### 1.3 Flakiness Report
 
@@ -171,16 +175,19 @@ Flakiness Rate: 0%
 ## Recommendations
 
 ### Immediate Actions (This Session)
+
 1. ✅ Add tests for enhanced-security.ts edge cases
 2. ✅ Improve assertion strength in database tests
 3. ✅ Add mock isolation with proper cleanup
 
 ### Short-term (Next Sprint)
+
 1. Add mutation testing to CI pipeline
 2. Increase property test runs to 10,000
 3. Add security-focused tests (injection, auth bypass)
 
 ### Medium-term (Next Quarter)
+
 1. Add contract tests for external APIs
 2. Implement chaos testing
 3. Add visual regression tests
@@ -192,7 +199,9 @@ Flakiness Rate: 0%
 ## Improvements Implemented
 
 ### 1. Enhanced Security Tests (+9 tests)
+
 **File:** `services/scan-orchestrator/src/__tests__/enhanced-security.test.ts`
+
 - Added tests for disabled DNSBL, certIntel, httpFingerprint
 - Added tests for non-HTTPS URL handling
 - Added tests for tier2 provider rejection fallbacks
@@ -200,7 +209,9 @@ Flakiness Rate: 0%
 - **Coverage improved:** 86.98% → 96.19% lines, 85.29% → 97.29% branches
 
 ### 2. Security Tests (+17 tests)
+
 **File:** `services/control-plane/src/__tests__/security.test.ts`
+
 - Authentication & Authorization tests (4 tests)
 - SQL Injection Prevention tests (2 tests)
 - Path Traversal Prevention tests (2 tests)
@@ -209,13 +220,17 @@ Flakiness Rate: 0%
 - Error Message Safety tests (2 tests)
 
 ### 3. Control-Plane Extra Tests (+4 tests)
+
 **File:** `services/control-plane/src/__tests__/control-plane-extra.test.ts`
+
 - DOM file ENOENT error handling
 - Rescan invalid body schema
 - Metrics endpoint accessibility
 
 ### 4. Verdict Threshold Boundary Tests (+4 tests)
+
 **File:** `packages/shared/src/__tests__/scoring.unit.test.ts`
+
 - Score exactly 3 → benign
 - Score exactly 4 → suspicious
 - Score exactly 7 → suspicious
@@ -223,6 +238,7 @@ Flakiness Rate: 0%
 - **Mutation testing:** Now kills verdict threshold mutations
 
 ### 5. Test Quality Improvements
+
 - Improved mock isolation with `jest.clearAllMocks()` and `jest.restoreAllMocks()`
 - Added `afterEach` cleanup in database tests
 
@@ -230,11 +246,11 @@ Flakiness Rate: 0%
 
 ## Mutation Testing Results
 
-| Mutation | Description | Status |
-|----------|-------------|--------|
-| Domain age boundary | `< 7` → `<= 7` | ✅ KILLED |
-| Score operator | `+= 10` → `-= 10` | ✅ KILLED |
-| Verdict threshold | `<= 3` → `<= 4` | ✅ KILLED |
+| Mutation            | Description       | Status    |
+| ------------------- | ----------------- | --------- |
+| Domain age boundary | `< 7` → `<= 7`    | ✅ KILLED |
+| Score operator      | `+= 10` → `-= 10` | ✅ KILLED |
+| Verdict threshold   | `<= 3` → `<= 4`   | ✅ KILLED |
 
 **Mutation Score: 100% (3/3 killed)**
 
@@ -243,10 +259,12 @@ Flakiness Rate: 0%
 ## Remaining Gaps (Intentional)
 
 ### Platform-Specific Code (Not Testable in Node)
+
 - `control-plane/database.ts:17-19,25,35-36` - Bun SQLite driver
 - `control-plane/database.ts:78-115` - Bun transaction handling
 
 ### Startup/Main Functions (Excluded from Test Coverage)
+
 - `control-plane/index.ts:344-354` - main() function
 - `control-plane/index.ts:35-48` - Singleton initialization
 
@@ -255,14 +273,17 @@ Flakiness Rate: 0%
 ## Recommendations
 
 ### Immediate (Next PR)
+
 1. ✅ All implemented improvements should be committed
 
 ### Short-term (Next Sprint)
+
 1. Add integration tests with real Redis/Postgres
 2. Add contract tests for external APIs
 3. Increase property test runs to 10,000
 
 ### Medium-term (Next Quarter)
+
 1. Set up continuous mutation testing in CI
 2. Add chaos testing for resilience
 3. Add visual regression tests for artifacts
@@ -274,6 +295,7 @@ Flakiness Rate: 0%
 **Status:** ✅ **APPROVED FOR PRODUCTION**
 
 The test suite has been significantly improved with:
+
 - 31 new tests (452 → 483)
 - Improved coverage in critical areas
 - 100% mutation score on tested mutations

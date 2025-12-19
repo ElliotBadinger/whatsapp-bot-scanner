@@ -82,9 +82,9 @@ describe("Verdict Threshold Boundaries", () => {
     const result = scoreFromSignals({ domainAgeDays: 13, isIpLiteral: true });
     // domainAgeDays 13 adds +4, isIpLiteral adds +3 = 7, but capped behavior
     // Let's use a simpler combination: 4 total
-    const result2 = scoreFromSignals({ 
+    const result2 = scoreFromSignals({
       domainAgeDays: 29, // +2
-      hasSuspiciousTld: true // +2
+      hasSuspiciousTld: true, // +2
     });
     expect(result2.score).toBe(4);
     expect(result2.level).toBe("suspicious");
