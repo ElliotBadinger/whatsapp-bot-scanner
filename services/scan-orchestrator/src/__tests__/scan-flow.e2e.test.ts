@@ -1,4 +1,4 @@
-import { handleScanRequestJob } from '../index';
+import { handleScanRequestJob } from "../index";
 
 type JobLike = {
   id?: string;
@@ -9,8 +9,8 @@ type JobLike = {
 
 function createDeps(overrides: Partial<Record<string, unknown>> = {}) {
   const defaultVerdict = {
-    verdict: 'benign',
-    level: 'benign',
+    verdict: "benign",
+    level: "benign",
     score: 0,
     reasons: [],
     cacheTtl: 86400,
@@ -19,7 +19,7 @@ function createDeps(overrides: Partial<Record<string, unknown>> = {}) {
   };
 
   const deps = {
-    queueName: 'scan-request',
+    queueName: "scan-request",
     now: jest.fn(() => 1_700_000_000_000),
     logger: {
       error: jest.fn(),
@@ -53,11 +53,11 @@ function createDeps(overrides: Partial<Record<string, unknown>> = {}) {
       })),
     },
     normalizeUrl: jest.fn((url: string) => url),
-    urlHash: jest.fn(() => 'hash123'),
+    urlHash: jest.fn(() => "hash123"),
     getCachedVerdict: jest.fn(async () => null),
     handleCachedVerdict: jest.fn(async () => undefined),
     analyzeUrl: jest.fn(async () => {
-      const finalUrl = 'https://example.com/path';
+      const finalUrl = "https://example.com/path";
       return {
         finalUrl,
         finalUrlObj: new URL(finalUrl),
@@ -70,7 +70,7 @@ function createDeps(overrides: Partial<Record<string, unknown>> = {}) {
     }),
     detectHomoglyphs: jest.fn(() => ({
       detected: false,
-      riskLevel: 'low',
+      riskLevel: "low",
       confusableChars: [],
     })),
     performBlocklistChecks: jest.fn(async () => ({})),
@@ -84,14 +84,14 @@ function createDeps(overrides: Partial<Record<string, unknown>> = {}) {
   return { ...deps, ...overrides };
 }
 
-describe('End-to-End Scan Flow (worker invocation)', () => {
-  test('malicious fast verdict skips deep scan enqueue', async () => {
+describe("End-to-End Scan Flow (worker invocation)", () => {
+  test("malicious fast verdict skips deep scan enqueue", async () => {
     const deps = createDeps({
       generateVerdict: jest.fn(async () => ({
-        verdict: 'malicious',
-        level: 'malicious',
+        verdict: "malicious",
+        level: "malicious",
         score: 15,
-        reasons: ['test'],
+        reasons: ["test"],
         cacheTtl: 900,
         ttl: 900,
         enqueuedUrlscan: false,
@@ -99,13 +99,13 @@ describe('End-to-End Scan Flow (worker invocation)', () => {
     });
 
     const job: JobLike = {
-      id: 'job-1',
+      id: "job-1",
       attemptsMade: 0,
       timestamp: deps.now(),
       data: {
-        chatId: 'chat-1',
-        messageId: 'msg-1',
-        url: 'https://example.com/path',
+        chatId: "chat-1",
+        messageId: "msg-1",
+        url: "https://example.com/path",
         timestamp: deps.now(),
       },
     };
@@ -117,11 +117,11 @@ describe('End-to-End Scan Flow (worker invocation)', () => {
     expect(deps.deepScanQueue.add).not.toHaveBeenCalled();
   });
 
-  test('benign fast verdict enqueues deep scan', async () => {
+  test("benign fast verdict enqueues deep scan", async () => {
     const deps = createDeps({
       generateVerdict: jest.fn(async () => ({
-        verdict: 'benign',
-        level: 'benign',
+        verdict: "benign",
+        level: "benign",
         score: 0,
         reasons: [],
         cacheTtl: 86400,
@@ -131,13 +131,13 @@ describe('End-to-End Scan Flow (worker invocation)', () => {
     });
 
     const job: JobLike = {
-      id: 'job-2',
+      id: "job-2",
       attemptsMade: 0,
       timestamp: deps.now(),
       data: {
-        chatId: 'chat-2',
-        messageId: 'msg-2',
-        url: 'https://example.com/path',
+        chatId: "chat-2",
+        messageId: "msg-2",
+        url: "https://example.com/path",
         timestamp: deps.now(),
       },
     };
@@ -147,33 +147,33 @@ describe('End-to-End Scan Flow (worker invocation)', () => {
     expect(deps.generateVerdict).toHaveBeenCalledTimes(1);
     expect(deps.storeAndDispatchResults).toHaveBeenCalledTimes(1);
     expect(deps.deepScanQueue.add).toHaveBeenCalledWith(
-      'deep-scan',
-      expect.objectContaining({ fastVerdict: 'benign' }),
+      "deep-scan",
+      expect.objectContaining({ fastVerdict: "benign" }),
       { removeOnComplete: true },
     );
   });
 
-  test('high-confidence enhanced security verdict short-circuits external checks', async () => {
+  test("high-confidence enhanced security verdict short-circuits external checks", async () => {
     const deps = createDeps({
       enhancedSecurity: {
         analyze: jest.fn(async () => ({
-          verdict: 'malicious',
-          confidence: 'high',
+          verdict: "malicious",
+          confidence: "high",
           score: 12,
-          reasons: ['enhanced'],
+          reasons: ["enhanced"],
           skipExternalAPIs: true,
         })),
       },
     });
 
     const job: JobLike = {
-      id: 'job-3',
+      id: "job-3",
       attemptsMade: 0,
       timestamp: deps.now(),
       data: {
-        chatId: 'chat-3',
-        messageId: 'msg-3',
-        url: 'https://example.com/path',
+        chatId: "chat-3",
+        messageId: "msg-3",
+        url: "https://example.com/path",
       },
     };
 

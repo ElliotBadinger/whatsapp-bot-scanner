@@ -1,1 +1,1 @@
-import './scripts/jest-env-setup.js';
+import "./scripts/jest-env-setup.js";

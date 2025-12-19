@@ -16,7 +16,7 @@ export function createMockRedis() {
     get: jest.fn(async (key: string) => store.get(key) ?? null),
     set: jest.fn(async (key: string, value: string, ..._args: unknown[]) => {
       store.set(key, value);
-      return 'OK';
+      return "OK";
     }),
     del: jest.fn(async (key: string) => {
       store.delete(key);
@@ -24,8 +24,8 @@ export function createMockRedis() {
     }),
     exists: jest.fn(async (key: string) => (store.has(key) ? 1 : 0)),
     ttl: jest.fn(async (_key: string) => -1),
-    ping: jest.fn(async () => 'PONG'),
-    quit: jest.fn(async () => 'OK'),
+    ping: jest.fn(async () => "PONG"),
+    quit: jest.fn(async () => "OK"),
   };
 }
 

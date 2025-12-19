@@ -1,18 +1,18 @@
-import { createMockRedis } from '../../../../test-utils/setup';
+import { createMockRedis } from "../../../../test-utils/setup";
 
-let shared: typeof import('@wbscanner/shared');
-let testables: typeof import('../index').__testables;
+let shared: typeof import("@wbscanner/shared");
+let testables: typeof import("../index").__testables;
 
-const testUrl = 'https://example.com';
-const testHash = 'hash-abc123';
+const testUrl = "https://example.com";
+const testHash = "hash-abc123";
 
 async function loadModule() {
   jest.resetModules();
-  process.env.PHISHTANK_APP_KEY = 'test-phishtank-key';
-  process.env.PHISHTANK_ENABLED = 'true';
+  process.env.PHISHTANK_APP_KEY = "test-phishtank-key";
+  process.env.PHISHTANK_ENABLED = "true";
 
-  jest.doMock('@wbscanner/shared', () => {
-    const actual = jest.requireActual('@wbscanner/shared');
+  jest.doMock("@wbscanner/shared", () => {
+    const actual = jest.requireActual("@wbscanner/shared");
     return {
       ...actual,
       gsbLookup: jest.fn(),
@@ -23,8 +23,8 @@ async function loadModule() {
     };
   });
 
-  shared = await import('@wbscanner/shared');
-  const orchestrator = await import('../index');
+  shared = await import("@wbscanner/shared");
+  const orchestrator = await import("../index");
   testables = orchestrator.__testables;
   testables.setRedisForTests(createMockRedis() as any);
 }
@@ -34,15 +34,15 @@ beforeEach(async () => {
   await loadModule();
 });
 
-describe('External API Integration Tests', () => {
-  test('Google Safe Browsing returns matches and caches results', async () => {
+describe("External API Integration Tests", () => {
+  test("Google Safe Browsing returns matches and caches results", async () => {
     const gsbLookup = shared.gsbLookup as jest.Mock;
     gsbLookup.mockResolvedValue({
       matches: [
         {
-          threatType: 'MALWARE',
-          platformType: 'ANY_PLATFORM',
-          threatEntryType: 'URL',
+          threatType: "MALWARE",
+          platformType: "ANY_PLATFORM",
+          threatEntryType: "URL",
           threat: testUrl,
         },
       ],
@@ -59,8 +59,8 @@ describe('External API Integration Tests', () => {
     expect(gsbLookup).toHaveBeenCalledTimes(1);
   });
 
-  test('Google Safe Browsing handles API errors gracefully', async () => {
-    const err = new Error('GSB failure');
+  test("Google Safe Browsing handles API errors gracefully", async () => {
+    const err = new Error("GSB failure");
     const gsbLookup = shared.gsbLookup as jest.Mock;
     gsbLookup.mockRejectedValue(err);
 
@@ -69,7 +69,7 @@ describe('External API Integration Tests', () => {
     expect(result.error).toBe(err);
   });
 
-  test('VirusTotal parses stats and caches results', async () => {
+  test("VirusTotal parses stats and caches results", async () => {
     const vtAnalyzeUrl = shared.vtAnalyzeUrl as jest.Mock;
     vtAnalyzeUrl.mockResolvedValue({
       latencyMs: 12,
@@ -94,8 +94,8 @@ describe('External API Integration Tests', () => {
     expect(vtVerdictStats).toHaveBeenCalledTimes(1);
   });
 
-  test('VirusTotal sets quotaExceeded on 429 errors', async () => {
-    const error = Object.assign(new Error('Quota exceeded'), {
+  test("VirusTotal sets quotaExceeded on 429 errors", async () => {
+    const error = Object.assign(new Error("Quota exceeded"), {
       statusCode: 429,
     });
     const vtAnalyzeUrl = shared.vtAnalyzeUrl as jest.Mock;
@@ -106,7 +106,7 @@ describe('External API Integration Tests', () => {
     expect(result.quotaExceeded).toBe(true);
   });
 
-  test('Phishtank returns verified results and caches', async () => {
+  test("Phishtank returns verified results and caches", async () => {
     const phishtankLookup = shared.phishtankLookup as jest.Mock;
     phishtankLookup.mockResolvedValue({
       inDatabase: true,
@@ -124,17 +124,17 @@ describe('External API Integration Tests', () => {
     expect(phishtankLookup).toHaveBeenCalledTimes(1);
   });
 
-  test('URLhaus returns listing details and caches', async () => {
+  test("URLhaus returns listing details and caches", async () => {
     const urlhausLookup = shared.urlhausLookup as jest.Mock;
     urlhausLookup.mockResolvedValue({
       listed: true,
-      threat: 'malware_download',
+      threat: "malware_download",
       latencyMs: 22,
     });
 
     const first = await testables.fetchUrlhaus(testUrl, testHash);
     expect(first.result?.listed).toBe(true);
-    expect(first.result?.threat).toBe('malware_download');
+    expect(first.result?.threat).toBe("malware_download");
     expect(first.fromCache).toBe(false);
 
     const second = await testables.fetchUrlhaus(testUrl, testHash);
