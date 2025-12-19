@@ -4,6 +4,8 @@ import { scoreFromSignals } from "../scoring";
 import type { Signals } from "../scoring";
 import type { HomoglyphResult } from "../homoglyph";
 
+const NUM_RUNS = process.env.CI ? 10000 : 1000;
+
 const MALICIOUS_GSB_TYPES = [
   "MALWARE",
   "SOCIAL_ENGINEERING",
@@ -100,7 +102,7 @@ describe("Scoring Algorithm - Property-Based Tests", () => {
         expect(result1).toEqual(result2);
         expect(result2).toEqual(result3);
       }),
-      { numRuns: 1000 },
+      { numRuns: NUM_RUNS },
     );
   });
 
@@ -119,7 +121,7 @@ describe("Scoring Algorithm - Property-Based Tests", () => {
           expect(result.level).toBe("malicious");
         }
       }),
-      { numRuns: 1000 },
+      { numRuns: NUM_RUNS },
     );
   });
 
@@ -130,7 +132,7 @@ describe("Scoring Algorithm - Property-Based Tests", () => {
         const unique = new Set(reasons);
         expect(unique.size).toBe(reasons.length);
       }),
-      { numRuns: 1000 },
+      { numRuns: NUM_RUNS },
     );
   });
 
@@ -151,7 +153,7 @@ describe("Scoring Algorithm - Property-Based Tests", () => {
         const scoreElevated = scoreFromSignals(elevated).score;
         expect(scoreElevated).toBeGreaterThanOrEqual(scoreBaseline);
       }),
-      { numRuns: 1000 },
+      { numRuns: NUM_RUNS },
     );
   });
 
@@ -164,7 +166,7 @@ describe("Scoring Algorithm - Property-Based Tests", () => {
         const scoreElevated = scoreFromSignals(elevated).score;
         expect(scoreElevated).toBeGreaterThanOrEqual(scoreBaseline);
       }),
-      { numRuns: 1000 },
+      { numRuns: NUM_RUNS },
     );
   });
 
@@ -177,7 +179,7 @@ describe("Scoring Algorithm - Property-Based Tests", () => {
         const scoreElevated = scoreFromSignals(elevated).score;
         expect(scoreElevated).toBeGreaterThanOrEqual(scoreBaseline);
       }),
-      { numRuns: 1000 },
+      { numRuns: NUM_RUNS },
     );
   });
 
@@ -199,7 +201,7 @@ describe("Scoring Algorithm - Property-Based Tests", () => {
           expect(scoreElevated).toBeGreaterThanOrEqual(scoreBaseline);
         },
       ),
-      { numRuns: 1000 },
+      { numRuns: NUM_RUNS },
     );
   });
 
@@ -216,7 +218,7 @@ describe("Scoring Algorithm - Property-Based Tests", () => {
         const scoreElevated = scoreFromSignals(elevated).score;
         expect(scoreElevated).toBeGreaterThanOrEqual(scoreBaseline);
       }),
-      { numRuns: 1000 },
+      { numRuns: NUM_RUNS },
     );
   });
 
@@ -241,7 +243,7 @@ describe("Scoring Algorithm - Property-Based Tests", () => {
           expect(youngScore).toBeGreaterThanOrEqual(oldScore);
         },
       ),
-      { numRuns: 1000 },
+      { numRuns: NUM_RUNS },
     );
   });
 
@@ -265,7 +267,7 @@ describe("Scoring Algorithm - Property-Based Tests", () => {
         expect(medium).toBeGreaterThanOrEqual(low);
         expect(high).toBeGreaterThanOrEqual(medium);
       }),
-      { numRuns: 1000 },
+      { numRuns: NUM_RUNS },
     );
   });
 
@@ -283,7 +285,7 @@ describe("Scoring Algorithm - Property-Based Tests", () => {
 
         expect(with_).toBeGreaterThanOrEqual(without);
       }),
-      { numRuns: 1000 },
+      { numRuns: NUM_RUNS },
     );
   });
 
@@ -319,7 +321,7 @@ describe("Scoring Algorithm - Property-Based Tests", () => {
 
         expect(with_).toBeGreaterThanOrEqual(without);
       }),
-      { numRuns: 1000 },
+      { numRuns: NUM_RUNS },
     );
   });
 });
