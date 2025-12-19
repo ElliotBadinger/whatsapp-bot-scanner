@@ -380,4 +380,119 @@ describe("EnhancedSecurityAnalyzer", () => {
     expect(localThreatDbMock.check).not.toHaveBeenCalled();
     expect(result.tier1Results?.localThreats).toEqual({ score: 0, reasons: [] });
   });
+
+  describe("Tier 1 threshold boundary tests (mutation testing)", () => {
+    it("tier1Score exactly 2.0 should NOT trigger malicious verdict (> boundary)", async () => {
+      (advancedHeuristics as jest.Mock).mockResolvedValue({
+        score: 2.0,
+        reasons: ["heuristics"],
+        entropy: 0,
+        subdomainAnalysis: { count: 0, maxDepth: 0, hasNumericSubdomains: false, suspicionScore: 0 },
+        suspiciousPatterns: [],
+      });
+      (dnsIntelligence as jest.Mock).mockResolvedValue({
+        score: 0,
+        reasons: [],
+        dnsblResults: [],
+      });
+      localThreatDbMock.check.mockResolvedValueOnce({
+        score: 0,
+        reasons: [] as string[],
+      });
+      (certificateIntelligence as jest.Mock).mockResolvedValue({
+        suspicionScore: 0.0,
+        reasons: [],
+      });
+      (httpFingerprinting as jest.Mock).mockResolvedValue({
+        suspicionScore: 0.0,
+        reasons: [],
+      });
+
+      const analyzer = new EnhancedSecurityAnalyzer({} as any);
+      const result = await analyzer.analyze("https://example.com", "hash");
+      
+      expect(result.score).toBe(2.0);
+      expect(result.verdict).not.toBe("malicious");
+      expect(result.skipExternalAPIs).toBe(false);
+    });
+
+    it("tier1Score exactly 2.01 should trigger malicious verdict (> boundary)", async () => {
+      (advancedHeuristics as jest.Mock).mockResolvedValue({
+        score: 2.01,
+        reasons: ["heuristics"],
+        entropy: 0,
+        subdomainAnalysis: { count: 0, maxDepth: 0, hasNumericSubdomains: false, suspicionScore: 0 },
+        suspiciousPatterns: [],
+      });
+      (dnsIntelligence as jest.Mock).mockResolvedValue({
+        score: 0,
+        reasons: [],
+        dnsblResults: [],
+      });
+      localThreatDbMock.check.mockResolvedValueOnce({
+        score: 0,
+        reasons: [] as string[],
+      });
+
+      const analyzer = new EnhancedSecurityAnalyzer({} as any);
+      const result = await analyzer.analyze("https://example.com", "hash");
+      
+      expect(result.score).toBeGreaterThan(2.0);
+      expect(result.verdict).toBe("malicious");
+      expect(result.confidence).toBe("high");
+      expect(result.skipExternalAPIs).toBe(true);
+    });
+
+    it("tier1Score 2.1 triggers malicious with high confidence", async () => {
+      (advancedHeuristics as jest.Mock).mockResolvedValue({
+        score: 2.1,
+        reasons: ["entropy"],
+        entropy: 0,
+        subdomainAnalysis: { count: 0, maxDepth: 0, hasNumericSubdomains: false, suspicionScore: 0 },
+        suspiciousPatterns: [],
+      });
+      (dnsIntelligence as jest.Mock).mockResolvedValue({
+        score: 0,
+        reasons: [],
+        dnsblResults: [],
+      });
+      localThreatDbMock.check.mockResolvedValueOnce({
+        score: 0,
+        reasons: [] as string[],
+      });
+
+      const analyzer = new EnhancedSecurityAnalyzer({} as any);
+      const result = await analyzer.analyze("https://example.com", "hash");
+      
+      expect(result.verdict).toBe("malicious");
+      expect(result.confidence).toBe("high");
+      expect(result.skipExternalAPIs).toBe(true);
+      expect(result.score).toBeGreaterThan(2.0);
+    });
+
+    it("tier1Score 2.5 triggers malicious (mutation boundary for 2.0 vs 2.5)", async () => {
+      (advancedHeuristics as jest.Mock).mockResolvedValue({
+        score: 2.5,
+        reasons: ["high entropy"],
+        entropy: 0,
+        subdomainAnalysis: { count: 0, maxDepth: 0, hasNumericSubdomains: false, suspicionScore: 0 },
+        suspiciousPatterns: [],
+      });
+      (dnsIntelligence as jest.Mock).mockResolvedValue({
+        score: 0,
+        reasons: [],
+        dnsblResults: [],
+      });
+      localThreatDbMock.check.mockResolvedValueOnce({
+        score: 0,
+        reasons: [] as string[],
+      });
+
+      const analyzer = new EnhancedSecurityAnalyzer({} as any);
+      const result = await analyzer.analyze("https://example.com", "hash");
+      
+      expect(result.verdict).toBe("malicious");
+      expect(result.score).toBe(2.5);
+    });
+  });
 });
