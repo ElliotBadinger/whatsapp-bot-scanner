@@ -18,9 +18,12 @@ const verdictArb: fc.Arbitrary<CachedVerdict> = fc.record({
   verdict: fc.constantFrom("benign", "suspicious", "malicious"),
   confidence: fc.double({ min: 0, max: 1, noNaN: true }),
   timestamp: fc.nat(Date.now()),
-  sources: fc.option(fc.array(fc.asciiString({ minLength: 1, maxLength: 20 }), { maxLength: 5 }), {
-    nil: undefined,
-  }),
+  sources: fc.option(
+    fc.array(fc.asciiString({ minLength: 1, maxLength: 20 }), { maxLength: 5 }),
+    {
+      nil: undefined,
+    },
+  ),
 });
 
 const urlHashArb = fc.hexaString({ minLength: 64, maxLength: 64 });
@@ -39,7 +42,7 @@ describe("VerdictCache - Stateful Property Tests", () => {
       fc.assert(
         fc.property(urlHashArb, verdictArb, (hash, verdict) => {
           cache = new VerdictCache({ ttlSeconds: 3600 });
-          
+
           cache.set(hash, verdict);
           const retrieved = cache.get(hash);
 
@@ -54,7 +57,7 @@ describe("VerdictCache - Stateful Property Tests", () => {
       fc.assert(
         fc.property(urlHashArb, (hash) => {
           cache = new VerdictCache({ ttlSeconds: 3600 });
-          
+
           const retrieved = cache.get(hash);
 
           expect(retrieved).toBeUndefined();
@@ -68,7 +71,7 @@ describe("VerdictCache - Stateful Property Tests", () => {
       fc.assert(
         fc.property(urlHashArb, verdictArb, (hash, verdict) => {
           cache = new VerdictCache({ ttlSeconds: 3600 });
-          
+
           const success = cache.set(hash, verdict);
 
           expect(success).toBe(true);
@@ -82,7 +85,7 @@ describe("VerdictCache - Stateful Property Tests", () => {
       fc.assert(
         fc.property(urlHashArb, verdictArb, (hash, verdict) => {
           cache = new VerdictCache({ ttlSeconds: 3600 });
-          
+
           expect(cache.has(hash)).toBe(false);
           cache.set(hash, verdict);
           expect(cache.has(hash)).toBe(true);
@@ -98,10 +101,10 @@ describe("VerdictCache - Stateful Property Tests", () => {
       fc.assert(
         fc.property(urlHashArb, verdictArb, (hash, verdict) => {
           cache = new VerdictCache({ ttlSeconds: 3600 });
-          
+
           cache.set(hash, verdict);
           expect(cache.has(hash)).toBe(true);
-          
+
           cache.delete(hash);
           expect(cache.has(hash)).toBe(false);
           expect(cache.get(hash)).toBeUndefined();
@@ -115,7 +118,7 @@ describe("VerdictCache - Stateful Property Tests", () => {
       fc.assert(
         fc.property(urlHashArb, (hash) => {
           cache = new VerdictCache({ ttlSeconds: 3600 });
-          
+
           const count = cache.delete(hash);
           expect(count).toBe(0);
           cache.close();
@@ -129,10 +132,13 @@ describe("VerdictCache - Stateful Property Tests", () => {
     test("PROPERTY: Clear removes all entries", () => {
       fc.assert(
         fc.property(
-          fc.array(fc.tuple(urlHashArb, verdictArb), { minLength: 1, maxLength: 10 }),
+          fc.array(fc.tuple(urlHashArb, verdictArb), {
+            minLength: 1,
+            maxLength: 10,
+          }),
           (entries) => {
             cache = new VerdictCache({ ttlSeconds: 3600 });
-            
+
             for (const [hash, verdict] of entries) {
               cache.set(hash, verdict);
             }
@@ -157,20 +163,25 @@ describe("VerdictCache - Stateful Property Tests", () => {
   describe("Statistics Properties", () => {
     test("PROPERTY: Hit count increases on cache hit", () => {
       fc.assert(
-        fc.property(urlHashArb, verdictArb, fc.nat(10), (hash, verdict, reads) => {
-          cache = new VerdictCache({ ttlSeconds: 3600 });
-          
-          cache.set(hash, verdict);
-          
-          const numReads = Math.min(reads, 10);
-          for (let i = 0; i < numReads; i++) {
-            cache.get(hash);
-          }
+        fc.property(
+          urlHashArb,
+          verdictArb,
+          fc.nat(10),
+          (hash, verdict, reads) => {
+            cache = new VerdictCache({ ttlSeconds: 3600 });
 
-          const stats = cache.getStats();
-          expect(stats.hits).toBe(numReads);
-          cache.close();
-        }),
+            cache.set(hash, verdict);
+
+            const numReads = Math.min(reads, 10);
+            for (let i = 0; i < numReads; i++) {
+              cache.get(hash);
+            }
+
+            const stats = cache.getStats();
+            expect(stats.hits).toBe(numReads);
+            cache.close();
+          },
+        ),
         { numRuns: NUM_RUNS },
       );
     });
@@ -179,7 +190,7 @@ describe("VerdictCache - Stateful Property Tests", () => {
       fc.assert(
         fc.property(urlHashArb, fc.nat(10), (hash, reads) => {
           cache = new VerdictCache({ ttlSeconds: 3600 });
-          
+
           const numReads = Math.min(reads, 10);
           for (let i = 0; i < numReads; i++) {
             cache.get(hash);
@@ -202,14 +213,14 @@ describe("VerdictCache - Stateful Property Tests", () => {
           fc.integer({ min: 1, max: 10 }),
           (hash, verdict, hits, misses) => {
             cache = new VerdictCache({ ttlSeconds: 3600 });
-            
+
             cache.set(hash, verdict);
 
             for (let i = 0; i < hits; i++) {
               cache.get(hash);
             }
 
-            const nonExistentHash = hash.split('').reverse().join('');
+            const nonExistentHash = hash.split("").reverse().join("");
             for (let i = 0; i < misses; i++) {
               cache.get(nonExistentHash);
             }
@@ -229,16 +240,21 @@ describe("VerdictCache - Stateful Property Tests", () => {
   describe("Overwrite Properties", () => {
     test("PROPERTY: Later set overwrites earlier set", () => {
       fc.assert(
-        fc.property(urlHashArb, verdictArb, verdictArb, (hash, verdict1, verdict2) => {
-          cache = new VerdictCache({ ttlSeconds: 3600 });
-          
-          cache.set(hash, verdict1);
-          cache.set(hash, verdict2);
+        fc.property(
+          urlHashArb,
+          verdictArb,
+          verdictArb,
+          (hash, verdict1, verdict2) => {
+            cache = new VerdictCache({ ttlSeconds: 3600 });
 
-          const retrieved = cache.get(hash);
-          expect(retrieved).toEqual(verdict2);
-          cache.close();
-        }),
+            cache.set(hash, verdict1);
+            cache.set(hash, verdict2);
+
+            const retrieved = cache.get(hash);
+            expect(retrieved).toEqual(verdict2);
+            cache.close();
+          },
+        ),
         { numRuns: NUM_RUNS },
       );
     });
@@ -253,7 +269,7 @@ describe("VerdictCache - Stateful Property Tests", () => {
           fc.integer({ min: 10, max: 3600 }),
           (hash, verdict, ttl) => {
             cache = new VerdictCache({ ttlSeconds: 1 });
-            
+
             cache.set(hash, verdict, ttl);
 
             const retrievedTtl = cache.getTtl(hash);

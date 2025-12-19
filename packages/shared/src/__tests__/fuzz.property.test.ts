@@ -101,7 +101,9 @@ describe("Fuzz Testing - Boundary Values", () => {
 
             expect(() => scoreFromSignals(signals)).not.toThrow();
             const result = scoreFromSignals(signals);
-            expect(["benign", "suspicious", "malicious"]).toContain(result.level);
+            expect(["benign", "suspicious", "malicious"]).toContain(
+              result.level,
+            );
           },
         ),
         { numRuns: NUM_RUNS },
@@ -112,9 +114,12 @@ describe("Fuzz Testing - Boundary Values", () => {
   describe("Homoglyph Fuzzing", () => {
     test("FUZZ: Random Unicode strings don't crash", () => {
       fc.assert(
-        fc.property(fc.unicodeString({ minLength: 1, maxLength: 100 }), (domain) => {
-          expect(() => detectHomoglyphs(domain)).not.toThrow();
-        }),
+        fc.property(
+          fc.unicodeString({ minLength: 1, maxLength: 100 }),
+          (domain) => {
+            expect(() => detectHomoglyphs(domain)).not.toThrow();
+          },
+        ),
         { numRuns: NUM_RUNS },
       );
     });
@@ -124,12 +129,12 @@ describe("Fuzz Testing - Boundary Values", () => {
         fc.property(
           fc.stringOf(
             fc.oneof(
-              fc.constantFrom(...'abcdefghijklmnopqrstuvwxyz'),
-              fc.constantFrom(...'αβγδεζηθικλμνξοπρστυφχψω'),
-              fc.constantFrom(...'абвгдежзийклмнопрстуфхцчшщъыьэюя'),
-              fc.constantFrom(...'0123456789'),
-              fc.constant('.'),
-              fc.constant('-'),
+              fc.constantFrom(..."abcdefghijklmnopqrstuvwxyz"),
+              fc.constantFrom(..."αβγδεζηθικλμνξοπρστυφχψω"),
+              fc.constantFrom(..."абвгдежзийклмнопрстуфхцчшщъыьэюя"),
+              fc.constantFrom(..."0123456789"),
+              fc.constant("."),
+              fc.constant("-"),
             ),
             { minLength: 1, maxLength: 50 },
           ),
@@ -151,7 +156,9 @@ describe("Fuzz Testing - Boundary Values", () => {
             fc.constant("xn--abc"),
             fc.constant("xn--80ak6aa92e.com"),
             fc.constant("xn--nxasmq5b.com"),
-            fc.asciiString({ minLength: 0, maxLength: 30 }).map((s) => `xn--${s}.com`),
+            fc
+              .asciiString({ minLength: 0, maxLength: 30 })
+              .map((s) => `xn--${s}.com`),
           ),
           (domain) => {
             expect(() => detectHomoglyphs(domain)).not.toThrow();
@@ -170,7 +177,9 @@ describe("Fuzz Testing - Boundary Values", () => {
             fc.constant("\t"),
             fc.constant("\n"),
             fc.constant("   "),
-            fc.stringOf(fc.constantFrom(" ", "\t", "\n", "\r"), { maxLength: 10 }),
+            fc.stringOf(fc.constantFrom(" ", "\t", "\n", "\r"), {
+              maxLength: 10,
+            }),
           ),
           (domain) => {
             expect(() => detectHomoglyphs(domain)).not.toThrow();
@@ -213,11 +222,24 @@ describe("Fuzz Testing - Boundary Values", () => {
             fc.unicodeString({ maxLength: 500 }),
             fc.stringOf(
               fc.oneof(
-                fc.constantFrom(...'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'),
-                fc.constantFrom(' ', '\n', '\t', '.', '/', ':', '?', '=', '&', '#'),
-                fc.constant('http://'),
-                fc.constant('https://'),
-                fc.constant('www.'),
+                fc.constantFrom(
+                  ..."abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+                ),
+                fc.constantFrom(
+                  " ",
+                  "\n",
+                  "\t",
+                  ".",
+                  "/",
+                  ":",
+                  "?",
+                  "=",
+                  "&",
+                  "#",
+                ),
+                fc.constant("http://"),
+                fc.constant("https://"),
+                fc.constant("www."),
               ),
               { maxLength: 500 },
             ),
@@ -234,12 +256,15 @@ describe("Fuzz Testing - Boundary Values", () => {
 
     test("FUZZ: URL hash on various inputs", () => {
       fc.assert(
-        fc.property(fc.asciiString({ minLength: 1, maxLength: 200 }), (input) => {
-          expect(() => urlHash(input)).not.toThrow();
-          const hash = urlHash(input);
-          expect(hash.length).toBe(64);
-          expect(/^[a-f0-9]+$/.test(hash)).toBe(true);
-        }),
+        fc.property(
+          fc.asciiString({ minLength: 1, maxLength: 200 }),
+          (input) => {
+            expect(() => urlHash(input)).not.toThrow();
+            const hash = urlHash(input);
+            expect(hash.length).toBe(64);
+            expect(/^[a-f0-9]+$/.test(hash)).toBe(true);
+          },
+        ),
         { numRuns: NUM_RUNS },
       );
     });
@@ -275,7 +300,10 @@ describe("Fuzz Testing - Boundary Values", () => {
     test("FUZZ: Very long strings don't crash scoring", () => {
       fc.assert(
         fc.property(
-          fc.array(fc.asciiString({ maxLength: 100 }), { minLength: 10, maxLength: 100 }),
+          fc.array(fc.asciiString({ maxLength: 100 }), {
+            minLength: 10,
+            maxLength: 100,
+          }),
           (reasons) => {
             const signals: Signals = {
               urlLength: reasons.join("").length,
@@ -345,9 +373,12 @@ describe("Fuzz Testing - Crash Resistance", () => {
     fc.assert(
       fc.property(
         fc.record({
-          gsbThreatTypes: fc.option(fc.array(fc.asciiString({ maxLength: 50 })), {
-            nil: undefined,
-          }),
+          gsbThreatTypes: fc.option(
+            fc.array(fc.asciiString({ maxLength: 50 })),
+            {
+              nil: undefined,
+            },
+          ),
           vtMalicious: fc.option(fc.integer(), { nil: undefined }),
           vtSuspicious: fc.option(fc.integer(), { nil: undefined }),
           vtHarmless: fc.option(fc.integer(), { nil: undefined }),
