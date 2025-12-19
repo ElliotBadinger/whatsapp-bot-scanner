@@ -93,7 +93,7 @@
       },
       "targets": [
         {
-          "expr": "wbscanner_api_quota_remaining{service=\"virustotal\"}"
+          "expr": "(wbscanner_api_quota_remaining{service=\"virustotal\"}) OR on() vector(0)"
         }
       ]
     },
@@ -108,7 +108,7 @@
       },
       "targets": [
         {
-          "expr": "wbscanner_api_quota_remaining{service=\"whoisxml\"}"
+          "expr": "(wbscanner_api_quota_remaining{service=\"whoisxml\"}) OR on() vector(0)"
         }
       ]
     },
@@ -183,7 +183,7 @@
       },
       "targets": [
         {
-          "expr": "wbscanner_api_quota_utilization_ratio{service=\"virustotal\"}"
+          "expr": "(wbscanner_api_quota_utilization_ratio{service=\"virustotal\"}) OR on() vector(0)"
         }
       ]
     },
@@ -198,7 +198,7 @@
       },
       "targets": [
         {
-          "expr": "wbscanner_api_quota_utilization_ratio{service=\"whoisxml\"}"
+          "expr": "(wbscanner_api_quota_utilization_ratio{service=\"whoisxml\"}) OR on() vector(0)"
         }
       ]
     },

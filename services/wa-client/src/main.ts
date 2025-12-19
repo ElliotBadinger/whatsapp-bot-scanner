@@ -19,6 +19,7 @@ import {
   logger,
   metrics,
   register,
+  waSessionStatusGauge,
   assertEssentialConfig,
   assertControlPlaneToken,
   createRedisConnection,
@@ -41,6 +42,7 @@ let scanRequestQueue: Queue | null = null;
 let scanVerdictWorker: Worker | null = null;
 let cachedQr: string | null = null;
 let lastDisconnectReason: DisconnectReason | null = null;
+let lastConnectionState: string | null = null;
 
 interface VerdictJobData {
   chatId: string;
@@ -186,12 +188,20 @@ async function main(): Promise<void> {
   // Set up connection handlers
   adapter.onConnectionChange((state) => {
     logger.info({ state }, "Connection state changed");
-    // Connection state metric (if available)
+    if (lastConnectionState) {
+      metrics.waSessionState.labels(lastConnectionState).set(0);
+    }
+    lastConnectionState = state;
+    metrics.waSessionState.labels(state).set(1);
+    metrics.waStateChanges.labels("connection", state).inc();
+    waSessionStatusGauge.labels("ready").set(state === "ready" ? 1 : 0);
   });
 
   adapter.onDisconnect((reason) => {
     logger.warn({ reason }, "Disconnected from WhatsApp");
     lastDisconnectReason = reason;
+    metrics.waSessionReconnects.labels("disconnect").inc();
+    waSessionStatusGauge.labels("ready").set(0);
     if (reason.shouldReconnect) {
       logger.info("Will attempt to reconnect...");
     }
@@ -201,6 +211,7 @@ async function main(): Promise<void> {
     logger.info("QR code received - scan with WhatsApp to authenticate");
     // Cache QR for HTTP endpoint
     cachedQr = qr;
+    metrics.waQrCodesGenerated.inc();
     // Print QR to terminal if configured - use small format for better fit
     if (config.wa.remoteAuth.disableQrFallback !== true) {
       import("qrcode-terminal")
@@ -231,6 +242,7 @@ async function main(): Promise<void> {
   adapter.onConnectionChange((state) => {
     if (state === "ready") {
       cachedQr = null;
+      metrics.waSessionReconnects.labels("ready").inc();
     }
   });
 

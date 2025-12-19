@@ -2,6 +2,8 @@ import pino from 'pino';
 
 const isHobbyMode = process.env.NODE_ENV !== 'production';
 const isTestEnv = process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !== undefined;
+const isPrettyRequested =
+  process.env.LOG_PRETTY === '1' || process.env.LOG_PRETTY === 'true';
 
 // Check if pino-pretty is available (it's a dev dependency)
 function isPinoPrettyAvailable(): boolean {
@@ -21,7 +23,7 @@ function createLogger() {
     return pino({ level: 'silent' });
   }
 
-  if (isHobbyMode && isPinoPrettyAvailable()) {
+  if ((isHobbyMode || isPrettyRequested) && isPinoPrettyAvailable()) {
     return pino({
       transport: {
         target: 'pino-pretty',
