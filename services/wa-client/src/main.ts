@@ -216,13 +216,16 @@ async function main(): Promise<void> {
     if (config.wa.remoteAuth.disableQrFallback !== true) {
       import("qrcode-terminal")
         .then((mod) => {
-          const qrTerminal = (mod as unknown as { default?: unknown }).default ?? mod;
+          const qrTerminal =
+            (mod as unknown as { default?: unknown }).default ?? mod;
           const generator = qrTerminal as unknown as {
             generate?: (text: string, opts?: { small?: boolean }) => void;
           };
 
           if (typeof generator.generate !== "function") {
-            throw new TypeError("qrcode-terminal export did not provide generate() ");
+            throw new TypeError(
+              "qrcode-terminal export did not provide generate() ",
+            );
           }
 
           console.log("\n  ╔════════════════════════════════════╗");
