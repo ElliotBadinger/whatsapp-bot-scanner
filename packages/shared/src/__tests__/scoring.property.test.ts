@@ -1,23 +1,23 @@
-import { describe, expect, test } from '@jest/globals';
-import fc from 'fast-check';
-import { scoreFromSignals } from '../scoring';
-import type { Signals } from '../scoring';
-import type { HomoglyphResult } from '../homoglyph';
+import { describe, expect, test } from "@jest/globals";
+import fc from "fast-check";
+import { scoreFromSignals } from "../scoring";
+import type { Signals } from "../scoring";
+import type { HomoglyphResult } from "../homoglyph";
 
 const MALICIOUS_GSB_TYPES = [
-  'MALWARE',
-  'SOCIAL_ENGINEERING',
-  'UNWANTED_SOFTWARE',
-  'MALICIOUS_BINARY',
-  'POTENTIALLY_HARMFUL_APPLICATION',
+  "MALWARE",
+  "SOCIAL_ENGINEERING",
+  "UNWANTED_SOFTWARE",
+  "MALICIOUS_BINARY",
+  "POTENTIALLY_HARMFUL_APPLICATION",
 ] as const;
 
 const homoglyphCharArb = fc.record({
-  original: fc.constantFrom('a', 'e', 'o'),
-  confusedWith: fc.constantFrom('a', 'e', 'o'),
+  original: fc.constantFrom("a", "e", "o"),
+  confusedWith: fc.constantFrom("a", "e", "o"),
   position: fc.nat(50),
-  script: fc.constant('Latin'),
-  alternatives: fc.array(fc.constantFrom('a', 'e', 'o'), { maxLength: 3 }),
+  script: fc.constant("Latin"),
+  alternatives: fc.array(fc.constantFrom("a", "e", "o"), { maxLength: 3 }),
 });
 
 const homoglyphArb: fc.Arbitrary<HomoglyphResult> = fc.record({
@@ -27,11 +27,10 @@ const homoglyphArb: fc.Arbitrary<HomoglyphResult> = fc.record({
   unicodeHostname: fc.asciiString({ minLength: 1, maxLength: 20 }),
   normalizedDomain: fc.asciiString({ minLength: 1, maxLength: 20 }),
   confusableChars: fc.array(homoglyphCharArb, { maxLength: 3 }),
-  riskLevel: fc.constantFrom('low', 'medium', 'high'),
-  riskReasons: fc.array(
-    fc.asciiString({ minLength: 1, maxLength: 40 }),
-    { maxLength: 3 },
-  ),
+  riskLevel: fc.constantFrom("low", "medium", "high"),
+  riskReasons: fc.array(fc.asciiString({ minLength: 1, maxLength: 40 }), {
+    maxLength: 3,
+  }),
 });
 
 const signalsArb: fc.Arbitrary<Signals> = fc.record({
@@ -53,7 +52,7 @@ const signalsArb: fc.Arbitrary<Signals> = fc.record({
   hasExecutableExtension: fc.option(fc.boolean(), { nil: undefined }),
   wasShortened: fc.option(fc.boolean(), { nil: undefined }),
   manualOverride: fc.option(
-    fc.constantFrom<'allow' | 'deny' | null>('allow', 'deny', null),
+    fc.constantFrom<"allow" | "deny" | null>("allow", "deny", null),
     { nil: undefined },
   ),
   finalUrlMismatch: fc.option(fc.boolean(), { nil: undefined }),
@@ -68,26 +67,30 @@ const signalsNoOverrideArb = signalsArb.map((signals) => ({
 
 const maliciousThreatTypeSet = new Set<string>(MALICIOUS_GSB_TYPES);
 
-function stripMaliciousThreats(threatTypes: Signals['gsbThreatTypes']): string[] {
+function stripMaliciousThreats(
+  threatTypes: Signals["gsbThreatTypes"],
+): string[] {
   if (!threatTypes) return [];
   return threatTypes.filter((t) => !maliciousThreatTypeSet.has(t));
 }
 
-function makeHomoglyph(riskLevel: HomoglyphResult['riskLevel']): HomoglyphResult {
+function makeHomoglyph(
+  riskLevel: HomoglyphResult["riskLevel"],
+): HomoglyphResult {
   return {
     detected: true,
     isPunycode: false,
     mixedScript: false,
-    unicodeHostname: 'example.com',
-    normalizedDomain: 'example.com',
+    unicodeHostname: "example.com",
+    normalizedDomain: "example.com",
     confusableChars: [],
     riskLevel,
     riskReasons: [],
   };
 }
 
-describe('Scoring Algorithm - Property-Based Tests', () => {
-  test('PROPERTY: score is deterministic for identical inputs', () => {
+describe("Scoring Algorithm - Property-Based Tests", () => {
+  test("PROPERTY: score is deterministic for identical inputs", () => {
     fc.assert(
       fc.property(signalsArb, (signals) => {
         const result1 = scoreFromSignals(signals);
@@ -101,7 +104,7 @@ describe('Scoring Algorithm - Property-Based Tests', () => {
     );
   });
 
-  test('PROPERTY: score is bounded and verdict matches score bands', () => {
+  test("PROPERTY: score is bounded and verdict matches score bands", () => {
     fc.assert(
       fc.property(signalsArb, (signals) => {
         const result = scoreFromSignals(signals);
@@ -109,18 +112,18 @@ describe('Scoring Algorithm - Property-Based Tests', () => {
         expect(result.score).toBeLessThanOrEqual(15);
 
         if (result.score <= 3) {
-          expect(result.level).toBe('benign');
+          expect(result.level).toBe("benign");
         } else if (result.score <= 7) {
-          expect(result.level).toBe('suspicious');
+          expect(result.level).toBe("suspicious");
         } else {
-          expect(result.level).toBe('malicious');
+          expect(result.level).toBe("malicious");
         }
       }),
       { numRuns: 1000 },
     );
   });
 
-  test('PROPERTY: reasons list has no duplicates', () => {
+  test("PROPERTY: reasons list has no duplicates", () => {
     fc.assert(
       fc.property(signalsArb, (signals) => {
         const { reasons } = scoreFromSignals(signals);
@@ -131,7 +134,7 @@ describe('Scoring Algorithm - Property-Based Tests', () => {
     );
   });
 
-  test('PROPERTY: adding a malicious GSB threat does not lower score', () => {
+  test("PROPERTY: adding a malicious GSB threat does not lower score", () => {
     fc.assert(
       fc.property(signalsNoOverrideArb, (signals) => {
         const baseThreats = stripMaliciousThreats(signals.gsbThreatTypes);
@@ -141,7 +144,7 @@ describe('Scoring Algorithm - Property-Based Tests', () => {
         };
         const elevated = {
           ...baseline,
-          gsbThreatTypes: [...baseThreats, 'MALWARE'],
+          gsbThreatTypes: [...baseThreats, "MALWARE"],
         };
 
         const scoreBaseline = scoreFromSignals(baseline).score;
@@ -152,7 +155,7 @@ describe('Scoring Algorithm - Property-Based Tests', () => {
     );
   });
 
-  test('PROPERTY: phishtank listing does not lower score', () => {
+  test("PROPERTY: phishtank listing does not lower score", () => {
     fc.assert(
       fc.property(signalsNoOverrideArb, (signals) => {
         const baseline = { ...signals, phishtankVerified: false };
@@ -165,7 +168,7 @@ describe('Scoring Algorithm - Property-Based Tests', () => {
     );
   });
 
-  test('PROPERTY: urlhaus listing does not lower score', () => {
+  test("PROPERTY: urlhaus listing does not lower score", () => {
     fc.assert(
       fc.property(signalsNoOverrideArb, (signals) => {
         const baseline = { ...signals, urlhausListed: false };
@@ -178,7 +181,29 @@ describe('Scoring Algorithm - Property-Based Tests', () => {
     );
   });
 
-  test('PROPERTY: increasing redirect count does not lower score', () => {
+  test("PROPERTY: increasing vtMalicious does not lower score", () => {
+    fc.assert(
+      fc.property(
+        signalsNoOverrideArb,
+        fc.oneof(
+          fc.constantFrom(0, 1, 2, 3, 4, 5, 9, 10, 19, 20),
+          fc.integer({ min: 0, max: 100 }),
+          fc.integer({ min: 101, max: 10_000 }),
+        ),
+        (signals, malicious) => {
+          const baseline = { ...signals, vtMalicious: malicious };
+          const elevated = { ...signals, vtMalicious: malicious + 1 };
+          const scoreBaseline = scoreFromSignals(baseline).score;
+          const scoreElevated = scoreFromSignals(elevated).score;
+
+          expect(scoreElevated).toBeGreaterThanOrEqual(scoreBaseline);
+        },
+      ),
+      { numRuns: 1000 },
+    );
+  });
+
+  test("PROPERTY: increasing redirect count does not lower score", () => {
     fc.assert(
       fc.property(signalsNoOverrideArb, (signals) => {
         const baselineRedirects = Math.max(0, signals.redirectCount ?? 0);
@@ -195,41 +220,46 @@ describe('Scoring Algorithm - Property-Based Tests', () => {
     );
   });
 
-  test('PROPERTY: younger domains do not lower score', () => {
+  test("PROPERTY: younger domains do not lower score", () => {
     fc.assert(
-      fc.property(signalsNoOverrideArb, fc.nat(60), fc.nat(60), (signals, age1, age2) => {
-        const young = Math.min(age1, age2);
-        const old = Math.max(age1, age2);
-        const youngScore = scoreFromSignals({
-          ...signals,
-          domainAgeDays: young,
-        }).score;
-        const oldScore = scoreFromSignals({
-          ...signals,
-          domainAgeDays: old,
-        }).score;
+      fc.property(
+        signalsNoOverrideArb,
+        fc.nat(60),
+        fc.nat(60),
+        (signals, age1, age2) => {
+          const young = Math.min(age1, age2);
+          const old = Math.max(age1, age2);
+          const youngScore = scoreFromSignals({
+            ...signals,
+            domainAgeDays: young,
+          }).score;
+          const oldScore = scoreFromSignals({
+            ...signals,
+            domainAgeDays: old,
+          }).score;
 
-        expect(youngScore).toBeGreaterThanOrEqual(oldScore);
-      }),
+          expect(youngScore).toBeGreaterThanOrEqual(oldScore);
+        },
+      ),
       { numRuns: 1000 },
     );
   });
 
-  test('PROPERTY: higher homoglyph risk does not lower score', () => {
+  test("PROPERTY: higher homoglyph risk does not lower score", () => {
     fc.assert(
       fc.property(signalsNoOverrideArb, (signals) => {
         const baseline = { ...signals, homoglyph: undefined };
         const low = scoreFromSignals({
           ...baseline,
-          homoglyph: makeHomoglyph('low'),
+          homoglyph: makeHomoglyph("low"),
         }).score;
         const medium = scoreFromSignals({
           ...baseline,
-          homoglyph: makeHomoglyph('medium'),
+          homoglyph: makeHomoglyph("medium"),
         }).score;
         const high = scoreFromSignals({
           ...baseline,
-          homoglyph: makeHomoglyph('high'),
+          homoglyph: makeHomoglyph("high"),
         }).score;
 
         expect(medium).toBeGreaterThanOrEqual(low);
