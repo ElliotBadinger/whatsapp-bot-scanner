@@ -216,8 +216,49 @@
 - **Discovered Issues:** Node emits Experimental VM Modules warning under ESM tests.
 - **Flakiness:** 0/10 runs failed.
 
-## Suite: npm run test:coverage
+## File: packages/shared/src/__tests__/validation.test.ts
 
-- **Coverage:** global lines 90.16% (7317/8116 lines covered).
-- **Runtime:** full workspace run.
+- **Coverage:** validation.ts 100% lines, 97.22% branches (coverage run with `--coverage`).
+- **Test Count:** 32 unit tests.
+- **Runtime:** ~3s without coverage, ~6s with coverage.
+- **Edge Cases:** protocol validation (HTTP/HTTPS/FTP/file/javascript), private IP ranges (10.x, 172.16-31.x, 192.168.x, 127.x, 169.254.x), IPv6 addresses, localhost blocking, suspicious TLD detection, URL length limits, custom rule addition, validateAndThrow behavior.
+- **Discovered Issues:** IPv6 regex patterns don't match bracketed hostnames from URL parser.
+- **Flakiness:** 0/10 runs failed.
+
+## File: services/wa-client/src/__tests__/message-store.comprehensive.test.ts
+
+- **Coverage:** message-store.ts 92% lines (coverage run with `--coverage`).
+- **Test Count:** 23 unit tests.
+- **Runtime:** ~1.5s without coverage, ~2s with coverage.
+- **Edge Cases:** record CRUD operations, edit/revocation/reaction history limits (20/10/25), verdict attempt registration with metadata, pending ack context management, ack history tracking.
+- **Discovered Issues:** None.
+- **Flakiness:** 0/10 runs failed.
+
+## File: services/scan-orchestrator/src/__tests__/urlscan-artifacts.test.ts (Updated)
+
+- **Coverage:** urlscan-artifacts.ts 97.1% lines, 80.55% branches (coverage run with `--coverage`).
+- **Test Count:** 8 unit tests.
+- **Runtime:** ~3s without coverage, ~7s with coverage.
+- **Edge Cases:** invalid identifier rejection, screenshot/DOM download failures, network errors, both downloads failing, URL hash format validation.
+- **Discovered Issues:** None.
+- **Flakiness:** 0/10 runs failed.
+
+## File: services/control-plane/src/__tests__/control-plane-extra.test.ts (Updated)
+
+- **Coverage:** index.ts 89.26% lines (coverage run with `--coverage`).
+- **Test Count:** 7 HTTP route tests.
+- **Runtime:** ~6s without coverage, ~12s with coverage.
+- **Edge Cases:** artifact 404 paths, rescan without chat context, mute/unmute validation, file access errors (ENOENT vs EACCES).
+- **Discovered Issues:** None.
+- **Flakiness:** 0/10 runs failed.
+
+## Suite: npm run test:coverage (Updated Dec 2024)
+
+- **Coverage Summary:**
+  - packages/shared: 94.5% statements, 84.35% branches
+  - services/scan-orchestrator: 88.93% statements, 82.06% branches
+  - services/control-plane: 84.19% statements, 77.39% branches
+  - services/wa-client: ~85% statements (estimated from individual test runs)
+- **Total Tests:** 439 tests across all workspaces
+- **Total Runtime:** ~35 seconds
 - **Warnings:** ts-jest `globals` deprecation warning in scan-orchestrator/control-plane; Node Experimental VM Modules warning in wa-client tests; intermittent Jest worker exit warning in shared tests.

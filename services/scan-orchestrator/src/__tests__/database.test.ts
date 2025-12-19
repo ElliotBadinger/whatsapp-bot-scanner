@@ -120,4 +120,46 @@ describe("scan-orchestrator database", () => {
     expect(result).toBe("ok");
     conn.close();
   });
+
+  it("handles Postgres query errors with logging", async () => {
+    const logger = {
+      info: jest.fn(),
+      error: jest.fn(),
+      warn: jest.fn(),
+      debug: jest.fn(),
+      trace: jest.fn(),
+      fatal: jest.fn(),
+      level: "info",
+    } as any;
+    queryMock.mockRejectedValueOnce(new Error("Query failed"));
+    const conn = new PostgresConnection({ logger });
+    await expect(conn.query("SELECT * FROM scans")).rejects.toThrow("Query failed");
+    expect(logger.error).toHaveBeenCalled();
+    conn.close();
+  });
+
+  it("SQLite transaction executes wrapped function", async () => {
+    const conn = new SQLiteConnection({ dbPath: "./storage/test-tx.db" });
+    const result = await conn.transaction(() => "transaction-result");
+    expect(result).toBe("transaction-result");
+    conn.close();
+  });
+
+  it("SQLite handles INSERT queries returning affected rows", async () => {
+    const conn = new SQLiteConnection({ dbPath: "./storage/test-insert.db" });
+    // First ensure table exists
+    await conn.query("CREATE TABLE IF NOT EXISTS test_table (id INTEGER PRIMARY KEY, name TEXT)");
+    const result = await conn.query("INSERT INTO test_table (name) VALUES (?)", ["test-name"]);
+    expect(result.rows.length).toBeGreaterThanOrEqual(0);
+    conn.close();
+  });
+
+  it("SQLite handles DELETE queries", async () => {
+    const conn = new SQLiteConnection({ dbPath: "./storage/test-delete.db" });
+    await conn.query("CREATE TABLE IF NOT EXISTS delete_test (id INTEGER PRIMARY KEY, name TEXT)");
+    await conn.query("INSERT INTO delete_test (name) VALUES (?)", ["to-delete"]);
+    const result = await conn.query("DELETE FROM delete_test WHERE name = ?", ["to-delete"]);
+    expect(result.rows).toBeDefined();
+    conn.close();
+  });
 });

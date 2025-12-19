@@ -83,4 +83,84 @@ describe("downloadUrlscanArtifacts", () => {
     expect(result.screenshotPath).toBeNull();
     expect(result.domPath).toContain(urlHash);
   });
+
+  it("returns null dom path on failed fetch", async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        body: {},
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+      });
+
+    const scanId = "223e4567-e89b-12d3-a456-426614174000";
+    const urlHash = "c".repeat(64);
+
+    const result = await downloadUrlscanArtifacts(scanId, urlHash);
+    expect(result.screenshotPath).toContain(urlHash);
+    expect(result.domPath).toBeNull();
+  });
+
+  it("handles network errors for screenshot download", async () => {
+    fetchMock
+      .mockRejectedValueOnce(new Error("Network error"))
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => "<html/>",
+      });
+
+    const scanId = "323e4567-e89b-12d3-a456-426614174000";
+    const urlHash = "d".repeat(64);
+
+    const result = await downloadUrlscanArtifacts(scanId, urlHash);
+    expect(result.screenshotPath).toBeNull();
+    expect(result.domPath).toContain(urlHash);
+  });
+
+  it("handles network errors for dom download", async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        body: {},
+      })
+      .mockRejectedValueOnce(new Error("DOM network error"));
+
+    const scanId = "423e4567-e89b-12d3-a456-426614174000";
+    const urlHash = "e".repeat(64);
+
+    const result = await downloadUrlscanArtifacts(scanId, urlHash);
+    expect(result.screenshotPath).toContain(urlHash);
+    expect(result.domPath).toBeNull();
+  });
+
+  it("rejects invalid url hash format", async () => {
+    const scanId = "523e4567-e89b-12d3-a456-426614174000";
+    const invalidHash = "not-a-valid-hash";
+
+    await expect(
+      downloadUrlscanArtifacts(scanId, invalidHash),
+    ).rejects.toThrow("Invalid url hash");
+  });
+
+  it("handles both downloads failing", async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        body: null,
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+      });
+
+    const scanId = "623e4567-e89b-12d3-a456-426614174000";
+    const urlHash = "f".repeat(64);
+
+    const result = await downloadUrlscanArtifacts(scanId, urlHash);
+    expect(result.screenshotPath).toBeNull();
+    expect(result.domPath).toBeNull();
+  });
 });

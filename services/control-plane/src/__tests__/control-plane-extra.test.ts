@@ -117,4 +117,137 @@ describe("control-plane extra routes", () => {
       await app.close();
     }
   });
+
+  it("returns 404 when artifact path not found in database", async () => {
+    const dbClient = {
+      query: jest.fn(async () => ({ rows: [] })),
+    };
+    const redisClient = createMockRedis();
+    const queue = createMockQueue("scan-request");
+    const { app } = await buildServer({
+      dbClient,
+      redisClient: redisClient as any,
+      queue: queue as any,
+    });
+    const validHash = "d".repeat(64);
+
+    try {
+      const screenshot = await app.inject({
+        method: "GET",
+        url: `/scans/${validHash}/urlscan-artifacts/screenshot`,
+        headers: authHeader,
+      });
+      expect(screenshot.statusCode).toBe(404);
+      expect(JSON.parse(screenshot.payload).error).toBe("screenshot_not_found");
+
+      const dom = await app.inject({
+        method: "GET",
+        url: `/scans/${validHash}/urlscan-artifacts/dom`,
+        headers: authHeader,
+      });
+      expect(dom.statusCode).toBe(404);
+      expect(JSON.parse(dom.payload).error).toBe("dom_not_found");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("handles rescan without chat context in database", async () => {
+    const dbClient = {
+      query: jest.fn(async (sql: string) => {
+        if (sql.startsWith("SELECT chat_id")) {
+          return { rows: [] };
+        }
+        return { rows: [] };
+      }),
+    };
+    const redisClient = createMockRedis();
+    const queue = createMockQueue("scan-request");
+    const { app } = await buildServer({
+      dbClient,
+      redisClient: redisClient as any,
+      queue: queue as any,
+    });
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/rescan",
+        headers: authHeader,
+        payload: { url: "https://example.com/test" },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(queue.add).toHaveBeenCalledWith(
+        "rescan",
+        expect.objectContaining({
+          rescan: true,
+        }),
+        expect.any(Object)
+      );
+      // Should not have chatId/messageId when not found in DB
+      const callArgs = (queue.add as jest.Mock).mock.calls[0][1];
+      expect(callArgs.chatId).toBeUndefined();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("handles mute/unmute with invalid params", async () => {
+    const dbClient = {
+      query: jest.fn(async () => ({ rows: [] })),
+    };
+    const redisClient = createMockRedis();
+    const queue = createMockQueue("scan-request");
+    const { app } = await buildServer({
+      dbClient,
+      redisClient: redisClient as any,
+      queue: queue as any,
+    });
+
+    try {
+      // Test with empty chatId - should still work as schema validates string
+      const mute = await app.inject({
+        method: "POST",
+        url: "/groups//mute",
+        headers: authHeader,
+      });
+      // Empty path param should result in 404 or validation error
+      expect(mute.statusCode).toBeGreaterThanOrEqual(400);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("handles screenshot file access errors other than ENOENT", async () => {
+    const screenshotPath = "/tmp/urlscan-artifacts/error.png";
+    const dbClient = {
+      query: jest.fn(async (sql: string) => {
+        if (sql.includes("urlscan_screenshot_path")) {
+          return { rows: [{ urlscan_screenshot_path: screenshotPath }] };
+        }
+        return { rows: [] };
+      }),
+    };
+    const redisClient = createMockRedis();
+    const queue = createMockQueue("scan-request");
+    const { app } = await buildServer({
+      dbClient,
+      redisClient: redisClient as any,
+      queue: queue as any,
+    });
+    const validHash = "e".repeat(64);
+
+    try {
+      fsPromises.access.mockRejectedValueOnce({ code: "EACCES" });
+      const res = await app.inject({
+        method: "GET",
+        url: `/scans/${validHash}/urlscan-artifacts/screenshot`,
+        headers: authHeader,
+      });
+      expect(res.statusCode).toBe(500);
+      expect(JSON.parse(res.payload).error).toBe("artifact_unavailable");
+    } finally {
+      await app.close();
+    }
+  });
 });
