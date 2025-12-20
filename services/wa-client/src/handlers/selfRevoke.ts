@@ -1,6 +1,7 @@
 import type { Logger } from "pino";
 import type { Message } from "whatsapp-web.js";
 import type { MessageStore } from "../message-store.js";
+import { hashChatId, hashMessageId } from "@wbscanner/shared";
 import {
   describeSession,
   isSessionReady,
@@ -25,7 +26,12 @@ export async function handleSelfMessageRevoke(
   const { snapshot, logger, messageStore, recordMetric, now } = deps;
   if (!isSessionReady(snapshot)) {
     logger.debug(
-      { messageId: msg.id?._serialized, session: describeSession(snapshot) },
+      {
+        messageIdHash: msg.id?._serialized
+          ? hashMessageId(msg.id._serialized)
+          : undefined,
+        session: describeSession(snapshot),
+      },
       "Skipping self revoke handler because session is not ready",
     );
     return "skipped";
@@ -35,7 +41,11 @@ export async function handleSelfMessageRevoke(
     (msg.id as unknown as { remote?: string })?.remote ?? msg.from ?? "";
   if (typeof rawChatId === "string" && rawChatId.includes("status@broadcast")) {
     logger.debug(
-      { messageId: msg.id?._serialized },
+      {
+        messageIdHash: msg.id?._serialized
+          ? hashMessageId(msg.id._serialized)
+          : undefined,
+      },
       "Skipping self revoke for status broadcast message",
     );
     return "skipped";
@@ -44,8 +54,12 @@ export async function handleSelfMessageRevoke(
   const chat = await msg.getChat().catch((err) => {
     throw enrichEvaluationError(err, {
       operation: "message_revoke_me:getChat",
-      chatId: (msg.id as unknown as { remote?: string })?.remote ?? undefined,
-      messageId: msg.id?._serialized,
+      chatId: (msg.id as unknown as { remote?: string })?.remote
+        ? hashChatId((msg.id as unknown as { remote?: string }).remote!)
+        : undefined,
+      messageId: msg.id?._serialized
+        ? hashMessageId(msg.id._serialized)
+        : undefined,
       snapshot,
     });
   });

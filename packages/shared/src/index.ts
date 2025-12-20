@@ -23,6 +23,7 @@ export * from "./reputation/local-threat-db";
 export * from "./reputation/http-fingerprint";
 export * from "./reputation/provider-factory";
 export * from "./circuit-breaker";
+export * from "./crypto/identifiers";
 export * from "./url-shortener";
 export * from "./types";
 export * from "./errors";

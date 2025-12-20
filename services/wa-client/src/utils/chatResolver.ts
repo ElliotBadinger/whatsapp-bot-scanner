@@ -1,5 +1,6 @@
 import type { Client, GroupChat, Message } from "whatsapp-web.js";
 import type { Logger } from "pino";
+import { hashChatId, hashMessageId } from "@wbscanner/shared";
 import { assertSessionReady } from "../state/runtimeSession.js";
 
 export class ChatLookupError extends Error {
@@ -8,7 +9,7 @@ export class ChatLookupError extends Error {
 
   constructor(chatId: string, cause: unknown) {
     const message = cause instanceof Error ? cause.message : String(cause);
-    super(`Unable to load chat ${chatId}: ${message}`);
+    super(`Unable to load chat ${hashChatId(chatId)}: ${message}`);
     this.name = "ChatLookupError";
     this.chatId = chatId;
     this.causeError = cause;
@@ -37,7 +38,10 @@ export async function resolveChatForVerdict(
   try {
     targetMessage = await client.getMessageById(messageId);
   } catch (err) {
-    logger.warn({ err, messageId }, "Failed to hydrate original message by id");
+    logger.warn(
+      { err, messageIdHash: hashMessageId(messageId) },
+      "Failed to hydrate original message by id",
+    );
   }
 
   try {

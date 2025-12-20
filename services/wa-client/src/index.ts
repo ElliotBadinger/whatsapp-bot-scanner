@@ -27,6 +27,8 @@ import {
   extractUrls,
   normalizeUrl,
   urlHash,
+  hashChatId,
+  hashMessageId,
   metrics,
   register,
   assertControlPlaneToken,
@@ -279,11 +281,16 @@ const messageStore = new MessageStore(
 const groupStore = new GroupStore(redis, config.wa.messageLineageTtlSeconds);
 
 const processedKey = (chatId: string, messageId: string, urlH: string) =>
-  `processed:${chatId}:${messageId}:${urlH}`;
+  `processed:${hashChatId(chatId)}:${hashMessageId(messageId)}:${urlH}`;
 
-const consentStatusKey = (chatId: string) => `wa:consent:status:${chatId}`;
+const consentStatusKey = (chatId: string) =>
+  `wa:consent:status:${hashChatId(chatId)}`;
+const legacyConsentStatusKey = (chatId: string) =>
+  `wa:consent:status:${chatId}`;
 const consentPendingSetKey = "wa:consent:pending";
 const membershipPendingKey = (chatId: string) =>
+  `wa:membership:pending:${hashChatId(chatId)}`;
+const legacyMembershipPendingKey = (chatId: string) =>
   `wa:membership:pending:${chatId}`;
 const VERDICT_ACK_TARGET = 2;
 const maskPhone = (phone?: string): string => {
@@ -437,31 +444,39 @@ async function refreshConsentGauge(): Promise<void> {
 }
 
 async function markConsentPending(chatId: string): Promise<void> {
+  const chatIdHash = hashChatId(chatId);
   await redis.set(
     consentStatusKey(chatId),
     "pending",
     "EX",
     config.wa.messageLineageTtlSeconds,
   );
-  await redis.sadd(consentPendingSetKey, chatId);
+  await redis.del(legacyConsentStatusKey(chatId));
+  await redis.sadd(consentPendingSetKey, chatIdHash);
+  await redis.srem(consentPendingSetKey, chatId);
   metrics.waGovernanceActions.labels("consent_pending").inc();
   await refreshConsentGauge();
 }
 
 async function markConsentGranted(chatId: string): Promise<void> {
+  const chatIdHash = hashChatId(chatId);
   await redis.set(
     consentStatusKey(chatId),
     "granted",
     "EX",
     config.wa.messageLineageTtlSeconds,
   );
+  await redis.del(legacyConsentStatusKey(chatId));
+  await redis.srem(consentPendingSetKey, chatIdHash);
   await redis.srem(consentPendingSetKey, chatId);
   metrics.waGovernanceActions.labels("consent_granted").inc();
   await refreshConsentGauge();
 }
 
 async function clearConsentState(chatId: string): Promise<void> {
-  await redis.del(consentStatusKey(chatId));
+  const chatIdHash = hashChatId(chatId);
+  await redis.del(consentStatusKey(chatId), legacyConsentStatusKey(chatId));
+  await redis.srem(consentPendingSetKey, chatIdHash);
   await redis.srem(consentPendingSetKey, chatId);
   await refreshConsentGauge();
 }
@@ -469,11 +484,20 @@ async function clearConsentState(chatId: string): Promise<void> {
 async function getConsentStatus(
   chatId: string,
 ): Promise<"pending" | "granted" | null> {
-  const status = await redis.get(consentStatusKey(chatId));
-  if (status === "pending" || status === "granted") {
-    return status;
+  let status = await redis.get(consentStatusKey(chatId));
+  if (!status) {
+    status = await redis.get(legacyConsentStatusKey(chatId));
+    if (status) {
+      await redis.set(
+        consentStatusKey(chatId),
+        status,
+        "EX",
+        config.wa.messageLineageTtlSeconds,
+      );
+      await redis.del(legacyConsentStatusKey(chatId));
+    }
   }
-  return null;
+  return status === "pending" || status === "granted" ? status : null;
 }
 
 async function addPendingMembership(
@@ -486,6 +510,7 @@ async function addPendingMembership(
     requesterId,
     String(timestamp),
   );
+  await redis.del(legacyMembershipPendingKey(chatId));
 }
 
 async function removePendingMembership(
@@ -493,10 +518,24 @@ async function removePendingMembership(
   requesterId: string,
 ): Promise<void> {
   await redis.hdel(membershipPendingKey(chatId), requesterId);
+  await redis.hdel(legacyMembershipPendingKey(chatId), requesterId);
 }
 
 async function listPendingMemberships(chatId: string): Promise<string[]> {
-  const entries = await redis.hkeys(membershipPendingKey(chatId));
+  const key = membershipPendingKey(chatId);
+  let entries = await redis.hkeys(key);
+  if (entries.length === 0) {
+    const legacyKey = legacyMembershipPendingKey(chatId);
+    const legacyEntries = await redis.hgetall(legacyKey);
+    const legacyKeys = Object.keys(legacyEntries);
+    if (legacyKeys.length > 0) {
+      entries = legacyKeys;
+      for (const [field, value] of Object.entries(legacyEntries)) {
+        await redis.hset(key, field, value);
+      }
+      await redis.del(legacyKey);
+    }
+  }
   return entries;
 }
 
@@ -634,15 +673,22 @@ async function deliverVerdictMessage(
     targetMessage = await client.getMessageById(job.messageId);
   } catch (err) {
     logger.warn(
-      { err, messageId: job.messageId },
+      { err, messageIdHash: hashMessageId(job.messageId) },
       "Failed to hydrate original message by id",
     );
   }
 
   const snapshot = snapshotSession();
   if (!isSessionReady(snapshot)) {
+    const jobForLog = {
+      ...job,
+      chatIdHash: hashChatId(job.chatId),
+      messageIdHash: hashMessageId(job.messageId),
+    } as Record<string, unknown>;
+    delete (jobForLog as { chatId?: string }).chatId;
+    delete (jobForLog as { messageId?: string }).messageId;
     logger.debug(
-      { job, session: describeSession(snapshot) },
+      { job: jobForLog, session: describeSession(snapshot) },
       "Skipping verdict delivery because session is not ready",
     );
     return false;
@@ -655,9 +701,14 @@ async function deliverVerdictMessage(
         throw enrichEvaluationError(err, {
           operation: "deliverVerdictMessage:getChat",
           chatId:
-            (targetMessage.id as unknown as { remote?: string })?.remote ??
-            job.chatId,
-          messageId: targetMessage.id?._serialized,
+            (targetMessage.id as unknown as { remote?: string })?.remote
+              ? hashChatId(
+                  (targetMessage.id as unknown as { remote?: string }).remote!,
+                )
+              : hashChatId(job.chatId),
+          messageId: targetMessage.id?._serialized
+            ? hashMessageId(targetMessage.id._serialized)
+            : hashMessageId(job.messageId),
           snapshot,
         });
       })) as GroupChat;
@@ -671,7 +722,7 @@ async function deliverVerdictMessage(
     }
   } catch (err) {
     logger.warn(
-      { err, chatId: job.chatId },
+      { err, chatIdHash: hashChatId(job.chatId) },
       "Unable to load chat for verdict delivery",
     );
     return false;
@@ -864,7 +915,10 @@ async function clearAckWatchForContext(context: VerdictContext): Promise<void> {
   try {
     await messageStore.removePendingAckContext(context);
   } catch (err) {
-    logger.warn({ err, context }, "Failed to clear ack context from store");
+    logger.warn(
+      { err, context: sanitizeVerdictContextForLog(context) },
+      "Failed to clear ack context from store",
+    );
   }
 }
 
@@ -896,7 +950,10 @@ async function scheduleAckWatch(
       if (verdict.attemptCount >= config.wa.verdictMaxRetries) {
         await messageStore.markVerdictStatus(context, "failed");
         metrics.waVerdictRetryAttempts.labels("failed").inc();
-        logger.warn({ context }, "Max verdict retry attempts reached");
+        logger.warn(
+          { context: sanitizeVerdictContextForLog(context) },
+          "Max verdict retry attempts reached",
+        );
         await messageStore
           .removePendingAckContext(context)
           .catch(() => undefined);
@@ -906,14 +963,20 @@ async function scheduleAckWatch(
       metrics.waVerdictRetryAttempts.labels("retry").inc();
       await retry();
     } catch (err) {
-      logger.error({ err, context }, "Ack timeout handler failed");
+      logger.error(
+        { err, context: sanitizeVerdictContextForLog(context) },
+        "Ack timeout handler failed",
+      );
     }
   }, timeoutSeconds * 1000);
   ackWatchers.set(key, handle);
   try {
     await messageStore.addPendingAckContext(context);
   } catch (err) {
-    logger.warn({ err, context }, "Failed to persist pending ack context");
+    logger.warn(
+      { err, context: sanitizeVerdictContextForLog(context) },
+      "Failed to persist pending ack context",
+    );
   }
 }
 
@@ -975,6 +1038,14 @@ const SAFE_CONTROL_PLANE_DEFAULT = "http://control-plane:8080";
 function sanitizeLogValue(value: string | undefined): string | undefined {
   if (!value) return value;
   return value.replaceAll(/[\r\n\t]+/g, " ").slice(0, 256);
+}
+
+function sanitizeVerdictContextForLog(context: VerdictContext) {
+  return {
+    urlHash: context.urlHash,
+    chatIdHash: hashChatId(context.chatId),
+    messageIdHash: hashMessageId(context.messageId),
+  };
 }
 
 function updateSessionStateGauge(state: string): void {
@@ -2964,7 +3035,7 @@ async function main() {
         if (!(await isUrlAllowedForScanning(norm))) {
           metrics.waMessagesDropped.labels("blocked_internal_host").inc();
           logger.warn(
-            { chatId: sanitizeLogValue(chat.id._serialized) },
+            { chatIdHash: hashChatId(chat.id._serialized) },
             "Dropped URL due to disallowed host",
           );
           continue;
@@ -3012,12 +3083,17 @@ async function main() {
           metrics.inputValidationFailures
             .labels("wa-client", "ScanRequest")
             .inc();
+          const payloadForLog = {
+            ...payload,
+            chatIdHash: hashChatId(chatId),
+            messageIdHash: hashMessageId(messageId),
+          } as Record<string, unknown>;
+          delete (payloadForLog as { chatId?: string }).chatId;
+          delete (payloadForLog as { messageId?: string }).messageId;
           logger.warn(
             {
               errors: validationResult.error.issues,
-              payload,
-              chatId,
-              messageId,
+              payload: payloadForLog,
             },
             "ScanRequest validation failed in message handler",
           );
@@ -3034,7 +3110,9 @@ async function main() {
       logger.error(
         {
           err: e,
-          chatId: sanitizeLogValue((msg as unknown as { from?: string })?.from),
+          chatIdHash: (msg as unknown as { from?: string })?.from
+            ? hashChatId((msg as unknown as { from?: string }).from!)
+            : undefined,
         },
         "Failed to process incoming WhatsApp message",
       );
@@ -3146,7 +3224,9 @@ async function main() {
       if (!isSessionReady(snapshot)) {
         logger.debug(
           {
-            messageId: msg.id?._serialized,
+            messageIdHash: msg.id?._serialized
+              ? hashMessageId(msg.id._serialized)
+              : undefined,
             session: describeSession(snapshot),
           },
           "Skipping group revoke handler because session is not ready",
@@ -3161,8 +3241,10 @@ async function main() {
             undefined;
           throw enrichEvaluationError(err, {
             operation: "message_revoke_everyone:getChat",
-            chatId: fallbackChat,
-            messageId: original.id?._serialized,
+            chatId: fallbackChat ? hashChatId(fallbackChat) : undefined,
+            messageId: original.id?._serialized
+              ? hashMessageId(original.id._serialized)
+              : undefined,
             snapshot,
           });
         });
@@ -3304,7 +3386,7 @@ async function main() {
       metrics.waGovernanceActions.labels("group_join").inc();
       const toggled = await chat.setMessagesAdminsOnly(true).catch((err) => {
         logger.warn(
-          { err, chatId },
+          { err, chatIdHash: hashChatId(chatId) },
           "Failed to restrict messages to admins only",
         );
         return false;
@@ -3335,7 +3417,10 @@ async function main() {
       try {
         await chat.sendMessage(consentTemplate);
       } catch (err) {
-        logger.warn({ err, chatId }, "Failed to send consent message on join");
+        logger.warn(
+          { err, chatIdHash: hashChatId(chatId) },
+          "Failed to send consent message on join",
+        );
       }
       if (!config.wa.consentOnJoin && toggled) {
         await chat.setMessagesAdminsOnly(false).catch(() => undefined);

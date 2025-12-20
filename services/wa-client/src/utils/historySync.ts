@@ -1,10 +1,17 @@
 import type { Redis } from "ioredis";
 import type { Logger } from "pino";
 import type { Client, GroupChat, Message } from "whatsapp-web.js";
+import {
+  hashChatId,
+  hashMessageId,
+  isIdentifierHash,
+} from "@wbscanner/shared";
 import { safeGetGroupChatById } from "./chatLookup.js";
 import type { SessionSnapshot } from "../session/guards.js";
 
-const CHAT_CURSOR_KEY = (chatId: string) => `wa:chat:${chatId}:cursor`;
+const CHAT_CURSOR_KEY = (chatId: string) =>
+  `wa:chat:${hashChatId(chatId)}:cursor`;
+const LEGACY_CHAT_CURSOR_KEY = (chatId: string) => `wa:chat:${chatId}:cursor`;
 const KNOWN_CHATS_KEY = "wa:chats:known";
 const DEFAULT_CURSOR_TTL_SECONDS = 60 * 60 * 24 * 7;
 
@@ -12,12 +19,24 @@ export async function rememberChat(
   redis: Redis,
   chatId: string,
 ): Promise<void> {
-  await redis.sadd(KNOWN_CHATS_KEY, chatId);
+  await redis.sadd(KNOWN_CHATS_KEY, hashChatId(chatId));
   await redis.expire(KNOWN_CHATS_KEY, DEFAULT_CURSOR_TTL_SECONDS);
 }
 
 export async function listKnownChats(redis: Redis): Promise<string[]> {
-  return redis.smembers(KNOWN_CHATS_KEY);
+  const members = await redis.smembers(KNOWN_CHATS_KEY);
+  const hashed: string[] = [];
+  for (const member of members) {
+    if (isIdentifierHash(member)) {
+      hashed.push(member);
+      continue;
+    }
+    const converted = hashChatId(member);
+    hashed.push(converted);
+    await redis.srem(KNOWN_CHATS_KEY, member);
+    await redis.sadd(KNOWN_CHATS_KEY, converted);
+  }
+  return hashed;
 }
 
 export async function updateChatCursor(
@@ -38,7 +57,16 @@ export async function getChatCursor(
   redis: Redis,
   chatId: string,
 ): Promise<number | null> {
-  const raw = await redis.get(CHAT_CURSOR_KEY(chatId));
+  const key = CHAT_CURSOR_KEY(chatId);
+  let raw = await redis.get(key);
+  if (!raw) {
+    const legacyKey = LEGACY_CHAT_CURSOR_KEY(chatId);
+    raw = await redis.get(legacyKey);
+    if (raw) {
+      await redis.set(key, raw, "EX", DEFAULT_CURSOR_TTL_SECONDS);
+      await redis.del(legacyKey);
+    }
+  }
   if (!raw) return null;
   const value = Number(raw);
   return Number.isFinite(value) ? value : null;
@@ -85,7 +113,10 @@ export async function syncChatHistory(
   const messages = await groupChat
     .fetchMessages({ limit, fromMe: false })
     .catch((err) => {
-      logger.warn({ err, chatId }, "Failed to fetch message history for chat");
+      logger.warn(
+        { err, chatIdHash: hashChatId(chatId) },
+        "Failed to fetch message history for chat",
+      );
       return [] as Message[];
     });
   if (!messages || messages.length === 0) return 0;
@@ -109,7 +140,13 @@ export async function syncChatHistory(
       processed += 1;
     } catch (err) {
       logger.error(
-        { err, chatId, messageId: msg.id?._serialized },
+        {
+          err,
+          chatIdHash: hashChatId(chatId),
+          messageIdHash: msg.id?._serialized
+            ? hashMessageId(msg.id._serialized)
+            : undefined,
+        },
         "Failed to sync historical message",
       );
     }

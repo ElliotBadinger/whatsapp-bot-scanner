@@ -61,12 +61,14 @@ export default class FakeRedis {
     }
   }
 
-  async del(key: string) {
-    this.store.delete(key);
-    this.hashes.delete(key);
-    this.sets.delete(key);
-    this.lists.delete(key);
-    this.sortedSets.delete(key);
+  async del(...keys: string[]) {
+    for (const key of keys) {
+      this.store.delete(key);
+      this.hashes.delete(key);
+      this.sets.delete(key);
+      this.lists.delete(key);
+      this.sortedSets.delete(key);
+    }
   }
 
   async exists(key: string) {
@@ -146,9 +148,11 @@ export default class FakeRedis {
     return (this.sets.get(key)?.size ?? 0);
   }
 
-  async lpush(key: string, value: string) {
+  async lpush(key: string, ...values: string[]) {
     const list = this.lists.get(key) ?? [];
-    list.unshift(value);
+    for (const value of values) {
+      list.unshift(value);
+    }
     this.lists.set(key, list);
   }
 

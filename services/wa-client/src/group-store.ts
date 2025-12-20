@@ -1,4 +1,5 @@
 import type { Redis } from "ioredis";
+import { hashChatId, isIdentifierHash } from "@wbscanner/shared";
 
 export interface GroupGovernanceEvent {
   chatId: string;
@@ -23,12 +24,18 @@ export class GroupStore {
   }
 
   private key(chatId: string): string {
+    const chatHash = isIdentifierHash(chatId) ? chatId : hashChatId(chatId);
+    return `wa:group:audit:${chatHash}`;
+  }
+
+  private legacyKey(chatId: string): string {
     return `wa:group:audit:${chatId}`;
   }
 
   async recordEvent(event: GroupGovernanceEvent): Promise<void> {
     const payload: GroupGovernanceEvent = {
       ...event,
+      chatId: hashChatId(event.chatId),
       recipients: event.recipients ?? [],
       metadata: event.metadata ?? {},
     };
@@ -46,7 +53,23 @@ export class GroupStore {
     if (limit <= 0) {
       return [];
     }
-    const entries = await this.redis.lrange(this.key(chatId), 0, limit - 1);
+    const key = this.key(chatId);
+    let entries = await this.redis.lrange(key, 0, limit - 1);
+    if (entries.length === 0) {
+      const legacyKey = this.legacyKey(chatId);
+      const legacyEntries = await this.redis.lrange(
+        legacyKey,
+        0,
+        limit - 1,
+      );
+      if (legacyEntries.length > 0) {
+        entries = legacyEntries;
+        await this.redis.del(legacyKey);
+        await this.redis.lpush(key, ...legacyEntries.reverse());
+        await this.redis.ltrim(key, 0, this.maxEvents - 1);
+        await this.redis.expire(key, this.ttlSeconds);
+      }
+    }
     const events: GroupGovernanceEvent[] = [];
     for (const entry of entries) {
       try {
@@ -60,6 +83,6 @@ export class GroupStore {
   }
 
   async clearEvents(chatId: string): Promise<void> {
-    await this.redis.del(this.key(chatId));
+    await this.redis.del(this.key(chatId), this.legacyKey(chatId));
   }
 }

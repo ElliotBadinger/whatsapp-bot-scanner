@@ -21,6 +21,8 @@ import {
   isPrivateHostname,
   config,
   metrics,
+  hashChatId,
+  hashMessageId,
 } from "@wbscanner/shared";
 
 /**
@@ -71,6 +73,10 @@ export class SharedMessageHandler {
   private commandHandlers: Map<string, CommandHandler> = new Map();
 
   private consentStatusKey(chatId: string): string {
+    return `wa:consent:status:${hashChatId(chatId)}`;
+  }
+
+  private legacyConsentStatusKey(chatId: string): string {
     return `wa:consent:status:${chatId}`;
   }
 
@@ -94,6 +100,9 @@ export class SharedMessageHandler {
       "EX",
       config.wa.messageLineageTtlSeconds,
     );
+    await this.redis.del(this.legacyConsentStatusKey(chatId));
+    const chatIdHash = hashChatId(chatId);
+    await this.redis.srem(this.consentPendingSetKey(), chatIdHash);
     await this.redis.srem(this.consentPendingSetKey(), chatId);
     metrics.waGovernanceActions.labels("consent_granted").inc();
     await this.refreshConsentGauge();
@@ -102,11 +111,20 @@ export class SharedMessageHandler {
   private async getConsentStatus(
     chatId: string,
   ): Promise<"pending" | "granted" | null> {
-    const status = await this.redis.get(this.consentStatusKey(chatId));
-    if (status === "pending" || status === "granted") {
-      return status;
+    let status = await this.redis.get(this.consentStatusKey(chatId));
+    if (!status) {
+      status = await this.redis.get(this.legacyConsentStatusKey(chatId));
+      if (status) {
+        await this.redis.set(
+          this.consentStatusKey(chatId),
+          status,
+          "EX",
+          config.wa.messageLineageTtlSeconds,
+        );
+        await this.redis.del(this.legacyConsentStatusKey(chatId));
+      }
     }
-    return null;
+    return status === "pending" || status === "granted" ? status : null;
   }
 
   private async replyWithLatency(
@@ -280,7 +298,7 @@ export class SharedMessageHandler {
         await this.handleMessage(message);
       } catch (err) {
         this.logger.error(
-          { err, messageId: message.id },
+          { err, messageIdHash: hashMessageId(message.id) },
           "Message handler error",
         );
       }
@@ -303,7 +321,9 @@ export class SharedMessageHandler {
 
     // Persist message timestamp so downstream verdict delivery can compute
     // true end-to-end response latency.
-    const timestampKey = `wa:msg_ts:${message.chatId}:${message.id}`;
+    const timestampKey = `wa:msg_ts:${hashChatId(message.chatId)}:${hashMessageId(
+      message.id,
+    )}`;
     await this.redis
       .set(
         timestampKey,
@@ -403,7 +423,9 @@ export class SharedMessageHandler {
 
         // Check for duplicate processing
         const hash = urlHash(normalized);
-        const processedKey = `processed:${message.chatId}:${message.id}:${hash}`;
+        const processedKey = `processed:${hashChatId(message.chatId)}:${hashMessageId(
+          message.id,
+        )}:${hash}`;
         const alreadyProcessed = await this.redis.exists(processedKey);
         if (alreadyProcessed) {
           this.logger.debug({ url: normalized, hash }, "URL already processed");

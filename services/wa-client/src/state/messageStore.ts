@@ -1,4 +1,9 @@
 import type { Redis } from "ioredis";
+import {
+  hashChatId,
+  hashMessageId,
+  isIdentifierHash,
+} from "@wbscanner/shared";
 
 export interface StoredMessageState {
   chatId: string;
@@ -32,6 +37,14 @@ export interface StoredMessageState {
 const TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
 
 function stateKey(chatId: string, messageId: string) {
+  const chatHash = isIdentifierHash(chatId) ? chatId : hashChatId(chatId);
+  const messageHash = isIdentifierHash(messageId)
+    ? messageId
+    : hashMessageId(messageId);
+  return `wa:msg:${chatHash}:${messageHash}`;
+}
+
+function legacyStateKey(chatId: string, messageId: string) {
   return `wa:msg:${chatId}:${messageId}`;
 }
 
@@ -40,7 +53,16 @@ async function loadState(
   chatId: string,
   messageId: string,
 ): Promise<StoredMessageState | null> {
-  const raw = await redis.get(stateKey(chatId, messageId));
+  const key = stateKey(chatId, messageId);
+  let raw = await redis.get(key);
+  if (!raw) {
+    const legacyKey = legacyStateKey(chatId, messageId);
+    raw = await redis.get(legacyKey);
+    if (raw) {
+      await redis.set(key, raw, "EX", TTL_SECONDS);
+      await redis.del(legacyKey);
+    }
+  }
   if (!raw) return null;
   try {
     return JSON.parse(raw) as StoredMessageState;

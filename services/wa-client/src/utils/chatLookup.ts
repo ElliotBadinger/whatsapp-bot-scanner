@@ -1,5 +1,6 @@
 import type { Logger } from "pino";
 import type { Client, GroupChat } from "whatsapp-web.js";
+import { hashChatId } from "@wbscanner/shared";
 import {
   describeSession,
   isSessionReady,
@@ -21,7 +22,7 @@ export async function safeGetGroupChatById(
   const { client, chatId, snapshot, logger, suppressError } = params;
   if (!isSessionReady(snapshot)) {
     logger.debug(
-      { chatId, session: describeSession(snapshot) },
+      { chatIdHash: hashChatId(chatId), session: describeSession(snapshot) },
       "Skipping chat lookup because session is not ready",
     );
     return null;
@@ -35,12 +36,12 @@ export async function safeGetGroupChatById(
   } catch (err) {
     const wrapped = enrichEvaluationError(err, {
       operation: "getChatById",
-      chatId,
+      chatId: hashChatId(chatId),
       snapshot,
     });
     if (suppressError) {
       logger.warn(
-        { err: wrapped, chatId },
+        { err: wrapped, chatIdHash: hashChatId(chatId) },
         "Chat lookup failed but was suppressed",
       );
       return null;

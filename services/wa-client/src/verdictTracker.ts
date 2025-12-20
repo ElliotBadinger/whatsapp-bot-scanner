@@ -1,7 +1,13 @@
 import type { Redis } from "ioredis";
 import type { Message } from "whatsapp-web.js";
 import type { Logger } from "pino";
-import { config, metrics } from "@wbscanner/shared";
+import {
+  config,
+  metrics,
+  hashMessageId,
+  isIdentifierHash,
+  hashChatId,
+} from "@wbscanner/shared";
 
 export interface PendingVerdictRecord {
   verdictMessageId: string;
@@ -18,7 +24,10 @@ export interface PendingVerdictRecord {
 const pendingTimers = new Map<string, NodeJS.Timeout>();
 
 function pendingKey(verdictMessageId: string): string {
-  return `wa:verdict:pending:${verdictMessageId}`;
+  const verdictHash = isIdentifierHash(verdictMessageId)
+    ? verdictMessageId
+    : hashMessageId(verdictMessageId);
+  return `wa:verdict:pending:${verdictHash}`;
 }
 
 function resolveTimeoutMs(): number {
@@ -98,14 +107,22 @@ function scheduleTimeout(
     if (record.retries >= config.wa.verdictAckMaxRetries) {
       await clearPendingVerdict(redis, verdictMessageId, "failed");
       logger.warn(
-        { verdictMessageId, chatId: record.chatId, retries: record.retries },
+        {
+          verdictMessageId,
+          chatIdHash: record.chatId ? hashChatId(record.chatId) : undefined,
+          retries: record.retries,
+        },
         "Verdict delivery failed after max retries",
       );
       return;
     }
     metrics.waVerdictDeliveryRetries.labels("timeout").inc();
     logger.warn(
-      { verdictMessageId, chatId: record.chatId, retries: record.retries },
+      {
+        verdictMessageId,
+        chatIdHash: record.chatId ? hashChatId(record.chatId) : undefined,
+        retries: record.retries,
+      },
       "Verdict ack timeout, retrying delivery",
     );
     const updated = await resendFn({ ...record, retries: record.retries + 1 });
@@ -170,7 +187,10 @@ export async function triggerVerdictRetry(
   if (record.retries >= config.wa.verdictAckMaxRetries) {
     await clearPendingVerdict(redis, verdictMessageId, "failed");
     logger.warn(
-      { verdictMessageId, chatId: record.chatId },
+      {
+        verdictMessageId,
+        chatIdHash: record.chatId ? hashChatId(record.chatId) : undefined,
+      },
       "Skipped verdict retry due to max retries",
     );
     return;

@@ -1,13 +1,26 @@
 import type { Redis } from "ioredis";
+import { hashChatId } from "@wbscanner/shared";
 
 export type GroupConsentState = "pending" | "granted" | "denied";
 
-const CONSENT_KEY = (chatId: string) => `wa:group:${chatId}:consent`;
-const AUTO_APPROVE_KEY = (chatId: string) => `wa:group:${chatId}:auto_approve`;
+const CONSENT_KEY = (chatId: string) =>
+  `wa:group:${hashChatId(chatId)}:consent`;
+const LEGACY_CONSENT_KEY = (chatId: string) => `wa:group:${chatId}:consent`;
+const AUTO_APPROVE_KEY = (chatId: string) =>
+  `wa:group:${hashChatId(chatId)}:auto_approve`;
+const LEGACY_AUTO_APPROVE_KEY = (chatId: string) =>
+  `wa:group:${chatId}:auto_approve`;
 const GOVERNANCE_COUNT_KEY = (chatId: string) =>
+  `wa:group:${hashChatId(chatId)}:gov_actions`;
+const LEGACY_GOVERNANCE_COUNT_KEY = (chatId: string) =>
   `wa:group:${chatId}:gov_actions`;
-const GOVERNANCE_AUDIT_KEY = (chatId: string) => `wa:group:${chatId}:gov_audit`;
+const GOVERNANCE_AUDIT_KEY = (chatId: string) =>
+  `wa:group:${hashChatId(chatId)}:gov_audit`;
+const LEGACY_GOVERNANCE_AUDIT_KEY = (chatId: string) =>
+  `wa:group:${chatId}:gov_audit`;
 const INVITE_ROTATED_AT_KEY = (chatId: string) =>
+  `wa:group:${hashChatId(chatId)}:invite_rotated_at`;
+const LEGACY_INVITE_ROTATED_AT_KEY = (chatId: string) =>
   `wa:group:${chatId}:invite_rotated_at`;
 
 const GOVERNANCE_AUDIT_TTL_SECONDS = 60 * 60 * 24 * 7;
@@ -17,7 +30,14 @@ export async function getGroupConsent(
   redis: Redis,
   chatId: string,
 ): Promise<GroupConsentState | null> {
-  const value = await redis.get(CONSENT_KEY(chatId));
+  let value = await redis.get(CONSENT_KEY(chatId));
+  if (!value) {
+    value = await redis.get(LEGACY_CONSENT_KEY(chatId));
+    if (value) {
+      await redis.set(CONSENT_KEY(chatId), value);
+      await redis.del(LEGACY_CONSENT_KEY(chatId));
+    }
+  }
   if (!value) return null;
   if (value === "granted" || value === "denied" || value === "pending")
     return value;
@@ -30,6 +50,7 @@ export async function setGroupConsent(
   state: GroupConsentState,
 ): Promise<void> {
   await redis.set(CONSENT_KEY(chatId), state);
+  await redis.del(LEGACY_CONSENT_KEY(chatId));
 }
 
 export async function getAutoApprove(
@@ -37,7 +58,14 @@ export async function getAutoApprove(
   chatId: string,
   fallback: boolean,
 ): Promise<boolean> {
-  const value = await redis.get(AUTO_APPROVE_KEY(chatId));
+  let value = await redis.get(AUTO_APPROVE_KEY(chatId));
+  if (value === null) {
+    value = await redis.get(LEGACY_AUTO_APPROVE_KEY(chatId));
+    if (value !== null) {
+      await redis.set(AUTO_APPROVE_KEY(chatId), value);
+      await redis.del(LEGACY_AUTO_APPROVE_KEY(chatId));
+    }
+  }
   if (value === null) return fallback;
   return value === "true";
 }
@@ -48,6 +76,7 @@ export async function setAutoApprove(
   enabled: boolean,
 ): Promise<void> {
   await redis.set(AUTO_APPROVE_KEY(chatId), enabled ? "true" : "false");
+  await redis.del(LEGACY_AUTO_APPROVE_KEY(chatId));
 }
 
 export async function recordGovernanceAction(
@@ -56,6 +85,15 @@ export async function recordGovernanceAction(
   ttlSeconds: number,
 ): Promise<number> {
   const key = GOVERNANCE_COUNT_KEY(chatId);
+  const legacyKey = LEGACY_GOVERNANCE_COUNT_KEY(chatId);
+  const existing = await redis.get(key);
+  if (!existing) {
+    const legacyValue = await redis.get(legacyKey);
+    if (legacyValue) {
+      await redis.set(key, legacyValue, "EX", ttlSeconds);
+      await redis.del(legacyKey);
+    }
+  }
   const count = await redis.incr(key);
   if (count === 1) {
     await redis.expire(key, ttlSeconds);
@@ -67,7 +105,14 @@ export async function getGovernanceActionCount(
   redis: Redis,
   chatId: string,
 ): Promise<number> {
-  const raw = await redis.get(GOVERNANCE_COUNT_KEY(chatId));
+  let raw = await redis.get(GOVERNANCE_COUNT_KEY(chatId));
+  if (!raw) {
+    raw = await redis.get(LEGACY_GOVERNANCE_COUNT_KEY(chatId));
+    if (raw) {
+      await redis.set(GOVERNANCE_COUNT_KEY(chatId), raw);
+      await redis.del(LEGACY_GOVERNANCE_COUNT_KEY(chatId));
+    }
+  }
   return raw ? Number(raw) : 0;
 }
 
@@ -97,6 +142,7 @@ export async function appendGovernanceLog(
     .ltrim(GOVERNANCE_AUDIT_KEY(chatId), 0, 49)
     .expire(GOVERNANCE_AUDIT_KEY(chatId), GOVERNANCE_AUDIT_TTL_SECONDS)
     .exec();
+  await redis.del(LEGACY_GOVERNANCE_AUDIT_KEY(chatId));
 }
 
 export async function recordInviteRotation(
@@ -109,13 +155,21 @@ export async function recordInviteRotation(
     "EX",
     INVITE_ROTATION_TTL_SECONDS,
   );
+  await redis.del(LEGACY_INVITE_ROTATED_AT_KEY(chatId));
 }
 
 export async function getLastInviteRotation(
   redis: Redis,
   chatId: string,
 ): Promise<number | null> {
-  const raw = await redis.get(INVITE_ROTATED_AT_KEY(chatId));
+  let raw = await redis.get(INVITE_ROTATED_AT_KEY(chatId));
+  if (!raw) {
+    raw = await redis.get(LEGACY_INVITE_ROTATED_AT_KEY(chatId));
+    if (raw) {
+      await redis.set(INVITE_ROTATED_AT_KEY(chatId), raw);
+      await redis.del(LEGACY_INVITE_ROTATED_AT_KEY(chatId));
+    }
+  }
   if (!raw) return null;
   const numeric = Number(raw);
   return Number.isFinite(numeric) ? numeric : null;

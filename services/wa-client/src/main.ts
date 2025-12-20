@@ -22,6 +22,8 @@ import {
   waSessionStatusGauge,
   assertEssentialConfig,
   assertControlPlaneToken,
+  hashChatId,
+  hashMessageId,
   createRedisConnection,
   connectRedis,
 } from "@wbscanner/shared";
@@ -138,8 +140,23 @@ async function main(): Promise<void> {
       );
       metrics.waVerdictLatency.observe(verdictLatencySeconds);
 
-      const tsKey = `wa:msg_ts:${data.chatId}:${data.messageId}`;
-      const originalTsRaw = await redis.get(tsKey);
+      const tsKey = `wa:msg_ts:${hashChatId(data.chatId)}:${hashMessageId(
+        data.messageId,
+      )}`;
+      let originalTsRaw = await redis.get(tsKey);
+      if (!originalTsRaw) {
+        const legacyKey = `wa:msg_ts:${data.chatId}:${data.messageId}`;
+        originalTsRaw = await redis.get(legacyKey);
+        if (originalTsRaw) {
+          await redis.set(
+            tsKey,
+            originalTsRaw,
+            "EX",
+            config.wa.messageLineageTtlSeconds,
+          );
+          await redis.del(legacyKey);
+        }
+      }
       const originalTs = originalTsRaw
         ? Number.parseInt(originalTsRaw, 10)
         : NaN;

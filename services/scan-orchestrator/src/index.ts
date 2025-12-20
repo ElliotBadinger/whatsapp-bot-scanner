@@ -17,6 +17,8 @@ import {
   normalizeUrl,
   expandUrl,
   urlHash,
+  hashChatId,
+  hashMessageId,
   gsbLookup,
   vtAnalyzeUrl,
   vtVerdictStats,
@@ -1798,7 +1800,11 @@ async function storeAndDispatchResults(
     });
   } catch (err) {
     logger.warn(
-      { err, chatId, messageId },
+      {
+        err,
+        chatIdHash: chatId ? hashChatId(chatId) : undefined,
+        messageIdHash: messageId ? hashMessageId(messageId) : undefined,
+      },
       "failed to persist message metadata for scan",
     );
   }

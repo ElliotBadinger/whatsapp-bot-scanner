@@ -1,4 +1,9 @@
 import type { Redis } from "ioredis";
+import {
+  hashChatId,
+  hashMessageId,
+  isIdentifierHash,
+} from "@wbscanner/shared";
 
 export type VerdictStatus =
   | "pending"
@@ -93,10 +98,25 @@ export class MessageStore {
   ) {}
 
   private messageKey(chatId: string, messageId: string): string {
+    const chatHash = isIdentifierHash(chatId) ? chatId : hashChatId(chatId);
+    const messageHash = isIdentifierHash(messageId)
+      ? messageId
+      : hashMessageId(messageId);
+    return `${MESSAGE_KEY_PREFIX}${chatHash}:${messageHash}`;
+  }
+
+  private legacyMessageKey(chatId: string, messageId: string): string {
     return `${MESSAGE_KEY_PREFIX}${chatId}:${messageId}`;
   }
 
   private verdictMappingKey(verdictMessageId: string): string {
+    const verdictHash = isIdentifierHash(verdictMessageId)
+      ? verdictMessageId
+      : hashMessageId(verdictMessageId);
+    return `${VERDICT_MAP_PREFIX}${verdictHash}`;
+  }
+
+  private legacyVerdictMappingKey(verdictMessageId: string): string {
     return `${VERDICT_MAP_PREFIX}${verdictMessageId}`;
   }
 
@@ -125,6 +145,25 @@ export class MessageStore {
     }
   }
 
+  private async loadRecordWithFallback(
+    chatId: string,
+    messageId: string,
+  ): Promise<{ record: MessageRecord | null; key: string }> {
+    const key = this.messageKey(chatId, messageId);
+    const record = await this.loadRecord(key);
+    if (record) {
+      return { record, key };
+    }
+    const legacyKey = this.legacyMessageKey(chatId, messageId);
+    const legacyRecord = await this.loadRecord(legacyKey);
+    if (!legacyRecord) {
+      return { record: null, key };
+    }
+    await this.saveRecord(key, legacyRecord);
+    await this.redis.del(legacyKey);
+    return { record: legacyRecord, key };
+  }
+
   private async saveRecord(key: string, record: MessageRecord): Promise<void> {
     await this.redis.set(key, JSON.stringify(record), "EX", this.ttlSeconds);
   }
@@ -133,7 +172,8 @@ export class MessageStore {
     chatId: string,
     messageId: string,
   ): Promise<MessageRecord | null> {
-    return this.loadRecord(this.messageKey(chatId, messageId));
+    const { record } = await this.loadRecordWithFallback(chatId, messageId);
+    return record;
   }
 
   async setRecord(record: MessageRecord): Promise<void> {
@@ -151,8 +191,10 @@ export class MessageStore {
     normalizedUrls?: string[];
     urlHashes?: string[];
   }): Promise<MessageRecord> {
-    const key = this.messageKey(details.chatId, details.messageId);
-    const existing = await this.loadRecord(key);
+    const { record: existing, key } = await this.loadRecordWithFallback(
+      details.chatId,
+      details.messageId,
+    );
     if (existing) {
       return existing;
     }
@@ -187,7 +229,6 @@ export class MessageStore {
     normalizedUrls: string[];
     urlHashes: string[];
   }): Promise<MessageRecord> {
-    const key = this.messageKey(details.chatId, details.messageId);
     const record = await this.ensureRecord({
       chatId: details.chatId,
       messageId: details.messageId,
@@ -201,7 +242,7 @@ export class MessageStore {
     record.timestamp = details.timestamp ?? record.timestamp;
     record.senderId = details.senderId ?? record.senderId;
     record.senderIdHash = details.senderIdHash ?? record.senderIdHash;
-    await this.saveRecord(key, record);
+    await this.saveRecord(this.messageKey(details.chatId, details.messageId), record);
     return record;
   }
 
@@ -210,8 +251,7 @@ export class MessageStore {
     messageId: string,
     edit: MessageEditRecord,
   ): Promise<MessageRecord | null> {
-    const key = this.messageKey(chatId, messageId);
-    const record = await this.loadRecord(key);
+    const { record, key } = await this.loadRecordWithFallback(chatId, messageId);
     if (!record) {
       return null;
     }
@@ -232,8 +272,7 @@ export class MessageStore {
     scope: "everyone" | "me",
     timestamp: number,
   ): Promise<MessageRecord | null> {
-    const key = this.messageKey(chatId, messageId);
-    const record = await this.loadRecord(key);
+    const { record, key } = await this.loadRecordWithFallback(chatId, messageId);
     if (!record) {
       return null;
     }
@@ -252,8 +291,7 @@ export class MessageStore {
     messageId: string,
     reaction: MessageReactionRecord,
   ): Promise<MessageRecord | null> {
-    const key = this.messageKey(chatId, messageId);
-    const record = await this.loadRecord(key);
+    const { record, key } = await this.loadRecordWithFallback(chatId, messageId);
     if (!record) {
       return null;
     }
@@ -268,7 +306,6 @@ export class MessageStore {
   async registerVerdictAttempt(
     payload: VerdictAttemptPayload,
   ): Promise<VerdictRecord | null> {
-    const key = this.messageKey(payload.chatId, payload.messageId);
     const record = await this.ensureRecord({
       chatId: payload.chatId,
       messageId: payload.messageId,
@@ -302,7 +339,10 @@ export class MessageStore {
       verdictRecord.ackHistory = existing.ackHistory.slice();
     }
     record.verdicts[payload.urlHash] = verdictRecord;
-    await this.saveRecord(key, record);
+    await this.saveRecord(
+      this.messageKey(payload.chatId, payload.messageId),
+      record,
+    );
     if (payload.verdictMessageId) {
       await this.setVerdictMapping(payload.verdictMessageId, {
         chatId: payload.chatId,
@@ -401,8 +441,10 @@ export class MessageStore {
   async getVerdictRecord(
     context: VerdictContext,
   ): Promise<VerdictRecord | null> {
-    const key = this.messageKey(context.chatId, context.messageId);
-    const record = await this.loadRecord(key);
+    const { record } = await this.loadRecordWithFallback(
+      context.chatId,
+      context.messageId,
+    );
     if (!record) {
       return null;
     }
@@ -413,8 +455,10 @@ export class MessageStore {
     context: VerdictContext,
     verdictMessageId: string,
   ): Promise<VerdictRecord | null> {
-    const key = this.messageKey(context.chatId, context.messageId);
-    const record = await this.loadRecord(key);
+    const { record, key } = await this.loadRecordWithFallback(
+      context.chatId,
+      context.messageId,
+    );
     if (!record) {
       return null;
     }
@@ -439,12 +483,22 @@ export class MessageStore {
       "EX",
       this.ttlSeconds,
     );
+    await this.redis.del(this.legacyVerdictMappingKey(verdictMessageId));
   }
 
   async getVerdictMapping(
     verdictMessageId: string,
   ): Promise<VerdictContext | null> {
-    const raw = await this.redis.get(this.verdictMappingKey(verdictMessageId));
+    const key = this.verdictMappingKey(verdictMessageId);
+    let raw = await this.redis.get(key);
+    if (!raw) {
+      const legacyKey = this.legacyVerdictMappingKey(verdictMessageId);
+      raw = await this.redis.get(legacyKey);
+      if (raw) {
+        await this.redis.set(key, raw, "EX", this.ttlSeconds);
+        await this.redis.del(legacyKey);
+      }
+    }
     if (!raw) {
       return null;
     }

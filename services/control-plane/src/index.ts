@@ -16,6 +16,7 @@ import {
   assertControlPlaneToken,
   normalizeUrl,
   urlHash,
+  hashChatId,
   assertEssentialConfig,
   OverrideBodySchema,
   RescanBodySchema,
@@ -156,10 +157,11 @@ export async function buildServer(options: BuildOptions = {}) {
       }
       const { chatId } = validation.data;
       const until = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-      await dbClient.query("UPDATE groups SET muted_until=? WHERE chat_id=?", [
-        until,
-        chatId,
-      ]);
+      const chatIdHash = hashChatId(chatId);
+      await dbClient.query(
+        "INSERT INTO groups (chat_id, chat_id_hash, muted_until) VALUES (?, ?, ?) ON CONFLICT(chat_id) DO UPDATE SET muted_until=excluded.muted_until, chat_id_hash=excluded.chat_id_hash",
+        [chatIdHash, chatIdHash, until],
+      );
       reply.send({ ok: true, muted_until: until });
     });
 
@@ -169,9 +171,10 @@ export async function buildServer(options: BuildOptions = {}) {
         throw new ValidationError(validation.error);
       }
       const { chatId } = validation.data;
+      const chatIdHash = hashChatId(chatId);
       await dbClient.query(
-        "UPDATE groups SET muted_until=NULL WHERE chat_id=?",
-        [chatId],
+        "INSERT INTO groups (chat_id, chat_id_hash, muted_until) VALUES (?, ?, NULL) ON CONFLICT(chat_id) DO UPDATE SET muted_until=NULL, chat_id_hash=excluded.chat_id_hash",
+        [chatIdHash, chatIdHash],
       );
       reply.send({ ok: true });
     });
