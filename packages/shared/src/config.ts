@@ -53,6 +53,17 @@ function ensureQueueName(raw: string, envVar: string): string {
   return value;
 }
 
+function resolveConnectionString(
+  primary: string | undefined,
+  fallback: string | undefined,
+): string {
+  const candidate = (primary ?? "").trim();
+  if (candidate) {
+    return candidate;
+  }
+  return (fallback ?? "").trim();
+}
+
 let cachedControlPlaneToken: string | undefined;
 
 function getControlPlaneToken(): string {
@@ -96,6 +107,43 @@ const featureFlags = {
 export const config = {
   nodeEnv: process.env.NODE_ENV || "development",
   redisUrl: process.env.REDIS_URL || "redis://redis:6379/0",
+  database: {
+    get controlPlane() {
+      return {
+        connectionString: resolveConnectionString(
+          process.env.DB_CONTROL_PLANE_URL,
+          process.env.DATABASE_URL,
+        ),
+        role: "control_plane_role",
+      };
+    },
+    get scanOrchestrator() {
+      return {
+        connectionString: resolveConnectionString(
+          process.env.DB_SCAN_ORCHESTRATOR_URL,
+          process.env.DATABASE_URL,
+        ),
+        role: "scan_orchestrator_role",
+      };
+    },
+    get waClient() {
+      return {
+        connectionString: resolveConnectionString(
+          process.env.DB_WA_CLIENT_URL,
+          process.env.DATABASE_URL,
+        ),
+        role: "wa_client_role",
+      };
+    },
+    get admin() {
+      return {
+        connectionString: resolveConnectionString(
+          process.env.DB_ADMIN_URL,
+          process.env.DATABASE_URL,
+        ),
+      };
+    },
+  },
   queues: {
     scanRequest: ensureQueueName(
       process.env.SCAN_REQUEST_QUEUE || "scan-request",

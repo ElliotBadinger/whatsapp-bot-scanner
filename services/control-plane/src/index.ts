@@ -29,6 +29,7 @@ import { getSharedConnection } from "./database.js";
 const artifactRoot = path.resolve(
   process.env.URLSCAN_ARTIFACT_DIR || "storage/urlscan-artifacts",
 );
+const SCAN_LAST_MESSAGE_PREFIX = "scan:last-message:";
 
 let sharedQueue: Queue | null = null;
 let sharedRedisInstance: Redis | null = null;
@@ -199,13 +200,21 @@ export async function buildServer(options: BuildOptions = {}) {
       ];
       await Promise.all(keys.map((key) => redisClient.del(key)));
 
-      const { rows: messageRows } = await dbClient.query(
-        "SELECT chat_id, message_id FROM messages WHERE url_hash=? ORDER BY posted_at DESC LIMIT 1",
-        [hash],
-      );
-      const latestMessage = messageRows[0] as
-        | { chat_id?: string; message_id?: string }
+      let latestMessage:
+        | { chatId?: string; messageId?: string }
         | undefined;
+      const raw = await redisClient.get(`${SCAN_LAST_MESSAGE_PREFIX}${hash}`);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as {
+            chatId?: string;
+            messageId?: string;
+          };
+          latestMessage = parsed;
+        } catch {
+          latestMessage = undefined;
+        }
+      }
 
       const rescanJob = {
         url: normalized,
@@ -213,10 +222,10 @@ export async function buildServer(options: BuildOptions = {}) {
         rescan: true,
         priority: 1,
         timestamp: Date.now(),
-        ...(latestMessage?.chat_id && latestMessage?.message_id
+        ...(latestMessage?.chatId && latestMessage?.messageId
           ? {
-              chatId: latestMessage.chat_id,
-              messageId: latestMessage.message_id,
+              chatId: latestMessage.chatId,
+              messageId: latestMessage.messageId,
             }
           : {}),
       };
@@ -316,9 +325,6 @@ export async function buildServer(options: BuildOptions = {}) {
         try {
           await dbClient.query(
             "DELETE FROM scans WHERE last_seen_at < datetime('now', '-30 days')",
-          );
-          await dbClient.query(
-            "DELETE FROM messages WHERE posted_at < datetime('now', '-30 days')",
           );
         } catch (e) {
           logger.error(e, "purge job failed");

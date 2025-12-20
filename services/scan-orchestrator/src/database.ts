@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { Pool } from "pg";
 import type { Logger } from "pino";
+import { config as sharedConfig } from "@wbscanner/shared";
 
 type SqliteStatement = {
   all: (...params: unknown[]) => unknown[];
@@ -70,6 +71,7 @@ function createSqliteDriver(dbPath: string): SqliteDriver {
 interface DatabaseConfig {
   dbPath?: string;
   logger?: Logger;
+  connectionString?: string;
 }
 
 export interface IDatabaseConnection {
@@ -167,8 +169,12 @@ export class PostgresConnection implements IDatabaseConnection {
 
   constructor(config: DatabaseConfig = {}) {
     this.logger = config.logger;
+    const connectionString =
+      config.connectionString ||
+      sharedConfig.database.scanOrchestrator.connectionString ||
+      process.env.DATABASE_URL;
     this.pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString,
     });
 
     this.pool.on("error", (err: Error) => {
@@ -242,14 +248,13 @@ let sharedConnection: IDatabaseConnection | null = null;
 
 export function getSharedConnection(logger?: Logger): IDatabaseConnection {
   if (!sharedConnection) {
-    if (
-      process.env.DATABASE_URL &&
-      process.env.DATABASE_URL.startsWith("postgres")
-    ) {
-      sharedConnection = new PostgresConnection({ logger });
-    } else {
-      sharedConnection = new SQLiteConnection({ logger });
+    const connectionString =
+      sharedConfig.database.scanOrchestrator.connectionString;
+    if (connectionString && connectionString.startsWith("postgres")) {
+      sharedConnection = new PostgresConnection({ logger, connectionString });
+      return sharedConnection;
     }
+    sharedConnection = new SQLiteConnection({ logger });
   }
   return sharedConnection;
 }
@@ -257,11 +262,12 @@ export function getSharedConnection(logger?: Logger): IDatabaseConnection {
 export function createConnection(
   config: DatabaseConfig = {},
 ): IDatabaseConnection {
-  if (
-    process.env.DATABASE_URL &&
-    process.env.DATABASE_URL.startsWith("postgres")
-  ) {
-    return new PostgresConnection(config);
+  const dbUrl =
+    config.connectionString ||
+    sharedConfig.database.scanOrchestrator.connectionString ||
+    process.env.DATABASE_URL;
+  if (dbUrl && dbUrl.startsWith("postgres")) {
+    return new PostgresConnection({ ...config, connectionString: dbUrl });
   }
   return new SQLiteConnection(config);
 }

@@ -118,6 +118,7 @@ const ANALYSIS_TTLS = {
 const URLSCAN_UUID_PREFIX = "urlscan:uuid:";
 const URLSCAN_QUEUED_PREFIX = "urlscan:queued:";
 const URLSCAN_SUBMITTED_PREFIX = "urlscan:submitted:";
+const SCAN_LAST_MESSAGE_PREFIX = "scan:last-message:";
 const URLSCAN_RESULT_PREFIX = "urlscan:result:";
 const SHORTENER_CACHE_PREFIX = "url:shortener:";
 
@@ -1781,12 +1782,18 @@ async function storeAndDispatchResults(
       }
 
       if (chatId && messageId) {
-        const messageSql = `
-          INSERT INTO messages (chat_id, message_id, url_hash, verdict, posted_at)
-          VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-          ON CONFLICT(chat_id, message_id, url_hash) DO NOTHING
-        `;
-        await dbClient.query(messageSql, [chatId, messageId, h, verdict]);
+        const payload = JSON.stringify({
+          chatId,
+          messageId,
+          storedAt: Date.now(),
+        });
+        const ttlSeconds = Math.max(1, config.wa.messageLineageTtlSeconds);
+        await redis.set(
+          `${SCAN_LAST_MESSAGE_PREFIX}${h}`,
+          payload,
+          "EX",
+          ttlSeconds,
+        );
       }
     });
   } catch (err) {

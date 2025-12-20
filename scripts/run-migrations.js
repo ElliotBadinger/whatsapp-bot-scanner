@@ -4,8 +4,29 @@ const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
 
+function escapeSqlLiteral(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+function interpolateEnv(sql, filename) {
+  return sql.replace(/{{([A-Z0-9_]+)}}/g, (_match, varName) => {
+    const value = process.env[varName];
+    if (!value) {
+      throw new Error(
+        `Missing required environment variable ${varName} for migration ${filename}`,
+      );
+    }
+    return escapeSqlLiteral(value);
+  });
+}
+
+function isPostgresOnlyMigration(sql) {
+  return /CREATE\s+ROLE|ALTER\s+ROLE|REVOKE\s+|GRANT\s+/i.test(sql);
+}
+
 async function main() {
-  const isPostgres = process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('postgres');
+  const adminUrl = process.env.DB_ADMIN_URL || process.env.DATABASE_URL;
+  const isPostgres = adminUrl && adminUrl.startsWith('postgres');
   const migrationsDir = path.join(__dirname, '..', 'db', 'migrations');
   const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort();
 
@@ -14,7 +35,7 @@ async function main() {
     // Only require pg when actually using PostgreSQL
     const { Client } = require('pg');
     const client = new Client({
-      connectionString: process.env.DATABASE_URL,
+      connectionString: adminUrl,
     });
     await client.connect();
 
@@ -37,7 +58,8 @@ async function main() {
           continue;
         }
 
-        const sql = fs.readFileSync(path.join(migrationsDir, f), 'utf8');
+        let sql = fs.readFileSync(path.join(migrationsDir, f), 'utf8');
+        sql = interpolateEnv(sql, f);
         console.log(`Applying migration: ${f}`);
 
         try {
@@ -96,7 +118,13 @@ async function main() {
         continue;
       }
 
-      const sql = fs.readFileSync(path.join(migrationsDir, f), 'utf8');
+      let sql = fs.readFileSync(path.join(migrationsDir, f), 'utf8');
+      if (isPostgresOnlyMigration(sql)) {
+        console.log(`Skipping postgres-only migration for SQLite: ${f}`);
+        db.prepare('INSERT INTO schema_migrations (id) VALUES (?)').run(f);
+        continue;
+      }
+      sql = interpolateEnv(sql, f);
       console.log(`Applying migration: ${f}`);
 
       // Transform PostgreSQL SQL to SQLite-compatible SQL

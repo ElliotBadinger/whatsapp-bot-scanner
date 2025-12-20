@@ -104,34 +104,53 @@ describe("control-plane database", () => {
     expect(endMock).toHaveBeenCalled();
   });
 
-  it("creates connections based on DATABASE_URL", () => {
-    const prev = process.env.DATABASE_URL;
+  it("creates connections based on service-specific database URL", () => {
+    const prev = process.env.DB_CONTROL_PLANE_URL;
+    const prevFallback = process.env.DATABASE_URL;
+    delete process.env.DB_CONTROL_PLANE_URL;
     delete process.env.DATABASE_URL;
     const sqlite = createConnection();
     expect(sqlite).toBeInstanceOf(SQLiteConnection);
 
-    process.env.DATABASE_URL = "postgres://example.com";
+    process.env.DB_CONTROL_PLANE_URL = "postgres://example.com";
     const pg = createConnection();
     expect(pg).toBeInstanceOf(PostgresConnection);
 
-    process.env.DATABASE_URL = prev;
+    process.env.DB_CONTROL_PLANE_URL = prev;
+    process.env.DATABASE_URL = prevFallback;
   });
 
   it("getSharedConnection selects driver based on env", () => {
-    const prev = process.env.DATABASE_URL;
+    const prev = process.env.DB_CONTROL_PLANE_URL;
+    const prevFallback = process.env.DATABASE_URL;
+    delete process.env.DB_CONTROL_PLANE_URL;
     delete process.env.DATABASE_URL;
     jest.resetModules();
     const dbSqlite = require("../database") as typeof import("../database");
     const sqlite = dbSqlite.getSharedConnection();
     expect(sqlite).toBeInstanceOf(dbSqlite.SQLiteConnection);
 
-    process.env.DATABASE_URL = "postgres://example.com";
+    process.env.DB_CONTROL_PLANE_URL = "postgres://example.com";
     jest.resetModules();
     const dbPg = require("../database") as typeof import("../database");
     const pg = dbPg.getSharedConnection();
     expect(pg).toBeInstanceOf(dbPg.PostgresConnection);
 
-    process.env.DATABASE_URL = prev;
+    process.env.DB_CONTROL_PLANE_URL = prev;
+    process.env.DATABASE_URL = prevFallback;
+  });
+
+  it("falls back to DATABASE_URL when service URL is missing", () => {
+    const prev = process.env.DB_CONTROL_PLANE_URL;
+    const prevFallback = process.env.DATABASE_URL;
+    delete process.env.DB_CONTROL_PLANE_URL;
+    process.env.DATABASE_URL = "postgres://fallback.example.com";
+
+    const pg = createConnection();
+    expect(pg).toBeInstanceOf(PostgresConnection);
+
+    process.env.DB_CONTROL_PLANE_URL = prev;
+    process.env.DATABASE_URL = prevFallback;
   });
 
   it("runs Postgres transaction wrapper", async () => {

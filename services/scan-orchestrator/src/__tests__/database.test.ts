@@ -83,21 +83,26 @@ describe("scan-orchestrator database", () => {
     expect(endMock).toHaveBeenCalled();
   });
 
-  it("creates connections based on DATABASE_URL", () => {
-    const prev = process.env.DATABASE_URL;
+  it("creates connections based on service-specific database URL", () => {
+    const prev = process.env.DB_SCAN_ORCHESTRATOR_URL;
+    const prevFallback = process.env.DATABASE_URL;
+    delete process.env.DB_SCAN_ORCHESTRATOR_URL;
     delete process.env.DATABASE_URL;
     const sqlite = createConnection();
     expect(sqlite).toBeInstanceOf(SQLiteConnection);
 
-    process.env.DATABASE_URL = "postgres://example.com";
+    process.env.DB_SCAN_ORCHESTRATOR_URL = "postgres://example.com";
     const pg = createConnection();
     expect(pg).toBeInstanceOf(PostgresConnection);
 
-    process.env.DATABASE_URL = prev;
+    process.env.DB_SCAN_ORCHESTRATOR_URL = prev;
+    process.env.DATABASE_URL = prevFallback;
   });
 
   it("getSharedConnection reuses the singleton per env", () => {
-    const prev = process.env.DATABASE_URL;
+    const prev = process.env.DB_SCAN_ORCHESTRATOR_URL;
+    const prevFallback = process.env.DATABASE_URL;
+    delete process.env.DB_SCAN_ORCHESTRATOR_URL;
     delete process.env.DATABASE_URL;
 
     jest.isolateModules(() => {
@@ -106,14 +111,28 @@ describe("scan-orchestrator database", () => {
       expect(conn).toBeInstanceOf(db.SQLiteConnection);
     });
 
-    process.env.DATABASE_URL = "postgres://example.com";
+    process.env.DB_SCAN_ORCHESTRATOR_URL = "postgres://example.com";
     jest.isolateModules(() => {
       const db = require("../database");
       const conn = db.getSharedConnection();
       expect(conn).toBeInstanceOf(db.PostgresConnection);
     });
 
-    process.env.DATABASE_URL = prev;
+    process.env.DB_SCAN_ORCHESTRATOR_URL = prev;
+    process.env.DATABASE_URL = prevFallback;
+  });
+
+  it("falls back to DATABASE_URL when service URL is missing", () => {
+    const prev = process.env.DB_SCAN_ORCHESTRATOR_URL;
+    const prevFallback = process.env.DATABASE_URL;
+    delete process.env.DB_SCAN_ORCHESTRATOR_URL;
+    process.env.DATABASE_URL = "postgres://fallback.example.com";
+
+    const pg = createConnection();
+    expect(pg).toBeInstanceOf(PostgresConnection);
+
+    process.env.DB_SCAN_ORCHESTRATOR_URL = prev;
+    process.env.DATABASE_URL = prevFallback;
   });
 
   it("runs Postgres transaction wrapper", async () => {

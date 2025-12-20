@@ -152,14 +152,9 @@ describe("control-plane extra routes", () => {
     }
   });
 
-  it("handles rescan without chat context in database", async () => {
+  it("handles rescan without chat context in cache", async () => {
     const dbClient = {
-      query: jest.fn(async (sql: string) => {
-        if (sql.startsWith("SELECT chat_id")) {
-          return { rows: [] };
-        }
-        return { rows: [] };
-      }),
+      query: jest.fn(async () => ({ rows: [] })),
     };
     const redisClient = createMockRedis();
     const queue = createMockQueue("scan-request");
@@ -184,7 +179,7 @@ describe("control-plane extra routes", () => {
         }),
         expect.any(Object)
       );
-      // Should not have chatId/messageId when not found in DB
+      // Should not have chatId/messageId when not found in cache
       const callArgs = (queue.add as jest.Mock).mock.calls[0][1];
       expect(callArgs.chatId).toBeUndefined();
     } finally {

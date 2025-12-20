@@ -109,18 +109,15 @@ describe('control-plane buildServer', () => {
   });
 
   test('POST /rescan clears caches and enqueues rescan job', async () => {
-    const { app, dbClient, redisClient, queue } = await buildTestServer(
-      async (sql: string) => {
-        if (sql.startsWith('SELECT chat_id')) {
-          return { rows: [{ chat_id: 'chat-1', message_id: 'msg-1' }] };
-        }
-        return { rows: [] };
-      },
-    );
+    const { app, redisClient, queue } = await buildTestServer();
 
     const url = 'https://example.com/path';
     const normalized = normalizeUrl(url)!;
     const hash = urlHash(normalized);
+    await redisClient.set(
+      `scan:last-message:${hash}`,
+      JSON.stringify({ chatId: 'chat-1', messageId: 'msg-1' }),
+    );
 
     try {
       const res = await app.inject({
@@ -142,7 +139,6 @@ describe('control-plane buildServer', () => {
         expect.objectContaining({ priority: 1 }),
       );
       expect(redisClient.del).toHaveBeenCalled();
-      expect(dbClient.query).toHaveBeenCalled();
     } finally {
       await app.close();
     }
