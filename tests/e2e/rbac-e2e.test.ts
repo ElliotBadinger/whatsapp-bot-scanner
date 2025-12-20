@@ -17,9 +17,9 @@ describe("RBAC E2E", () => {
     ).resolves.toBeDefined();
 
     const cpConn = createRbacConnection("control-plane");
-    await expect(cpConn.query("SELECT * FROM scans"))
-      .resolves.toBeDefined();
-    await expect(cpConn.query("SELECT * FROM messages"))
-      .rejects.toThrow(/permission denied/i);
+    await expect(cpConn.query("SELECT * FROM scans")).resolves.toBeDefined();
+    await expect(cpConn.query("SELECT * FROM messages")).rejects.toThrow(
+      /permission denied/i,
+    );
   });
 });

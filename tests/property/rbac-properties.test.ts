@@ -1,5 +1,9 @@
 import fc from "fast-check";
-import { createRbacConnection, RBAC_PERMISSIONS, type RbacRole } from "../helpers/rbac";
+import {
+  createRbacConnection,
+  RBAC_PERMISSIONS,
+  type RbacRole,
+} from "../helpers/rbac";
 
 const tables = ["scans", "messages", "overrides", "groups"] as const;
 const actions = ["SELECT", "INSERT", "UPDATE", "DELETE"] as const;

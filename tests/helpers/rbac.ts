@@ -27,11 +27,15 @@ function normalizeIdentifier(input: string): string {
 
 export function parseSql(sql: string): { action: SqlAction; table: string } {
   const trimmed = sql.trim();
-  const selectMatch = /^select\b[\s\S]*?\bfrom\s+([a-zA-Z0-9_\"]+)/i.exec(trimmed);
+  const selectMatch = /^select\b[\s\S]*?\bfrom\s+([a-zA-Z0-9_\"]+)/i.exec(
+    trimmed,
+  );
   if (selectMatch) {
     return { action: "SELECT", table: normalizeIdentifier(selectMatch[1]) };
   }
-  const insertMatch = /^insert\b[\s\S]*?\binto\s+([a-zA-Z0-9_\"]+)/i.exec(trimmed);
+  const insertMatch = /^insert\b[\s\S]*?\binto\s+([a-zA-Z0-9_\"]+)/i.exec(
+    trimmed,
+  );
   if (insertMatch) {
     return { action: "INSERT", table: normalizeIdentifier(insertMatch[1]) };
   }
@@ -39,7 +43,9 @@ export function parseSql(sql: string): { action: SqlAction; table: string } {
   if (updateMatch) {
     return { action: "UPDATE", table: normalizeIdentifier(updateMatch[1]) };
   }
-  const deleteMatch = /^delete\b[\s\S]*?\bfrom\s+([a-zA-Z0-9_\"]+)/i.exec(trimmed);
+  const deleteMatch = /^delete\b[\s\S]*?\bfrom\s+([a-zA-Z0-9_\"]+)/i.exec(
+    trimmed,
+  );
   if (deleteMatch) {
     return { action: "DELETE", table: normalizeIdentifier(deleteMatch[1]) };
   }

@@ -1,8 +1,6 @@
-
-
-const fs = require('fs');
-const path = require('path');
-const Database = require('better-sqlite3');
+const fs = require("fs");
+const path = require("path");
+const Database = require("better-sqlite3");
 
 function escapeSqlLiteral(value) {
   return `'${String(value).replace(/'/g, "''")}'`;
@@ -26,14 +24,17 @@ function isPostgresOnlyMigration(sql) {
 
 async function main() {
   const adminUrl = process.env.DB_ADMIN_URL || process.env.DATABASE_URL;
-  const isPostgres = adminUrl && adminUrl.startsWith('postgres');
-  const migrationsDir = path.join(__dirname, '..', 'db', 'migrations');
-  const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort();
+  const isPostgres = adminUrl && adminUrl.startsWith("postgres");
+  const migrationsDir = path.join(__dirname, "..", "db", "migrations");
+  const files = fs
+    .readdirSync(migrationsDir)
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
 
   if (isPostgres) {
-    console.log('Running migrations for PostgreSQL...');
+    console.log("Running migrations for PostgreSQL...");
     // Only require pg when actually using PostgreSQL
-    const { Client } = require('pg');
+    const { Client } = require("pg");
     const client = new Client({
       connectionString: adminUrl,
     });
@@ -49,8 +50,8 @@ async function main() {
       `);
 
       // Get applied migrations
-      const { rows } = await client.query('SELECT id FROM schema_migrations');
-      const appliedMigrations = new Set(rows.map(row => row.id));
+      const { rows } = await client.query("SELECT id FROM schema_migrations");
+      const appliedMigrations = new Set(rows.map((row) => row.id));
 
       for (const f of files) {
         if (appliedMigrations.has(f)) {
@@ -58,22 +59,24 @@ async function main() {
           continue;
         }
 
-        let sql = fs.readFileSync(path.join(migrationsDir, f), 'utf8');
+        let sql = fs.readFileSync(path.join(migrationsDir, f), "utf8");
         sql = interpolateEnv(sql, f);
         console.log(`Applying migration: ${f}`);
 
         try {
-          await client.query('BEGIN');
-          // Split SQL by semicolon to handle multiple statements if needed, 
+          await client.query("BEGIN");
+          // Split SQL by semicolon to handle multiple statements if needed,
           // but pg driver can handle multiple statements in one query string usually.
           // However, for safety and better error reporting, we might want to execute as is.
           // Note: pg driver supports multiple statements in a single query string.
           await client.query(sql);
-          await client.query('INSERT INTO schema_migrations (id) VALUES ($1)', [f]);
-          await client.query('COMMIT');
+          await client.query("INSERT INTO schema_migrations (id) VALUES ($1)", [
+            f,
+          ]);
+          await client.query("COMMIT");
           console.log(`Successfully applied migration: ${f}`);
         } catch (e) {
-          await client.query('ROLLBACK');
+          await client.query("ROLLBACK");
           console.error(`Failed to apply migration ${f}:`, e.message);
           throw e;
         }
@@ -82,9 +85,11 @@ async function main() {
       await client.end();
     }
   } else {
-    console.log('Running migrations for SQLite...');
+    console.log("Running migrations for SQLite...");
     // Create database connection
-    const dbPath = process.env.SQLITE_DB_PATH || path.join(__dirname, '..', 'storage', 'wbscanner.db');
+    const dbPath =
+      process.env.SQLITE_DB_PATH ||
+      path.join(__dirname, "..", "storage", "wbscanner.db");
     const dbDir = path.dirname(dbPath);
 
     // Ensure directory exists
@@ -95,9 +100,9 @@ async function main() {
     const db = new Database(dbPath);
 
     // Enable WAL mode for better concurrency
-    db.pragma('journal_mode = WAL');
-    db.pragma('synchronous = NORMAL');
-    db.pragma('cache_size = 64000');
+    db.pragma("journal_mode = WAL");
+    db.pragma("synchronous = NORMAL");
+    db.pragma("cache_size = 64000");
 
     // Create schema_migrations table
     db.exec(`
@@ -109,7 +114,10 @@ async function main() {
 
     // Get applied migrations
     const appliedMigrations = new Set(
-      db.prepare('SELECT id FROM schema_migrations').all().map(row => row.id)
+      db
+        .prepare("SELECT id FROM schema_migrations")
+        .all()
+        .map((row) => row.id),
     );
 
     for (const f of files) {
@@ -118,10 +126,10 @@ async function main() {
         continue;
       }
 
-      let sql = fs.readFileSync(path.join(migrationsDir, f), 'utf8');
+      let sql = fs.readFileSync(path.join(migrationsDir, f), "utf8");
       if (isPostgresOnlyMigration(sql)) {
         console.log(`Skipping postgres-only migration for SQLite: ${f}`);
-        db.prepare('INSERT INTO schema_migrations (id) VALUES (?)').run(f);
+        db.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run(f);
         continue;
       }
       sql = interpolateEnv(sql, f);
@@ -129,20 +137,20 @@ async function main() {
 
       // Transform PostgreSQL SQL to SQLite-compatible SQL
       const sqliteSQL = sql
-        .replace(/SERIAL PRIMARY KEY/g, 'INTEGER PRIMARY KEY AUTOINCREMENT')
-        .replace(/TIMESTAMP/g, 'TEXT')
+        .replace(/SERIAL PRIMARY KEY/g, "INTEGER PRIMARY KEY AUTOINCREMENT")
+        .replace(/TIMESTAMP/g, "TEXT")
         // Replace DEFAULT NOW() first, then standalone NOW()
         .replace(/DEFAULT\s+NOW\(\)/gi, "DEFAULT (datetime('now'))")
         .replace(/NOW\(\)/gi, "datetime('now')")
         // SQLite doesn't support IF NOT EXISTS with ALTER TABLE ADD COLUMN
-        .replace(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS/gi, 'ADD COLUMN');
+        .replace(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS/gi, "ADD COLUMN");
 
       const transaction = db.transaction(() => {
         // Execute migration SQL
         db.exec(sqliteSQL);
 
         // Record migration as applied
-        db.prepare('INSERT INTO schema_migrations (id) VALUES (?)').run(f);
+        db.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run(f);
       });
 
       try {
@@ -156,10 +164,10 @@ async function main() {
 
     db.close();
   }
-  console.log('Migrations complete.');
+  console.log("Migrations complete.");
 }
 
-main().catch(e => {
+main().catch((e) => {
   console.error(e);
   process.exit(1);
 });

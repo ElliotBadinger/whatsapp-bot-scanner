@@ -200,9 +200,7 @@ export async function buildServer(options: BuildOptions = {}) {
       ];
       await Promise.all(keys.map((key) => redisClient.del(key)));
 
-      let latestMessage:
-        | { chatId?: string; messageId?: string }
-        | undefined;
+      let latestMessage: { chatId?: string; messageId?: string } | undefined;
       const raw = await redisClient.get(`${SCAN_LAST_MESSAGE_PREFIX}${hash}`);
       if (raw) {
         try {

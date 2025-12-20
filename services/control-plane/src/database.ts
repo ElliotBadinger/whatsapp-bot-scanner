@@ -228,7 +228,8 @@ let sharedConnection: IDatabaseConnection | null = null;
 
 export function getSharedConnection(logger?: Logger): IDatabaseConnection {
   if (!sharedConnection) {
-    const connectionString = sharedConfig.database.controlPlane.connectionString;
+    const connectionString =
+      sharedConfig.database.controlPlane.connectionString;
     if (connectionString && connectionString.startsWith("postgres")) {
       sharedConnection = new PostgresConnection({ logger, connectionString });
       return sharedConnection;
