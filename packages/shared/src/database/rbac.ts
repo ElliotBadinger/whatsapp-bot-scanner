@@ -56,21 +56,19 @@ function extractTarget(sql: string): {
 function assertPermission(
   service: RbacService,
   sql: string,
-): { operation: Operation | null; table: string | null } {
+): { operation: Operation; table: string } {
   const { operation, table } = extractTarget(sql);
   if (!operation || !table) {
-    return { operation, table };
+    throw new Error("rbac: cannot parse SQL for permission check");
   }
+
   const policy = SERVICE_POLICIES[service];
   const allowed = policy[table];
-  if (Array.isArray(allowed) && allowed.length > 0) {
-    if (!allowed.includes(operation)) {
-      throw new Error(`permission denied for ${table}`);
-    }
-  } else if (policy[table] !== undefined) {
-    // Explicitly listed but empty
+
+  if (!Array.isArray(allowed) || !allowed.includes(operation)) {
     throw new Error(`permission denied for ${table}`);
   }
+
   return { operation, table };
 }
 
@@ -94,10 +92,6 @@ export class MemoryRbacConnection {
 
   async query(sql: string, params: unknown[] = []): Promise<{ rows: Row[] }> {
     const { operation, table } = assertPermission(this.service, sql);
-
-    if (!operation || !table) {
-      return { rows: [] };
-    }
 
     switch (operation) {
       case "select": {
