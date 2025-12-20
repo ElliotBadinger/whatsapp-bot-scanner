@@ -59,7 +59,7 @@ function assertPermission(
 ): { operation: Operation; table: string } {
   const { operation, table } = extractTarget(sql);
   if (!operation || !table) {
-    throw new Error("rbac: cannot parse SQL for permission check");
+    throw new Error("cannot parse SQL for permission check");
   }
 
   const policy = SERVICE_POLICIES[service];
