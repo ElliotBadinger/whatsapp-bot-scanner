@@ -50,6 +50,18 @@ describe("Database RBAC", () => {
       /permission denied/,
     );
   });
+
+  it("should deny access to unlisted tables", async () => {
+    const conn = getControlPlaneConnection();
+    await expect(conn.query("SELECT * FROM users LIMIT 1")).rejects.toThrow(
+      /permission denied/,
+    );
+  });
+
+  it("should throw on unparseable SQL", async () => {
+    const conn = getControlPlaneConnection();
+    await expect(conn.query("SELECT 1")).rejects.toThrow(/cannot parse SQL/);
+  });
 });
 
 describe("RBAC Property Tests", () => {
