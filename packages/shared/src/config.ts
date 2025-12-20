@@ -96,6 +96,22 @@ const featureFlags = {
 export const config = {
   nodeEnv: process.env.NODE_ENV || "development",
   redisUrl: process.env.REDIS_URL || "redis://redis:6379/0",
+  database: {
+    controlPlane: {
+      connectionString:
+        process.env.DB_CONTROL_PLANE_URL || process.env.DATABASE_URL,
+      role: "control_plane_role",
+    },
+    scanOrchestrator: {
+      connectionString:
+        process.env.DB_SCAN_ORCHESTRATOR_URL || process.env.DATABASE_URL,
+      role: "scan_orchestrator_role",
+    },
+    waClient: {
+      connectionString: process.env.DB_WA_CLIENT_URL || process.env.DATABASE_URL,
+      role: "wa_client_role",
+    },
+  },
   queues: {
     scanRequest: ensureQueueName(
       process.env.SCAN_REQUEST_QUEUE || "scan-request",

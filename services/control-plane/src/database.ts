@@ -168,7 +168,8 @@ export class PostgresConnection implements IDatabaseConnection {
   constructor(config: DatabaseConfig = {}) {
     this.logger = config.logger;
     this.pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString:
+        process.env.DB_CONTROL_PLANE_URL || process.env.DATABASE_URL,
     });
 
     this.pool.on("error", (err: Error) => {
@@ -222,10 +223,9 @@ let sharedConnection: IDatabaseConnection | null = null;
 
 export function getSharedConnection(logger?: Logger): IDatabaseConnection {
   if (!sharedConnection) {
-    if (
-      process.env.DATABASE_URL &&
-      process.env.DATABASE_URL.startsWith("postgres")
-    ) {
+    const connectionUrl =
+      process.env.DB_CONTROL_PLANE_URL || process.env.DATABASE_URL;
+    if (connectionUrl && connectionUrl.startsWith("postgres")) {
       sharedConnection = new PostgresConnection({ logger });
     } else {
       sharedConnection = new SQLiteConnection({ logger });
@@ -237,10 +237,9 @@ export function getSharedConnection(logger?: Logger): IDatabaseConnection {
 export function createConnection(
   config: DatabaseConfig = {},
 ): IDatabaseConnection {
-  if (
-    process.env.DATABASE_URL &&
-    process.env.DATABASE_URL.startsWith("postgres")
-  ) {
+  const connectionUrl =
+    process.env.DB_CONTROL_PLANE_URL || process.env.DATABASE_URL;
+  if (connectionUrl && connectionUrl.startsWith("postgres")) {
     return new PostgresConnection(config);
   }
   return new SQLiteConnection(config);
