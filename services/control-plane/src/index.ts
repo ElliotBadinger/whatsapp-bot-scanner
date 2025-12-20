@@ -21,6 +21,8 @@ import {
   RescanBodySchema,
   MuteGroupParamsSchema,
   getConnectedSharedRedis,
+  ValidationError,
+  globalErrorHandler,
 } from "@wbscanner/shared";
 import { getSharedConnection } from "./database.js";
 
@@ -79,6 +81,7 @@ export async function buildServer(options: BuildOptions = {}) {
   const queue = options.queue ?? (await getSharedQueue());
 
   const app = Fastify();
+  app.setErrorHandler(globalErrorHandler);
 
   // Public routes (no auth required) - must be registered before the auth hook
   app.get("/healthz", async () => ({ ok: true }));
@@ -118,10 +121,7 @@ export async function buildServer(options: BuildOptions = {}) {
     protectedApp.post("/overrides", async (req, reply) => {
       const validation = OverrideBodySchema.safeParse(req.body);
       if (!validation.success) {
-        reply
-          .code(400)
-          .send({ error: "invalid_body", details: validation.error });
-        return;
+        throw new ValidationError(validation.error);
       }
       const body = validation.data;
       await dbClient.query(
@@ -151,10 +151,7 @@ export async function buildServer(options: BuildOptions = {}) {
     protectedApp.post("/groups/:chatId/mute", async (req, reply) => {
       const validation = MuteGroupParamsSchema.safeParse(req.params);
       if (!validation.success) {
-        reply
-          .code(400)
-          .send({ error: "invalid_params", details: validation.error });
-        return;
+        throw new ValidationError(validation.error);
       }
       const { chatId } = validation.data;
       const until = new Date(Date.now() + 60 * 60 * 1000).toISOString();
@@ -168,10 +165,7 @@ export async function buildServer(options: BuildOptions = {}) {
     protectedApp.post("/groups/:chatId/unmute", async (req, reply) => {
       const validation = MuteGroupParamsSchema.safeParse(req.params);
       if (!validation.success) {
-        reply
-          .code(400)
-          .send({ error: "invalid_params", details: validation.error });
-        return;
+        throw new ValidationError(validation.error);
       }
       const { chatId } = validation.data;
       await dbClient.query(
@@ -184,10 +178,7 @@ export async function buildServer(options: BuildOptions = {}) {
     protectedApp.post("/rescan", async (req, reply) => {
       const validation = RescanBodySchema.safeParse(req.body);
       if (!validation.success) {
-        reply
-          .code(400)
-          .send({ error: "invalid_body", details: validation.error });
-        return;
+        throw new ValidationError(validation.error);
       }
       const { url } = validation.data;
       const normalized = normalizeUrl(url);
