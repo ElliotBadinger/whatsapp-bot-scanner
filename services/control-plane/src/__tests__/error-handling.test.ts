@@ -34,7 +34,10 @@ describe("control-plane error handling", () => {
 
     expect(response.statusCode).toBe(400);
     const body = JSON.parse(response.payload) as Record<string, unknown>;
-    expect(body).toEqual({ message: "Invalid request", code: "VALIDATION_ERROR" });
+    expect(body).toEqual({
+      message: "Invalid request",
+      code: "VALIDATION_ERROR",
+    });
 
     await app.close();
   });

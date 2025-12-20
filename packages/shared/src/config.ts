@@ -108,7 +108,8 @@ export const config = {
       role: "scan_orchestrator_role",
     },
     waClient: {
-      connectionString: process.env.DB_WA_CLIENT_URL || process.env.DATABASE_URL,
+      connectionString:
+        process.env.DB_WA_CLIENT_URL || process.env.DATABASE_URL,
       role: "wa_client_role",
     },
   },

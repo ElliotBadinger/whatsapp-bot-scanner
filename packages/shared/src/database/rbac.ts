@@ -29,7 +29,10 @@ export function getPermissionsForService(service: RbacService): Policy {
   return SERVICE_POLICIES[service];
 }
 
-function extractTarget(sql: string): { operation: Operation | null; table: string | null } {
+function extractTarget(sql: string): {
+  operation: Operation | null;
+  table: string | null;
+} {
   const normalized = sql.trim().toLowerCase();
   if (normalized.startsWith("select")) {
     const match = normalized.match(/from\s+([a-z0-9_]+)/);
@@ -154,6 +157,8 @@ export function getWaClientConnection(): MemoryRbacConnection {
   return new MemoryRbacConnection("wa-client");
 }
 
-export function getConnectionForService(service: RbacService): MemoryRbacConnection {
+export function getConnectionForService(
+  service: RbacService,
+): MemoryRbacConnection {
   return new MemoryRbacConnection(service);
 }

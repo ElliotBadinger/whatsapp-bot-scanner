@@ -56,11 +56,7 @@ describe("RBAC Property Tests", () => {
   beforeEach(() => resetRbacState());
 
   const tables = ["scans", "messages", "overrides", "groups"] as const;
-  const services = [
-    "control-plane",
-    "scan-orchestrator",
-    "wa-client",
-  ] as const;
+  const services = ["control-plane", "scan-orchestrator", "wa-client"] as const;
 
   it("should always deny cross-service table access", async () => {
     for (const service of services) {

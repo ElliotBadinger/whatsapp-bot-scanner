@@ -1,4 +1,8 @@
-import { type FastifyError, type FastifyReply, type FastifyRequest } from "fastify";
+import {
+  type FastifyError,
+  type FastifyReply,
+  type FastifyRequest,
+} from "fastify";
 import { logger } from "../log";
 import {
   sanitizeError,
