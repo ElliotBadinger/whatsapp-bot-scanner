@@ -11,7 +11,10 @@ function getIdentifierSecret(): string {
 }
 
 function hmac(value: string): string {
-  return crypto.createHmac("sha256", getIdentifierSecret()).update(value).digest("hex");
+  return crypto
+    .createHmac("sha256", getIdentifierSecret())
+    .update(value)
+    .digest("hex");
 }
 
 export function isIdentifierHash(value: string): boolean {

@@ -7,11 +7,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const adminUrl = process.env.DB_ADMIN_URL || process.env.DATABASE_URL;
-const sqlitePath = process.env.SQLITE_DB_PATH || path.join(__dirname, "..", "storage", "wbscanner.db");
+const sqlitePath =
+  process.env.SQLITE_DB_PATH ||
+  path.join(__dirname, "..", "storage", "wbscanner.db");
 
 async function migratePostgres() {
   if (!adminUrl) {
-    throw new Error("DB_ADMIN_URL or DATABASE_URL must be set for PostgreSQL migrations");
+    throw new Error(
+      "DB_ADMIN_URL or DATABASE_URL must be set for PostgreSQL migrations",
+    );
   }
   const client = new Client({ connectionString: adminUrl });
   await client.connect();
@@ -40,7 +44,9 @@ async function migratePostgres() {
       );
     }
 
-    console.log(`Migrated ${messageRows.length} messages and ${groupRows.length} groups`);
+    console.log(
+      `Migrated ${messageRows.length} messages and ${groupRows.length} groups`,
+    );
   } finally {
     await client.end();
   }
@@ -49,7 +55,9 @@ async function migratePostgres() {
 async function migrateSqlite() {
   const requireFunc = (0, eval)("require") as (id: string) => unknown;
   const moduleName = ["better", "sqlite3"].join("-");
-  const BetterSqlite3 = requireFunc(moduleName) as unknown as new (path: string) => any;
+  const BetterSqlite3 = requireFunc(moduleName) as unknown as new (
+    path: string,
+  ) => any;
   const db = new BetterSqlite3(sqlitePath);
 
   try {
@@ -79,7 +87,9 @@ async function migrateSqlite() {
       updateGroup.run(hashChatId(row.chat_id), row.chat_id);
     }
 
-    console.log(`Migrated ${messageRows.length} messages and ${groupRows.length} groups`);
+    console.log(
+      `Migrated ${messageRows.length} messages and ${groupRows.length} groups`,
+    );
   } finally {
     db.close();
   }
