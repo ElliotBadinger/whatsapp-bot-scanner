@@ -28,22 +28,17 @@ export function globalErrorHandler(
   request: FastifyRequest,
   reply: FastifyReply,
 ): void {
-  const sanitized = sanitizeError(error, {
+  const statusCode = resolveStatusCode(error);
+  const context = {
     url: request.url,
     method: request.method,
     requestId: request.id,
-  });
+  };
 
-  logger.error(
-    {
-      error,
-      url: request.url,
-      method: request.method,
-      requestId: request.id,
-    },
-    "Unhandled error in request",
-  );
+  const sanitized = sanitizeError(error, context);
 
-  const statusCode = resolveStatusCode(error);
+  const log = statusCode >= 500 ? logger.error : logger.warn;
+
+  log({ error, ...context }, "Request failed");
   reply.code(statusCode).send(sanitized);
 }

@@ -1,5 +1,4 @@
 import { ZodError } from "zod";
-import { logger } from "../log";
 
 export class ValidationError extends Error {
   public readonly details?: unknown;
@@ -71,6 +70,5 @@ export function sanitizeError(
     return { message: "Too many requests", code: "RATE_LIMIT" };
   }
 
-  logger.error({ error, context }, "Unhandled error");
   return { message: "Internal server error", code: "INTERNAL_ERROR" };
 }
