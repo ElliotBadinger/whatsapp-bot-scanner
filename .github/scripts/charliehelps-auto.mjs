@@ -198,7 +198,17 @@ async function getPullRequestWithThreads() {
     const pr = data.repository.pullRequest;
     if (!prInfo) prInfo = { ...pr, reviewThreads: undefined };
 
-    threads.push(...pr.reviewThreads.nodes);
+    threads.push(
+      ...pr.reviewThreads.nodes.map((thread) => ({
+        ...thread,
+        comments: thread.comments
+          ? {
+              ...thread.comments,
+              nodes: thread.comments.nodes ? [...thread.comments.nodes] : [],
+            }
+          : thread.comments,
+      })),
+    );
 
     if (!pr.reviewThreads.pageInfo.hasNextPage) break;
     cursor = pr.reviewThreads.pageInfo.endCursor;
@@ -266,6 +276,8 @@ async function main() {
 
     let pendingSuggestion = hasPendingSuggestion(commentPreview);
     if (pendingSuggestion && thread.comments?.pageInfo?.hasPreviousPage) {
+      // If the preview is truncated, hydrate the full thread so we don't falsely
+      // reply when an ack exists outside the preview window.
       const fullComments = await fetchThreadComments(thread.id);
       pendingSuggestion = hasPendingSuggestion(fullComments);
     }
