@@ -13,7 +13,9 @@ const importEsm = (() => {
   const importer = new Function("url", "return import(url);");
   return async (filePath: string) => {
     if (filePath !== libPath) {
-      throw new Error(`importEsm may only be used with libPath (got: ${filePath})`);
+      throw new Error(
+        `importEsm may only be used with libPath (got: ${filePath})`,
+      );
     }
     return importer(pathToFileURL(filePath).href);
   };

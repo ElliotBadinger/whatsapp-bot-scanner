@@ -421,9 +421,7 @@ async function main() {
   }
 
   if (workingFound) {
-    console.log(
-      "CharlieHelps is still working; skipping merge to main.",
-    );
+    console.log("CharlieHelps is still working; skipping merge to main.");
     return;
   }
 
