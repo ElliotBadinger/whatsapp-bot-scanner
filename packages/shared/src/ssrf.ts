@@ -1,47 +1,70 @@
-import dns from 'node:dns/promises';
-import ipaddr from 'ipaddr.js';
+import dns from "node:dns/promises";
+import ipaddr from "ipaddr.js";
 
 const privateCidrs = [
-  '10.0.0.0/8',
-  '172.16.0.0/12',
-  '192.168.0.0/16',
-  '127.0.0.0/8',
-  '169.254.0.0/16',
-  '::1/128',
-  'fc00::/7',
-  'fe80::/10'
-].map(c => ipaddr.parseCIDR(c));
+  "0.0.0.0/8", // NOSONAR - reserved current network range
+  "10.0.0.0/8", // NOSONAR - RFC1918 private range
+  "172.16.0.0/12", // NOSONAR - RFC1918 private range
+  "192.168.0.0/16", // NOSONAR - RFC1918 private range
+  "127.0.0.0/8", // NOSONAR - loopback range
+  "169.254.0.0/16", // NOSONAR - link-local range
+  "::/128", // NOSONAR - IPv6 unspecified
+  "::1/128", // NOSONAR - IPv6 loopback
+  "fc00::/7", // NOSONAR - IPv6 unique local range
+  "fe80::/10", // NOSONAR - IPv6 link-local range
+].map((c) => ipaddr.parseCIDR(c));
 
 const BLOCKED_HOSTNAMES = [
-  'localhost',
-  '127.0.0.1',
-  '0.0.0.0',
-  '::1',
-  'internal',
-  'metadata',
-  '169.254.169.254'
+  "localhost", // NOSONAR - local-only hostname
+  "127.0.0.1", // NOSONAR - loopback
+  "0.0.0.0", // NOSONAR - invalid/unspecified
+  "::1", // NOSONAR - IPv6 loopback
+  "internal", // NOSONAR - internal keyword
+  "metadata", // NOSONAR - metadata keyword
+  "169.254.169.254", // NOSONAR - cloud metadata IP
 ];
 
 export async function isPrivateHostname(hostname: string): Promise<boolean> {
   const lowerHostname = hostname.toLowerCase();
-  
+
   // Check blocked hostnames first
   if (BLOCKED_HOSTNAMES.includes(lowerHostname)) {
     return true;
   }
-  
+
   try {
-    const addrs = await dns.lookup(hostname, { all: true, family: 0 });
-    return addrs.some(a => isPrivateIp(a.address));
+    const results = await Promise.allSettled([
+      dns.resolve4(hostname),
+      dns.resolve6(hostname),
+    ]);
+
+    // If all failed, we consider it a failure and fail closed
+    if (results.every((r) => r.status === "rejected")) {
+      throw new Error("DNS resolution failed");
+    }
+
+    const addrs: string[] = [];
+    for (const res of results) {
+      if (res.status === "fulfilled") {
+        addrs.push(...res.value);
+      }
+    }
+
+    return addrs.some((ip) => isPrivateIp(ip));
   } catch {
     return true; // fail closed
   }
 }
 
-
 export function isPrivateIp(ip: string): boolean {
   try {
-    const addr = ipaddr.parse(ip);
+    let addr = ipaddr.parse(ip);
+
+    // Handle IPv4-mapped IPv6 addresses (e.g., ::ffff:127.0.0.1)
+    if (addr.kind() === "ipv6" && (addr as ipaddr.IPv6).isIPv4MappedAddress()) {
+      addr = (addr as ipaddr.IPv6).toIPv4Address();
+    }
+
     return privateCidrs.some(([range, prefix]) => {
       if (addr.kind() !== range.kind()) return false;
       return addr.match(range, prefix);
@@ -50,4 +73,3 @@ export function isPrivateIp(ip: string): boolean {
     return true;
   }
 }
-
