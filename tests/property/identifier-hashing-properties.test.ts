@@ -16,10 +16,9 @@ describe("Identifier Hashing Properties", () => {
   it("should NEVER collide for different inputs", () => {
     fc.assert(
       fc.property(
-        fc.tuple(
-          fc.string({ minLength: 1 }),
-          fc.string({ minLength: 1 }),
-        ).filter(([a, b]) => a !== b),
+        fc
+          .tuple(fc.string({ minLength: 1 }), fc.string({ minLength: 1 }))
+          .filter(([a, b]) => a !== b),
         ([input1, input2]) => {
           const hash1 = hashChatId(input1);
           const hash2 = hashChatId(input2);

@@ -1,9 +1,5 @@
 import type { Redis } from "ioredis";
-import {
-  hashChatId,
-  hashMessageId,
-  isIdentifierHash,
-} from "@wbscanner/shared";
+import { hashChatId, hashMessageId, isIdentifierHash } from "@wbscanner/shared";
 
 export type VerdictStatus =
   | "pending"
@@ -242,7 +238,10 @@ export class MessageStore {
     record.timestamp = details.timestamp ?? record.timestamp;
     record.senderId = details.senderId ?? record.senderId;
     record.senderIdHash = details.senderIdHash ?? record.senderIdHash;
-    await this.saveRecord(this.messageKey(details.chatId, details.messageId), record);
+    await this.saveRecord(
+      this.messageKey(details.chatId, details.messageId),
+      record,
+    );
     return record;
   }
 
@@ -251,7 +250,10 @@ export class MessageStore {
     messageId: string,
     edit: MessageEditRecord,
   ): Promise<MessageRecord | null> {
-    const { record, key } = await this.loadRecordWithFallback(chatId, messageId);
+    const { record, key } = await this.loadRecordWithFallback(
+      chatId,
+      messageId,
+    );
     if (!record) {
       return null;
     }
@@ -272,7 +274,10 @@ export class MessageStore {
     scope: "everyone" | "me",
     timestamp: number,
   ): Promise<MessageRecord | null> {
-    const { record, key } = await this.loadRecordWithFallback(chatId, messageId);
+    const { record, key } = await this.loadRecordWithFallback(
+      chatId,
+      messageId,
+    );
     if (!record) {
       return null;
     }
@@ -291,7 +296,10 @@ export class MessageStore {
     messageId: string,
     reaction: MessageReactionRecord,
   ): Promise<MessageRecord | null> {
-    const { record, key } = await this.loadRecordWithFallback(chatId, messageId);
+    const { record, key } = await this.loadRecordWithFallback(
+      chatId,
+      messageId,
+    );
     if (!record) {
       return null;
     }

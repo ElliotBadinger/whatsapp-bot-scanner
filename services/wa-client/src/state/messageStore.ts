@@ -1,9 +1,5 @@
 import type { Redis } from "ioredis";
-import {
-  hashChatId,
-  hashMessageId,
-  isIdentifierHash,
-} from "@wbscanner/shared";
+import { hashChatId, hashMessageId, isIdentifierHash } from "@wbscanner/shared";
 
 export interface StoredMessageState {
   chatId: string;

@@ -1,11 +1,7 @@
 import type { Redis } from "ioredis";
 import type { Logger } from "pino";
 import type { Client, GroupChat, Message } from "whatsapp-web.js";
-import {
-  hashChatId,
-  hashMessageId,
-  isIdentifierHash,
-} from "@wbscanner/shared";
+import { hashChatId, hashMessageId, isIdentifierHash } from "@wbscanner/shared";
 import { safeGetGroupChatById } from "./chatLookup.js";
 import type { SessionSnapshot } from "../session/guards.js";
 

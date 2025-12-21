@@ -700,12 +700,11 @@ async function deliverVerdictMessage(
       chat = (await targetMessage.getChat().catch((err) => {
         throw enrichEvaluationError(err, {
           operation: "deliverVerdictMessage:getChat",
-          chatId:
-            (targetMessage.id as unknown as { remote?: string })?.remote
-              ? hashChatId(
-                  (targetMessage.id as unknown as { remote?: string }).remote!,
-                )
-              : hashChatId(job.chatId),
+          chatId: (targetMessage.id as unknown as { remote?: string })?.remote
+            ? hashChatId(
+                (targetMessage.id as unknown as { remote?: string }).remote!,
+              )
+            : hashChatId(job.chatId),
           messageId: targetMessage.id?._serialized
             ? hashMessageId(targetMessage.id._serialized)
             : hashMessageId(job.messageId),
@@ -1308,8 +1307,8 @@ async function main() {
   // This is true when phone numbers are configured and no session exists
   const shouldUsePhonePairingMode = Boolean(
     authResolution.remote &&
-      remotePhoneNumbers.length > 0 &&
-      !remoteSessionActive,
+    remotePhoneNumbers.length > 0 &&
+    !remoteSessionActive,
   );
 
   // Auto-start pairing only if explicitly enabled

@@ -57,11 +57,7 @@ export class GroupStore {
     let entries = await this.redis.lrange(key, 0, limit - 1);
     if (entries.length === 0) {
       const legacyKey = this.legacyKey(chatId);
-      const legacyEntries = await this.redis.lrange(
-        legacyKey,
-        0,
-        limit - 1,
-      );
+      const legacyEntries = await this.redis.lrange(legacyKey, 0, limit - 1);
       if (legacyEntries.length > 0) {
         entries = legacyEntries;
         await this.redis.del(legacyKey);

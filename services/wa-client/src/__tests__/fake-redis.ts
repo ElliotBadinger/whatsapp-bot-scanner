@@ -6,7 +6,7 @@ export default class FakeRedis {
   private sortedSets = new Map<string, Map<string, number>>();
 
   async ping() {
-    return 'PONG';
+    return "PONG";
   }
 
   private cleanup(key: string) {
@@ -34,15 +34,21 @@ export default class FakeRedis {
     return remainingMs > 0 ? Math.ceil(remainingMs / 1000) : -2;
   }
 
-  async set(key: string, value: string, mode?: string, ttl?: number, option?: string) {
+  async set(
+    key: string,
+    value: string,
+    mode?: string,
+    ttl?: number,
+    option?: string,
+  ) {
     let expiresAt: number | undefined;
     let useNx = false;
-    if (mode === 'EX' && typeof ttl === 'number') {
+    if (mode === "EX" && typeof ttl === "number") {
       expiresAt = Date.now() + ttl * 1000;
-      if (option === 'NX') {
+      if (option === "NX") {
         useNx = true;
       }
-    } else if (mode === 'EX' && option === 'NX' && typeof ttl === 'string') {
+    } else if (mode === "EX" && option === "NX" && typeof ttl === "string") {
       expiresAt = Date.now() + Number.parseInt(ttl, 10) * 1000;
       useNx = true;
     }
@@ -50,7 +56,7 @@ export default class FakeRedis {
       return null;
     }
     this.store.set(key, { value, expiresAt });
-    return 'OK';
+    return "OK";
   }
 
   async expire(key: string, ttlSeconds: number) {
@@ -145,7 +151,7 @@ export default class FakeRedis {
   }
 
   async scard(key: string) {
-    return (this.sets.get(key)?.size ?? 0);
+    return this.sets.get(key)?.size ?? 0;
   }
 
   async lpush(key: string, ...values: string[]) {
