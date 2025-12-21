@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 export interface SecurityHeadersOptions {
   contentSecurityPolicy?: string | false;
   strictTransportSecurity?: string | false;
+  trustForwardedProto?: boolean;
   xContentTypeOptions?: string | false;
   xFrameOptions?: string | false;
   xXssProtection?: string | false;
@@ -13,7 +14,7 @@ export interface SecurityHeadersOptions {
 const DEFAULT_CSP = [
   "default-src 'self'",
   "script-src 'self'",
-  "style-src 'self' 'unsafe-inline'",
+  "style-src 'self'",
   "img-src 'self' data:",
   "font-src 'self'",
   "connect-src 'self'",
@@ -25,6 +26,7 @@ const DEFAULT_CSP = [
 const DEFAULT_OPTIONS: Required<SecurityHeadersOptions> = {
   contentSecurityPolicy: DEFAULT_CSP,
   strictTransportSecurity: "max-age=31536000; includeSubDomains",
+  trustForwardedProto: false,
   xContentTypeOptions: "nosniff",
   xFrameOptions: "DENY",
   xXssProtection: "1; mode=block",
@@ -34,19 +36,44 @@ const DEFAULT_OPTIONS: Required<SecurityHeadersOptions> = {
 };
 
 /**
- * Adds security headers to all responses.
- * Call this during Fastify app setup.
- */
+  * Adds security headers to all responses.
+  * Call this during Fastify app setup.
+  *
+  * The default Content Security Policy disallows inline styles. If an
+  * application needs inline styles, provide an explicit CSP via
+  * `options.contentSecurityPolicy`.
+  */
 export function registerSecurityHeaders(
   app: FastifyInstance,
   options: SecurityHeadersOptions = {},
 ): void {
   const mergedOptions = { ...DEFAULT_OPTIONS, ...options };
 
+  const isSecureRequest = (request: FastifyRequest): boolean => {
+    if (request.protocol === "https") {
+      return true;
+    }
+
+    if (mergedOptions.trustForwardedProto) {
+      const forwardedProto = request.headers["x-forwarded-proto"];
+      // When behind proxies, this may be a comma-separated list. We treat the
+      // first value as the originating protocol.
+      const proto = Array.isArray(forwardedProto)
+        ? forwardedProto[0]
+        : forwardedProto;
+      if (typeof proto === "string") {
+        return proto.split(",")[0]?.trim().toLowerCase() === "https";
+      }
+    }
+
+    const socket = request.raw.socket as { encrypted?: boolean } | undefined;
+    return socket?.encrypted === true;
+  };
+
   app.addHook(
     "onSend",
     async (
-      _request: FastifyRequest,
+      request: FastifyRequest,
       reply: FastifyReply,
       _payload: unknown,
     ) => {
@@ -57,7 +84,10 @@ export function registerSecurityHeaders(
         );
       }
 
-      if (mergedOptions.strictTransportSecurity !== false) {
+      if (
+        mergedOptions.strictTransportSecurity !== false &&
+        isSecureRequest(request)
+      ) {
         reply.header(
           "Strict-Transport-Security",
           mergedOptions.strictTransportSecurity,
