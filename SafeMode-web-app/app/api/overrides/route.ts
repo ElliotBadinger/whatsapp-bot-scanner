@@ -6,6 +6,9 @@ import {
   controlPlaneFetchJsonWithStatus,
 } from "@/lib/control-plane-server";
 import type { Override } from "@/lib/api";
+import { getAdminSessionFromRequest, requireCsrf } from "@/lib/admin-guards";
+import { getRequestIp } from "@/lib/admin-session";
+import { consumeRateLimit } from "@/lib/rate-limit";
 
 type ControlPlaneOverrideRow = {
   id: number | string;
@@ -55,12 +58,20 @@ function mapOverride(row: ControlPlaneOverrideRow): Override | null {
 }
 
 const PostBodySchema = z.object({
-  pattern: z.string().trim().min(1),
+  pattern: z.string().trim().min(1).max(512),
   action: z.enum(["allow", "block"]),
-  reason: z.string().trim().optional(),
+  reason: z.string().trim().max(500).optional(),
 });
 
-export async function GET() {
+export async function GET(req: Request) {
+  const sessionResult = getAdminSessionFromRequest(req);
+  if (!sessionResult.ok) {
+    return NextResponse.json(
+      { error: sessionResult.error },
+      { status: sessionResult.status },
+    );
+  }
+
   try {
     const rows =
       await controlPlaneFetchJson<ControlPlaneOverrideRow[]>("/overrides");
@@ -84,6 +95,36 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const sessionResult = getAdminSessionFromRequest(req);
+  if (!sessionResult.ok) {
+    return NextResponse.json(
+      { error: sessionResult.error },
+      { status: sessionResult.status },
+    );
+  }
+
+  const csrf = requireCsrf(req, sessionResult.session);
+  if (!csrf.ok) {
+    return NextResponse.json({ error: csrf.error }, { status: csrf.status });
+  }
+
+  const ip = getRequestIp(req);
+  const rate = consumeRateLimit(`safemode_admin_overrides:${ip}`, {
+    windowMs: 60_000,
+    max: 30,
+  });
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: "rate_limited" },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(rate.retryAfterSeconds),
+        },
+      },
+    );
+  }
+
   const body = await req.json().catch(() => null);
   const parsed = PostBodySchema.safeParse(body);
   if (!parsed.success) {
