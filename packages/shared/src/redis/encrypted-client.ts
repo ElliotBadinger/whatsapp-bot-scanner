@@ -55,14 +55,12 @@ export class EncryptedRedisClient {
         return value;
       }
 
-      this.warnDecryptFailure(
-        {
-          message: "Redis value is not encrypted",
-          operation: context?.operation ?? "unknown",
-          key: context?.key,
-          field: context?.field,
-        },
-      );
+      this.warnDecryptFailure({
+        message: "Redis value is not encrypted",
+        operation: context?.operation ?? "unknown",
+        key: context?.key,
+        field: context?.field,
+      });
 
       if (this.strictDecryption) {
         throw new Error("Redis value is not encrypted");
@@ -73,15 +71,13 @@ export class EncryptedRedisClient {
     try {
       return decryptValue(value);
     } catch (err) {
-      this.warnDecryptFailure(
-        {
-          message: "Failed to decrypt redis value",
-          operation: context?.operation ?? "unknown",
-          key: context?.key,
-          field: context?.field,
-          err,
-        },
-      );
+      this.warnDecryptFailure({
+        message: "Failed to decrypt redis value",
+        operation: context?.operation ?? "unknown",
+        key: context?.key,
+        field: context?.field,
+        err,
+      });
 
       if (this.strictDecryption) {
         throw err;
@@ -218,8 +214,8 @@ export class EncryptedRedisClient {
 
   async lrange(key: RedisKey, start: number, stop: number): Promise<string[]> {
     const encrypted = await this.client.lrange(key, start, stop);
-    return encrypted.map((v) =>
-      this.decrypt(v, { operation: "lrange", key }) ?? v,
+    return encrypted.map(
+      (v) => this.decrypt(v, { operation: "lrange", key }) ?? v,
     );
   }
 
@@ -230,8 +226,8 @@ export class EncryptedRedisClient {
 
   async smembers(key: RedisKey): Promise<string[]> {
     const encrypted = await this.client.smembers(key);
-    return encrypted.map((v) =>
-      this.decrypt(v, { operation: "smembers", key }) ?? v,
+    return encrypted.map(
+      (v) => this.decrypt(v, { operation: "smembers", key }) ?? v,
     );
   }
 
@@ -242,8 +238,8 @@ export class EncryptedRedisClient {
 
   async zrange(key: RedisKey, start: number, stop: number): Promise<string[]> {
     const encrypted = await this.client.zrange(key, start, stop);
-    return encrypted.map((v) =>
-      this.decrypt(v, { operation: "zrange", key }) ?? v,
+    return encrypted.map(
+      (v) => this.decrypt(v, { operation: "zrange", key }) ?? v,
     );
   }
 
