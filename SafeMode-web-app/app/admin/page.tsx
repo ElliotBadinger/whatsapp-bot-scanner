@@ -22,7 +22,10 @@ export default function AdminPage() {
 
     const check = async () => {
       try {
-        const resp = await fetch("/api/auth/session", { cache: "no-store" })
+        const resp = await fetch("/api/auth/session", {
+          cache: "no-store",
+          credentials: "same-origin",
+        })
         if (!cancelled) {
           setIsAuthenticated(resp.ok)
         }
@@ -58,7 +61,10 @@ export default function AdminPage() {
       }
 
       try {
-        const resp = await fetch("/api/auth/session", { cache: "no-store" })
+        const resp = await fetch("/api/auth/session", {
+          cache: "no-store",
+          credentials: "same-origin",
+        })
         if (!resp.ok) {
           setIsAuthenticated(false)
           return
@@ -90,7 +96,10 @@ export default function AdminPage() {
   }, [isAuthenticated])
 
   const handleLogout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {})
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "same-origin",
+    }).catch(() => {})
     setIsAuthenticated(false)
   }
 

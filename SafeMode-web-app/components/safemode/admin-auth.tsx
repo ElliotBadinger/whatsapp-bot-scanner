@@ -22,7 +22,10 @@ export function AdminAuth({ onAuthenticated }: AdminAuthProps) {
 
     const loadCsrf = async () => {
       try {
-        const resp = await fetch("/api/auth/csrf", { cache: "no-store" })
+        const resp = await fetch("/api/auth/csrf", {
+          cache: "no-store",
+          credentials: "same-origin",
+        })
         if (!resp.ok) {
           throw new Error("csrf_failed")
         }
@@ -61,12 +64,14 @@ export function AdminAuth({ onAuthenticated }: AdminAuthProps) {
 
       const resp = await fetch("/api/auth/login", {
         method: "POST",
+        credentials: "same-origin",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ token: token.trim(), csrfToken }),
       })
 
       if (resp.ok) {
         setToken("")
+        setCsrfToken(null)
         onAuthenticated()
         return
       }
@@ -80,14 +85,19 @@ export function AdminAuth({ onAuthenticated }: AdminAuthProps) {
         setError("ACCESS_DENIED: Invalid token")
       } else if (resp.status === 403) {
         setError("ACCESS_DENIED: CSRF check failed (retry)")
-        fetch("/api/auth/csrf", { cache: "no-store" })
-          .then((csrfResp) => csrfResp.json())
-          .then((csrfBody: { csrfToken?: unknown }) => {
-            if (typeof csrfBody.csrfToken === "string") {
-              setCsrfToken(csrfBody.csrfToken)
-            }
+        if (code === "csrf_failed") {
+          fetch("/api/auth/csrf", {
+            cache: "no-store",
+            credentials: "same-origin",
           })
-          .catch(() => {})
+            .then((csrfResp) => csrfResp.json())
+            .then((csrfBody: { csrfToken?: unknown }) => {
+              if (typeof csrfBody.csrfToken === "string") {
+                setCsrfToken(csrfBody.csrfToken)
+              }
+            })
+            .catch(() => {})
+        }
       } else if (resp.status === 429) {
         setError("RATE_LIMITED: Try again later")
       } else if (code) {

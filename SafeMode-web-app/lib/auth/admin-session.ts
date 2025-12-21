@@ -23,6 +23,7 @@ export type ValidateSessionResult =
   | { ok: false; reason: "missing" | "expired" | "idle" };
 
 const sessions = new Map<string, AdminSession>();
+// This is a per-process in-memory store (sessions are not shared across instances).
 
 function newSessionId(): string {
   return crypto.randomUUID();

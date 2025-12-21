@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
     httpOnly: false,
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
-    path: "/api/auth",
+    path: "/api/auth/login",
     maxAge: 0,
   });
 

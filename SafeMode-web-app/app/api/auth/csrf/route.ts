@@ -8,7 +8,7 @@ export async function GET() {
     httpOnly: false,
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
-    path: "/api/auth",
+    path: "/api/auth/login",
     maxAge: 15 * 60,
   });
   return res;
