@@ -23,7 +23,11 @@ describe("AuditLogger", () => {
 
       expect(mockDbClient.query).toHaveBeenCalledWith(
         expect.stringContaining("INSERT INTO audit_logs"),
-        expect.arrayContaining(["user@example.com", "test_action", "test_target"]),
+        expect.arrayContaining([
+          "user@example.com",
+          "test_action",
+          "test_target",
+        ]),
       );
     });
 
@@ -36,9 +40,7 @@ describe("AuditLogger", () => {
 
       expect(mockDbClient.query).toHaveBeenCalledWith(
         expect.any(String),
-        expect.arrayContaining([
-          expect.stringContaining('"oldValue":1'),
-        ]),
+        expect.arrayContaining([expect.stringContaining('"oldValue":1')]),
       );
     });
 
@@ -131,13 +133,22 @@ describe("AuditLogger", () => {
 
   describe("logAdminAction", () => {
     it("should log admin actions", async () => {
-      await auditLogger.logAdminAction("admin@example.com", "mute_group", "group-123", {
-        duration: "1h",
-      });
+      await auditLogger.logAdminAction(
+        "admin@example.com",
+        "mute_group",
+        "group-123",
+        {
+          duration: "1h",
+        },
+      );
 
       expect(mockDbClient.query).toHaveBeenCalledWith(
         expect.any(String),
-        expect.arrayContaining(["admin@example.com", "admin:mute_group", "group-123"]),
+        expect.arrayContaining([
+          "admin@example.com",
+          "admin:mute_group",
+          "group-123",
+        ]),
       );
     });
   });

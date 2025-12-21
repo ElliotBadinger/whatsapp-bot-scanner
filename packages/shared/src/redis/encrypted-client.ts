@@ -70,15 +70,8 @@ export class EncryptedRedisClient {
     return this.client.setnx(key, encrypted);
   }
 
-  async hset(
-    key: RedisKey,
-    field: string,
-    value: string,
-  ): Promise<number>;
-  async hset(
-    key: RedisKey,
-    data: Record<string, string>,
-  ): Promise<number>;
+  async hset(key: RedisKey, field: string, value: string): Promise<number>;
+  async hset(key: RedisKey, data: Record<string, string>): Promise<number>;
   async hset(
     key: RedisKey,
     fieldOrData: string | Record<string, string>,
@@ -112,10 +105,7 @@ export class EncryptedRedisClient {
     return decrypted;
   }
 
-  async hmset(
-    key: RedisKey,
-    data: Record<string, string>,
-  ): Promise<string> {
+  async hmset(key: RedisKey, data: Record<string, string>): Promise<string> {
     const encryptedData: Record<string, string> = {};
     for (const [field, value] of Object.entries(data)) {
       encryptedData[field] = this.encrypt(value);
@@ -158,11 +148,7 @@ export class EncryptedRedisClient {
     return encrypted.map((v) => this.decrypt(v) ?? v);
   }
 
-  async zadd(
-    key: RedisKey,
-    score: number,
-    member: string,
-  ): Promise<number> {
+  async zadd(key: RedisKey, score: number, member: string): Promise<number> {
     const encrypted = this.encrypt(member);
     return this.client.zadd(key, score, encrypted);
   }

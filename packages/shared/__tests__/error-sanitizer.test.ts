@@ -19,7 +19,10 @@ describe("Error Sanitizer", () => {
     });
 
     it("should sanitize validation errors", () => {
-      const error = new ValidationError({ field: "email", message: "invalid format" });
+      const error = new ValidationError({
+        field: "email",
+        message: "invalid format",
+      });
       const sanitized = sanitizeError(error);
 
       expect(sanitized.message).toBe("Invalid request");
@@ -63,7 +66,9 @@ describe("Error Sanitizer", () => {
     });
 
     it("should sanitize unknown errors to generic message", () => {
-      const error = new Error("Database connection failed to postgres://user:pass@host:5432/db");
+      const error = new Error(
+        "Database connection failed to postgres://user:pass@host:5432/db",
+      );
       const sanitized = sanitizeError(error);
 
       expect(sanitized.message).toBe("Internal server error");
@@ -109,7 +114,7 @@ describe("Error Sanitizer", () => {
 
     it("should handle errors with sensitive SQL queries", () => {
       const error = new Error(
-        "Query failed: SELECT * FROM users WHERE password = 'secret123'"
+        "Query failed: SELECT * FROM users WHERE password = 'secret123'",
       );
       const sanitized = sanitizeError(error);
 
@@ -121,7 +126,7 @@ describe("Error Sanitizer", () => {
 
     it("should handle errors with file paths", () => {
       const error = new Error(
-        "Cannot read file /home/user/.secrets/api_key.txt"
+        "Cannot read file /home/user/.secrets/api_key.txt",
       );
       const sanitized = sanitizeError(error);
 
