@@ -110,11 +110,15 @@ export async function controlPlaneFetchJson<T>(
   let message: string | undefined;
 
   if (isJson) {
-    const body = (await resp.json().catch(() => ({}))) as {
-      error?: string;
-      code?: string;
-      message?: string;
-    };
+    let body: { error?: string; code?: string; message?: string };
+    try {
+      body = (await resp.json()) as { error?: string; code?: string; message?: string };
+    } catch {
+      throw new ControlPlaneError("Unexpected response format.", {
+        status: 502,
+        code: "INVALID_JSON",
+      });
+    }
     code =
       typeof body.error === "string"
         ? body.error
