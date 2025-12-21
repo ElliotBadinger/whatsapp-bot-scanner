@@ -43,7 +43,8 @@ async function withRollback<T>(
   }
 }
 
-const postgresRbacEnabled = (process.env.RBAC_POSTGRES_TESTS ?? "").trim() === "true";
+const postgresRbacEnabled =
+  (process.env.RBAC_POSTGRES_TESTS ?? "").trim() === "true";
 
 const allUrlsAvailable = requiredUrls.every((name) => {
   return getConnectionString(name) !== null;
@@ -112,10 +113,10 @@ describePostgres("Postgres RBAC", () => {
         ).rejects.toMatchObject({ code: "42501" });
 
         await expect(
-          client.query(
-            "INSERT INTO groups (chat_id, name) VALUES ($1, $2)",
-            ["postgres-test-chat", "Test Group"],
-          ),
+          client.query("INSERT INTO groups (chat_id, name) VALUES ($1, $2)", [
+            "postgres-test-chat",
+            "Test Group",
+          ]),
         ).resolves.toBeDefined();
 
         await expect(

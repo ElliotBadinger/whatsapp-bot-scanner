@@ -170,7 +170,8 @@ export class PostgresConnection implements IDatabaseConnection {
 
   constructor(config: DatabaseConfig = {}) {
     this.logger = config.logger;
-    const connectionString = sharedConfig.database.controlPlane.connectionString;
+    const connectionString =
+      sharedConfig.database.controlPlane.connectionString;
     const postgresEnabled = Boolean(
       connectionString && connectionString.startsWith("postgres"),
     );

@@ -170,7 +170,8 @@ export class PostgresConnection implements IDatabaseConnection {
 
   constructor(config: DatabaseConfig = {}) {
     this.logger = config.logger;
-    const connectionString = sharedConfig.database.scanOrchestrator.connectionString;
+    const connectionString =
+      sharedConfig.database.scanOrchestrator.connectionString;
     const postgresEnabled = Boolean(
       connectionString && connectionString.startsWith("postgres"),
     );
@@ -284,7 +285,8 @@ let sharedConnection: IDatabaseConnection | null = null;
 
 export function getSharedConnection(logger?: Logger): IDatabaseConnection {
   if (!sharedConnection) {
-    const connectionUrl = sharedConfig.database.scanOrchestrator.connectionString;
+    const connectionUrl =
+      sharedConfig.database.scanOrchestrator.connectionString;
     if (connectionUrl && connectionUrl.startsWith("postgres")) {
       sharedConnection = new PostgresConnection({ logger });
     } else {
