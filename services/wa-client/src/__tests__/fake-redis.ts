@@ -132,6 +132,18 @@ export default class FakeRedis {
     this.hashes.set(key, map);
   }
 
+  async hget(key: string, field: string) {
+    return this.hashes.get(key)?.get(field) ?? null;
+  }
+
+  async hgetall(key: string) {
+    const map = this.hashes.get(key);
+    if (!map) {
+      return {};
+    }
+    return Object.fromEntries(map.entries());
+  }
+
   async hkeys(key: string) {
     return Array.from(this.hashes.get(key)?.keys() ?? []);
   }
