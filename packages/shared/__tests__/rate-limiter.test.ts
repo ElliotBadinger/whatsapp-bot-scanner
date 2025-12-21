@@ -21,6 +21,19 @@ describe("Rate Limiter", () => {
       const limiter = createApiRateLimiter(null, config);
       expect(limiter).toBeDefined();
     });
+
+    it("should require Redis outside tests unless allowMemory is set", () => {
+      const originalEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = "production";
+      expect(() =>
+        createApiRateLimiter(null, RATE_LIMIT_CONFIGS.api),
+      ).toThrow(/Redis is required/i);
+      const limiter = createApiRateLimiter(null, RATE_LIMIT_CONFIGS.api, {
+        allowMemory: true,
+      });
+      expect(limiter).toBeDefined();
+      process.env.NODE_ENV = originalEnv;
+    });
   });
 
   describe("consumeRateLimit", () => {
@@ -82,6 +95,17 @@ describe("Rate Limiter", () => {
 
       const resultB = await consumeRateLimit(limiter, "key-b");
       expect(resultB.allowed).toBe(true);
+    });
+
+    it("should rethrow non-rate-limit errors", async () => {
+      const limiter = {
+        consume: async () => {
+          throw new Error("redis down");
+        },
+      } as any;
+      await expect(consumeRateLimit(limiter, "key")).rejects.toThrow(
+        /redis down/i,
+      );
     });
   });
 

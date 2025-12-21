@@ -15,6 +15,10 @@ export interface RateLimitResult {
   retryAfter?: number;
 }
 
+export interface RateLimiterOptions {
+  allowMemory?: boolean;
+}
+
 /**
  * Creates a rate limiter for the control plane API.
  * Uses Redis in production and in-memory for tests.
@@ -22,8 +26,14 @@ export interface RateLimitResult {
 export function createApiRateLimiter(
   redis: Redis | null,
   config: RateLimiterConfig,
+  options: RateLimiterOptions = {},
 ) {
   if (process.env.NODE_ENV === "test" || !redis) {
+    if (process.env.NODE_ENV !== "test" && !options.allowMemory) {
+      throw new Error(
+        "Redis is required for rate limiting outside tests (set allowMemory to override).",
+      );
+    }
     return new RateLimiterMemory({
       points: config.points,
       duration: config.duration,
@@ -56,6 +66,15 @@ export async function consumeRateLimit(
       resetMs: result.msBeforeNext,
     };
   } catch (error) {
+    if (
+      !error ||
+      typeof error !== "object" ||
+      !("msBeforeNext" in error) ||
+      typeof (error as { msBeforeNext?: number }).msBeforeNext !== "number"
+    ) {
+      throw error;
+    }
+
     const rateLimitError = error as {
       remainingPoints?: number;
       msBeforeNext?: number;
