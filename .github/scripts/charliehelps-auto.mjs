@@ -169,6 +169,7 @@ async function getPullRequestWithThreads() {
           pullRequest(number:$number){
             number
             url
+            isDraft
             baseRefName
             baseRefOid
             headRefOid
@@ -204,6 +205,30 @@ async function getPullRequestWithThreads() {
 
   prInfo.reviewThreads = { nodes: threads };
   return prInfo;
+}
+
+async function getPullRequestState() {
+  const data = await ghGraphQL(
+    `query($owner:String!,$name:String!,$number:Int!){
+      repository(owner:$owner,name:$name){
+        pullRequest(number:$number){
+          number
+          url
+          isDraft
+          baseRefName
+          baseRefOid
+          headRefOid
+          mergeable
+          mergeStateStatus
+          statusCheckRollup { state }
+          headRepository { name owner { login } }
+        }
+      }
+    }`,
+    { owner, name, number: prNumber },
+  );
+
+  return data.repository.pullRequest;
 }
 
 async function replyToThread(threadId) {
@@ -269,6 +294,19 @@ async function main() {
     return;
   }
 
+  if (pr.isDraft) {
+    console.log("PR is a draft; skipping fast-forward to main.");
+    return;
+  }
+
+  const unresolvedThreads = threads.filter((thread) => !thread.isResolved);
+  if (unresolvedThreads.length > 0) {
+    console.log(
+      `PR has ${unresolvedThreads.length} unresolved review thread(s); skipping fast-forward to main.`,
+    );
+    return;
+  }
+
   if (pr.baseRefName !== "main") {
     console.log(`PR base is ${pr.baseRefName}; skipping fast-forward to main.`);
     return;
@@ -309,6 +347,39 @@ async function main() {
 
   if (mainSha !== pr.baseRefOid) {
     console.log("PR base is not up-to-date with main; skipping fast-forward.");
+    return;
+  }
+
+  const latestPr = await getPullRequestState();
+  if (latestPr.headRefOid !== pr.headRefOid) {
+    console.log(
+      `PR head changed from ${pr.headRefOid} to ${latestPr.headRefOid}; skipping fast-forward.`,
+    );
+    return;
+  }
+  if (latestPr.baseRefOid !== pr.baseRefOid) {
+    console.log(
+      `PR base changed from ${pr.baseRefOid} to ${latestPr.baseRefOid}; skipping fast-forward.`,
+    );
+    return;
+  }
+  if (latestPr.isDraft) {
+    console.log("PR is a draft; skipping fast-forward to main.");
+    return;
+  }
+  if (
+    latestPr.mergeStateStatus !== pr.mergeStateStatus ||
+    latestPr.mergeable !== pr.mergeable
+  ) {
+    console.log(
+      `PR mergeability changed (mergeStateStatus=${latestPr.mergeStateStatus}, mergeable=${latestPr.mergeable}); skipping fast-forward.`,
+    );
+    return;
+  }
+  if (latestPr.statusCheckRollup?.state !== pr.statusCheckRollup?.state) {
+    console.log(
+      `PR status rollup changed (state=${latestPr.statusCheckRollup?.state ?? "UNKNOWN"}); skipping fast-forward.`,
+    );
     return;
   }
 
