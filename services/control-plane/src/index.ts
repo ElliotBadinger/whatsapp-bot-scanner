@@ -31,6 +31,9 @@ const artifactRoot = path.resolve(
   process.env.URLSCAN_ARTIFACT_DIR || "storage/urlscan-artifacts",
 );
 const SCAN_LAST_MESSAGE_PREFIX = "scan:last-message:";
+const DEFAULT_SCANS_LIMIT = 50;
+const DEFAULT_RECENT_SCANS_LIMIT = 10;
+const MAX_SCANS_LIMIT = 100;
 
 let sharedQueue: Queue | null = null;
 let sharedRedisInstance: Redis | null = null;
@@ -39,11 +42,7 @@ async function getSharedRedis(): Promise<Redis> {
   if (!sharedRedisInstance) {
     sharedRedisInstance = await getConnectedSharedRedis("control-plane");
   }
-  const redis = sharedRedisInstance;
-  if (!redis) {
-    throw new Error("Failed to initialize shared Redis connection");
-  }
-  return redis;
+  return sharedRedisInstance as Redis;
 }
 
 async function getSharedQueue(): Promise<Queue> {
@@ -139,37 +138,54 @@ export async function buildServer(options: BuildOptions = {}) {
         return reply.code(400).send({ error: "invalid_verdict" });
       }
 
-      class ScanQueryValidationError extends Error {
-        constructor(readonly code: "invalid_from" | "invalid_to") {
-          super(code);
-        }
-      }
+      type ScanTimestampError = "invalid_from" | "invalid_to";
+      type TimestampParseResult =
+        | { ok: true; value: Date | null }
+        | { ok: false; error: ScanTimestampError };
+
+      const ISO_DATETIME_PATTERN =
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 
       const parseTimestamp = (
         value: unknown,
-        code: "invalid_from" | "invalid_to",
-      ): Date | null => {
-        if (typeof value !== "string" || value.trim().length === 0) {
-          return null;
+        error: ScanTimestampError,
+      ): TimestampParseResult => {
+        if (typeof value === "undefined" || value === null) {
+          return { ok: true, value: null };
         }
-        const date = new Date(value);
+
+        if (typeof value !== "string") {
+          return { ok: false, error };
+        }
+
+        const trimmed = value.trim();
+        if (trimmed.length === 0) {
+          return { ok: true, value: null };
+        }
+
+        if (!ISO_DATETIME_PATTERN.test(trimmed)) {
+          return { ok: false, error };
+        }
+
+        const date = new Date(trimmed);
         if (Number.isNaN(date.getTime())) {
-          throw new ScanQueryValidationError(code);
+          return { ok: false, error };
         }
-        return date;
+
+        return { ok: true, value: date };
       };
 
-      let from: Date | null = null;
-      let to: Date | null = null;
-      try {
-        from = parseTimestamp(query.from, "invalid_from");
-        to = parseTimestamp(query.to, "invalid_to");
-      } catch (err) {
-        if (err instanceof ScanQueryValidationError) {
-          return reply.code(400).send({ error: err.code });
-        }
-        throw err;
+      const fromRes = parseTimestamp(query.from, "invalid_from");
+      if (!fromRes.ok) {
+        return reply.code(400).send({ error: fromRes.error });
       }
+      const toRes = parseTimestamp(query.to, "invalid_to");
+      if (!toRes.ok) {
+        return reply.code(400).send({ error: toRes.error });
+      }
+
+      const from = fromRes.value;
+      const to = toRes.value;
 
       if (from && to) {
         if (from.getTime() > to.getTime()) {
@@ -178,11 +194,14 @@ export async function buildServer(options: BuildOptions = {}) {
       }
 
       const rawLimit = query.limit;
-      const parsedLimit = Number.parseInt(String(rawLimit ?? "50"), 10);
+      const parsedLimit = Number.parseInt(
+        String(rawLimit ?? DEFAULT_SCANS_LIMIT),
+        10,
+      );
       if (!Number.isFinite(parsedLimit) || parsedLimit <= 0) {
         return reply.code(400).send({ error: "invalid_limit" });
       }
-      const limit = Math.min(parsedLimit, 100);
+      const limit = Math.min(parsedLimit, MAX_SCANS_LIMIT);
 
       const rawOffset = query.offset;
       const parsedOffset = Number.parseInt(String(rawOffset ?? "0"), 10);
@@ -212,13 +231,15 @@ export async function buildServer(options: BuildOptions = {}) {
         : "";
 
       try {
+        const filterParams = [...whereParams];
+        const listParams = [...whereParams, limit, offset];
         const { rows: countRows } = await dbClient.query(
           `SELECT COUNT(*) AS total FROM scans ${whereClause}`,
-          whereParams,
+          filterParams,
         );
         const { rows: scanRows } = await dbClient.query(
           `SELECT id, url_hash, normalized_url, verdict, last_seen_at FROM scans ${whereClause} ORDER BY last_seen_at DESC, id DESC LIMIT ? OFFSET ?`,
-          [...whereParams, limit, offset],
+          listParams,
         );
         const totalRow = countRows[0] as { total?: number | string } | undefined;
 
@@ -246,11 +267,14 @@ export async function buildServer(options: BuildOptions = {}) {
 
     protectedApp.get("/scans/recent", async (req, reply) => {
       const rawLimit = (req.query as { limit?: string | number })?.limit;
-      const parsedLimit = Number.parseInt(String(rawLimit ?? "10"), 10);
+      const parsedLimit = Number.parseInt(
+        String(rawLimit ?? DEFAULT_RECENT_SCANS_LIMIT),
+        10,
+      );
       const limit =
         Number.isFinite(parsedLimit) && parsedLimit > 0
-          ? Math.min(parsedLimit, 100)
-          : 10;
+          ? Math.min(parsedLimit, MAX_SCANS_LIMIT)
+          : DEFAULT_RECENT_SCANS_LIMIT;
 
       const rawAfter = (req.query as { after?: string })?.after;
       let after: { lastSeenAt: string; id: number } | null = null;
