@@ -39,11 +39,10 @@ function getControlPlaneToken(): string {
 }
 
 function normalizeBearerToken(raw: string): string {
-  let token = raw.trim();
-  const lower = token.toLowerCase();
+  const token = raw.trim();
   const bearerPrefix = "bearer ";
-  if (lower.startsWith(bearerPrefix)) {
-    token = token.slice(bearerPrefix.length).trim();
+  if (token.toLowerCase().startsWith(bearerPrefix)) {
+    return token.slice(bearerPrefix.length).trim();
   }
   return token;
 }

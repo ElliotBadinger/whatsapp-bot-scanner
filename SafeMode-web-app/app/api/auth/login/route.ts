@@ -37,8 +37,11 @@ export async function POST(req: Request) {
       );
     }
 
-    if (resp.status >= 400) {
-      return NextResponse.json({ error: "control_plane_error" }, { status: 502 });
+    if (resp.status >= 400 && resp.status < 500) {
+      return NextResponse.json(
+        { error: "control_plane_client_error", controlPlaneStatus: resp.status },
+        { status: 400 },
+      );
     }
 
     return NextResponse.json(
