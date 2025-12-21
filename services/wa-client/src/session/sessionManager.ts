@@ -83,9 +83,8 @@ export class SessionManager {
       JSON.parse(stored.fingerprint || "{}") as Partial<SessionFingerprint>,
     );
 
-    const normalizedCurrentFingerprint = this.normalizeFingerprint(
-      currentFingerprint,
-    );
+    const normalizedCurrentFingerprint =
+      this.normalizeFingerprint(currentFingerprint);
 
     if (
       !this.fingerprintsMatch(storedFingerprint, normalizedCurrentFingerprint)
@@ -98,7 +97,9 @@ export class SessionManager {
             normalizedCurrentFingerprint,
           ),
           stored: this.summarizeFingerprintForLog(storedFingerprint),
-          current: this.summarizeFingerprintForLog(normalizedCurrentFingerprint),
+          current: this.summarizeFingerprintForLog(
+            normalizedCurrentFingerprint,
+          ),
         },
         "Session fingerprint mismatch - possible hijack",
       );
@@ -212,9 +213,7 @@ export class SessionManager {
     };
   }
 
-  private summarizeFingerprintForLog(
-    fingerprint: SessionFingerprint,
-  ): {
+  private summarizeFingerprintForLog(fingerprint: SessionFingerprint): {
     userAgentHash: string | null;
     ipHash: string | null;
     ipSubnet: string | null;
@@ -263,7 +262,9 @@ export class SessionManager {
 
     const parsed = parts.map((part) => Number.parseInt(part, 10));
     if (
-      parsed.some((value) => !Number.isFinite(value) || value < 0 || value > 255)
+      parsed.some(
+        (value) => !Number.isFinite(value) || value < 0 || value > 255,
+      )
     ) {
       return null;
     }
