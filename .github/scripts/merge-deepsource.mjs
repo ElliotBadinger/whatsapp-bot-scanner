@@ -111,7 +111,9 @@ async function main() {
     const mergeable = pr.mergeable === "MERGEABLE";
     const clean = pr.mergeStateStatus !== "DIRTY";
     if (!mergeable || !clean) {
-      console.log(`Skipping #${pr.number} (${pr.mergeable}/${pr.mergeStateStatus}).`);
+      console.log(
+        `Skipping #${pr.number} (${pr.mergeable}/${pr.mergeStateStatus}).`,
+      );
       continue;
     }
     console.log(`Merging #${pr.number} (${pr.title})...`);
