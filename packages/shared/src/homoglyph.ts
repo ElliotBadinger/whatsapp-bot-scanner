@@ -1,7 +1,7 @@
-import { getConfusableCharacters } from 'confusable';
-import punycode from 'punycode';
+import { getConfusableCharacters } from "confusable";
+import punycode from "punycode";
 
-export type HomoglyphRiskLevel = 'none' | 'low' | 'medium' | 'high';
+export type HomoglyphRiskLevel = "none" | "low" | "medium" | "high";
 
 export interface HomoglyphCharacter {
   original: string;
@@ -24,7 +24,16 @@ export interface HomoglyphResult {
 
 const ASCII_PATTERN = /^[\x00-\x7F]+$/;
 
-const BRAND_NAMES = ['google', 'facebook', 'paypal', 'amazon', 'microsoft', 'apple', 'netflix', 'whatsapp'];
+const BRAND_NAMES = [
+  "google",
+  "facebook",
+  "paypal",
+  "amazon",
+  "microsoft",
+  "apple",
+  "netflix",
+  "whatsapp",
+];
 
 const RISK_PRIORITY: Record<HomoglyphRiskLevel, number> = {
   none: 0,
@@ -33,7 +42,12 @@ const RISK_PRIORITY: Record<HomoglyphRiskLevel, number> = {
   high: 3,
 };
 
-const PRIORITY_TO_LEVEL: HomoglyphRiskLevel[] = ['none', 'low', 'medium', 'high'];
+const PRIORITY_TO_LEVEL: HomoglyphRiskLevel[] = [
+  "none",
+  "low",
+  "medium",
+  "high",
+];
 
 interface ScriptRange {
   name: string;
@@ -41,54 +55,104 @@ interface ScriptRange {
 }
 
 const SCRIPT_RANGES: ScriptRange[] = [
-  { name: 'Latin', ranges: [
-    [0x0041, 0x024F],
-    [0x1E00, 0x1EFF],
-    [0x2C60, 0x2C7F],
-    [0xA720, 0xA7FF],
-    [0xFF21, 0xFF3A],
-    [0xFF41, 0xFF5A],
-  ] },
-  { name: 'Greek', ranges: [[0x0370, 0x03FF], [0x1F00, 0x1FFF]] },
-  { name: 'Cyrillic', ranges: [[0x0400, 0x052F], [0x2DE0, 0x2DFF], [0xA640, 0xA69F]] },
-  { name: 'Armenian', ranges: [[0x0530, 0x058F]] },
-  { name: 'Hebrew', ranges: [[0x0590, 0x05FF]] },
-  { name: 'Arabic', ranges: [[0x0600, 0x06FF], [0x0750, 0x077F], [0x08A0, 0x08FF]] },
-  { name: 'Devanagari', ranges: [[0x0900, 0x097F]] },
-  { name: 'Thai', ranges: [[0x0E00, 0x0E7F]] },
-  { name: 'Hangul', ranges: [[0x1100, 0x11FF], [0x3130, 0x318F], [0xAC00, 0xD7AF]] },
-  { name: 'Han', ranges: [[0x3400, 0x4DBF], [0x4E00, 0x9FFF], [0xF900, 0xFAFF]] },
-  { name: 'Katakana', ranges: [[0x30A0, 0x30FF], [0xFF66, 0xFF9F]] },
-  { name: 'Hiragana', ranges: [[0x3040, 0x309F]] },
+  {
+    name: "Latin",
+    ranges: [
+      [0x0041, 0x024f],
+      [0x1e00, 0x1eff],
+      [0x2c60, 0x2c7f],
+      [0xa720, 0xa7ff],
+      [0xff21, 0xff3a],
+      [0xff41, 0xff5a],
+    ],
+  },
+  {
+    name: "Greek",
+    ranges: [
+      [0x0370, 0x03ff],
+      [0x1f00, 0x1fff],
+    ],
+  },
+  {
+    name: "Cyrillic",
+    ranges: [
+      [0x0400, 0x052f],
+      [0x2de0, 0x2dff],
+      [0xa640, 0xa69f],
+    ],
+  },
+  { name: "Armenian", ranges: [[0x0530, 0x058f]] },
+  { name: "Hebrew", ranges: [[0x0590, 0x05ff]] },
+  {
+    name: "Arabic",
+    ranges: [
+      [0x0600, 0x06ff],
+      [0x0750, 0x077f],
+      [0x08a0, 0x08ff],
+    ],
+  },
+  { name: "Devanagari", ranges: [[0x0900, 0x097f]] },
+  { name: "Thai", ranges: [[0x0e00, 0x0e7f]] },
+  {
+    name: "Hangul",
+    ranges: [
+      [0x1100, 0x11ff],
+      [0x3130, 0x318f],
+      [0xac00, 0xd7af],
+    ],
+  },
+  {
+    name: "Han",
+    ranges: [
+      [0x3400, 0x4dbf],
+      [0x4e00, 0x9fff],
+      [0xf900, 0xfaff],
+    ],
+  },
+  {
+    name: "Katakana",
+    ranges: [
+      [0x30a0, 0x30ff],
+      [0xff66, 0xff9f],
+    ],
+  },
+  { name: "Hiragana", ranges: [[0x3040, 0x309f]] },
 ];
 
 export function detectHomoglyphs(domain: string): HomoglyphResult {
   const unicodeHostname = decodeDomain(domain);
-  const isPunycode = domain.split('.').some(label => label.startsWith('xn--'));
+  const isPunycode = domain
+    .split(".")
+    .some((label) => label.startsWith("xn--"));
 
   const confusableChars: HomoglyphCharacter[] = [];
   const scripts = new Set<string>();
   const riskReasons: string[] = [];
 
-  let asciiSkeletonBuilder = '';
+  let asciiSkeletonBuilder = "";
   const characters = Array.from(unicodeHostname);
 
   characters.forEach((char, index) => {
-    if (char === '.') {
+    if (char === ".") {
       asciiSkeletonBuilder += char;
       return;
     }
 
     const script = detectScript(char);
-    if (script !== 'Common') {
+    if (script !== "Common") {
       scripts.add(script);
     }
 
     const codePoint = char.codePointAt(0);
-    const confusableSet = codePoint !== undefined && codePoint > 0x7f
-      ? sanitizeAlternatives(char, getConfusableCharacters(char))
-      : [];
-    const asciiAlternative = confusableSet.find(candidate => ASCII_PATTERN.test(candidate) && candidate.toLowerCase() !== char.toLowerCase());
+    const confusableSet =
+      codePoint !== undefined && codePoint > 0x7f
+        ? sanitizeAlternatives(char, getConfusableCharacters(char))
+        : [];
+    const asciiAlternative = confusableSet.find(
+      (candidate) =>
+        ASCII_PATTERN.test(candidate) &&
+        candidate.toLowerCase() !== char.toLowerCase(),
+    );
 
     let replacement = char;
     if (asciiAlternative) {
@@ -100,7 +164,7 @@ export function detectHomoglyphs(domain: string): HomoglyphResult {
         script,
         alternatives: confusableSet,
       });
-    } else if (confusableSet.length > 0 && script !== 'Latin') {
+    } else if (confusableSet.length > 0 && script !== "Latin") {
       const fallback = confusableSet[0];
       replacement = fallback;
       confusableChars.push({
@@ -122,22 +186,32 @@ export function detectHomoglyphs(domain: string): HomoglyphResult {
 
   if (isPunycode) {
     riskPriority = Math.max(riskPriority, RISK_PRIORITY.low);
-    pushUnique(riskReasons, 'Hostname uses punycode/IDN encoding');
+    pushUnique(riskReasons, "Hostname uses punycode/IDN encoding");
   }
 
   if (mixedScript) {
     riskPriority = Math.max(riskPriority, RISK_PRIORITY.medium);
-    pushUnique(riskReasons, `Mixed scripts detected: ${Array.from(scripts).join(', ')}`);
+    pushUnique(
+      riskReasons,
+      `Mixed scripts detected: ${Array.from(scripts).join(", ")}`,
+    );
   }
 
   if (confusableChars.length > 0) {
     riskPriority = Math.max(riskPriority, RISK_PRIORITY.medium);
-    confusableChars.forEach(entry => {
-      pushUnique(riskReasons, `Confusable character ${entry.original}→${entry.confusedWith} (${entry.script})`);
+    confusableChars.forEach((entry) => {
+      pushUnique(
+        riskReasons,
+        `Confusable character ${entry.original}→${entry.confusedWith} (${entry.script})`,
+      );
     });
   }
 
-  if (confusableChars.length >= 2 || (confusableChars.length > 0 && mixedScript) || (isPunycode && confusableChars.length > 0)) {
+  if (
+    confusableChars.length >= 2 ||
+    (confusableChars.length > 0 && mixedScript) ||
+    (isPunycode && confusableChars.length > 0)
+  ) {
     riskPriority = Math.max(riskPriority, RISK_PRIORITY.high);
   }
 
@@ -164,9 +238,9 @@ export function detectHomoglyphs(domain: string): HomoglyphResult {
 
 function decodeDomain(domain: string): string {
   return domain
-    .split('.')
-    .map(label => {
-      if (!label.startsWith('xn--')) {
+    .split(".")
+    .map((label) => {
+      if (!label.startsWith("xn--")) {
         return label;
       }
 
@@ -177,35 +251,48 @@ function decodeDomain(domain: string): string {
         return label;
       }
     })
-    .join('.');
+    .join(".");
 }
 
 function detectScript(char: string): string {
   const codePoint = char.codePointAt(0);
   if (codePoint === undefined) {
-    return 'Common';
+    return "Common";
   }
-  if ((codePoint >= 0x0030 && codePoint <= 0x0039) || char === '-' || char === '_') {
-    return 'Common';
+  if (
+    (codePoint >= 0x0030 && codePoint <= 0x0039) ||
+    char === "-" ||
+    char === "_"
+  ) {
+    return "Common";
   }
   for (const script of SCRIPT_RANGES) {
-    if (script.ranges.some(([start, end]) => codePoint >= start && codePoint <= end)) {
+    if (
+      script.ranges.some(
+        ([start, end]) => codePoint >= start && codePoint <= end,
+      )
+    ) {
       return script.name;
     }
   }
-  return 'Common';
+  return "Common";
 }
 
 function sanitizeAlternatives(original: string, entries: string[]): string[] {
   if (!Array.isArray(entries)) {
     return [];
   }
-  return entries.filter(entry => entry && entry !== original);
+  return entries.filter((entry) => entry && entry !== original);
 }
 
-function detectBrandSpoof(unicodeHostname: string, asciiSkeleton: string): string | null {
-  const primaryLabel = unicodeHostname.split('.')[0]?.toLowerCase() ?? unicodeHostname.toLowerCase();
-  const normalizedLabel = asciiSkeleton.split('.')[0] ?? asciiSkeleton;
+function detectBrandSpoof(
+  unicodeHostname: string,
+  asciiSkeleton: string,
+): string | null {
+  const primaryLabel =
+    unicodeHostname.split(".")[0]?.toLowerCase() ??
+    unicodeHostname.toLowerCase();
+  const normalizedLabel = asciiSkeleton.split(".")[0] ?? asciiSkeleton;
   const normalizedLower = normalizedLabel.toLowerCase();
 
   for (const brand of BRAND_NAMES) {
@@ -248,7 +335,7 @@ function levenshteinDistance(a: string, b: string): number {
       } else {
         nextRow[j] = Math.min(
           row[j - 1] + 1, // substitution
-          row[j] + 1,     // deletion
+          row[j] + 1, // deletion
           nextRow[j - 1] + 1, // insertion
         );
       }
