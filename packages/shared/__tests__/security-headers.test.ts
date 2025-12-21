@@ -108,7 +108,9 @@ describe("Security Headers", () => {
         },
       });
 
-      expect(httpsResponse.headers["strict-transport-security"]).toBeUndefined();
+      expect(
+        httpsResponse.headers["strict-transport-security"],
+      ).toBeUndefined();
     });
 
     it("should not trust x-forwarded-proto by default", async () => {

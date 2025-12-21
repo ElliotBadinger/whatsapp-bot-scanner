@@ -36,13 +36,13 @@ const DEFAULT_OPTIONS: Required<SecurityHeadersOptions> = {
 };
 
 /**
-  * Adds security headers to all responses.
-  * Call this during Fastify app setup.
-  *
-  * The default Content Security Policy disallows inline styles. If an
-  * application needs inline styles, provide an explicit CSP via
-  * `options.contentSecurityPolicy`.
-  */
+ * Adds security headers to all responses.
+ * Call this during Fastify app setup.
+ *
+ * The default Content Security Policy disallows inline styles. If an
+ * application needs inline styles, provide an explicit CSP via
+ * `options.contentSecurityPolicy`.
+ */
 export function registerSecurityHeaders(
   app: FastifyInstance,
   options: SecurityHeadersOptions = {},
@@ -72,11 +72,7 @@ export function registerSecurityHeaders(
 
   app.addHook(
     "onSend",
-    async (
-      request: FastifyRequest,
-      reply: FastifyReply,
-      _payload: unknown,
-    ) => {
+    async (request: FastifyRequest, reply: FastifyReply, _payload: unknown) => {
       if (mergedOptions.contentSecurityPolicy !== false) {
         reply.header(
           "Content-Security-Policy",
