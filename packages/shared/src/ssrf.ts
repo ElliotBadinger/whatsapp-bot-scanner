@@ -27,9 +27,14 @@ const BLOCKED_HOSTNAMES = [
 
 export async function isPrivateHostname(hostname: string): Promise<boolean> {
   const lowerHostname = hostname.toLowerCase();
-  // URL hostnames for IPv6 literals can be bracketed (e.g. `[::1]`).
-  // Only strip brackets for IPv6-like values to avoid normalizing invalid hosts.
-  const normalizedHost = lowerHostname.replace(/^\[([^\]]*:[^\]]*)\]$/, "$1");
+  // URL hostnames for IP literals can be bracketed (e.g. `[::1]`).
+  // If the bracketed value isn't an IP literal, fail closed.
+  const bracketMatch = /^\[(.*)\]$/.exec(lowerHostname);
+  const normalizedHost = bracketMatch ? bracketMatch[1] : lowerHostname;
+
+  if (bracketMatch && !ipaddr.isValid(normalizedHost)) {
+    return true;
+  }
 
   // Check blocked hostnames first
   if (BLOCKED_HOSTNAMES.includes(normalizedHost)) {

@@ -58,14 +58,11 @@ describe("SSRF guards", () => {
   });
 
   it("fails closed for non-ipv6 bracketed hostnames", async () => {
-    resolve4.mockImplementationOnce(async (value) => {
-      expect(value).toBe("[example.com]");
-      throw new Error("dns failure");
-    });
-    resolve6.mockRejectedValueOnce(new Error("dns failure"));
-    lookup.mockRejectedValueOnce(new Error("dns failure"));
-
     await expect(isPrivateHostname("[example.com]")).resolves.toBe(true);
+
+    expect(resolve4).not.toHaveBeenCalled();
+    expect(resolve6).not.toHaveBeenCalled();
+    expect(lookup).not.toHaveBeenCalled();
   });
 
   it("fails closed when dns lookup returns no results", async () => {
