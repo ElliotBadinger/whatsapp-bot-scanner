@@ -63,16 +63,14 @@ export function GroupsManager() {
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const handleToggleMute = async (groupId: string, isMuted: boolean) => {
+  const handleSetMute = async (groupId: string, nextIsMuted: boolean) => {
     setLoadingId(groupId);
     setError(null);
     try {
-      const nextIsMuted = !isMuted;
-
-      if (isMuted) {
-        await unmuteGroup(groupId);
-      } else {
+      if (nextIsMuted) {
         await muteGroup(groupId);
+      } else {
+        await unmuteGroup(groupId);
       }
 
       setGroups((prev) =>
@@ -144,7 +142,7 @@ export function GroupsManager() {
               </div>
             </div>
             <Button
-              onClick={() => handleToggleMute(group.id, group.isMuted)}
+              onClick={() => handleSetMute(group.id, !group.isMuted)}
               disabled={loadingId === group.id}
               variant="outline"
               size="sm"
