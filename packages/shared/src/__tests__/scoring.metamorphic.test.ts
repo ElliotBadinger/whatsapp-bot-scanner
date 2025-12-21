@@ -97,14 +97,15 @@ describe("Scoring - Metamorphic Property Tests", () => {
     test("MR4: VT malicious count has diminishing returns", () => {
       fc.assert(
         fc.property(signalsNoOverrideArb, (baseSignals) => {
-          const scores = [0, 1, 2, 3, 5, 10, 20].map((vt) =>
-            scoreFromSignals({
-              ...baseSignals,
-              vtMalicious: vt,
-              gsbThreatTypes: undefined,
-              phishtankVerified: false,
-              urlhausListed: false,
-            }).score,
+          const scores = [0, 1, 2, 3, 5, 10, 20].map(
+            (vt) =>
+              scoreFromSignals({
+                ...baseSignals,
+                vtMalicious: vt,
+                gsbThreatTypes: undefined,
+                phishtankVerified: false,
+                urlhausListed: false,
+              }).score,
           );
 
           for (let i = 1; i < scores.length; i++) {
@@ -154,9 +155,18 @@ describe("Scoring - Metamorphic Property Tests", () => {
           const clean = { ...baseSignals, homoglyph: undefined };
 
           const none = scoreFromSignals(clean).score;
-          const low = scoreFromSignals({ ...clean, homoglyph: makeHomoglyph("low") }).score;
-          const medium = scoreFromSignals({ ...clean, homoglyph: makeHomoglyph("medium") }).score;
-          const high = scoreFromSignals({ ...clean, homoglyph: makeHomoglyph("high") }).score;
+          const low = scoreFromSignals({
+            ...clean,
+            homoglyph: makeHomoglyph("low"),
+          }).score;
+          const medium = scoreFromSignals({
+            ...clean,
+            homoglyph: makeHomoglyph("medium"),
+          }).score;
+          const high = scoreFromSignals({
+            ...clean,
+            homoglyph: makeHomoglyph("high"),
+          }).score;
 
           expect(low).toBeGreaterThanOrEqual(none);
           expect(medium).toBeGreaterThanOrEqual(low);
@@ -171,7 +181,11 @@ describe("Scoring - Metamorphic Property Tests", () => {
         fc.property(signalsNoOverrideArb, (baseSignals) => {
           const maxThreat: Signals = {
             ...baseSignals,
-            gsbThreatTypes: ["MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE"],
+            gsbThreatTypes: [
+              "MALWARE",
+              "SOCIAL_ENGINEERING",
+              "UNWANTED_SOFTWARE",
+            ],
             phishtankVerified: true,
             urlhausListed: true,
             vtMalicious: 100,
@@ -201,7 +215,10 @@ describe("Scoring - Metamorphic Property Tests", () => {
     test("MR8: Allow override always produces benign regardless of signals", () => {
       fc.assert(
         fc.property(maliciousSignalsArb, (signals) => {
-          const result = scoreFromSignals({ ...signals, manualOverride: "allow" });
+          const result = scoreFromSignals({
+            ...signals,
+            manualOverride: "allow",
+          });
 
           expect(result.score).toBe(0);
           expect(result.level).toBe("benign");
@@ -213,7 +230,10 @@ describe("Scoring - Metamorphic Property Tests", () => {
     test("MR9: Deny override always produces malicious regardless of signals", () => {
       fc.assert(
         fc.property(benignSignalsArb, (signals) => {
-          const result = scoreFromSignals({ ...signals, manualOverride: "deny" });
+          const result = scoreFromSignals({
+            ...signals,
+            manualOverride: "deny",
+          });
 
           expect(result.score).toBe(15);
           expect(result.level).toBe("malicious");
@@ -225,7 +245,10 @@ describe("Scoring - Metamorphic Property Tests", () => {
     test("MR10: heuristicsOnly flag adds reason but doesn't change score", () => {
       fc.assert(
         fc.property(signalsNoOverrideArb, (signals) => {
-          const without = scoreFromSignals({ ...signals, heuristicsOnly: false });
+          const without = scoreFromSignals({
+            ...signals,
+            heuristicsOnly: false,
+          });
           const with_ = scoreFromSignals({ ...signals, heuristicsOnly: true });
 
           expect(with_.score).toBe(without.score);

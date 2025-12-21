@@ -182,7 +182,7 @@ describe("control-plane extra routes", () => {
         expect.objectContaining({
           rescan: true,
         }),
-        expect.any(Object)
+        expect.any(Object),
       );
       // Should not have chatId/messageId when not found in DB
       const callArgs = (queue.add as jest.Mock).mock.calls[0][1];
