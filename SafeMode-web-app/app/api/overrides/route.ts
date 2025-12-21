@@ -41,15 +41,15 @@ function mapOverride(row: ControlPlaneOverrideRow): Override | null {
       id: String(row.id),
       created_at: row.created_at,
     });
+    return null;
   }
-  const createdAt = isoCreatedAt ?? new Date(0).toISOString();
 
   return {
     id: String(row.id),
     pattern,
     action: row.status === "allow" ? "allow" : "block",
     reason: row.reason || "",
-    createdAt,
+    createdAt: isoCreatedAt,
   };
 }
 
@@ -64,14 +64,18 @@ export async function GET() {
     const rows =
       await controlPlaneFetchJson<ControlPlaneOverrideRow[]>("/overrides");
 
-    const mapped: Override[] = [];
-    for (const row of rows) {
-      const override = mapOverride(row);
-      if (!override) continue;
-      mapped.push(override);
+    const overrides = rows
+      .map(mapOverride)
+      .filter((override): override is Override => override !== null);
+
+    if (overrides.length !== rows.length) {
+      console.warn("Some overrides were dropped due to invalid data", {
+        total: rows.length,
+        returned: overrides.length,
+      });
     }
 
-    return NextResponse.json(mapped);
+    return NextResponse.json(overrides);
   } catch (err) {
     const status = err instanceof ControlPlaneError ? err.status : 502;
     return NextResponse.json({ error: "overrides_unavailable" }, { status });
