@@ -104,7 +104,10 @@ export class EncryptedRedisClient {
       return;
     }
 
-    if (!this.decryptWarnings.has(warnKey) && this.decryptWarnings.size >= 1000) {
+    if (
+      !this.decryptWarnings.has(warnKey) &&
+      this.decryptWarnings.size >= 1000
+    ) {
       for (const [k, lastAt] of this.decryptWarnings.entries()) {
         if (now - lastAt > 10 * 60 * 1000) {
           this.decryptWarnings.delete(k);
