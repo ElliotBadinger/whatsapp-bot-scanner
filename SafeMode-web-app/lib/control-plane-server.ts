@@ -79,24 +79,71 @@ export async function controlPlaneFetchJson<T>(
   init: RequestInit & { timeoutMs?: number } = {},
 ): Promise<T> {
   const resp = await controlPlaneFetch(path, init);
+
+  const contentType = resp.headers.get("content-type") ?? "";
+  const isJson =
+    contentType.includes("application/json") || contentType.includes("+json");
+
   if (resp.ok) {
-    return resp.json() as Promise<T>;
+    if (!isJson) {
+      const preview = await resp.text().catch(() => "");
+      const snippet = preview.trim().slice(0, 120);
+      const hasSnippet = snippet && !snippet.includes("<");
+      const details = hasSnippet ? ` body=${JSON.stringify(snippet)}` : "";
+      throw new ControlPlaneError(
+        `Unexpected response format (content-type=${contentType || "<missing>"})${details}.`,
+        { status: 502, code: "NON_JSON_RESPONSE" },
+      );
+    }
+
+    try {
+      return (await resp.json()) as T;
+    } catch {
+      throw new ControlPlaneError("Unexpected response format.", {
+        status: 502,
+        code: "INVALID_JSON",
+      });
+    }
   }
 
-  const body = (await resp.json().catch(() => ({}))) as {
-    error?: string;
-    code?: string;
-    message?: string;
-  };
-  const code =
-    typeof body.error === "string"
-      ? body.error
-      : typeof body.code === "string"
-        ? body.code
-        : undefined;
-  const message =
-    (typeof body.message === "string" ? body.message : undefined) ||
-    (typeof body.error === "string" ? body.error : undefined) ||
-    "Control-plane request failed";
-  throw new ControlPlaneError(message, { status: resp.status, code });
+  let code: string | undefined;
+  let message: string | undefined;
+
+  if (isJson) {
+    const body = (await resp.json().catch(() => ({}))) as {
+      error?: string;
+      code?: string;
+      message?: string;
+    };
+    code =
+      typeof body.error === "string"
+        ? body.error
+        : typeof body.code === "string"
+          ? body.code
+          : undefined;
+    message =
+      (typeof body.message === "string" ? body.message : undefined) ||
+      (typeof body.error === "string" ? body.error : undefined) ||
+      undefined;
+  } else {
+    const text = await resp.text().catch(() => "");
+    const trimmed = text.trim();
+    if (
+      trimmed.includes("_") &&
+      trimmed.length <= 120 &&
+      /^[a-z0-9_]+$/.test(trimmed)
+    ) {
+      code = trimmed;
+    }
+
+    const snippet = trimmed.slice(0, 120);
+    if (snippet && !snippet.includes("<")) {
+      message = snippet;
+    }
+  }
+
+  throw new ControlPlaneError(message || "Control-plane request failed", {
+    status: resp.status,
+    code,
+  });
 }
