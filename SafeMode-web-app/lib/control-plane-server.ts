@@ -92,7 +92,7 @@ export async function controlPlaneFetchWithBearerToken(
   if (!normalized) {
     throw new ControlPlaneError("Bearer token is required", {
       status: 400,
-      code: "MISSING_BEARER_TOKEN",
+      code: "INVALID_INPUT_MISSING_BEARER_TOKEN",
     });
   }
 

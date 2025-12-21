@@ -41,19 +41,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "control_plane_error" }, { status: 502 });
     }
 
-    return NextResponse.json({ error: "login_failed" }, { status: 502 });
+    return NextResponse.json(
+      { error: "unexpected_control_plane_status", status: resp.status },
+      { status: 502 },
+    );
   } catch (err) {
     if (
       err instanceof ControlPlaneError &&
       err.status === 400 &&
-      err.code === "MISSING_BEARER_TOKEN"
+      err.code === "INVALID_INPUT_MISSING_BEARER_TOKEN"
     ) {
       return NextResponse.json({ error: "invalid_request" }, { status: 400 });
     }
 
-    const name = err instanceof Error ? err.name : "UnknownError";
-    const message = err instanceof Error ? err.message : undefined;
-    console.warn("Control-plane token validation failed", { name, message });
+    const logPayload =
+      err instanceof ControlPlaneError
+        ? { name: err.name, message: err.message, status: err.status, code: err.code }
+        : {
+            name: err instanceof Error ? err.name : "UnknownError",
+            message: err instanceof Error ? err.message : undefined,
+          };
+
+    console.warn("Control-plane token validation failed", logPayload);
     return NextResponse.json({ error: "control_plane_unavailable" }, { status: 502 });
   }
 }
