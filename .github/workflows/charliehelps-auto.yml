@@ -52,7 +52,7 @@ jobs:
 
   merge-to-main:
     # WARNING: This job can merge to main; only the repo owner may trigger it.
-    if: github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner && github.ref_name == 'main'
+    if: github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner && github.ref_name == 'main' && github.event.inputs.pr_number
     permissions:
       contents: write
       pull-requests: write

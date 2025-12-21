@@ -8,6 +8,8 @@ const libPath = path.resolve(
 
 // TypeScript downlevels `import()` to `require()` under CJS, which breaks `.mjs`.
 // This keeps a true runtime `import()` so Jest can load ESM helpers.
+// The helper is intentionally restricted to `libPath` to avoid accidentally
+// importing arbitrary files via `new Function()` in tests.
 const importEsm = (() => {
   // eslint-disable-next-line no-new-func
   const importer = new Function("url", "return import(url);");
