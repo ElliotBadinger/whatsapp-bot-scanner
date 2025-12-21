@@ -16,6 +16,7 @@ const mode = rawMode.toLowerCase();
 const mergeMethod = (process.env.MERGE_METHOD ?? "rebase").toLowerCase();
 const eventName = process.env.GITHUB_EVENT_NAME;
 const eventPath = process.env.GITHUB_EVENT_PATH;
+const actor = process.env.GITHUB_ACTOR;
 
 const allowedModes = new Set(["reply", "merge"]);
 if (!allowedModes.has(mode)) {
@@ -211,6 +212,7 @@ async function getPullRequestWithThreads() {
           pullRequest(number:$number){
             number
             url
+            state
             isDraft
             baseRefName
             baseRefOid
@@ -237,6 +239,9 @@ async function getPullRequestWithThreads() {
     );
 
     const pr = data.repository.pullRequest;
+    if (!pr) {
+      throw new Error(`Pull request #${prNumber} not found.`);
+    }
     if (!prInfo) prInfo = { ...pr, reviewThreads: undefined };
 
     threads.push(
@@ -275,6 +280,7 @@ async function getPullRequestState() {
         pullRequest(number:$number){
           number
           url
+          state
           isDraft
           baseRefName
           baseRefOid
@@ -288,6 +294,10 @@ async function getPullRequestState() {
     }`,
     { owner, name, number: prNumber },
   );
+
+  if (!data.repository.pullRequest) {
+    throw new Error(`Pull request #${prNumber} not found.`);
+  }
 
   return data.repository.pullRequest;
 }
@@ -306,17 +316,26 @@ async function replyToThread(threadId) {
 
 async function validateEventContext() {
   if (!eventName || !eventPath) return;
+
+  let raw;
   try {
-    const raw = await fs.readFile(eventPath, "utf8");
-    const payload = JSON.parse(raw);
-    validateEventPrNumber(eventName, payload, prNumber);
+    raw = await fs.readFile(eventPath, "utf8");
   } catch (err) {
-    console.error(
-      `Failed to validate event context for ${eventName} from ${eventPath}:`,
-      err,
+    throw new Error(
+      `Unable to read GitHub event file (event=${eventName}): ${err?.message ?? err}`,
     );
-    throw err;
   }
+
+  let payload;
+  try {
+    payload = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(
+      `Unable to parse GitHub event payload (event=${eventName}): ${err?.message ?? err}`,
+    );
+  }
+
+  validateEventPrNumber(eventName, payload, prNumber);
 }
 
 async function hasPendingSuggestionForThread(thread, commentPreview) {
@@ -335,6 +354,22 @@ async function hasPendingSuggestionForThread(thread, commentPreview) {
 
 async function main() {
   await validateEventContext();
+
+  if (mode === "merge" && eventName !== "workflow_dispatch") {
+    throw new Error(
+      `MODE=merge is only supported for workflow_dispatch events (got event=${eventName ?? "UNKNOWN"}).`,
+    );
+  }
+
+  if (
+    mode === "merge" &&
+    actor &&
+    actor.toLowerCase() !== owner.toLowerCase()
+  ) {
+    throw new Error(
+      `MODE=merge may only be invoked by the repository owner (${owner}).`,
+    );
+  }
   const pr = await getPullRequestWithThreads();
 
   const threads = pr.reviewThreads.nodes;
@@ -377,6 +412,11 @@ async function main() {
       console.log("No pending suggestion threads to reply to.");
     }
     console.log(`MODE=${mode}; skipping merge to main.`);
+    return;
+  }
+
+  if (pr.state && pr.state !== "OPEN") {
+    console.log(`PR is not open (state=${pr.state}); skipping merge to main.`);
     return;
   }
 
@@ -494,6 +534,13 @@ async function main() {
       merge_method: mergeMethod,
     },
   );
+
+  if (result?.merged !== true) {
+    throw new Error(
+      `Merge API did not report success for PR #${pr.number} (merged=${result?.merged ?? "UNKNOWN"}).`,
+    );
+  }
+
   console.log(
     `Merge to main completed (sha=${result?.sha ?? "UNKNOWN"}, merged=${result?.merged ?? "UNKNOWN"}).`,
   );

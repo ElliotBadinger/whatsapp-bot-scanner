@@ -40,10 +40,17 @@ export function latestComment(comments) {
     }
   }
 
-  if (invalidCount > 0) {
-    console.warn(
-      `latestComment ignored ${invalidCount} comment(s) with invalid createdAt`,
-    );
+  if (process.env.CH_DEBUG === "1") {
+    if (invalidCount > 0) {
+      console.warn(
+        `latestComment ignored ${invalidCount} comment(s) with invalid createdAt`,
+      );
+    }
+    if (!latest) {
+      console.warn(
+        "latestComment: no valid createdAt timestamps; falling back to last comment",
+      );
+    }
   }
 
   return latest ?? comments[comments.length - 1] ?? null;
@@ -65,8 +72,9 @@ export function isSuggestionComment(body) {
 }
 
 export function hasPendingSuggestion(comments) {
-  // We only care about the latest suggestion and the latest non-Charlie ack.
-  // Once a newer suggestion is present, earlier suggestion/ack cycles are irrelevant.
+  // Assumptions:
+  // - `createdAt` is a reliable ordering key.
+  // - We only care about the latest suggestion and the latest valid ack.
   if (!comments || comments.length === 0) return false;
 
   let latestAckTime = -Infinity;
@@ -81,7 +89,7 @@ export function hasPendingSuggestion(comments) {
 
     if (authorLogin !== "charliecreates" && yesPleaseRegex.test(body)) {
       const authorType = comment.author?.__typename;
-      if (authorType === "Bot") continue;
+      if (authorType !== "User") continue;
       latestAckTime = Math.max(latestAckTime, t);
       continue;
     }
@@ -119,6 +127,8 @@ export function getEventPrNumber(eventName, payload) {
   }
 
   if (eventName === "workflow_dispatch") {
+    // This number is user-provided via workflow inputs; callers must validate
+    // it as a real pull request before taking any write action.
     return parsePrNumber(payload.inputs?.pr_number);
   }
 
@@ -128,15 +138,17 @@ export function getEventPrNumber(eventName, payload) {
 export function validateEventPrNumber(eventName, payload, expectedPrNumber) {
   const eventPr = getEventPrNumber(eventName, payload);
 
-  if (
-    eventName === "pull_request_review" ||
-    eventName === "pull_request_review_comment" ||
-    eventName === "issue_comment" ||
-    eventName === "workflow_dispatch"
-  ) {
-    if (eventPr === null) {
-      throw new Error(`Unable to resolve PR number from event ${eventName}`);
-    }
+  const mustHavePr = new Set([
+    "pull_request_review",
+    "pull_request_review_comment",
+    "issue_comment",
+    "workflow_dispatch",
+    "pull_request",
+    "pull_request_target",
+  ]);
+
+  if (mustHavePr.has(eventName) && eventPr === null) {
+    throw new Error(`Unable to resolve PR number from event ${eventName}`);
   }
 
   if (eventPr !== null && eventPr !== expectedPrNumber) {

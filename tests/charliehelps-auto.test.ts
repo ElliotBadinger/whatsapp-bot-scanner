@@ -11,7 +11,12 @@ const libPath = path.resolve(
 const importEsm = (() => {
   // eslint-disable-next-line no-new-func
   const importer = new Function("url", "return import(url);");
-  return async (filePath: string) => importer(pathToFileURL(filePath).href);
+  return async (filePath: string) => {
+    if (filePath !== libPath) {
+      throw new Error(`importEsm may only be used with libPath (got: ${filePath})`);
+    }
+    return importer(pathToFileURL(filePath).href);
+  };
 })();
 
 describe("charliehelps-auto helpers", () => {
@@ -142,7 +147,7 @@ describe("charliehelps-auto helpers", () => {
     const lib = await importEsm(libPath);
     const comments = [
       {
-        author: { login: "ElliotBadinger" },
+        author: { __typename: "User", login: "ElliotBadinger" },
         body: "@CharlieHelps yes please",
         createdAt: "2025-12-21T08:00:00Z",
       },
@@ -207,5 +212,44 @@ describe("charliehelps-auto helpers", () => {
         145,
       );
     }).toThrow(/does not match PR_NUMBER/i);
+  });
+
+  test("latestComment skips invalid timestamps and returns latest valid", async () => {
+    const lib = await importEsm(libPath);
+    const comments = [
+      {
+        author: { login: "someone" },
+        body: "old",
+        createdAt: "invalid",
+      },
+      {
+        author: { login: "someone" },
+        body: "middle",
+        createdAt: "2025-12-21T08:00:00Z",
+      },
+      {
+        author: { login: "someone" },
+        body: "latest",
+        createdAt: "2025-12-21T09:00:00Z",
+      },
+    ];
+    expect(lib.latestComment(comments)?.body).toBe("latest");
+  });
+
+  test("latestComment falls back to last comment when all timestamps invalid", async () => {
+    const lib = await importEsm(libPath);
+    const comments = [
+      {
+        author: { login: "someone" },
+        body: "first",
+        createdAt: "bad1",
+      },
+      {
+        author: { login: "someone" },
+        body: "second",
+        createdAt: "bad2",
+      },
+    ];
+    expect(lib.latestComment(comments)?.body).toBe("second");
   });
 });

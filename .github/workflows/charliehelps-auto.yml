@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       pr_number:
-        description: "Pull request number to merge to main (trusted only)"
+        description: "Pull request number to merge to main (trusted only; must exist in this repo)"
         required: true
         type: number
 
@@ -33,6 +33,8 @@ jobs:
         )
       }}
     runs-on: ubuntu-latest
+    # Needs pull-requests: write to post replies in review threads, but only
+    # contents: read since it does not modify the repo itself.
     permissions:
       contents: read
       pull-requests: write
