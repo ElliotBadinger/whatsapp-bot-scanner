@@ -16,6 +16,7 @@ describe("RBAC Performance Impact", () => {
     }
 
     const durationMs = Number(process.hrtime.bigint() - start) / 1e6;
-    expect(durationMs).toBeLessThan(5000);
+    const avgMs = durationMs / iterations;
+    expect(avgMs).toBeLessThan(20);
   });
 });
