@@ -19,16 +19,37 @@ type ControlPlaneOverrideRow = {
   reason: string | null;
 };
 
-function mapOverride(row: ControlPlaneOverrideRow): Override {
+function toIsoDate(input: string | Date): string | null {
+  const date = input instanceof Date ? input : new Date(String(input));
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function mapOverride(row: ControlPlaneOverrideRow): Override | null {
+  const pattern = row.pattern ?? row.url_hash;
+  if (!pattern) {
+    console.warn("Override row missing pattern/url_hash", {
+      id: String(row.id),
+      url_hash: row.url_hash,
+      pattern: row.pattern,
+    });
+    return null;
+  }
+
+  const isoCreatedAt = toIsoDate(row.created_at);
+  if (!isoCreatedAt) {
+    console.warn("Override row has invalid created_at", {
+      id: String(row.id),
+      created_at: row.created_at,
+    });
+  }
+  const createdAt = isoCreatedAt ?? new Date(0).toISOString();
+
   return {
     id: String(row.id),
-    pattern: row.pattern || row.url_hash || "<missing-pattern>",
+    pattern,
     action: row.status === "allow" ? "allow" : "block",
     reason: row.reason || "",
-    createdAt:
-      row.created_at instanceof Date
-        ? row.created_at.toISOString()
-        : String(row.created_at),
+    createdAt,
   };
 }
 
@@ -42,7 +63,15 @@ export async function GET() {
   try {
     const rows =
       await controlPlaneFetchJson<ControlPlaneOverrideRow[]>("/overrides");
-    return NextResponse.json(rows.map(mapOverride));
+
+    const mapped: Override[] = [];
+    for (const row of rows) {
+      const override = mapOverride(row);
+      if (!override) continue;
+      mapped.push(override);
+    }
+
+    return NextResponse.json(mapped);
   } catch (err) {
     const status = err instanceof ControlPlaneError ? err.status : 502;
     return NextResponse.json({ error: "overrides_unavailable" }, { status });
