@@ -39,7 +39,11 @@ async function getSharedRedis(): Promise<Redis> {
   if (!sharedRedisInstance) {
     sharedRedisInstance = await getConnectedSharedRedis("control-plane");
   }
-  return sharedRedisInstance;
+  const redis = sharedRedisInstance;
+  if (!redis) {
+    throw new Error("Failed to initialize shared Redis connection");
+  }
+  return redis;
 }
 
 async function getSharedQueue(): Promise<Queue> {
@@ -110,6 +114,124 @@ export async function buildServer(options: BuildOptions = {}) {
         malicious: Number(stats.malicious || 0),
         groups: Number(stats.groups || 0),
       };
+    });
+
+    protectedApp.get("/scans", async (req, reply) => {
+      const query = req.query as {
+        verdict?: string;
+        from?: string;
+        to?: string;
+        limit?: string | number;
+        offset?: string | number;
+      };
+
+      const rawVerdict =
+        typeof query.verdict === "string" && query.verdict.trim().length > 0
+          ? query.verdict.trim()
+          : null;
+      const verdict = rawVerdict ? rawVerdict.toLowerCase() : null;
+      if (
+        verdict &&
+        verdict !== "benign" &&
+        verdict !== "suspicious" &&
+        verdict !== "malicious"
+      ) {
+        return reply.code(400).send({ error: "invalid_verdict" });
+      }
+
+      const parseTimestamp = (
+        value: unknown,
+        errorCode: "invalid_from" | "invalid_to",
+      ): string | null => {
+        if (typeof value !== "string" || value.trim().length === 0) {
+          return null;
+        }
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+          throw new Error(errorCode);
+        }
+        return date.toISOString();
+      };
+
+      let from: string | null = null;
+      let to: string | null = null;
+      try {
+        from = parseTimestamp(query.from, "invalid_from");
+        to = parseTimestamp(query.to, "invalid_to");
+      } catch (err) {
+        const code = (err as Error).message;
+        if (code === "invalid_from" || code === "invalid_to") {
+          return reply.code(400).send({ error: code });
+        }
+        throw err;
+      }
+
+      if (from && to) {
+        const fromMs = new Date(from).getTime();
+        const toMs = new Date(to).getTime();
+        if (fromMs > toMs) {
+          return reply.code(400).send({ error: "invalid_date_range" });
+        }
+      }
+
+      const rawLimit = query.limit;
+      const parsedLimit = Number.parseInt(String(rawLimit ?? "50"), 10);
+      if (!Number.isFinite(parsedLimit) || parsedLimit <= 0) {
+        return reply.code(400).send({ error: "invalid_limit" });
+      }
+      const limit = Math.min(parsedLimit, 100);
+
+      const rawOffset = query.offset;
+      const parsedOffset = Number.parseInt(String(rawOffset ?? "0"), 10);
+      if (!Number.isFinite(parsedOffset) || parsedOffset < 0) {
+        return reply.code(400).send({ error: "invalid_offset" });
+      }
+      const offset = parsedOffset;
+
+      const whereParts: string[] = [];
+      const whereParams: unknown[] = [];
+
+      if (verdict) {
+        whereParts.push("verdict = ?");
+        whereParams.push(verdict);
+      }
+      if (from) {
+        whereParts.push("last_seen_at >= ?");
+        whereParams.push(from);
+      }
+      if (to) {
+        whereParts.push("last_seen_at <= ?");
+        whereParams.push(to);
+      }
+
+      const whereClause = whereParts.length
+        ? `WHERE ${whereParts.join(" AND ")}`
+        : "";
+
+      try {
+        const { rows: countRows } = await dbClient.query(
+          `SELECT COUNT(*) AS total FROM scans ${whereClause}`,
+          whereParams,
+        );
+        const { rows: scanRows } = await dbClient.query(
+          `SELECT id, url_hash, normalized_url, verdict, last_seen_at FROM scans ${whereClause} ORDER BY last_seen_at DESC, id DESC LIMIT ? OFFSET ?`,
+          [...whereParams, limit, offset],
+        );
+        const totalRow = countRows[0] as { total?: number | string } | undefined;
+
+        return {
+          total: Number(totalRow?.total ?? 0),
+          limit,
+          offset,
+          items: scanRows,
+        };
+      } catch (err) {
+        logger.error(
+          { err, verdict, from, to, limit, offset },
+          "Failed to list scans",
+        );
+        return reply.code(500).send({ error: "scans_unavailable" });
+      }
     });
 
     protectedApp.get("/scans/recent", async (req, reply) => {

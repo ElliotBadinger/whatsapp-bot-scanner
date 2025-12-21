@@ -5,7 +5,7 @@ import { createMockQueue, createMockRedis } from "../../../../test-utils/setup";
 const authHeader = { authorization: "Bearer test-token" };
 
 async function buildTestServer(
-  dbQueryImpl?: (sql: string) => Promise<{ rows: unknown[] }>,
+  dbQueryImpl?: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>,
 ) {
   const dbClient = {
     query: jest.fn(dbQueryImpl ?? (async () => ({ rows: [] }))),
@@ -72,6 +72,172 @@ describe("control-plane buildServer", () => {
     try {
       const res = await app.inject({ method: "GET", url: "/scans/recent" });
       expect(res.statusCode).toBe(401);
+    } finally {
+      await app.close();
+    }
+  });
+
+  test("GET /scans requires auth", async () => {
+    const { app } = await buildTestServer();
+    try {
+      const res = await app.inject({ method: "GET", url: "/scans" });
+      expect(res.statusCode).toBe(401);
+    } finally {
+      await app.close();
+    }
+  });
+
+  test("GET /scans returns paginated scan rows", async () => {
+    const now = new Date().toISOString();
+    const { app, dbClient } = await buildTestServer(async (sql: string) => {
+      if (sql.startsWith("SELECT COUNT(*) AS total")) {
+        return { rows: [{ total: "12" }] };
+      }
+      if (sql.startsWith("SELECT id, url_hash")) {
+        return {
+          rows: [
+            {
+              id: 1,
+              url_hash: "hash-1",
+              normalized_url: "https://example.com/",
+              verdict: "benign",
+              last_seen_at: now,
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: "/scans?limit=5&offset=10",
+        headers: authHeader,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(JSON.parse(res.payload)).toEqual({
+        total: 12,
+        limit: 5,
+        offset: 10,
+        items: [
+          {
+            id: 1,
+            url_hash: "hash-1",
+            normalized_url: "https://example.com/",
+            verdict: "benign",
+            last_seen_at: now,
+          },
+        ],
+      });
+      expect(dbClient.query).toHaveBeenNthCalledWith(
+        1,
+        expect.stringContaining("SELECT COUNT(*) AS total"),
+        [],
+      );
+      expect(dbClient.query).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining("ORDER BY last_seen_at DESC"),
+        [5, 10],
+      );
+    } finally {
+      await app.close();
+    }
+  });
+
+  test("GET /scans supports verdict filtering", async () => {
+    const now = new Date().toISOString();
+    const { app, dbClient } = await buildTestServer(async (sql: string) => {
+      if (sql.startsWith("SELECT COUNT(*) AS total")) {
+        return { rows: [{ total: 1 }] };
+      }
+      if (sql.startsWith("SELECT id, url_hash")) {
+        return {
+          rows: [
+            {
+              id: 99,
+              url_hash: "hash-99",
+              normalized_url: "https://phish.example/",
+              verdict: "malicious",
+              last_seen_at: now,
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: "/scans?verdict=malicious&limit=10&offset=0",
+        headers: authHeader,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(dbClient.query).toHaveBeenNthCalledWith(
+        1,
+        expect.stringContaining("WHERE verdict = ?"),
+        ["malicious"],
+      );
+      expect(dbClient.query).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining("WHERE verdict = ?"),
+        ["malicious", 10, 0],
+      );
+    } finally {
+      await app.close();
+    }
+  });
+
+  test("GET /scans supports filtering by timestamp range", async () => {
+    const now = new Date();
+    const from = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+    const to = now.toISOString();
+
+    const { app, dbClient } = await buildTestServer(async (sql: string) => {
+      if (sql.startsWith("SELECT COUNT(*) AS total")) {
+        return { rows: [{ total: 0 }] };
+      }
+      if (sql.startsWith("SELECT id, url_hash")) {
+        return { rows: [] };
+      }
+      return { rows: [] };
+    });
+
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: `/scans?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=25&offset=0`,
+        headers: authHeader,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(dbClient.query).toHaveBeenNthCalledWith(
+        1,
+        expect.stringContaining("last_seen_at >= ?"),
+        [from, to],
+      );
+      expect(dbClient.query).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining("last_seen_at <= ?"),
+        [from, to, 25, 0],
+      );
+    } finally {
+      await app.close();
+    }
+  });
+
+  test("GET /scans rejects invalid filters", async () => {
+    const { app, dbClient } = await buildTestServer();
+
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: "/scans?verdict=nope",
+        headers: authHeader,
+      });
+      expect(res.statusCode).toBe(400);
+      expect(JSON.parse(res.payload)).toEqual({ error: "invalid_verdict" });
+      expect(dbClient.query).not.toHaveBeenCalled();
     } finally {
       await app.close();
     }
