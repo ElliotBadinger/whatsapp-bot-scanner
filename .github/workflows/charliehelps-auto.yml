@@ -41,7 +41,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          ref: ${{ github.event.repository.default_branch || 'main' }}
       - name: Run CharlieHelps automation (reply only)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -60,6 +60,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch || 'main' }}
       - name: Run CharlieHelps automation
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
