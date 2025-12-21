@@ -10,9 +10,7 @@ export type ControlPlaneScanRow = {
   last_seen_at: string;
 };
 
-export function mapVerdictLevel(
-  verdict: string,
-): ScanVerdict["verdict"] {
+export function mapVerdictLevel(verdict: string): ScanVerdict["verdict"] {
   switch (verdict) {
     case "malicious":
       return "DENY";
@@ -27,9 +25,9 @@ export function mapVerdictLevel(
 }
 
 /**
-* Shared mapping from control-plane scan rows to the public `ScanVerdict` payload used by
-* both the SSE feed and `/api/scans/recent` endpoints.
-*/
+ * Shared mapping from control-plane scan rows to the public `ScanVerdict` payload used by
+ * both the SSE feed and `/api/scans/recent` endpoints.
+ */
 export function mapScanRow(row: ControlPlaneScanRow): ScanVerdict {
   return {
     id: String(row.id),
