@@ -27,9 +27,8 @@ describe("dataKeyProvider", () => {
   });
 
   it("uses raw data key and caches materials", async () => {
-    const { loadEncryptionMaterials } = await import(
-      "../crypto/dataKeyProvider"
-    );
+    const { loadEncryptionMaterials } =
+      await import("../crypto/dataKeyProvider");
     const key = Buffer.from("super-secret-key").toString("base64");
 
     const first = await loadEncryptionMaterials(
@@ -58,9 +57,8 @@ describe("dataKeyProvider", () => {
     });
     (global as any).fetch = fetchMock;
 
-    const { loadEncryptionMaterials } = await import(
-      "../crypto/dataKeyProvider"
-    );
+    const { loadEncryptionMaterials } =
+      await import("../crypto/dataKeyProvider");
     const materials = await loadEncryptionMaterials(
       {
         vaultAddress: "https://vault.local",
@@ -93,9 +91,8 @@ describe("dataKeyProvider", () => {
       },
     }));
 
-    const { loadEncryptionMaterials } = await import(
-      "../crypto/dataKeyProvider"
-    );
+    const { loadEncryptionMaterials } =
+      await import("../crypto/dataKeyProvider");
     const materials = await loadEncryptionMaterials(
       {
         encryptedDataKey: Buffer.from("ciphertext").toString("base64"),
@@ -110,9 +107,8 @@ describe("dataKeyProvider", () => {
   });
 
   it("throws when no data key sources are configured", async () => {
-    const { loadEncryptionMaterials } = await import(
-      "../crypto/dataKeyProvider"
-    );
+    const { loadEncryptionMaterials } =
+      await import("../crypto/dataKeyProvider");
 
     await expect(
       loadEncryptionMaterials({} as any, logger as any),
