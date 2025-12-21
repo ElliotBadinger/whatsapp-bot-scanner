@@ -79,13 +79,27 @@ export class SessionManager {
       return false;
     }
 
-    const storedFingerprint: SessionFingerprint = JSON.parse(
-      stored.fingerprint || "{}",
+    const storedFingerprint = this.normalizeFingerprint(
+      JSON.parse(stored.fingerprint || "{}") as Partial<SessionFingerprint>,
     );
 
-    if (!this.fingerprintsMatch(storedFingerprint, currentFingerprint)) {
-      this.logger.error(
-        { sessionId, stored: storedFingerprint, current: currentFingerprint },
+    const normalizedCurrentFingerprint = this.normalizeFingerprint(
+      currentFingerprint,
+    );
+
+    if (
+      !this.fingerprintsMatch(storedFingerprint, normalizedCurrentFingerprint)
+    ) {
+      this.logger.warn(
+        {
+          sessionId,
+          mismatch: this.getFingerprintMismatch(
+            storedFingerprint,
+            normalizedCurrentFingerprint,
+          ),
+          stored: this.summarizeFingerprintForLog(storedFingerprint),
+          current: this.summarizeFingerprintForLog(normalizedCurrentFingerprint),
+        },
         "Session fingerprint mismatch - possible hijack",
       );
       await this.invalidateSession(sessionId);
@@ -171,6 +185,108 @@ export class SessionManager {
     }
 
     return true;
+  }
+
+  private normalizeFingerprint(
+    fingerprint: Partial<SessionFingerprint>,
+  ): SessionFingerprint {
+    return {
+      userAgent: fingerprint.userAgent ?? "",
+      ipAddress: fingerprint.ipAddress ?? "",
+      platform: fingerprint.platform ?? "",
+    };
+  }
+
+  private getFingerprintMismatch(
+    stored: SessionFingerprint,
+    current: SessionFingerprint,
+  ): {
+    userAgent: boolean;
+    ipSubnet: boolean;
+    platform: boolean;
+  } {
+    return {
+      userAgent: stored.userAgent !== current.userAgent,
+      platform: stored.platform !== current.platform,
+      ipSubnet: !this.ipInSameSubnet(stored.ipAddress, current.ipAddress),
+    };
+  }
+
+  private summarizeFingerprintForLog(
+    fingerprint: SessionFingerprint,
+  ): {
+    userAgentHash: string | null;
+    ipHash: string | null;
+    ipSubnet: string | null;
+    ipKind: "missing" | "ipv4" | "ipv6" | "unknown";
+    platform: string;
+  } {
+    return {
+      userAgentHash: this.digestSensitiveValue("ua", fingerprint.userAgent),
+      ipHash: this.digestSensitiveValue("ip", fingerprint.ipAddress),
+      ipSubnet: this.subnet24(fingerprint.ipAddress),
+      ipKind: this.ipKind(fingerprint.ipAddress),
+      platform: fingerprint.platform,
+    };
+  }
+
+  private digestSensitiveValue(label: string, value: string): string | null {
+    const normalized = value.trim();
+    if (!normalized) {
+      return null;
+    }
+
+    const secret = process.env.IDENTIFIER_HASH_SECRET;
+    const digest = secret
+      ? crypto
+          .createHmac("sha256", secret)
+          .update(`${label}:${normalized}`)
+          .digest("hex")
+      : crypto
+          .createHash("sha256")
+          .update(`${label}:${normalized}`)
+          .digest("hex");
+
+    return digest.slice(0, 16);
+  }
+
+  private subnet24(ip: string): string | null {
+    const normalized = ip.trim();
+    if (!normalized) {
+      return null;
+    }
+
+    const parts = normalized.split(".");
+    if (parts.length !== 4) {
+      return null;
+    }
+
+    const parsed = parts.map((part) => Number.parseInt(part, 10));
+    if (
+      parsed.some((value) => !Number.isFinite(value) || value < 0 || value > 255)
+    ) {
+      return null;
+    }
+
+    return `${parsed[0]}.${parsed[1]}.${parsed[2]}.x`;
+  }
+
+  private ipKind(ip: string): "missing" | "ipv4" | "ipv6" | "unknown" {
+    const normalized = ip.trim();
+    if (!normalized) {
+      return "missing";
+    }
+
+    if (normalized.includes(":")) {
+      return "ipv6";
+    }
+
+    const parts = normalized.split(".");
+    if (parts.length === 4) {
+      return "ipv4";
+    }
+
+    return "unknown";
   }
 
   private ipInSameSubnet(ip1: string, ip2: string): boolean {
