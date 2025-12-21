@@ -1,27 +1,27 @@
-import dns from 'node:dns/promises';
-import ipaddr from 'ipaddr.js';
+import dns from "node:dns/promises";
+import ipaddr from "ipaddr.js";
 
 const privateCidrs = [
-  '0.0.0.0/8',      // Current network (includes 0.0.0.0)
-  '10.0.0.0/8',     // Private network
-  '172.16.0.0/12',  // Private network
-  '192.168.0.0/16', // Private network
-  '127.0.0.0/8',    // Loopback
-  '169.254.0.0/16', // Link-local
-  '::/128',         // IPv6 Unspecified
-  '::1/128',        // IPv6 Loopback
-  'fc00::/7',       // Unique Local
-  'fe80::/10'       // Link-local
-].map(c => ipaddr.parseCIDR(c));
+  "0.0.0.0/8", // Current network (includes 0.0.0.0)
+  "10.0.0.0/8", // Private network
+  "172.16.0.0/12", // Private network
+  "192.168.0.0/16", // Private network
+  "127.0.0.0/8", // Loopback
+  "169.254.0.0/16", // Link-local
+  "::/128", // IPv6 Unspecified
+  "::1/128", // IPv6 Loopback
+  "fc00::/7", // Unique Local
+  "fe80::/10", // Link-local
+].map((c) => ipaddr.parseCIDR(c));
 
 const BLOCKED_HOSTNAMES = [
-  'localhost',
-  '127.0.0.1',
-  '0.0.0.0',
-  '::1',
-  'internal',
-  'metadata',
-  '169.254.169.254'
+  "localhost",
+  "127.0.0.1",
+  "0.0.0.0",
+  "::1",
+  "internal",
+  "metadata",
+  "169.254.169.254",
 ];
 
 export async function isPrivateHostname(hostname: string): Promise<boolean> {
@@ -34,19 +34,18 @@ export async function isPrivateHostname(hostname: string): Promise<boolean> {
 
   try {
     const addrs = await dns.lookup(hostname, { all: true, family: 0 });
-    return addrs.some(a => isPrivateIp(a.address));
+    return addrs.some((a) => isPrivateIp(a.address));
   } catch {
     return true; // fail closed
   }
 }
-
 
 export function isPrivateIp(ip: string): boolean {
   try {
     let addr = ipaddr.parse(ip);
 
     // Handle IPv4-mapped IPv6 addresses (e.g., ::ffff:127.0.0.1)
-    if (addr.kind() === 'ipv6' && (addr as ipaddr.IPv6).isIPv4MappedAddress()) {
+    if (addr.kind() === "ipv6" && (addr as ipaddr.IPv6).isIPv4MappedAddress()) {
       addr = (addr as ipaddr.IPv6).toIPv4Address();
     }
 
