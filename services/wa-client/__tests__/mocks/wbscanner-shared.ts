@@ -146,12 +146,3 @@ export const hashMessageId = (input: string) => input;
 export const isIdentifierHash = () => false;
 
 export class InMemoryRedis extends FakeRedis {}
-
-export const hashChatId = (input: string) =>
-  `chat_${crypto.createHash("sha256").update(input).digest("hex").slice(0, 12)}`;
-export const hashMessageId = (input: string) =>
-  `msg_${crypto.createHash("sha256").update(input).digest("hex").slice(0, 12)}`;
-export const isIdentifierHash = (input: string) =>
-  input.startsWith("chat_") || input.startsWith("msg_");
-
-export class InMemoryRedis extends FakeRedis {}
