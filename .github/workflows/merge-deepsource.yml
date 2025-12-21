@@ -1,0 +1,23 @@
+name: Merge DeepSource Style PRs
+
+on:
+  schedule:
+    - cron: "15 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: merge-deepsource
+  cancel-in-progress: true
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge DeepSource PRs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node .github/scripts/merge-deepsource.mjs
