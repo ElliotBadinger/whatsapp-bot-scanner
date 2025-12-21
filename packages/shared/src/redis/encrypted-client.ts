@@ -15,7 +15,7 @@ export class EncryptedRedisClient {
   private readonly allowUnencryptedReads: boolean;
   private readonly strictDecryption: boolean;
   private readonly logger: Logger;
-  private readonly decryptWarnings = new Set<string>();
+  private readonly decryptWarnings = new Map<string, number>();
 
   constructor(
     public readonly client: Redis,
@@ -98,13 +98,31 @@ export class EncryptedRedisClient {
     const field = context.field ?? "";
     const warnKey = `${context.operation}:${key}:${field}`;
 
-    if (this.decryptWarnings.has(warnKey)) {
+    const now = Date.now();
+    const lastWarningAt = this.decryptWarnings.get(warnKey);
+    if (lastWarningAt !== undefined && now - lastWarningAt < 5 * 60 * 1000) {
       return;
     }
-    this.decryptWarnings.add(warnKey);
-    if (this.decryptWarnings.size > 1000) {
-      this.decryptWarnings.clear();
+
+    if (!this.decryptWarnings.has(warnKey) && this.decryptWarnings.size >= 1000) {
+      for (const [k, lastAt] of this.decryptWarnings.entries()) {
+        if (now - lastAt > 10 * 60 * 1000) {
+          this.decryptWarnings.delete(k);
+        }
+        if (this.decryptWarnings.size < 1000) {
+          break;
+        }
+      }
+
+      if (this.decryptWarnings.size >= 1000) {
+        const oldestKey = this.decryptWarnings.keys().next().value;
+        if (oldestKey !== undefined) {
+          this.decryptWarnings.delete(oldestKey);
+        }
+      }
     }
+
+    this.decryptWarnings.set(warnKey, now);
 
     this.logger.warn(
       {
