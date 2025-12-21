@@ -115,7 +115,22 @@ export async function POST(req: Request) {
 
     return NextResponse.json(data, { status });
   } catch (err) {
-    const status = err instanceof ControlPlaneError ? err.status : 502;
-    return NextResponse.json({ error: "override_create_failed" }, { status });
+    if (err instanceof ControlPlaneError) {
+      if (err.status === 400 && err.code === "VALIDATION_ERROR") {
+        return NextResponse.json({ error: "invalid_request" }, { status: 400 });
+      }
+
+      const status =
+        typeof err.status === "number" && err.status >= 400 && err.status < 600
+          ? err.status
+          : 502;
+
+      return NextResponse.json({ error: "override_create_failed" }, { status });
+    }
+
+    return NextResponse.json(
+      { error: "override_create_failed" },
+      { status: 502 },
+    );
   }
 }
