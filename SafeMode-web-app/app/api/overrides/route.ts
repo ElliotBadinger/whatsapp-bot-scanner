@@ -108,7 +108,7 @@ export async function POST(req: Request) {
       contentType.includes("application/json") || contentType.includes("+json");
 
     if (resp.ok && (resp.status === 204 || resp.status === 205)) {
-      return new NextResponse(null, { status: resp.status });
+      return new NextResponse(undefined, { status: resp.status });
     }
 
     if (resp.ok) {
