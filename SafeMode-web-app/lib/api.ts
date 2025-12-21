@@ -66,11 +66,12 @@ async function fetchJsonInternal<T>(
       cache: "no-store",
     });
   } catch (err) {
-    const message =
-      err instanceof Error && err.name === "AbortError"
-        ? "Request timed out."
-        : "Network request failed.";
-    throw new ApiError(message, { status: 502, code: "network_error" });
+    const isAbort = err instanceof Error && err.name === "AbortError";
+    const message = isAbort ? "Request timed out." : "Network request failed.";
+    throw new ApiError(message, {
+      status: 0,
+      code: isAbort ? "timeout" : "network_error",
+    });
   }
 
   const contentType = resp.headers.get("content-type") ?? "";
