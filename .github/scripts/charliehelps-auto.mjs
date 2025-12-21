@@ -11,6 +11,16 @@ const repo = process.env.GITHUB_REPOSITORY;
 const prNumberRaw = process.env.PR_NUMBER;
 const mode = (process.env.MODE ?? "reply").toLowerCase();
 
+const allowedModes = new Set(["reply", "fast-forward"]);
+if (!allowedModes.has(mode)) {
+  console.error(
+    `Invalid MODE=${mode}. Expected one of: ${Array.from(allowedModes).join(
+      ", ",
+    )}.`,
+  );
+  process.exit(1);
+}
+
 if (!token) {
   console.error("GITHUB_TOKEN is required");
   process.exit(1);
