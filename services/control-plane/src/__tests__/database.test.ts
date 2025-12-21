@@ -59,9 +59,10 @@ describe("control-plane database", () => {
       logger,
     });
 
-    const select = await conn.query("SELECT * FROM overrides WHERE id = $1", [
-      1,
-    ]);
+    const select = await conn.query(
+      "SELECT * FROM overrides WHERE id = $1",
+      [1],
+    );
     expect(select.rows).toEqual([]);
 
     const update = await conn.query(
