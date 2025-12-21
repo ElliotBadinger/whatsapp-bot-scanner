@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ApiError, muteGroup, unmuteGroup } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -60,18 +60,17 @@ const mockGroups: Group[] = [
 
 export function GroupsManager() {
   const [groups, setGroups] = useState<Group[]>(mockGroups);
+  const requestInFlight = useRef(false);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handleSetMute = async (groupId: string, nextIsMuted: boolean) => {
+    if (requestInFlight.current) return;
+    requestInFlight.current = true;
     setLoadingId(groupId);
     setError(null);
     try {
-      if (nextIsMuted) {
-        await muteGroup(groupId);
-      } else {
-        await unmuteGroup(groupId);
-      }
+      await (nextIsMuted ? muteGroup(groupId) : unmuteGroup(groupId));
 
       setGroups((prev) =>
         prev.map((g) =>
@@ -86,6 +85,7 @@ export function GroupsManager() {
       }
     } finally {
       setLoadingId(null);
+      requestInFlight.current = false;
     }
   };
 

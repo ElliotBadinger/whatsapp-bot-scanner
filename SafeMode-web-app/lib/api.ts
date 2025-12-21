@@ -50,12 +50,20 @@ async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
     cache: "no-store",
   });
 
+  const contentType = resp.headers.get("content-type") ?? "";
+  const isJson = contentType.includes("application/json");
+
   if (resp.ok) {
+    if (!isJson) {
+      throw new ApiError("Unexpected response format.", { status: resp.status });
+    }
     return resp.json() as Promise<T>;
   }
 
-  const body = (await resp.json().catch(() => ({}))) as { error?: string };
-  const code = typeof body.error === "string" ? body.error : undefined;
+  const body = isJson
+    ? ((await resp.json().catch(() => ({}))) as { error?: string })
+    : {};
+  const code = isJson && typeof body.error === "string" ? body.error : undefined;
 
   const message =
     resp.status === 400
@@ -75,8 +83,16 @@ export async function getStatus(): Promise<SystemStatus> {
   return fetchJson<SystemStatus>("/api/status");
 }
 
+function normalizeLimit(limit: unknown, fallback = 10): number {
+  const parsed = Number.parseInt(String(limit), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.min(parsed, 100);
+}
+
 export async function getRecentScans(limit = 10): Promise<ScanVerdict[]> {
-  return fetchJson<ScanVerdict[]>(`/api/scans/recent?limit=${limit}`);
+  const normalizedLimit = normalizeLimit(limit, 10);
+  const limitParam = encodeURIComponent(String(normalizedLimit));
+  return fetchJson<ScanVerdict[]>(`/api/scans/recent?limit=${limitParam}`);
 }
 
 export async function rescanUrl(url: string): Promise<RescanResult> {

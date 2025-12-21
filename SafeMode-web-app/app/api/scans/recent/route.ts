@@ -4,8 +4,8 @@ import {
   controlPlaneFetchJson,
 } from "@/lib/control-plane-server";
 import {
-  mapScanRow,
   type ControlPlaneScanRow,
+  mapScanRow,
 } from "@/lib/control-plane-mappers";
 
 export async function GET(req: Request) {

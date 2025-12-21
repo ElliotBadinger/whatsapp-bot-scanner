@@ -1,7 +1,7 @@
 import { controlPlaneFetchJson } from "@/lib/control-plane-server";
 import {
-  mapScanRow,
   type ControlPlaneScanRow,
+  mapScanRow,
 } from "@/lib/control-plane-mappers";
 import type { ScanVerdict } from "@/lib/api";
 
@@ -14,7 +14,19 @@ export async function GET() {
   let autoCloseTimeout: ReturnType<typeof setTimeout> | null = null;
 
   const cleanup = (controller?: ReadableStreamDefaultController) => {
-    if (closed) return;
+    const target = controller ?? streamController;
+    streamController = null;
+    if (closed) {
+      if (target) {
+        try {
+          target.close();
+        } catch {
+          // Ignore close races.
+        }
+      }
+      return;
+    }
+
     closed = true;
     if (pollInterval) clearInterval(pollInterval);
     if (pingInterval) clearInterval(pingInterval);
@@ -23,8 +35,6 @@ export async function GET() {
     pingInterval = null;
     autoCloseTimeout = null;
 
-    const target = controller ?? streamController;
-    streamController = null;
     if (target) {
       try {
         target.close();
