@@ -3,10 +3,14 @@ import { z } from "zod";
 import {
   ControlPlaneError,
   controlPlaneFetchWithBearerToken,
+  normalizeBearerToken,
 } from "@/lib/control-plane-server";
 
 const PostBodySchema = z.object({
-  token: z.string().trim().min(1),
+  token: z
+    .string()
+    .transform((value) => normalizeBearerToken(value))
+    .refine((value) => value.length > 0),
 });
 
 export async function POST(req: Request) {
@@ -37,7 +41,7 @@ export async function POST(req: Request) {
     if (resp.status >= 400 && resp.status < 500) {
       return NextResponse.json(
         { error: "control_plane_client_error", controlPlaneStatus: resp.status },
-        { status: 400 },
+        { status: resp.status },
       );
     }
 
