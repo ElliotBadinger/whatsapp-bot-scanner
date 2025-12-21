@@ -128,6 +128,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "override_create_failed" }, { status });
     }
 
-    return NextResponse.json({ error: "override_create_failed" }, { status: 502 });
+    return NextResponse.json(
+      { error: "override_create_failed" },
+      { status: 502 },
+    );
   }
 }
