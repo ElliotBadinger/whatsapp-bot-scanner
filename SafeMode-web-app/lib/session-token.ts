@@ -36,7 +36,11 @@ export type VerifySignedSessionTokenResult =
   | { ok: true; claims: SessionTokenClaims }
   | {
       ok: false;
-      reason: "invalid_format" | "invalid_signature" | "invalid_claims" | "expired";
+      reason:
+        | "invalid_format"
+        | "invalid_signature"
+        | "invalid_claims"
+        | "expired";
     };
 
 export function verifySignedSessionToken(
