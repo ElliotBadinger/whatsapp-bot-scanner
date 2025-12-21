@@ -169,10 +169,72 @@ describe("control-plane buildServer", () => {
     }
   });
 
+  test("GET /scans/recent accepts cursors with id 0", async () => {
+    const now = new Date().toISOString();
+    const cursor = Buffer.from(JSON.stringify({ ts: now, id: 0 })).toString(
+      "base64url",
+    );
+
+    const { app, dbClient } = await buildTestServer(async (sql: string) => {
+      if (sql.includes("WHERE last_seen_at >")) {
+        return {
+          rows: [
+            {
+              id: 1,
+              url_hash: "hash-1",
+              normalized_url: "https://example.com/after-0",
+              verdict: "benign",
+              last_seen_at: now,
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: `/scans/recent?limit=5&after=${encodeURIComponent(cursor)}`,
+        headers: authHeader,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(dbClient.query).toHaveBeenCalledWith(
+        expect.stringContaining("ORDER BY last_seen_at ASC"),
+        [now, now, 0, 5],
+      );
+    } finally {
+      await app.close();
+    }
+  });
+
   test("GET /scans/recent rejects invalid cursor", async () => {
     const badCursor = Buffer.from(JSON.stringify({ ts: "", id: -1 })).toString(
       "base64url",
     );
+
+    const { app, dbClient } = await buildTestServer();
+
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: `/scans/recent?after=${encodeURIComponent(badCursor)}`,
+        headers: authHeader,
+      });
+      expect(res.statusCode).toBe(400);
+      expect(JSON.parse(res.payload)).toEqual({
+        error: "invalid_after_cursor",
+      });
+      expect(dbClient.query).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
+  test("GET /scans/recent rejects cursors with invalid timestamps", async () => {
+    const badCursor = Buffer.from(
+      JSON.stringify({ ts: "not-a-timestamp", id: 10 }),
+    ).toString("base64url");
 
     const { app, dbClient } = await buildTestServer();
 

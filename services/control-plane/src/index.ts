@@ -134,15 +134,19 @@ export async function buildServer(options: BuildOptions = {}) {
             typeof obj.ts === "string" && obj.ts.trim().length > 0
               ? obj.ts
               : null;
-          const parsedId = Number.parseInt(String(obj.id ?? ""), 10);
+          const rawId = String(obj.id ?? "").trim();
+          const parsedId =
+            rawId.length > 0 && /^[0-9]+$/.test(rawId)
+              ? Number.parseInt(rawId, 10)
+              : Number.NaN;
           const parsedDate = lastSeenAt ? new Date(lastSeenAt) : null;
 
           if (
             !lastSeenAt ||
             !parsedDate ||
             Number.isNaN(parsedDate.getTime()) ||
-            !Number.isFinite(parsedId) ||
-            parsedId <= 0
+            !Number.isSafeInteger(parsedId) ||
+            parsedId < 0
           ) {
             throw new Error("Invalid cursor fields");
           }
