@@ -22,10 +22,15 @@ function getSessionSecret(options?: { secret?: string }): string {
   const explicit = (options?.secret ?? "").trim();
   if (explicit) return explicit;
 
+  const safemodeSecret = (process.env.SAFEMODE_SESSION_SECRET ?? "").trim();
+  if (safemodeSecret) return safemodeSecret;
+
   const fallback = (process.env.CONTROL_PLANE_API_TOKEN ?? "").trim();
   if (fallback) return fallback;
 
-  throw new Error("CONTROL_PLANE_API_TOKEN is required for session signing");
+  throw new Error(
+    "SAFEMODE_SESSION_SECRET or CONTROL_PLANE_API_TOKEN is required for session signing",
+  );
 }
 
 function computeSignature(payload: string, secret: string): string {
