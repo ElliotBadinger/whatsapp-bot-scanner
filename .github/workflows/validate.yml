@@ -1,0 +1,58 @@
+name: Validate Types
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - "services/**"
+      - "packages/**"
+      - "scripts/**"
+      - "jest.config.js"
+      - "tsconfig*.json"
+      - "package*.json"
+      - ".github/workflows/validate.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect lockfile
+        id: lockfile
+        run: |
+          if [ -f package-lock.json ]; then
+            echo "has_lockfile=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_lockfile=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node.js (cached)
+        if: steps.lockfile.outputs.has_lockfile == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: 'npm'
+
+      - name: Setup Node.js
+        if: steps.lockfile.outputs.has_lockfile != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Run comprehensive validation
+        run: ./scripts/validate-types.sh
