@@ -30,6 +30,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
       - name: Run CharlieHelps automation
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { hasPendingSuggestion, isWorkingMessage, latestComment } from './charliehelps-auto-lib.mjs';
+
 const token = process.env.GITHUB_TOKEN;
 const repo = process.env.GITHUB_REPOSITORY;
 const prNumberRaw = process.env.PR_NUMBER;
@@ -27,65 +29,122 @@ const headers = {
   'Accept': 'application/vnd.github+json',
 };
 
+class RetryableError extends Error {
+  constructor(message) {
+    super(message);
+    this.retryable = true;
+  }
+}
+
+const retryStatusCodes = new Set([408, 429, 500, 502, 503, 504]);
+const maxAttempts = 5;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function backoffMs(attempt) {
+  const base = 1000;
+  const jitter = Math.floor(Math.random() * 500);
+  return Math.min(15000, base * 2 ** (attempt - 1) + jitter);
+}
+
+function shouldRetryResponse(res) {
+  if (retryStatusCodes.has(res.status)) return true;
+  if (res.status === 403) {
+    const remaining = res.headers.get('x-ratelimit-remaining');
+    if (remaining === '0') return true;
+  }
+  return false;
+}
+
+async function withRetry(label, fn) {
+  let attempt = 1;
+  while (true) {
+    try {
+      return await fn();
+    } catch (err) {
+      const retryable = err?.retryable === true;
+      if (!retryable || attempt >= maxAttempts) throw err;
+      const delay = backoffMs(attempt);
+      console.log(`[retry] ${label} attempt ${attempt} failed, retrying in ${delay}ms`);
+      await sleep(delay);
+      attempt += 1;
+    }
+  }
+}
+
 async function ghGraphQL(query, variables) {
-  const res = await fetch('https://api.github.com/graphql', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ query, variables }),
+  return withRetry('graphql', async () => {
+    const res = await fetch('https://api.github.com/graphql', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ query, variables }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      if (shouldRetryResponse(res)) {
+        throw new RetryableError(`GraphQL retryable error ${res.status}: ${text}`);
+      }
+      throw new Error(`GraphQL error ${res.status}: ${text}`);
+    }
+    const data = await res.json();
+    if (data.errors) {
+      const message = JSON.stringify(data.errors);
+      if (/rate limit|timeout|timed out|temporarily unavailable/i.test(message)) {
+        throw new RetryableError(`GraphQL retryable errors: ${message}`);
+      }
+      throw new Error(`GraphQL errors: ${message}`);
+    }
+    return data.data;
   });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`GraphQL error ${res.status}: ${text}`);
-  }
-  const data = await res.json();
-  if (data.errors) {
-    throw new Error(`GraphQL errors: ${JSON.stringify(data.errors)}`);
-  }
-  return data.data;
 }
 
 async function ghRest(method, url, body) {
-  const res = await fetch(`https://api.github.com${url}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
+  return withRetry('rest', async () => {
+    const res = await fetch(`https://api.github.com${url}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      if (shouldRetryResponse(res)) {
+        throw new RetryableError(`REST retryable error ${res.status}: ${text}`);
+      }
+      throw new Error(`REST error ${res.status}: ${text}`);
+    }
+    if (res.status === 204) return null;
+    return res.json();
   });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`REST error ${res.status}: ${text}`);
+}
+
+async function fetchThreadComments(threadId) {
+  const comments = [];
+  let cursor = null;
+
+  while (true) {
+    const data = await ghGraphQL(
+      `query($id:ID!,$after:String){
+        node(id:$id){
+          ... on PullRequestReviewThread{
+            comments(first:100, after:$after){
+              pageInfo { hasNextPage endCursor }
+              nodes { author { login } body createdAt url }
+            }
+          }
+        }
+      }`,
+      { id: threadId, after: cursor }
+    );
+
+    const node = data.node;
+    const page = node?.comments;
+    if (!page) break;
+    comments.push(...page.nodes);
+    if (!page.pageInfo.hasNextPage) break;
+    cursor = page.pageInfo.endCursor;
   }
-  if (res.status === 204) return null;
-  return res.json();
-}
 
-const suggestionRegex = /reply with\s+"?@CharlieHelps\s+yes\s+please"?/i;
-const yesPleaseRegex = /@CharlieHelps\s+yes\s+please/i;
-const workingRegexes = [
-  /I[’']?m working/i,
-  /(can\'?t|can’t).*(interrupted|see replies)/i,
-  /(won\'?t|won’t) see replies while I[’']?m working/i,
-];
-
-function isWorkingMessage(body) {
-  if (!body) return false;
-  return workingRegexes.every((regex) => regex.test(body));
-}
-
-function hasYesPlease(comments) {
-  return comments.some((comment) => yesPleaseRegex.test(comment.body || ''));
-}
-
-function hasSuggestion(comments) {
-  return comments.some((comment) => {
-    const author = comment.author?.login || '';
-    if (author.toLowerCase() !== 'charliecreates') return false;
-    return suggestionRegex.test(comment.body || '');
-  });
-}
-
-function latestComment(comments) {
-  const sorted = [...comments].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-  return sorted[sorted.length - 1];
+  return comments;
 }
 
 async function getPullRequestWithThreads() {
@@ -105,15 +164,13 @@ async function getPullRequestWithThreads() {
             headRefOid
             mergeable
             mergeStateStatus
+            statusCheckRollup { state }
             headRepository { name owner { login } }
             reviewThreads(first:100, after:$after){
               pageInfo { hasNextPage endCursor }
               nodes {
                 id
                 isResolved
-                comments(first:100){
-                  nodes { author { login } body createdAt url }
-                }
               }
             }
           }
@@ -123,12 +180,16 @@ async function getPullRequestWithThreads() {
     );
 
     const pr = data.repository.pullRequest;
-    if (!prInfo) prInfo = pr;
+    if (!prInfo) prInfo = { ...pr, reviewThreads: undefined };
 
     threads.push(...pr.reviewThreads.nodes);
 
     if (!pr.reviewThreads.pageInfo.hasNextPage) break;
     cursor = pr.reviewThreads.pageInfo.endCursor;
+  }
+
+  for (const thread of threads) {
+    thread.comments = { nodes: await fetchThreadComments(thread.id) };
   }
 
   prInfo.reviewThreads = { nodes: threads };
@@ -164,10 +225,9 @@ async function main() {
       continue;
     }
 
-    if (!hasSuggestion(comments)) continue;
-    if (hasYesPlease(comments)) continue;
-
-    toReply.push(thread.id);
+    if (hasPendingSuggestion(comments)) {
+      toReply.push(thread.id);
+    }
   }
 
   if (toReply.length > 0) {
@@ -204,6 +264,11 @@ async function main() {
 
   if (pr.mergeStateStatus !== 'CLEAN' || pr.mergeable !== 'MERGEABLE') {
     console.log(`PR is not mergeable (mergeStateStatus=${pr.mergeStateStatus}, mergeable=${pr.mergeable}); skipping fast-forward.`);
+    return;
+  }
+
+  if (pr.statusCheckRollup?.state !== 'SUCCESS') {
+    console.log(`Status checks are not green (state=${pr.statusCheckRollup?.state ?? 'UNKNOWN'}); skipping fast-forward.`);
     return;
   }
 
