@@ -172,7 +172,19 @@ async function getPullRequestWithThreads() {
   const threads = [];
   let cursor = null;
   let prInfo = null;
-  const commentsPerThread = 10;
+
+  const DEFAULT_COMMENTS_PER_THREAD = 10;
+  const MAX_COMMENTS_PER_THREAD = 50;
+
+  const rawCommentsPerThread = process.env.CH_REV_COMMENTS_PER_THREAD;
+  const parsedCommentsPerThread =
+    rawCommentsPerThread && /^\d+$/.test(rawCommentsPerThread)
+      ? Number(rawCommentsPerThread)
+      : DEFAULT_COMMENTS_PER_THREAD;
+  const commentsPerThread = Math.min(
+    Math.max(parsedCommentsPerThread, 1),
+    MAX_COMMENTS_PER_THREAD,
+  );
 
   while (true) {
     const data = await ghGraphQL(
@@ -210,15 +222,24 @@ async function getPullRequestWithThreads() {
     if (!prInfo) prInfo = { ...pr, reviewThreads: undefined };
 
     threads.push(
-      ...pr.reviewThreads.nodes.map((thread) => ({
-        ...thread,
-        comments: thread.comments
-          ? {
-              ...thread.comments,
-              nodes: thread.comments.nodes ? [...thread.comments.nodes] : [],
-            }
-          : thread.comments,
-      })),
+      ...pr.reviewThreads.nodes.map((thread) => {
+        const comments = thread.comments ?? {
+          nodes: [],
+          pageInfo: { hasPreviousPage: false },
+        };
+        const pageInfo = {
+          ...(comments.pageInfo ?? {}),
+          hasPreviousPage: Boolean(comments.pageInfo?.hasPreviousPage),
+        };
+
+        return {
+          ...thread,
+          comments: {
+            nodes: Array.isArray(comments.nodes) ? [...comments.nodes] : [],
+            pageInfo,
+          },
+        };
+      }),
     );
 
     if (!pr.reviewThreads.pageInfo.hasNextPage) break;
@@ -265,6 +286,20 @@ async function replyToThread(threadId) {
   return data.addPullRequestReviewThreadReply.comment.url;
 }
 
+async function hasPendingSuggestionForThread(thread, commentPreview) {
+  // We treat the latest comment window as authoritative: if it indicates a
+  // pending suggestion and the window is truncated, we hydrate full history
+  // to check for older acks before replying.
+  if (!commentPreview || commentPreview.length === 0) return false;
+
+  const previewPending = hasPendingSuggestion(commentPreview);
+  if (!previewPending) return false;
+
+  if (!thread.comments?.pageInfo?.hasPreviousPage) return true;
+  const fullComments = await fetchThreadComments(thread.id);
+  return hasPendingSuggestion(fullComments);
+}
+
 async function main() {
   const pr = await getPullRequestWithThreads();
 
@@ -285,13 +320,10 @@ async function main() {
       continue;
     }
 
-    let pendingSuggestion = hasPendingSuggestion(commentPreview);
-    if (pendingSuggestion && thread.comments?.pageInfo?.hasPreviousPage) {
-      // If the preview is truncated, hydrate the full thread so we don't falsely
-      // reply when an ack exists outside the preview window.
-      const fullComments = await fetchThreadComments(thread.id);
-      pendingSuggestion = hasPendingSuggestion(fullComments);
-    }
+    const pendingSuggestion = await hasPendingSuggestionForThread(
+      thread,
+      commentPreview,
+    );
 
     if (pendingSuggestion) {
       toReply.push(thread.id);
