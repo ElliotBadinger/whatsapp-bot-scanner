@@ -25,11 +25,11 @@ export interface PhishtankDecisionInput {
 }
 
 /**
-* Determines whether Phishtank should be queried in addition to GSB.
-*
-* Phishtank is treated as a redundancy/fallback mechanism when GSB is slow,
-* misconfigured, or errors while reporting a hit.
-*/
+ * Determines whether Phishtank should be queried in addition to GSB.
+ *
+ * Phishtank is treated as a redundancy/fallback mechanism when GSB is slow,
+ * misconfigured, or errors while reporting a hit.
+ */
 export function shouldQueryPhishtank({
   gsbHit,
   gsbError,
