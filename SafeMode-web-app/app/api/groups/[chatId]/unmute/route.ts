@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import {
   ControlPlaneError,
   controlPlaneFetchJson,
 } from "@/lib/control-plane-server";
-
-const ChatIdSchema = z.string().trim().min(1).max(128);
+import { ChatIdSchema } from "@/lib/chat-id-schema";
 
 export async function POST(
   _req: Request,
