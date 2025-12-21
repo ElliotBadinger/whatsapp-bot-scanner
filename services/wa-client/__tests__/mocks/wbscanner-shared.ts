@@ -139,3 +139,9 @@ export const assertControlPlaneToken = (): string =>
   (process.env.CONTROL_PLANE_API_TOKEN || "test-token").trim();
 export const createRedisConnection = () => new (FakeRedis as any)();
 export const connectRedis = async () => undefined;
+
+export const hashChatId = (input: string) => input;
+export const hashMessageId = (input: string) => input;
+export const isIdentifierHash = () => false;
+
+export class InMemoryRedis extends FakeRedis {}
