@@ -145,6 +145,24 @@ describe("charliehelps-auto helpers", () => {
     expect(lib.hasPendingSuggestion(comments)).toBe(true);
   });
 
+  test("treats github-actions bot ack as satisfying suggestion", async () => {
+    const lib = await importEsm(libPath);
+    const comments = [
+      {
+        author: { __typename: "Bot", login: "charliecreates" },
+        body: "At minimum, add a hard gate so this job only runs for a trusted actor.",
+        createdAt: "2025-12-21T07:59:00Z",
+      },
+      {
+        author: { __typename: "Bot", login: "github-actions[bot]" },
+        body: "@CharlieHelps yes please",
+        createdAt: "2025-12-21T08:00:00Z",
+      },
+    ];
+
+    expect(lib.hasPendingSuggestion(comments)).toBe(false);
+  });
+
   test("does not treat older ack as satisfying newer suggestion", async () => {
     const lib = await importEsm(libPath);
     const comments = [
