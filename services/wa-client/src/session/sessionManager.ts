@@ -372,7 +372,8 @@ export class SessionManager {
       ? rawParts[1].split(":").filter((part) => part.length > 0)
       : [];
 
-    const mappedIpv4 = right.length > 0 && right[right.length - 1].includes(".");
+    const mappedIpv4 =
+      right.length > 0 && right[right.length - 1].includes(".");
     const rightHextets = mappedIpv4
       ? right.slice(0, -1).concat(this.ipv4ToHextets(right[right.length - 1]))
       : right;
