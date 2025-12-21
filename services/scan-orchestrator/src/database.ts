@@ -1,7 +1,8 @@
 import * as fs from "fs";
 import * as path from "path";
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 import type { Logger } from "pino";
+import { config as sharedConfig } from "@wbscanner/shared";
 
 type SqliteStatement = {
   all: (...params: unknown[]) => unknown[];
@@ -164,12 +165,26 @@ export class SQLiteConnection implements IDatabaseConnection {
 export class PostgresConnection implements IDatabaseConnection {
   private pool: Pool;
   private logger: Logger | undefined;
+  private readonly role: string;
+  private readonly enforceRole: boolean;
 
   constructor(config: DatabaseConfig = {}) {
     this.logger = config.logger;
+    const connectionString = sharedConfig.database.scanOrchestrator.connectionString;
+    const postgresEnabled = Boolean(
+      connectionString && connectionString.startsWith("postgres"),
+    );
+
+    this.role = sharedConfig.database.scanOrchestrator.role;
+    this.enforceRole = sharedConfig.nodeEnv === "production" && postgresEnabled;
+    if (this.enforceRole && !process.env.DB_SCAN_ORCHESTRATOR_URL) {
+      throw new Error(
+        "DB_SCAN_ORCHESTRATOR_URL must be set in production when using Postgres",
+      );
+    }
+
     this.pool = new Pool({
-      connectionString:
-        process.env.DB_SCAN_ORCHESTRATOR_URL || process.env.DATABASE_URL,
+      connectionString,
     });
 
     this.pool.on("error", (err: Error) => {
@@ -187,6 +202,21 @@ export class PostgresConnection implements IDatabaseConnection {
     return this.pool;
   }
 
+  private async setRole(client: PoolClient): Promise<void> {
+    const role = this.role;
+    if (!/^[a-z0-9_]+$/i.test(role)) {
+      throw new Error("Invalid Postgres role name");
+    }
+
+    const marker = client as unknown as { __wbscannerRole?: string };
+    if (marker.__wbscannerRole === role) {
+      return;
+    }
+
+    await client.query(`SET ROLE ${role}`);
+    marker.__wbscannerRole = role;
+  }
+
   async query(
     sql: string,
     params: unknown[] = [],
@@ -196,8 +226,19 @@ export class PostgresConnection implements IDatabaseConnection {
       let paramIndex = 1;
       const pgSql = sql.replace(/\?/g, () => `$${paramIndex++}`);
 
-      const result = await this.pool.query(pgSql, params);
-      return { rows: result.rows };
+      if (!this.enforceRole) {
+        const result = await this.pool.query(pgSql, params);
+        return { rows: result.rows };
+      }
+
+      const client = await this.pool.connect();
+      try {
+        await this.setRole(client);
+        const result = await client.query(pgSql, params);
+        return { rows: result.rows };
+      } finally {
+        client.release();
+      }
     } catch (error) {
       if (this.logger) {
         this.logger.error({ error, sql, params }, "Database query failed");
@@ -243,8 +284,7 @@ let sharedConnection: IDatabaseConnection | null = null;
 
 export function getSharedConnection(logger?: Logger): IDatabaseConnection {
   if (!sharedConnection) {
-    const connectionUrl =
-      process.env.DB_SCAN_ORCHESTRATOR_URL || process.env.DATABASE_URL;
+    const connectionUrl = sharedConfig.database.scanOrchestrator.connectionString;
     if (connectionUrl && connectionUrl.startsWith("postgres")) {
       sharedConnection = new PostgresConnection({ logger });
     } else {
@@ -257,8 +297,7 @@ export function getSharedConnection(logger?: Logger): IDatabaseConnection {
 export function createConnection(
   config: DatabaseConfig = {},
 ): IDatabaseConnection {
-  const connectionUrl =
-    process.env.DB_SCAN_ORCHESTRATOR_URL || process.env.DATABASE_URL;
+  const connectionUrl = sharedConfig.database.scanOrchestrator.connectionString;
   if (connectionUrl && connectionUrl.startsWith("postgres")) {
     return new PostgresConnection(config);
   }
