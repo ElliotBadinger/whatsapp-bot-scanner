@@ -54,7 +54,7 @@ async function getSharedQueue(): Promise<Queue> {
 function createAuthHook(expectedToken: string) {
   const expectedHash = crypto
     .createHash("sha256")
-    .update(expectedToken)
+    .update(expectedToken, "utf8")
     .digest();
 
   return function authHook(
@@ -75,7 +75,16 @@ function createAuthHook(expectedToken: string) {
     const token = trimmed.startsWith("Bearer ")
       ? trimmed.slice(7).trim()
       : trimmed;
-    const tokenHash = crypto.createHash("sha256").update(token).digest();
+
+    if (!token) {
+      reply.code(401).send({ error: "unauthorized" });
+      return;
+    }
+
+    const tokenHash = crypto
+      .createHash("sha256")
+      .update(token, "utf8")
+      .digest();
 
     let matches = false;
     try {
