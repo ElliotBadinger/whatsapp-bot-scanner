@@ -8,10 +8,17 @@ export interface AuditLogEntry {
   timestamp?: Date;
 }
 
+export interface PersistedAuditLogEntry {
+  actor: string;
+  action: string;
+  target: string | null;
+  timestamp: Date;
+  metadata: Record<string, unknown> | undefined;
+  metadataJson: string | null;
+}
+
 export interface AuditLoggerConfig {
-  dbClient: {
-    query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
-  };
+  persist?: (entry: PersistedAuditLogEntry) => Promise<void>;
   enabled?: boolean;
 }
 
@@ -20,19 +27,15 @@ export interface AuditLoggerConfig {
  * Logs to both database and structured log output.
  */
 export class AuditLogger {
-  private readonly dbClient: AuditLoggerConfig["dbClient"];
+  private readonly persist?: AuditLoggerConfig["persist"];
   private readonly enabled: boolean;
 
   constructor(config: AuditLoggerConfig) {
-    this.dbClient = config.dbClient;
+    this.persist = config.persist;
     this.enabled = config.enabled ?? true;
   }
 
   async log(entry: AuditLogEntry): Promise<void> {
-    if (!this.enabled) {
-      return;
-    }
-
     const timestamp = entry.timestamp ?? new Date();
     const metadata = entry.metadata ? JSON.stringify(entry.metadata) : null;
 
@@ -48,13 +51,20 @@ export class AuditLogger {
       `Audit: ${entry.action}`,
     );
 
+    if (!this.enabled || !this.persist) {
+      return;
+    }
+
     // Persist to database
     try {
-      await this.dbClient.query(
-        `INSERT INTO audit_logs (actor, action, target, timestamp, metadata) 
-         VALUES (?, ?, ?, ?, ?)`,
-        [entry.actor, entry.action, entry.target ?? null, timestamp, metadata],
-      );
+      await this.persist({
+        actor: entry.actor,
+        action: entry.action,
+        target: entry.target ?? null,
+        timestamp,
+        metadata: entry.metadata,
+        metadataJson: metadata,
+      });
     } catch (error) {
       logger.error(
         { error, entry },

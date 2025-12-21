@@ -1,16 +1,13 @@
 import { AuditLogger, createAuditLogger } from "../src/audit-logger";
+import { logger } from "../src/log";
 
 describe("AuditLogger", () => {
-  let mockDbClient: {
-    query: jest.Mock;
-  };
+  let persistMock: jest.Mock;
   let auditLogger: AuditLogger;
 
   beforeEach(() => {
-    mockDbClient = {
-      query: jest.fn().mockResolvedValue({ rows: [] }),
-    };
-    auditLogger = createAuditLogger({ dbClient: mockDbClient });
+    persistMock = jest.fn().mockResolvedValue(undefined);
+    auditLogger = createAuditLogger({ persist: persistMock });
   });
 
   describe("log", () => {
@@ -21,13 +18,13 @@ describe("AuditLogger", () => {
         target: "test_target",
       });
 
-      expect(mockDbClient.query).toHaveBeenCalledWith(
-        expect.stringContaining("INSERT INTO audit_logs"),
-        expect.arrayContaining([
-          "user@example.com",
-          "test_action",
-          "test_target",
-        ]),
+      expect(persistMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actor: "user@example.com",
+          action: "test_action",
+          target: "test_target",
+          timestamp: expect.any(Date),
+        }),
       );
     });
 
@@ -38,9 +35,10 @@ describe("AuditLogger", () => {
         metadata: { oldValue: 1, newValue: 2 },
       });
 
-      expect(mockDbClient.query).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.arrayContaining([expect.stringContaining('"oldValue":1')]),
+      expect(persistMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadataJson: expect.stringContaining('"oldValue":1'),
+        }),
       );
     });
 
@@ -50,15 +48,21 @@ describe("AuditLogger", () => {
         action: "startup",
       });
 
-      expect(mockDbClient.query).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.arrayContaining(["system", "startup", null]),
+      expect(persistMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actor: "system",
+          action: "startup",
+          target: null,
+        }),
       );
     });
 
-    it("should not log when disabled", async () => {
+    it("should not persist when disabled", async () => {
+      const infoSpy = jest
+        .spyOn(logger, "info")
+        .mockImplementation(() => undefined as never);
       const disabledLogger = createAuditLogger({
-        dbClient: mockDbClient,
+        persist: persistMock,
         enabled: false,
       });
 
@@ -67,11 +71,13 @@ describe("AuditLogger", () => {
         action: "test",
       });
 
-      expect(mockDbClient.query).not.toHaveBeenCalled();
+      expect(infoSpy).toHaveBeenCalled();
+      expect(persistMock).not.toHaveBeenCalled();
+      infoSpy.mockRestore();
     });
 
     it("should handle database errors gracefully", async () => {
-      mockDbClient.query.mockRejectedValueOnce(new Error("DB error"));
+      persistMock.mockRejectedValueOnce(new Error("DB error"));
 
       await expect(
         auditLogger.log({
@@ -88,9 +94,12 @@ describe("AuditLogger", () => {
         ip: "192.168.1.1",
       });
 
-      expect(mockDbClient.query).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.arrayContaining(["system", "session:created", "session-123"]),
+      expect(persistMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actor: "system",
+          action: "session:created",
+          target: "session-123",
+        }),
       );
     });
 
@@ -99,9 +108,10 @@ describe("AuditLogger", () => {
         reason: "manual",
       });
 
-      expect(mockDbClient.query).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.arrayContaining(["session:invalidated"]),
+      expect(persistMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "session:invalidated",
+        }),
       );
     });
   });
@@ -112,9 +122,11 @@ describe("AuditLogger", () => {
         method: "token",
       });
 
-      expect(mockDbClient.query).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.arrayContaining(["user@example.com", "auth:login"]),
+      expect(persistMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actor: "user@example.com",
+          action: "auth:login",
+        }),
       );
     });
 
@@ -124,9 +136,10 @@ describe("AuditLogger", () => {
         reason: "invalid_token",
       });
 
-      expect(mockDbClient.query).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.arrayContaining(["auth:failed"]),
+      expect(persistMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "auth:failed",
+        }),
       );
     });
   });
@@ -142,13 +155,12 @@ describe("AuditLogger", () => {
         },
       );
 
-      expect(mockDbClient.query).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.arrayContaining([
-          "admin@example.com",
-          "admin:mute_group",
-          "group-123",
-        ]),
+      expect(persistMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actor: "admin@example.com",
+          action: "admin:mute_group",
+          target: "group-123",
+        }),
       );
     });
   });
@@ -159,11 +171,10 @@ describe("AuditLogger", () => {
         sessionId: "session-789",
       });
 
-      expect(mockDbClient.query).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.arrayContaining([
-          expect.stringContaining('"severity":"critical"'),
-        ]),
+      expect(persistMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadataJson: expect.stringContaining('"severity":"critical"'),
+        }),
       );
     });
   });
@@ -175,9 +186,12 @@ describe("AuditLogger", () => {
         scope: "global",
       });
 
-      expect(mockDbClient.query).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.arrayContaining(["admin", "override:create", "url-hash-123"]),
+      expect(persistMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actor: "admin",
+          action: "override:create",
+          target: "url-hash-123",
+        }),
       );
     });
   });
@@ -189,9 +203,12 @@ describe("AuditLogger", () => {
         score: 15,
       });
 
-      expect(mockDbClient.query).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.arrayContaining(["system", "scan:completed", "url-hash-456"]),
+      expect(persistMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actor: "system",
+          action: "scan:completed",
+          target: "url-hash-456",
+        }),
       );
     });
   });
