@@ -32,11 +32,17 @@ export class ApiError extends Error {
   public readonly status: number;
   public readonly code?: string;
 
-  constructor(message: string, options: { status: number; code?: string }) {
+  constructor(
+    message: string,
+    options: { status: number; code?: string; cause?: unknown },
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = options.status;
     this.code = options.code;
+    if (options.cause !== undefined) {
+      this.cause = options.cause;
+    }
   }
 }
 
@@ -71,6 +77,7 @@ async function fetchJsonInternal<T>(
     throw new ApiError(message, {
       status: 0,
       code: isAbort ? "timeout" : "network_error",
+      cause: err,
     });
   }
 
