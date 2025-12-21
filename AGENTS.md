@@ -20,11 +20,13 @@
 - Jest is configured by `packages/shared/jest.config.js`; place specs in `__tests__/` or name them `<feature>.test.ts` to match the default regex.
 - Run `npm test --workspaces` before opening a PR; add workspace-specific `test` scripts when services gain coverage.
 - For integration checks, bring the stack up with `make up`, hit Fastify endpoints or BullMQ queues through shared clients, and document manual steps in `docs/RUNBOOKS.md`.
+- For any files created or modified, add or update applicable unit, regression, integration, performance, mutation, property-based, and end-to-end tests.
 
 ## Commit & Pull Request Guidelines
 - Follow conventional commits: `type(scope): summary`, where `scope` maps to a service or package (e.g., `feat(control-plane): add mute audit log`); keep subjects imperative and under 72 characters.
 - Reference migrations, dashboards, or external tickets in the body when relevant, and squash fixups before pushing.
 - Pull requests should highlight behaviour changes, deployment or rollback notes, and test evidence; add screenshots or logs when altering APIs, dashboards, or alert rules.
+- Commits must be opened as pull requests every time.
 - After completing any code change or documentation update, agents must create a descriptive commit and push the branch before handing off work. Do not leave uncommitted edits in the workspace.
 
 ## Security & Configuration Tips
