@@ -503,3 +503,11 @@ function minimalSignalsDefaults() {
     heuristicsOnly: fc.constant(false),
   };
 }
+
+describe("arbitraries", () => {
+  test("exports property generators", () => {
+    expect(realisticSignalsArb).toBeDefined();
+    expect(maliciousSignalsArb).toBeDefined();
+    expect(edgeCaseSignalsArb).toBeDefined();
+  });
+});
