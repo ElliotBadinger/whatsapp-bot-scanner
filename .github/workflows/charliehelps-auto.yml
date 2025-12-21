@@ -1,6 +1,8 @@
 name: CharlieHelps Auto-Responder
 
 on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
   pull_request_review:
     types: [submitted]
   pull_request_review_comment:
@@ -14,9 +16,6 @@ on:
         required: true
         type: number
 
-permissions:
-  contents: read
-
 concurrency:
   group: charliehelps-${{ github.event.pull_request.number || github.event.issue.number || github.event.inputs.pr_number || github.run_id }}
   cancel-in-progress: false
@@ -24,34 +23,34 @@ concurrency:
 jobs:
   auto-respond:
     if: >-
-      ${{
+      ${
         (github.event_name != 'issue_comment' || github.event.issue.pull_request != null) &&
         (
           github.actor == github.repository_owner ||
           github.actor == 'charliecreates[bot]' ||
           github.actor == 'CharlieHelps'
         )
-      }}
+      }
     runs-on: ubuntu-latest
-    # Needs pull-requests: write to post replies in review threads, but only
-    # contents: read since it does not modify the repo itself.
     permissions:
       contents: read
       pull-requests: write
+      issues: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.base.sha || github.sha }}
-      - name: Run CharlieHelps automation
+      - name: Run CharlieHelps automation (reply only)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
           MODE: reply
         run: node .github/scripts/charliehelps-auto.mjs
 
   merge-to-main:
-    # WARNING: This job can merge to main; only the repo owner may trigger it.
     if: github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner && github.ref_name == 'main' && github.event.inputs.pr_number
     permissions:
       contents: write
@@ -64,6 +63,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.inputs.pr_number }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
           MODE: merge
           MERGE_METHOD: rebase
         run: node .github/scripts/charliehelps-auto.mjs

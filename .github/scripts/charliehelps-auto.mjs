@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 
+import fs from "node:fs/promises";
 import {
   hasPendingSuggestion,
   isWorkingMessage,
   latestComment,
   validateEventPrNumber,
 } from "./charliehelps-auto-lib.mjs";
-import fs from "node:fs/promises";
 
 const token = process.env.GITHUB_TOKEN;
 const repo = process.env.GITHUB_REPOSITORY;
@@ -17,6 +17,27 @@ const mergeMethod = (process.env.MERGE_METHOD ?? "rebase").toLowerCase();
 const eventName = process.env.GITHUB_EVENT_NAME;
 const eventPath = process.env.GITHUB_EVENT_PATH;
 const actor = process.env.GITHUB_ACTOR;
+
+if (!token) {
+  console.error("GITHUB_TOKEN is required");
+  process.exit(1);
+}
+if (!repo || !prNumberRaw) {
+  console.error("GITHUB_REPOSITORY and PR_NUMBER are required");
+  process.exit(1);
+}
+
+const prNumber = Number(prNumberRaw);
+if (!Number.isInteger(prNumber)) {
+  console.error(`PR_NUMBER is not an integer: ${prNumberRaw}`);
+  process.exit(1);
+}
+
+const [owner, name, ...rest] = repo.split("/");
+if (!owner || !name || rest.length > 0) {
+  console.error(`GITHUB_REPOSITORY must be "owner/repo", got: ${repo}`);
+  process.exit(1);
+}
 
 const allowedModes = new Set(["reply", "merge"]);
 if (!allowedModes.has(mode)) {
@@ -39,23 +60,6 @@ if (mode === "merge") {
     process.exit(1);
   }
 }
-
-if (!token) {
-  console.error("GITHUB_TOKEN is required");
-  process.exit(1);
-}
-if (!repo || !prNumberRaw) {
-  console.error("GITHUB_REPOSITORY and PR_NUMBER are required");
-  process.exit(1);
-}
-
-const prNumber = Number(prNumberRaw);
-if (!Number.isInteger(prNumber)) {
-  console.error(`PR_NUMBER is not an integer: ${prNumberRaw}`);
-  process.exit(1);
-}
-
-const [owner, name] = repo.split("/");
 
 const headers = {
   Authorization: `Bearer ${token}`,
@@ -227,7 +231,7 @@ async function getPullRequestWithThreads() {
                 id
                 isResolved
                 comments(last:${commentsPerThread}){
-                  pageInfo { hasPreviousPage startCursor }
+                  pageInfo { hasPreviousPage }
                   nodes { author { __typename login } body createdAt url }
                 }
               }
@@ -315,33 +319,34 @@ async function replyToThread(threadId) {
 }
 
 async function validateEventContext() {
-  if (!eventName || !eventPath) return;
-
-  let raw;
-  try {
-    raw = await fs.readFile(eventPath, "utf8");
-  } catch (err) {
-    throw new Error(
-      `Unable to read GitHub event file (event=${eventName}): ${err?.message ?? err}`,
-    );
+  const inActions = process.env.GITHUB_ACTIONS === "true";
+  if (!eventName || !eventPath) {
+    if (mode === "merge" && inActions) {
+      throw new Error(
+        "Missing GITHUB_EVENT_NAME/GITHUB_EVENT_PATH; refusing merge.",
+      );
+    }
+    if (inActions) {
+      console.log(
+        "[warn] Missing GITHUB_EVENT_NAME/GITHUB_EVENT_PATH; skipping event validation.",
+      );
+    }
+    return;
   }
 
-  let payload;
   try {
-    payload = JSON.parse(raw);
+    const raw = await fs.readFile(eventPath, "utf8");
+    const payload = JSON.parse(raw);
+    validateEventPrNumber(eventName, payload, prNumber);
   } catch (err) {
-    throw new Error(
-      `Unable to parse GitHub event payload (event=${eventName}): ${err?.message ?? err}`,
+    if (mode === "merge") throw err;
+    console.log(
+      `[warn] Unable to validate event context (${String(err)}); continuing in reply mode.`,
     );
   }
-
-  validateEventPrNumber(eventName, payload, prNumber);
 }
 
 async function hasPendingSuggestionForThread(thread, commentPreview) {
-  // We treat the latest comment window as authoritative: if it indicates a
-  // pending suggestion and the window is truncated, we hydrate full history
-  // to check for older acks before replying.
   if (!commentPreview || commentPreview.length === 0) return false;
 
   const previewPending = hasPendingSuggestion(commentPreview);
@@ -361,16 +366,18 @@ async function main() {
     );
   }
 
-  if (
-    mode === "merge" &&
-    actor &&
-    actor.toLowerCase() !== owner.toLowerCase()
-  ) {
+  if (mode === "merge" && actor && actor.toLowerCase() !== owner.toLowerCase()) {
     throw new Error(
       `MODE=merge may only be invoked by the repository owner (${owner}).`,
     );
   }
+
   const pr = await getPullRequestWithThreads();
+
+  if (pr.isDraft) {
+    console.log("PR is draft; skipping automation.");
+    return;
+  }
 
   const threads = pr.reviewThreads.nodes;
   let workingFound = false;

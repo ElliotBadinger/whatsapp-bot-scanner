@@ -9,6 +9,8 @@ const noReplies =
 const suggestionSummary = /<summary>\s*Suggestion\s*<\/summary>/i;
 const suggestionInvite = /if you(?:'|’)?d like me to add/i;
 const suggestionNudge = /at minimum/i;
+const suggestionLanguage =
+  /\b(should|consider|recommend|avoid|prefer|suggest|need to|must|please)\b/i;
 const nonSuggestionMarkers = [
   "expand this to see my work",
   "summary of changes",
@@ -67,7 +69,8 @@ export function isSuggestionComment(body) {
     suggestionRegex.test(body) ||
     suggestionSummary.test(body) ||
     suggestionInvite.test(body) ||
-    suggestionNudge.test(body)
+    suggestionNudge.test(body) ||
+    suggestionLanguage.test(body)
   );
 }
 

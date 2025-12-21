@@ -72,7 +72,7 @@ describe("charliehelps-auto helpers", () => {
     const comments = [
       {
         author: { login: "charliecreates" },
-        body: 'Reply with \"@CharlieHelps yes please\" if you want this.',
+        body: 'Reply with "@CharlieHelps yes please" if you want this.',
         createdAt: "2025-12-21T08:00:00Z",
       },
       {
@@ -101,7 +101,7 @@ describe("charliehelps-auto helpers", () => {
     const comments = [
       {
         author: { __typename: "Bot", login: "charliecreates" },
-        body: 'Reply with \"@CharlieHelps yes please\" if you want this.',
+        body: 'Reply with "@CharlieHelps yes please" if you want this.',
         createdAt: "2025-12-21T08:00:00Z",
       },
       {
@@ -118,7 +118,7 @@ describe("charliehelps-auto helpers", () => {
     const comments = [
       {
         author: { login: "charliecreates" },
-        body: 'Reply with \"@CharlieHelps yes please\" if you want this.',
+        body: 'Reply with "@CharlieHelps yes please" if you want this.',
         createdAt: "2025-12-21T08:00:00Z",
       },
       {
@@ -135,7 +135,7 @@ describe("charliehelps-auto helpers", () => {
     const comments = [
       {
         author: { __typename: "Bot", login: "charliecreates" },
-        body: 'Reply with \"@CharlieHelps yes please\" if you want this.',
+        body: 'Reply with "@CharlieHelps yes please" if you want this.',
         createdAt: "2025-12-21T08:00:00Z",
       },
       {
@@ -175,7 +175,7 @@ describe("charliehelps-auto helpers", () => {
       },
       {
         author: { login: "charliecreates" },
-        body: 'Reply with \"@CharlieHelps yes please\" if you want this.',
+        body: 'Reply with "@CharlieHelps yes please" if you want this.',
         createdAt: "2025-12-21T08:02:00Z",
       },
     ];
@@ -192,6 +192,35 @@ describe("charliehelps-auto helpers", () => {
       },
     ];
     expect(lib.hasPendingSuggestion(comments)).toBe(true);
+  });
+
+  test("ignores bot acknowledgements", async () => {
+    const lib = await importEsm(libPath);
+    const comments = [
+      {
+        author: { login: "charliecreates" },
+        body: "At minimum, add a guard.",
+        createdAt: "2025-12-21T08:00:00Z",
+      },
+      {
+        author: { login: "some-bot", __typename: "Bot" },
+        body: "@CharlieHelps yes please",
+        createdAt: "2025-12-21T08:01:00Z",
+      },
+    ];
+    expect(lib.hasPendingSuggestion(comments)).toBe(true);
+  });
+
+  test("does not treat summaries as suggestions", async () => {
+    const lib = await importEsm(libPath);
+    const comments = [
+      {
+        author: { login: "charliecreates" },
+        body: "<details><summary>Summary of changes</summary></details>",
+        createdAt: "2025-12-21T08:00:00Z",
+      },
+    ];
+    expect(lib.hasPendingSuggestion(comments)).toBe(false);
   });
 
   test("ignores work summary updates", async () => {
@@ -220,6 +249,12 @@ describe("charliehelps-auto helpers", () => {
 
   test("validates PR number against GitHub event payload", async () => {
     const lib = await importEsm(libPath);
+
+    expect(
+      lib.getEventPrNumber("issue_comment", {
+        issue: { number: 145, pull_request: {} },
+      }),
+    ).toBe(145);
 
     expect(
       lib.getEventPrNumber("pull_request_review", {
