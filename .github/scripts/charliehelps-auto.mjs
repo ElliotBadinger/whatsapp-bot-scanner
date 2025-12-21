@@ -310,9 +310,6 @@ async function main() {
     } else {
       console.log("No pending suggestion threads to reply to.");
     }
-  }
-
-  if (mode !== "fast-forward") {
     console.log(`MODE=${mode}; skipping fast-forward to main.`);
     return;
   }
