@@ -5,11 +5,10 @@ import { LiveFeed } from "@/components/safemode/live-feed"
 import { StatsDisplay } from "@/components/safemode/stats-display"
 import { getPublicEnv } from "@/lib/public-env"
 
-export default function CommunityPage() {
-  const env = getPublicEnv()
-  const BOT_PHONE = env.NEXT_PUBLIC_BOT_PHONE_NUMBER
-  const WA_ME_LINK = env.NEXT_PUBLIC_WA_ME_LINK
+const { NEXT_PUBLIC_BOT_PHONE_NUMBER: BOT_PHONE, NEXT_PUBLIC_WA_ME_LINK: WA_ME_LINK } =
+  getPublicEnv()
 
+export default function CommunityPage() {
   return (
     <div className="min-h-screen bg-background">
       <NavBar />

@@ -15,8 +15,10 @@ export class ControlPlaneError extends Error {
 }
 
 function resolveControlPlaneBase(): string {
-  const candidate = getEnv().CONTROL_PLANE_URL;
-  const parsed = new URL(candidate);
+  // Assumes `CONTROL_PLANE_URL` has already been validated by `validateEnv()`.
+  // Normalizes the base URL (removes hash and trailing slashes).
+  const { CONTROL_PLANE_URL } = getEnv();
+  const parsed = new URL(CONTROL_PLANE_URL);
 
   parsed.hash = "";
 
@@ -28,22 +30,12 @@ function resolveControlPlaneBase(): string {
   return base;
 }
 
-function getControlPlaneToken(): string {
-  return getEnv().CONTROL_PLANE_API_TOKEN;
-}
-
 export async function controlPlaneFetch(
   path: string,
   init: RequestInit & { timeoutMs?: number } = {},
 ): Promise<Response> {
   const base = resolveControlPlaneBase();
-  const token = getControlPlaneToken();
-  if (!token) {
-    throw new ControlPlaneError("CONTROL_PLANE_API_TOKEN is required", {
-      status: 500,
-      code: "MISSING_TOKEN",
-    });
-  }
+  const token = getEnv().CONTROL_PLANE_API_TOKEN;
   const url = `${base}${path.startsWith("/") ? path : `/${path}`}`;
 
   const headers = new Headers(init.headers);

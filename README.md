@@ -123,6 +123,10 @@ Create `SafeMode-web-app/.env.local` from `SafeMode-web-app/.env.example` and se
 - `NEXT_PUBLIC_BOT_PHONE_NUMBER` (public): display phone number in international format (e.g. `+1234567890`)
 - `NEXT_PUBLIC_WA_ME_LINK` (public): wa.me link used for the "Add bot" CTA (e.g. `https://wa.me/1234567890`)
 
+These variables are validated at startup; missing or invalid values will prevent the SafeMode web app from starting.
+
+Public variables are validated in `SafeMode-web-app/lib/public-env.ts`.
+
 ## 📚 Documentation
 
 ### Unified CLI Documentation

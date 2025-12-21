@@ -29,14 +29,21 @@ export function validateEnv(): Env {
   const controlPlaneUrl =
     process.env.CONTROL_PLANE_URL ?? process.env.CONTROL_PLANE_BASE;
 
+  if (!controlPlaneUrl) {
+    throw new Error(
+      "SafeMode-web-app: CONTROL_PLANE_URL is required (or CONTROL_PLANE_BASE during the deprecation period).",
+    );
+  }
+
   if (
     !didWarnDeprecatedControlPlaneBase &&
     !process.env.CONTROL_PLANE_URL &&
-    process.env.CONTROL_PLANE_BASE
+    process.env.CONTROL_PLANE_BASE &&
+    process.env.NODE_ENV !== "production"
   ) {
     didWarnDeprecatedControlPlaneBase = true;
     console.warn(
-      "SafeMode-web-app: CONTROL_PLANE_BASE is deprecated; use CONTROL_PLANE_URL instead.",
+      "SafeMode-web-app: CONTROL_PLANE_BASE is deprecated and will be removed in a future release; use CONTROL_PLANE_URL instead.",
     );
   }
 
