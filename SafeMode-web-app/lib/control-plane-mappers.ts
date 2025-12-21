@@ -11,13 +11,25 @@ export type ControlPlaneScanRow = {
 };
 
 export function mapVerdictLevel(
-  verdict: ControlPlaneScanRow["verdict"],
+  verdict: string,
 ): ScanVerdict["verdict"] {
-  if (verdict === "malicious") return "DENY";
-  if (verdict === "suspicious") return "WARN";
-  return "SAFE";
+  switch (verdict) {
+    case "malicious":
+      return "DENY";
+    case "suspicious":
+      return "WARN";
+    case "benign":
+      return "SAFE";
+    default:
+      console.warn("Unknown control-plane verdict", { verdict });
+      return "WARN";
+  }
 }
 
+/**
+* Shared mapping from control-plane scan rows to the public `ScanVerdict` payload used by
+* both the SSE feed and `/api/scans/recent` endpoints.
+*/
 export function mapScanRow(row: ControlPlaneScanRow): ScanVerdict {
   return {
     id: String(row.id),
