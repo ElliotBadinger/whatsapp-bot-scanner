@@ -55,7 +55,12 @@ describe("Redis Encryption Regression Suite", () => {
       createdAt: Date.now(),
     });
 
-    await encryptedClient.set("wa:message:hash1:hash2", messageRecord, "EX", 86400);
+    await encryptedClient.set(
+      "wa:message:hash1:hash2",
+      messageRecord,
+      "EX",
+      86400,
+    );
 
     const retrieved = await encryptedClient.get("wa:message:hash1:hash2");
     expect(retrieved).toBeDefined();
@@ -70,7 +75,12 @@ describe("Redis Encryption Regression Suite", () => {
       phoneHash: "hashed_phone",
     });
 
-    await encryptedClient.set("wa:pairing:code:phone123", pairingData, "EX", 160);
+    await encryptedClient.set(
+      "wa:pairing:code:phone123",
+      pairingData,
+      "EX",
+      160,
+    );
 
     const cached = await encryptedClient.get("wa:pairing:code:phone123");
     expect(cached).toBeDefined();
@@ -94,13 +104,29 @@ describe("Redis Encryption Regression Suite", () => {
   });
 
   it("should maintain sorted set operations for pending acks", async () => {
-    const context1 = JSON.stringify({ chatId: "chat1", messageId: "msg1", urlHash: "hash1" });
-    const context2 = JSON.stringify({ chatId: "chat2", messageId: "msg2", urlHash: "hash2" });
+    const context1 = JSON.stringify({
+      chatId: "chat1",
+      messageId: "msg1",
+      urlHash: "hash1",
+    });
+    const context2 = JSON.stringify({
+      chatId: "chat2",
+      messageId: "msg2",
+      urlHash: "hash2",
+    });
 
     await encryptedClient.zadd("wa:verdict:pending_ack", Date.now(), context1);
-    await encryptedClient.zadd("wa:verdict:pending_ack", Date.now() + 1, context2);
+    await encryptedClient.zadd(
+      "wa:verdict:pending_ack",
+      Date.now() + 1,
+      context2,
+    );
 
-    const pending = await encryptedClient.zrange("wa:verdict:pending_ack", 0, -1);
+    const pending = await encryptedClient.zrange(
+      "wa:verdict:pending_ack",
+      0,
+      -1,
+    );
     expect(pending.length).toBe(2);
     expect(pending.some((p) => p.includes("chat1"))).toBe(true);
   });
@@ -131,7 +157,7 @@ describe("Redis Encryption Regression Suite", () => {
   it("should not break existing counter operations", async () => {
     // Counters don't need encryption, should work as pass-through
     await redis.set("counter:test", "5");
-    
+
     const incremented = await encryptedClient.incr("counter:test");
     expect(incremented).toBe(6);
 

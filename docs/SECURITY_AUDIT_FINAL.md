@@ -19,6 +19,7 @@ This report documents the comprehensive security remediation performed on the Wh
 **Status**: IMPLEMENTED (Pre-existing)
 
 **Implementation**:
+
 - Database migration `db/migrations/007_rbac_roles.sql` creates service-specific roles
 - `control_plane_role`: READ scans, WRITE overrides, UPDATE groups
 - `scan_orchestrator_role`: WRITE scans, READ overrides
@@ -26,6 +27,7 @@ This report documents the comprehensive security remediation performed on the Wh
 - Service-specific connection strings in `packages/shared/src/config.ts`
 
 **Tests**:
+
 - Unit: `packages/shared/__tests__/database-rbac.test.ts`
 - Integration: `tests/integration/rbac-integration.test.ts`
 - Property: `tests/property/rbac-properties.test.ts`
@@ -38,12 +40,14 @@ This report documents the comprehensive security remediation performed on the Wh
 **Status**: IMPLEMENTED (Pre-existing)
 
 **Implementation**:
+
 - HMAC-SHA256 hashing in `packages/shared/src/crypto/identifiers.ts`
 - Database migration `db/migrations/008_hash_identifiers.sql` adds hashed columns
 - `MessageStore` uses hashed identifiers for Redis keys
 - Namespace separation: `chat:` prefix for chat IDs, `msg:` for message IDs
 
 **Tests**:
+
 - Unit: `packages/shared/__tests__/crypto-identifiers.test.ts`
 - Integration: `tests/integration/identifier-hashing-integration.test.ts`
 - Property: `tests/property/identifier-hashing-properties.test.ts`
@@ -56,18 +60,21 @@ This report documents the comprehensive security remediation performed on the Wh
 **Status**: NEWLY IMPLEMENTED
 
 **Implementation**:
+
 - AES-256-GCM encryption in `packages/shared/src/crypto/redis-encryption.ts`
 - `EncryptedRedisClient` wrapper in `packages/shared/src/redis/encrypted-client.ts`
 - Format: `iv:authTag:ciphertext` (all hex-encoded)
 - Backward compatible with unencrypted data during migration
 
 **Configuration**:
+
 ```bash
 REDIS_ENCRYPTION_KEY=<64-hex-characters>
 REDIS_ENCRYPTION_ENABLED=true
 ```
 
 **Tests**:
+
 - Unit: `packages/shared/__tests__/redis-encryption.test.ts`
 - Unit: `packages/shared/__tests__/encrypted-redis-client.test.ts`
 - Integration: `tests/integration/redis-encryption-integration.test.ts`
@@ -81,12 +88,14 @@ REDIS_ENCRYPTION_ENABLED=true
 **Status**: IMPLEMENTED (Pre-existing, Tests Added)
 
 **Implementation**:
+
 - Error sanitizer in `packages/shared/src/errors/sanitizer.ts`
 - Global error handler in `packages/shared/src/fastify/error-handler.ts`
 - Production returns generic messages: "Invalid request", "Authentication failed", etc.
 - Development mode exposes full details for debugging
 
 **Tests**:
+
 - Unit: `packages/shared/__tests__/error-sanitizer.test.ts`
 - Unit: `packages/shared/__tests__/error-handler.test.ts`
 - Property: `tests/property/error-sanitizer-properties.test.ts`
@@ -98,6 +107,7 @@ REDIS_ENCRYPTION_ENABLED=true
 **Status**: NEWLY IMPLEMENTED
 
 **Implementation**:
+
 - Enhanced `SessionManager` in `services/wa-client/src/session/sessionManager.ts`
 - Session fingerprinting (userAgent, IP subnet, platform)
 - Automatic expiration after 7 days
@@ -105,6 +115,7 @@ REDIS_ENCRYPTION_ENABLED=true
 - Fingerprint mismatch detection for hijack prevention
 
 **Features**:
+
 - `recordSessionCreation()`: Create session with fingerprint
 - `validateSession()`: Validate fingerprint match
 - `rotateSession()`: Generate new session ID
@@ -112,6 +123,7 @@ REDIS_ENCRYPTION_ENABLED=true
 - IP subnet matching (allows /24 subnet changes)
 
 **Tests**:
+
 - Unit: `services/wa-client/__tests__/session-manager.test.ts`
 
 ---
@@ -121,12 +133,14 @@ REDIS_ENCRYPTION_ENABLED=true
 **Status**: IMPLEMENTED (Pre-existing)
 
 **Implementation**:
+
 - `sanitizePathComponent()` in `services/scan-orchestrator/src/urlscan-artifacts.ts`
 - `assertPathWithinDir()` validates containment within artifact directory
 - Input validation: Only alphanumeric, hyphen, underscore allowed
 - SHA-256 hex validation for URL hashes
 
 **Tests**:
+
 - `services/control-plane/src/__tests__/security.test.ts` - Path traversal tests
 
 ---
@@ -136,6 +150,7 @@ REDIS_ENCRYPTION_ENABLED=true
 **Status**: NEWLY IMPLEMENTED
 
 **Implementation**:
+
 - Rate limiter utility in `packages/shared/src/rate-limiter.ts`
 - Pre-configured limits:
   - API: 100 requests/minute
@@ -144,6 +159,7 @@ REDIS_ENCRYPTION_ENABLED=true
 - Uses Redis in production, in-memory for tests
 
 **Tests**:
+
 - Unit: `packages/shared/__tests__/rate-limiter.test.ts`
 
 ---
@@ -153,6 +169,7 @@ REDIS_ENCRYPTION_ENABLED=true
 **Status**: MITIGATED
 
 **Implementation**:
+
 - HMAC-SHA256 with secret key prevents rainbow table attacks
 - `IDENTIFIER_HASH_SECRET` environment variable required
 - Same implementation as Issue 2
@@ -164,6 +181,7 @@ REDIS_ENCRYPTION_ENABLED=true
 **Status**: NEWLY IMPLEMENTED
 
 **Implementation**:
+
 - `AuditLogger` class in `packages/shared/src/audit-logger.ts`
 - Logs to both database (audit_logs table) and structured logs
 - Pre-built methods for common events:
@@ -175,6 +193,7 @@ REDIS_ENCRYPTION_ENABLED=true
   - `logScanEvent()`: Scan operations
 
 **Tests**:
+
 - Unit: `packages/shared/__tests__/audit-logger.test.ts`
 
 ---
@@ -184,6 +203,7 @@ REDIS_ENCRYPTION_ENABLED=true
 **Status**: NEWLY IMPLEMENTED
 
 **Implementation**:
+
 - Security headers plugin in `packages/shared/src/fastify/security-headers.ts`
 - Default headers:
   - `Content-Security-Policy`: Restrictive CSP with frame-ancestors 'none'
@@ -196,25 +216,27 @@ REDIS_ENCRYPTION_ENABLED=true
 - Removes `X-Powered-By` header
 
 **Tests**:
+
 - Unit: `packages/shared/__tests__/security-headers.test.ts`
 
 ---
 
 ## Test Coverage Summary
 
-| Test Type | Count | Status |
-|-----------|-------|--------|
-| Unit Tests | 411+ | ✅ Passing |
-| Integration Tests | 19 | ✅ Configured |
-| Property Tests | 6 | ✅ Passing |
-| Regression Tests | 4 | ✅ Configured |
-| E2E Tests | 11 | ✅ Configured |
+| Test Type         | Count | Status        |
+| ----------------- | ----- | ------------- |
+| Unit Tests        | 411+  | ✅ Passing    |
+| Integration Tests | 19    | ✅ Configured |
+| Property Tests    | 6     | ✅ Passing    |
+| Regression Tests  | 4     | ✅ Configured |
+| E2E Tests         | 11    | ✅ Configured |
 
 ---
 
 ## New Files Created
 
 ### Shared Package
+
 - `packages/shared/src/crypto/redis-encryption.ts` - AES-256-GCM encryption
 - `packages/shared/src/redis/encrypted-client.ts` - Encrypted Redis wrapper
 - `packages/shared/src/rate-limiter.ts` - API rate limiting
@@ -222,6 +244,7 @@ REDIS_ENCRYPTION_ENABLED=true
 - `packages/shared/src/fastify/security-headers.ts` - Security headers
 
 ### Tests
+
 - `packages/shared/__tests__/redis-encryption.test.ts`
 - `packages/shared/__tests__/encrypted-redis-client.test.ts`
 - `packages/shared/__tests__/error-sanitizer.test.ts`
@@ -240,6 +263,7 @@ REDIS_ENCRYPTION_ENABLED=true
 ## Configuration Changes
 
 ### .env.example Updates
+
 ```bash
 # Redis encryption (32 bytes = 64 hex characters)
 REDIS_ENCRYPTION_KEY=<generate-with-openssl-rand-hex-32>

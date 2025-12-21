@@ -103,7 +103,14 @@ describe("Error Sanitizer Properties", () => {
     });
 
     it("should not leak SQL queries", () => {
-      const sqlKeywords = ["SELECT", "INSERT", "UPDATE", "DELETE", "DROP", "CREATE"];
+      const sqlKeywords = [
+        "SELECT",
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "CREATE",
+      ];
 
       fc.assert(
         fc.property(
