@@ -13,9 +13,15 @@ function isValidCursor(raw: string): boolean {
     const parsed = JSON.parse(decoded) as unknown;
     if (!parsed || typeof parsed !== "object") return false;
     const obj = parsed as { ts?: unknown; id?: unknown };
-    if (typeof obj.ts !== "string" || obj.ts.trim().length === 0) return false;
-    if (typeof obj.id !== "string" && typeof obj.id !== "number") return false;
-    if (String(obj.id).trim().length === 0) return false;
+
+    const ts = typeof obj.ts === "string" ? obj.ts.trim() : "";
+    if (!ts) return false;
+    const parsedDate = new Date(ts);
+    if (Number.isNaN(parsedDate.getTime())) return false;
+
+    const parsedId = Number.parseInt(String(obj.id ?? ""), 10);
+    if (!Number.isFinite(parsedId) || parsedId <= 0) return false;
+
     return true;
   } catch {
     return false;

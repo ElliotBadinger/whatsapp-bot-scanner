@@ -135,8 +135,15 @@ export async function buildServer(options: BuildOptions = {}) {
               ? obj.ts
               : null;
           const parsedId = Number.parseInt(String(obj.id ?? ""), 10);
+          const parsedDate = lastSeenAt ? new Date(lastSeenAt) : null;
 
-          if (!lastSeenAt || !Number.isFinite(parsedId) || parsedId <= 0) {
+          if (
+            !lastSeenAt ||
+            !parsedDate ||
+            Number.isNaN(parsedDate.getTime()) ||
+            !Number.isFinite(parsedId) ||
+            parsedId <= 0
+          ) {
             throw new Error("Invalid cursor fields");
           }
 

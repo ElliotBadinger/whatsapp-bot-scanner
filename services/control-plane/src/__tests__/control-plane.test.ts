@@ -169,6 +169,27 @@ describe("control-plane buildServer", () => {
     }
   });
 
+  test("GET /scans/recent rejects invalid cursor", async () => {
+    const badCursor = Buffer.from(JSON.stringify({ ts: "", id: -1 })).toString(
+      "base64url",
+    );
+
+    const { app, dbClient } = await buildTestServer();
+
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: `/scans/recent?after=${encodeURIComponent(badCursor)}`,
+        headers: authHeader,
+      });
+      expect(res.statusCode).toBe(400);
+      expect(JSON.parse(res.payload)).toEqual({ error: "invalid_after_cursor" });
+      expect(dbClient.query).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
   test("POST /overrides rejects invalid bodies", async () => {
     const { app } = await buildTestServer();
     try {
