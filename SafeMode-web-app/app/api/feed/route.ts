@@ -8,6 +8,7 @@ import type { ScanVerdict } from "@/lib/api";
 export async function GET() {
   const encoder = new TextEncoder();
   let closed = false;
+  let streamController: ReadableStreamDefaultController | null = null;
   let pollInterval: ReturnType<typeof setInterval> | null = null;
   let pingInterval: ReturnType<typeof setInterval> | null = null;
   let autoCloseTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -21,9 +22,12 @@ export async function GET() {
     pollInterval = null;
     pingInterval = null;
     autoCloseTimeout = null;
-    if (controller) {
+
+    const target = controller ?? streamController;
+    streamController = null;
+    if (target) {
       try {
-        controller.close();
+        target.close();
       } catch {
         // Ignore close races.
       }
@@ -32,6 +36,7 @@ export async function GET() {
 
   const stream = new ReadableStream({
     async start(controller) {
+      streamController = controller;
       const safeEnqueue = (chunk: Uint8Array) => {
         if (closed) return;
         try {
