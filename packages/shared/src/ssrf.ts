@@ -2,14 +2,16 @@ import dns from 'node:dns/promises';
 import ipaddr from 'ipaddr.js';
 
 const privateCidrs = [
-  '10.0.0.0/8',
-  '172.16.0.0/12',
-  '192.168.0.0/16',
-  '127.0.0.0/8',
-  '169.254.0.0/16',
-  '::1/128',
-  'fc00::/7',
-  'fe80::/10'
+  '0.0.0.0/8',      // Current network (includes 0.0.0.0)
+  '10.0.0.0/8',     // Private network
+  '172.16.0.0/12',  // Private network
+  '192.168.0.0/16', // Private network
+  '127.0.0.0/8',    // Loopback
+  '169.254.0.0/16', // Link-local
+  '::/128',         // IPv6 Unspecified
+  '::1/128',        // IPv6 Loopback
+  'fc00::/7',       // Unique Local
+  'fe80::/10'       // Link-local
 ].map(c => ipaddr.parseCIDR(c));
 
 const BLOCKED_HOSTNAMES = [
@@ -41,7 +43,13 @@ export async function isPrivateHostname(hostname: string): Promise<boolean> {
 
 export function isPrivateIp(ip: string): boolean {
   try {
-    const addr = ipaddr.parse(ip);
+    let addr = ipaddr.parse(ip);
+
+    // Handle IPv4-mapped IPv6 addresses (e.g., ::ffff:127.0.0.1)
+    if (addr.kind() === 'ipv6' && (addr as ipaddr.IPv6).isIPv4MappedAddress()) {
+      addr = (addr as ipaddr.IPv6).toIPv4Address();
+    }
+
     return privateCidrs.some(([range, prefix]) => {
       if (addr.kind() !== range.kind()) return false;
       return addr.match(range, prefix);
@@ -50,4 +58,3 @@ export function isPrivateIp(ip: string): boolean {
     return true;
   }
 }
-
