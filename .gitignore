@@ -66,3 +66,6 @@ SETUP_FIXES_SUMMARY.md
 
 # stryker temp files
 .stryker-tmp
+
+ # Local agent memory database
+ memori_store.db
