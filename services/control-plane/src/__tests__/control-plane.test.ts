@@ -44,8 +44,8 @@ describe("control-plane buildServer", () => {
 
   test("GET /status returns counts for authorized callers", async () => {
     const { app, dbClient } = await buildTestServer(async (sql: string) => {
-      if (sql.startsWith("SELECT COUNT(*)")) {
-        return { rows: [{ scans: "10", malicious: "2" }] };
+      if (sql.startsWith("SELECT (SELECT COUNT(*)")) {
+        return { rows: [{ scans: "10", malicious: "2", groups: "3" }] };
       }
       return { rows: [] };
     });
@@ -56,8 +56,62 @@ describe("control-plane buildServer", () => {
         headers: authHeader,
       });
       expect(res.statusCode).toBe(200);
-      expect(JSON.parse(res.payload)).toEqual({ scans: 10, malicious: 2 });
+      expect(JSON.parse(res.payload)).toEqual({ scans: 10, malicious: 2, groups: 3 });
       expect(dbClient.query).toHaveBeenCalledTimes(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  test("GET /scans/recent requires auth", async () => {
+    const { app } = await buildTestServer();
+    try {
+      const res = await app.inject({ method: "GET", url: "/scans/recent" });
+      expect(res.statusCode).toBe(401);
+    } finally {
+      await app.close();
+    }
+  });
+
+  test("GET /scans/recent returns scan rows for authorized callers", async () => {
+    const now = new Date().toISOString();
+    const { app, dbClient } = await buildTestServer(async (sql: string) => {
+      if (sql.startsWith("SELECT id, url_hash")) {
+        return {
+          rows: [
+            {
+              id: 1,
+              url_hash: "hash-1",
+              normalized_url: "https://example.com/",
+              verdict: "benign",
+              last_seen_at: now,
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: "/scans/recent?limit=5",
+        headers: authHeader,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(JSON.parse(res.payload)).toEqual([
+        {
+          id: 1,
+          url_hash: "hash-1",
+          normalized_url: "https://example.com/",
+          verdict: "benign",
+          last_seen_at: now,
+        },
+      ]);
+      expect(dbClient.query).toHaveBeenCalledWith(
+        expect.stringContaining("FROM scans"),
+        [5],
+      );
     } finally {
       await app.close();
     }

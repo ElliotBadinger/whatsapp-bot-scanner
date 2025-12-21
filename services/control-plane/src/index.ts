@@ -97,17 +97,40 @@ export async function buildServer(options: BuildOptions = {}) {
 
     protectedApp.get("/status", async () => {
       const { rows } = await dbClient.query(
-        "SELECT COUNT(*) AS scans, SUM(CASE WHEN verdict = ? THEN 1 ELSE 0 END) AS malicious FROM scans",
+        "SELECT (SELECT COUNT(*) FROM scans) AS scans, (SELECT COUNT(*) FROM scans WHERE verdict = ?) AS malicious, (SELECT COUNT(*) FROM groups) AS groups",
         ["malicious"],
       );
       const stats = rows[0] as {
         scans: number | string;
         malicious: number | string;
+        groups: number | string;
       };
       return {
         scans: Number(stats.scans),
         malicious: Number(stats.malicious || 0),
+        groups: Number(stats.groups || 0),
       };
+    });
+
+    protectedApp.get("/scans/recent", async (req, reply) => {
+      const rawLimit = (req.query as { limit?: string | number })?.limit;
+      const parsedLimit = Number.parseInt(String(rawLimit ?? "10"), 10);
+      const limit =
+        Number.isFinite(parsedLimit) && parsedLimit > 0
+          ? Math.min(parsedLimit, 100)
+          : 10;
+
+      try {
+        const { rows } = await dbClient.query(
+          "SELECT id, url_hash, normalized_url, verdict, last_seen_at FROM scans ORDER BY last_seen_at DESC, id DESC LIMIT ?",
+          [limit],
+        );
+        return rows;
+      } catch (err) {
+        logger.error({ err, limit }, "Failed to list recent scans");
+        reply.code(500).send({ error: "recent_scans_unavailable" });
+        return;
+      }
     });
 
     interface OverrideBody {
