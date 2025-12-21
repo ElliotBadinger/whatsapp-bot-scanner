@@ -1,3 +1,6 @@
+import { ensureCsrfToken } from "@/lib/csrf-client";
+import { CSRF_HEADER_NAME } from "@/lib/csrf-shared";
+
 export interface SystemStatus {
   scans: number;
   malicious: number;
@@ -57,6 +60,17 @@ async function fetchJsonInternal<T>(
 ): Promise<T | undefined> {
   const headers = new Headers(init.headers);
   headers.set("accept", "application/json");
+
+  const method = (init.method ?? "GET").toUpperCase();
+  const isMutation = !["GET", "HEAD", "OPTIONS"].includes(method);
+  if (isMutation && typeof window !== "undefined") {
+    try {
+      const csrfToken = await ensureCsrfToken();
+      headers.set(CSRF_HEADER_NAME, csrfToken);
+    } catch {
+      // If CSRF token fetch fails, let the request proceed and be rejected.
+    }
+  }
 
   const resp = await fetch(path, {
     ...init,
@@ -122,6 +136,8 @@ async function fetchJsonInternal<T>(
       ? "Request was invalid."
       : resp.status === 401
         ? "Authentication failed."
+        : resp.status === 403
+          ? "Request was rejected."
         : resp.status === 404
           ? "Resource not found."
           : resp.status >= 500
@@ -198,4 +214,20 @@ export async function unmuteGroup(chatId: string): Promise<{ ok: boolean }> {
     `/api/groups/${encodeURIComponent(chatId)}/unmute`,
     { method: "POST" },
   );
+}
+
+export async function getAuthSession(): Promise<{ authenticated: boolean }> {
+  return fetchJson<{ authenticated: boolean }>("/api/auth/session");
+}
+
+export async function loginAdmin(token: string): Promise<void> {
+  await fetchJsonAllowNoContent("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+}
+
+export async function logoutAdmin(): Promise<void> {
+  await fetchJsonAllowNoContent("/api/auth/logout", { method: "POST" });
 }

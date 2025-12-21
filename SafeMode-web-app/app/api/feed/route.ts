@@ -4,6 +4,7 @@ import {
   mapScanRow,
 } from "@/lib/control-plane-mappers";
 import type { ScanVerdict } from "@/lib/api";
+import { requireAdminSession } from "@/lib/api-guards";
 
 function isValidCursor(raw: string): boolean {
   if (raw.trim().length === 0) return false;
@@ -36,6 +37,9 @@ function makeCursor(item: Pick<ScanVerdict, "timestamp" | "id">): string {
 }
 
 export async function GET(req: Request) {
+  const authError = await requireAdminSession();
+  if (authError) return authError;
+
   const encoder = new TextEncoder();
   const lastEventId = req.headers.get("last-event-id");
   const initialAfter =

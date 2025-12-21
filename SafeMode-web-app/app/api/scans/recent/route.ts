@@ -7,8 +7,12 @@ import {
   type ControlPlaneScanRow,
   mapScanRow,
 } from "@/lib/control-plane-mappers";
+import { requireAdminSession } from "@/lib/api-guards";
 
 export async function GET(req: Request) {
+  const authError = await requireAdminSession();
+  if (authError) return authError;
+
   const url = new URL(req.url);
   const rawLimit = url.searchParams.get("limit");
   const parsedLimit = Number.parseInt(rawLimit || "10", 10);

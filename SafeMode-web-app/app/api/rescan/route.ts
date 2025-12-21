@@ -5,12 +5,19 @@ import {
   controlPlaneFetchJson,
 } from "@/lib/control-plane-server";
 import type { RescanResult } from "@/lib/api";
+import { requireAdminSession, requireCsrf } from "@/lib/api-guards";
 
 const PostBodySchema = z.object({
   url: z.string().trim().min(1),
 });
 
 export async function POST(req: Request) {
+  const authError = await requireAdminSession();
+  if (authError) return authError;
+
+  const csrfError = await requireCsrf(req);
+  if (csrfError) return csrfError;
+
   const body = await req.json().catch(() => null);
   const parsed = PostBodySchema.safeParse(body);
   if (!parsed.success) {

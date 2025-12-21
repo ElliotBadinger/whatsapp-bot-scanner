@@ -1,38 +1,46 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NavBar } from "./nav-bar"
 import { TerminalCard } from "./terminal-card"
+import { ApiError, loginAdmin } from "@/lib/api"
+import { ensureCsrfToken } from "@/lib/csrf-client"
 
 interface AdminAuthProps {
   onAuthenticated: () => void
 }
-
-// Demo token for proof of concept
-const DEMO_TOKEN = "safemode-admin-demo"
 
 export function AdminAuth({ onAuthenticated }: AdminAuthProps) {
   const [token, setToken] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
+  useEffect(() => {
+    ensureCsrfToken().catch(() => {})
+  }, [])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setError(null)
 
-    // Simulate auth check
-    await new Promise((resolve) => setTimeout(resolve, 800))
-
-    if (token === DEMO_TOKEN || token === "demo") {
+    try {
+      await loginAdmin(token)
       onAuthenticated()
-    } else {
-      setError("ACCESS_DENIED: Invalid token")
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setError("ACCESS_DENIED: Invalid token")
+      } else if (err instanceof ApiError && err.status === 403) {
+        setError("ACCESS_DENIED: CSRF validation failed")
+      } else {
+        setError("AUTH_FAILED: Unable to authenticate")
+      }
+    } finally {
+      setIsLoading(false)
     }
-    setIsLoading(false)
   }
 
   return (
@@ -80,10 +88,6 @@ export function AdminAuth({ onAuthenticated }: AdminAuthProps) {
                   {isLoading ? "AUTHENTICATING..." : "[ AUTHENTICATE ]"}
                 </Button>
               </form>
-
-              <div className="text-center font-mono text-xs text-primary/40">
-                <p>Demo token: "demo"</p>
-              </div>
             </div>
           </TerminalCard>
         </div>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { NavBar } from "@/components/safemode/nav-bar"
 import { TerminalCard } from "@/components/safemode/terminal-card"
 import { StatsDisplay } from "@/components/safemode/stats-display"
@@ -10,12 +10,29 @@ import { OverridesTable } from "@/components/safemode/overrides-table"
 import { GroupsManager } from "@/components/safemode/groups-manager"
 import { AdminAuth } from "@/components/safemode/admin-auth"
 import { cn } from "@/lib/utils"
+import { getAuthSession, logoutAdmin } from "@/lib/api"
+import { ensureCsrfToken } from "@/lib/csrf-client"
 
 type Tab = "overview" | "rescan" | "overrides" | "groups"
 
 export default function AdminPage() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>("overview")
+
+  useEffect(() => {
+    ensureCsrfToken().catch(() => {})
+    getAuthSession()
+      .then((session) => setIsAuthenticated(session.authenticated))
+      .catch(() => setIsAuthenticated(false))
+  }, [])
+
+  if (isAuthenticated === null) {
+    return (
+      <div className="min-h-screen bg-background">
+        <NavBar />
+      </div>
+    )
+  }
 
   if (!isAuthenticated) {
     return <AdminAuth onAuthenticated={() => setIsAuthenticated(true)} />
@@ -39,7 +56,10 @@ export default function AdminPage() {
             <h1 className="font-mono text-2xl md:text-3xl text-primary terminal-glow">ADMIN CONTROL PANEL</h1>
           </div>
           <button
-            onClick={() => setIsAuthenticated(false)}
+            onClick={async () => {
+              await logoutAdmin().catch(() => {})
+              setIsAuthenticated(false)
+            }}
             className="font-mono text-xs text-danger/60 hover:text-danger transition-colors focus-ring px-3 py-1.5 border border-danger/30 hover:border-danger/60"
           >
             [ LOGOUT ]

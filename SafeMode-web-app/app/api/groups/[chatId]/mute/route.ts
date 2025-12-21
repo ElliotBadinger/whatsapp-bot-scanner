@@ -4,11 +4,18 @@ import {
   controlPlaneFetchJson,
 } from "@/lib/control-plane-server";
 import { ChatIdSchema } from "@/lib/chat-id-schema";
+import { requireAdminSession, requireCsrf } from "@/lib/api-guards";
 
 export async function POST(
-  _req: Request,
+  req: Request,
   context: { params: Promise<{ chatId: string }> },
 ) {
+  const authError = await requireAdminSession();
+  if (authError) return authError;
+
+  const csrfError = await requireCsrf(req);
+  if (csrfError) return csrfError;
+
   const { chatId } = await context.params;
   const parsedChatId = ChatIdSchema.safeParse(chatId);
   if (!parsedChatId.success) {
