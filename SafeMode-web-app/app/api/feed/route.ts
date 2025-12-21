@@ -1,31 +1,9 @@
 import { controlPlaneFetchJson } from "@/lib/control-plane-server";
+import {
+  mapScanRow,
+  type ControlPlaneScanRow,
+} from "@/lib/control-plane-mappers";
 import type { ScanVerdict } from "@/lib/api";
-
-type ControlPlaneScanRow = {
-  id: number | string;
-  url_hash: string;
-  normalized_url: string;
-  verdict: "benign" | "suspicious" | "malicious";
-  last_seen_at: string;
-};
-
-function mapVerdictLevel(
-  verdict: ControlPlaneScanRow["verdict"],
-): ScanVerdict["verdict"] {
-  if (verdict === "malicious") return "DENY";
-  if (verdict === "suspicious") return "WARN";
-  return "SAFE";
-}
-
-function mapRow(row: ControlPlaneScanRow): ScanVerdict {
-  return {
-    id: String(row.id),
-    urlHash: row.url_hash,
-    timestamp: row.last_seen_at,
-    url: row.normalized_url,
-    verdict: mapVerdictLevel(row.verdict),
-  };
-}
 
 export async function GET() {
   const encoder = new TextEncoder();
@@ -35,6 +13,7 @@ export async function GET() {
   let autoCloseTimeout: ReturnType<typeof setTimeout> | null = null;
 
   const cleanup = (controller?: ReadableStreamDefaultController) => {
+    if (closed) return;
     closed = true;
     if (pollInterval) clearInterval(pollInterval);
     if (pingInterval) clearInterval(pingInterval);
@@ -43,18 +22,31 @@ export async function GET() {
     pingInterval = null;
     autoCloseTimeout = null;
     if (controller) {
-      controller.close();
+      try {
+        controller.close();
+      } catch {
+        // Ignore close races.
+      }
     }
   };
 
   const stream = new ReadableStream({
     async start(controller) {
+      const safeEnqueue = (chunk: Uint8Array) => {
+        if (closed) return;
+        try {
+          controller.enqueue(chunk);
+        } catch {
+          cleanup(controller);
+        }
+      };
+
       const send = (data: unknown) => {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        safeEnqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
       };
 
       const ping = () => {
-        controller.enqueue(encoder.encode(`: ping\n\n`));
+        safeEnqueue(encoder.encode(`: ping\n\n`));
       };
 
       // Initial connection message (helps client distinguish connect vs. no-data)
@@ -77,7 +69,7 @@ export async function GET() {
           "/scans/recent?limit=25",
           { timeoutMs: 6000 },
         );
-        return rows.map(mapRow);
+        return rows.map(mapScanRow);
       };
 
       const seed = async () => {
@@ -129,11 +121,7 @@ export async function GET() {
       }, 5000);
 
       pingInterval = setInterval(() => {
-        try {
-          ping();
-        } catch {
-          cleanup(controller);
-        }
+        ping();
       }, 30000);
 
       // Auto-close after 5 minutes to avoid leaking long-lived streams.
