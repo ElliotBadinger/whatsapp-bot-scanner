@@ -73,4 +73,28 @@ describe("charliehelps-auto helpers", () => {
     ];
     expect(lib.hasPendingSuggestion(comments)).toBe(true);
   });
+
+  test("treats non-working CharlieHelps review comment as suggestion", async () => {
+    const lib = await import(libPath);
+    const comments = [
+      {
+        author: { login: "charliecreates" },
+        body: "At minimum, add an explicit gate for trusted actors.",
+        createdAt: "2025-12-21T08:00:00Z",
+      },
+    ];
+    expect(lib.hasPendingSuggestion(comments)).toBe(true);
+  });
+
+  test("ignores work summary updates", async () => {
+    const lib = await import(libPath);
+    const comments = [
+      {
+        author: { login: "charliecreates" },
+        body: "<details><summary>Expand this to see my work.</summary>\n\n- Did things\n</details>",
+        createdAt: "2025-12-21T08:00:00Z",
+      },
+    ];
+    expect(lib.hasPendingSuggestion(comments)).toBe(false);
+  });
 });

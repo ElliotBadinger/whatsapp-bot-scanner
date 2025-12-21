@@ -5,6 +5,16 @@ const workingVerbs =
   /(I[’']?m working|Starting|Reviewing|Investigating|Summarizing)/i;
 const noReplies =
   /(can'?t be interrupted|can'?t.*see replies|won'?t see replies|can'?t pause|can'?t be stopped)/i;
+const suggestionSummary = /<summary>\s*Suggestion\s*<\/summary>/i;
+const suggestionInvite = /if you(?:'|’)?d like me to add/i;
+const suggestionNudge = /at minimum/i;
+const nonSuggestionMarkers = [
+  "expand this to see my work",
+  "summary of changes",
+  "<summary><strong>changes</strong>",
+  "<summary><strong>verification</strong>",
+  "re-requested review",
+];
 
 export function isWorkingMessage(body) {
   if (!body) return false;
@@ -19,6 +29,19 @@ export function latestComment(comments) {
   return sorted[sorted.length - 1];
 }
 
+export function isSuggestionComment(body) {
+  if (!body) return false;
+  const lowered = body.toLowerCase();
+  if (nonSuggestionMarkers.some((marker) => lowered.includes(marker))) {
+    return false;
+  }
+  if (suggestionRegex.test(body)) return true;
+  if (suggestionSummary.test(body)) return true;
+  if (suggestionInvite.test(body)) return true;
+  if (suggestionNudge.test(body)) return true;
+  return true;
+}
+
 export function hasPendingSuggestion(comments) {
   if (!comments || comments.length === 0) return false;
   const sorted = [...comments].sort(
@@ -28,7 +51,7 @@ export function hasPendingSuggestion(comments) {
     const author = comment.author?.login || "";
     return (
       author.toLowerCase() === "charliecreates" &&
-      suggestionRegex.test(comment.body || "")
+      isSuggestionComment(comment.body || "")
     );
   });
   if (suggestions.length === 0) return false;
