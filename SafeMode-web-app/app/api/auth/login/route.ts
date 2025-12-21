@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json(
-      { error: "unexpected_control_plane_status", status: resp.status },
+      { error: "unexpected_control_plane_status", controlPlaneStatus: resp.status },
       { status: 502 },
     );
   } catch (err) {
@@ -62,7 +62,7 @@ export async function POST(req: Request) {
             message: err instanceof Error ? err.message : undefined,
           };
 
-    console.warn("Control-plane token validation failed", logPayload);
+    console.warn("LOGIN_TOKEN_VALIDATION_FAILED", logPayload);
     return NextResponse.json({ error: "control_plane_unavailable" }, { status: 502 });
   }
 }

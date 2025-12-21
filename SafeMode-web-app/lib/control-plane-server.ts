@@ -38,6 +38,21 @@ function getControlPlaneToken(): string {
   return token;
 }
 
+function normalizeBearerToken(raw: string): string {
+  let token = raw.trim();
+  const lower = token.toLowerCase();
+  const bearerPrefix = "bearer ";
+  if (lower.startsWith(bearerPrefix)) {
+    token = token.slice(bearerPrefix.length).trim();
+  }
+  return token;
+}
+
+/**
+* Low-level control-plane fetch.
+*
+* @param token A prevalidated bearer token string (without the `Bearer ` prefix).
+*/
 async function controlPlaneFetchInternal(
   path: string,
   token: string,
@@ -93,10 +108,7 @@ export async function controlPlaneFetchWithBearerToken(
   path: string,
   init: RequestInit & { timeoutMs?: number } = {},
 ): Promise<Response> {
-  let normalized = token.trim();
-  if (normalized.toLowerCase().startsWith("bearer ")) {
-    normalized = normalized.slice("bearer ".length).trim();
-  }
+  const normalized = normalizeBearerToken(token);
   if (!normalized) {
     throw new ControlPlaneError("Bearer token is required", {
       status: 400,
