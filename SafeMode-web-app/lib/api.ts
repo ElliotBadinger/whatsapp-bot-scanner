@@ -40,7 +40,11 @@ export class ApiError extends Error {
   }
 }
 
-async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function fetchJsonInternal<T>(
+  path: string,
+  init: RequestInit,
+  options: { allowNoContent: boolean },
+): Promise<T | undefined> {
   const headers = new Headers(init.headers);
   headers.set("accept", "application/json");
 
@@ -55,7 +59,13 @@ async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
     contentType.includes("application/json") || contentType.includes("+json");
 
   if (resp.ok && (resp.status === 204 || resp.status === 205)) {
-    return undefined as T;
+    if (options.allowNoContent) {
+      return undefined;
+    }
+
+    throw new ApiError("Unexpected empty response.", {
+      status: resp.status,
+    });
   }
 
   if (resp.ok) {
@@ -111,6 +121,23 @@ async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   throw new ApiError(message, { status: resp.status, code });
 }
 
+async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const result = await fetchJsonInternal<T>(path, init, {
+    allowNoContent: false,
+  });
+  if (result === undefined) {
+    throw new ApiError("Unexpected empty response.", { status: 204 });
+  }
+  return result;
+}
+
+async function fetchJsonAllowNoContent<T = void>(
+  path: string,
+  init: RequestInit = {},
+): Promise<T | undefined> {
+  return fetchJsonInternal<T>(path, init, { allowNoContent: true });
+}
+
 export async function getStatus(): Promise<SystemStatus> {
   return fetchJson<SystemStatus>("/api/status");
 }
@@ -144,7 +171,7 @@ export async function addOverride(
   action: "allow" | "block",
   reason: string,
 ): Promise<void> {
-  await fetchJson("/api/overrides", {
+  await fetchJsonAllowNoContent("/api/overrides", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ pattern, action, reason }),
