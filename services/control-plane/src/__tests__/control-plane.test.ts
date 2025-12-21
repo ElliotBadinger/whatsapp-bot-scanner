@@ -121,6 +121,54 @@ describe("control-plane buildServer", () => {
     }
   });
 
+  test("GET /scans/recent supports cursor-based fetching", async () => {
+    const now = new Date().toISOString();
+    const cursor = Buffer.from(JSON.stringify({ ts: now, id: 10 })).toString(
+      "base64url",
+    );
+
+    const { app, dbClient } = await buildTestServer(async (sql: string) => {
+      if (sql.includes("WHERE last_seen_at >")) {
+        return {
+          rows: [
+            {
+              id: 11,
+              url_hash: "hash-11",
+              normalized_url: "https://example.com/new",
+              verdict: "benign",
+              last_seen_at: now,
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: `/scans/recent?limit=5&after=${encodeURIComponent(cursor)}`,
+        headers: authHeader,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(JSON.parse(res.payload)).toEqual([
+        {
+          id: 11,
+          url_hash: "hash-11",
+          normalized_url: "https://example.com/new",
+          verdict: "benign",
+          last_seen_at: now,
+        },
+      ]);
+      expect(dbClient.query).toHaveBeenCalledWith(
+        expect.stringContaining("ORDER BY last_seen_at ASC"),
+        [now, now, 10, 5],
+      );
+    } finally {
+      await app.close();
+    }
+  });
+
   test("POST /overrides rejects invalid bodies", async () => {
     const { app } = await buildTestServer();
     try {

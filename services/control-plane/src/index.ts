@@ -120,14 +120,48 @@ export async function buildServer(options: BuildOptions = {}) {
           ? Math.min(parsedLimit, 100)
           : 10;
 
+      const rawAfter = (req.query as { after?: string })?.after;
+      let after: { lastSeenAt: string; id: number } | null = null;
+      if (typeof rawAfter === "string" && rawAfter.trim().length > 0) {
+        try {
+          const decoded = Buffer.from(rawAfter, "base64url").toString("utf8");
+          const parsed = JSON.parse(decoded) as unknown;
+          if (!parsed || typeof parsed !== "object") {
+            throw new Error("Invalid cursor payload");
+          }
+          const obj = parsed as { ts?: unknown; id?: unknown };
+          const lastSeenAt =
+            typeof obj.ts === "string" && obj.ts.trim().length > 0
+              ? obj.ts
+              : null;
+          const parsedId = Number.parseInt(String(obj.id ?? ""), 10);
+
+          if (!lastSeenAt || !Number.isFinite(parsedId) || parsedId <= 0) {
+            throw new Error("Invalid cursor fields");
+          }
+
+          after = { lastSeenAt, id: parsedId };
+        } catch {
+          return reply.code(400).send({ error: "invalid_after_cursor" });
+        }
+      }
+
       try {
+        const orderBy = after
+          ? "ORDER BY last_seen_at ASC, id ASC"
+          : "ORDER BY last_seen_at DESC, id DESC";
+
         const { rows } = await dbClient.query(
-          "SELECT id, url_hash, normalized_url, verdict, last_seen_at FROM scans ORDER BY last_seen_at DESC, id DESC LIMIT ?",
-          [limit],
+          after
+            ? `SELECT id, url_hash, normalized_url, verdict, last_seen_at FROM scans WHERE last_seen_at > ? OR (last_seen_at = ? AND id > ?) ${orderBy} LIMIT ?`
+            : `SELECT id, url_hash, normalized_url, verdict, last_seen_at FROM scans ${orderBy} LIMIT ?`,
+          after
+            ? [after.lastSeenAt, after.lastSeenAt, after.id, limit]
+            : [limit],
         );
         return rows;
       } catch (err) {
-        logger.error({ err, limit }, "Failed to list recent scans");
+        logger.error({ err, limit, after }, "Failed to list recent scans");
         return reply.code(500).send({ error: "recent_scans_unavailable" });
       }
     });

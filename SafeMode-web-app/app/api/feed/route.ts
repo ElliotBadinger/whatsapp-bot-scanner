@@ -5,8 +5,38 @@ import {
 } from "@/lib/control-plane-mappers";
 import type { ScanVerdict } from "@/lib/api";
 
-export async function GET() {
+function isValidCursor(raw: string): boolean {
+  if (raw.trim().length === 0) return false;
+  if (raw.length > 512) return false;
+  try {
+    const decoded = Buffer.from(raw, "base64url").toString("utf8");
+    const parsed = JSON.parse(decoded) as unknown;
+    if (!parsed || typeof parsed !== "object") return false;
+    const obj = parsed as { ts?: unknown; id?: unknown };
+    if (typeof obj.ts !== "string" || obj.ts.trim().length === 0) return false;
+    if (typeof obj.id !== "string" && typeof obj.id !== "number") return false;
+    if (String(obj.id).trim().length === 0) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function makeCursor(item: Pick<ScanVerdict, "timestamp" | "id">): string {
+  return Buffer.from(
+    JSON.stringify({ ts: item.timestamp, id: item.id }),
+    "utf8",
+  ).toString("base64url");
+}
+
+export async function GET(req: Request) {
   const encoder = new TextEncoder();
+  const lastEventId = req.headers.get("last-event-id");
+  const initialAfter =
+    typeof lastEventId === "string" && isValidCursor(lastEventId)
+      ? lastEventId
+      : null;
+
   let closed = false;
   let streamController: ReadableStreamDefaultController | null = null;
   let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -38,6 +68,8 @@ export async function GET() {
   const stream = new ReadableStream({
     async start(controller) {
       streamController = controller;
+      let afterCursor: string | null = initialAfter;
+
       const safeEnqueue = (chunk: Uint8Array) => {
         const target = streamController;
         if (closed || !target) return;
@@ -52,6 +84,12 @@ export async function GET() {
         safeEnqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
       };
 
+      const sendWithId = (id: string, data: unknown) => {
+        safeEnqueue(
+          encoder.encode(`id: ${id}\ndata: ${JSON.stringify(data)}\n\n`),
+        );
+      };
+
       const ping = () => {
         safeEnqueue(encoder.encode(`: ping\n\n`));
       };
@@ -59,24 +97,20 @@ export async function GET() {
       // Initial connection message (helps client distinguish connect vs. no-data)
       send({ type: "connected" });
 
-      const sentIds = new Set<string>();
-      const sentQueue: string[] = [];
-      const rememberId = (id: string) => {
-        if (sentIds.has(id)) return;
-        sentIds.add(id);
-        sentQueue.push(id);
-        if (sentQueue.length > 500) {
-          const oldest = sentQueue.shift();
-          if (oldest) sentIds.delete(oldest);
-        }
-      };
-
       const fetchRecent = async (): Promise<ScanVerdict[]> => {
+        const params = new URLSearchParams({ limit: "25" });
+        if (afterCursor) params.set("after", afterCursor);
         const rows = await controlPlaneFetchJson<ControlPlaneScanRow[]>(
-          "/scans/recent?limit=25",
+          `/scans/recent?${params.toString()}`,
           { timeoutMs: 6000 },
         );
         return rows.map(mapScanRow);
+      };
+
+      const sendScan = (item: ScanVerdict) => {
+        const cursor = makeCursor(item);
+        afterCursor = cursor;
+        sendWithId(cursor, item);
       };
 
       const seed = async () => {
@@ -89,9 +123,7 @@ export async function GET() {
           });
           for (const item of sorted) {
             if (closed) return;
-            if (sentIds.has(item.id)) continue;
-            send(item);
-            rememberId(item.id);
+            sendScan(item);
           }
         } catch {
           // If seeding fails, keep the connection open so clients can retry.
@@ -107,18 +139,15 @@ export async function GET() {
         isPolling = true;
         try {
           const items = await fetchRecent();
-          const fresh = items
-            .filter((item) => !sentIds.has(item.id))
-            .sort((a, b) => {
-              const ts = a.timestamp.localeCompare(b.timestamp);
-              if (ts !== 0) return ts;
-              return a.id.localeCompare(b.id);
-            });
+          const fresh = items.sort((a, b) => {
+            const ts = a.timestamp.localeCompare(b.timestamp);
+            if (ts !== 0) return ts;
+            return a.id.localeCompare(b.id);
+          });
 
           for (const item of fresh) {
             if (closed) return;
-            send(item);
-            rememberId(item.id);
+            sendScan(item);
           }
         } catch {
           // Allow transient failures and keep the SSE connection alive.
