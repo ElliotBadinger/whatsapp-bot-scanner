@@ -4,12 +4,16 @@ import {
   hasPendingSuggestion,
   isWorkingMessage,
   latestComment,
+  validateEventPrNumber,
 } from "./charliehelps-auto-lib.mjs";
+import fs from "node:fs/promises";
 
 const token = process.env.GITHUB_TOKEN;
 const repo = process.env.GITHUB_REPOSITORY;
 const prNumberRaw = process.env.PR_NUMBER;
 const mode = (process.env.MODE ?? "reply").toLowerCase();
+const eventName = process.env.GITHUB_EVENT_NAME;
+const eventPath = process.env.GITHUB_EVENT_PATH;
 
 const allowedModes = new Set(["reply", "fast-forward"]);
 if (!allowedModes.has(mode)) {
@@ -286,6 +290,13 @@ async function replyToThread(threadId) {
   return data.addPullRequestReviewThreadReply.comment.url;
 }
 
+async function validateEventContext() {
+  if (!eventName || !eventPath) return;
+  const raw = await fs.readFile(eventPath, "utf8");
+  const payload = JSON.parse(raw);
+  validateEventPrNumber(eventName, payload, prNumber);
+}
+
 async function hasPendingSuggestionForThread(thread, commentPreview) {
   // We treat the latest comment window as authoritative: if it indicates a
   // pending suggestion and the window is truncated, we hydrate full history
@@ -301,6 +312,7 @@ async function hasPendingSuggestionForThread(thread, commentPreview) {
 }
 
 async function main() {
+  await validateEventContext();
   const pr = await getPullRequestWithThreads();
 
   const threads = pr.reviewThreads.nodes;

@@ -173,4 +173,22 @@ describe("charliehelps-auto helpers", () => {
     ];
     expect(lib.hasPendingSuggestion(comments)).toBe(false);
   });
+
+  test("validates PR number against GitHub event payload", async () => {
+    const lib = await importEsm(libPath);
+
+    expect(
+      lib.getEventPrNumber("pull_request_review", {
+        pull_request: { number: 145 },
+      }),
+    ).toBe(145);
+
+    expect(() => {
+      lib.validateEventPrNumber(
+        "pull_request_review",
+        { pull_request: { number: 123 } },
+        145,
+      );
+    }).toThrow(/does not match PR_NUMBER/i);
+  });
 });

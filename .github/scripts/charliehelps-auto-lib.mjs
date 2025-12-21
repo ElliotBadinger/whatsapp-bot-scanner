@@ -80,3 +80,53 @@ export function hasPendingSuggestion(comments) {
   if (latestSuggestionTime === -Infinity) return false;
   return latestSuggestionTime > latestAckTime;
 }
+
+function parsePrNumber(value) {
+  if (typeof value === "number" && Number.isInteger(value)) return value;
+  if (typeof value === "string" && /^\d+$/.test(value)) return Number(value);
+  return null;
+}
+
+export function getEventPrNumber(eventName, payload) {
+  if (!eventName || !payload) return null;
+
+  if (
+    eventName === "pull_request_review" ||
+    eventName === "pull_request_review_comment" ||
+    eventName === "pull_request" ||
+    eventName === "pull_request_target"
+  ) {
+    return parsePrNumber(payload.pull_request?.number);
+  }
+
+  if (eventName === "issue_comment") {
+    return parsePrNumber(payload.issue?.number);
+  }
+
+  if (eventName === "workflow_dispatch") {
+    return parsePrNumber(payload.inputs?.pr_number);
+  }
+
+  return null;
+}
+
+export function validateEventPrNumber(eventName, payload, expectedPrNumber) {
+  const eventPr = getEventPrNumber(eventName, payload);
+
+  if (
+    eventName === "pull_request_review" ||
+    eventName === "pull_request_review_comment" ||
+    eventName === "issue_comment" ||
+    eventName === "workflow_dispatch"
+  ) {
+    if (eventPr === null) {
+      throw new Error(`Unable to resolve PR number from event ${eventName}`);
+    }
+  }
+
+  if (eventPr !== null && eventPr !== expectedPrNumber) {
+    throw new Error(
+      `Event PR number (${eventPr}) does not match PR_NUMBER (${expectedPrNumber})`,
+    );
+  }
+}
