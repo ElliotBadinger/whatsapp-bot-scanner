@@ -93,9 +93,9 @@ export async function POST(req: Request) {
   const { pattern, action, reason } = parsed.data;
 
   try {
-    const { status, data } = await controlPlaneFetchJsonWithStatus<
-      { ok: boolean }
-    >(
+    const { status, data } = await controlPlaneFetchJsonWithStatus<{
+      ok: boolean;
+    }>(
       "/overrides",
       {
         method: "POST",
