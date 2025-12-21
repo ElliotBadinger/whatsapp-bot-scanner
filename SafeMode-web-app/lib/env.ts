@@ -2,6 +2,9 @@ import "server-only";
 
 import { z } from "zod";
 
+// Note: Server code should use `getEnv()` (not `process.env.*`) so deprecations and validation
+// stay centralized here.
+
 const serverEnvSchema = z.object({
   CONTROL_PLANE_URL: z
     .string()

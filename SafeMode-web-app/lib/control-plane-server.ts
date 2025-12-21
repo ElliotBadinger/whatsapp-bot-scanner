@@ -15,7 +15,9 @@ export class ControlPlaneError extends Error {
 }
 
 function resolveControlPlaneBase(): string {
-  // Assumes `CONTROL_PLANE_URL` has already been validated by `validateEnv()`.
+  // `getEnv()` validates `CONTROL_PLANE_URL` on startup (and lazily on first access).
+  // During the deprecation window, `CONTROL_PLANE_BASE` can be used as a fallback value.
+  // If misconfigured, it throws and the request fails early.
   // Normalizes the base URL (removes hash and trailing slashes).
   const { CONTROL_PLANE_URL } = getEnv();
   const parsed = new URL(CONTROL_PLANE_URL);

@@ -125,6 +125,8 @@ Create `SafeMode-web-app/.env.local` from `SafeMode-web-app/.env.example` and se
 
 These variables are validated at startup; missing or invalid values will prevent the SafeMode web app from starting.
 
+The SafeMode web app does not default `CONTROL_PLANE_URL`; you must set it (or temporarily `CONTROL_PLANE_BASE` during the deprecation window).
+
 Public variables are validated in `SafeMode-web-app/lib/public-env.ts`.
 
 ## 📚 Documentation
