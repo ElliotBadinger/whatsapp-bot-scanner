@@ -218,6 +218,7 @@ async function getPullRequestWithThreads() {
             url
             state
             isDraft
+            author { login }
             baseRefName
             baseRefOid
             headRefOid
@@ -286,6 +287,7 @@ async function getPullRequestState() {
           url
           state
           isDraft
+          author { login }
           baseRefName
           baseRefOid
           headRefOid
@@ -398,7 +400,8 @@ async function main() {
 
   const pr = await getPullRequestWithThreads();
 
-  if (mode === "reply") {
+  const prAuthor = pr.author?.login?.toLowerCase();
+  if (prAuthor && prAuthor !== owner.toLowerCase()) {
     await clearOwnerReviewRequest();
   }
 
