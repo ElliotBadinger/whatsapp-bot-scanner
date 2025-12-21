@@ -293,13 +293,13 @@ export class SessionManager {
       return "missing";
     }
 
-    if (normalized.includes(":")) {
-      return "ipv6";
+    const ipType = isIP(normalized);
+    if (ipType === 4) {
+      return "ipv4";
     }
 
-    const parts = normalized.split(".");
-    if (parts.length === 4) {
-      return "ipv4";
+    if (ipType === 6) {
+      return "ipv6";
     }
 
     return "unknown";

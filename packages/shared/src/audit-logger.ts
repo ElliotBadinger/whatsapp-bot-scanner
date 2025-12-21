@@ -17,13 +17,24 @@ export interface PersistedAuditLogEntry {
 }
 
 export interface AuditLoggerConfig {
+  /**
+   * Optional persistence callback for audit entries.
+   *
+   * The logger always emits structured audit logs; this callback is only used
+   * to persist entries (e.g. to a database).
+   */
   persist?: (entry: PersistedAuditLogEntry) => Promise<void>;
+
+  /**
+   * When `false`, persistence is disabled.
+   * Structured audit logs are still emitted.
+   */
   enabled?: boolean;
 }
 
 /**
  * Audit logger for security-sensitive operations.
- * Logs to both database and structured log output.
+* Logs to structured output and can optionally persist entries.
  */
 export class AuditLogger {
   private readonly persist?: AuditLoggerConfig["persist"];

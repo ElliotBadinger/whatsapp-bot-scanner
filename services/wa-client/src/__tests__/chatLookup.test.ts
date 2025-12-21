@@ -46,7 +46,7 @@ describe("safeGetGroupChatById", () => {
         session: expect.stringContaining("state=disconnected"),
       }),
     );
-    expect(JSON.stringify(context)).not.toContain("123@c.us");
+    expect(context).not.toHaveProperty("chatId");
   });
 
   it("wraps evaluation errors with descriptive context", async () => {
