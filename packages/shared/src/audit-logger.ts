@@ -13,7 +13,6 @@ export interface PersistedAuditLogEntry {
   action: string;
   target: string | null;
   timestamp: Date;
-  metadata: Record<string, unknown> | undefined;
   metadataJson: string | null;
 }
 
@@ -62,7 +61,6 @@ export class AuditLogger {
         action: entry.action,
         target: entry.target ?? null,
         timestamp,
-        metadata: entry.metadata,
         metadataJson: metadata,
       });
     } catch (error) {
