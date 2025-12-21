@@ -3,10 +3,11 @@ import { TerminalCard } from "@/components/safemode/terminal-card"
 import { QRCodeDisplay } from "@/components/safemode/qr-code"
 import { LiveFeed } from "@/components/safemode/live-feed"
 import { StatsDisplay } from "@/components/safemode/stats-display"
+import { getEnv } from "@/lib/env"
 
-// Configuration - would come from env in production
-const BOT_PHONE = "+15551234567"
-const WA_ME_LINK = `https://wa.me/${BOT_PHONE.replace("+", "")}?text=add%20bot`
+const env = getEnv()
+const BOT_PHONE = env.NEXT_PUBLIC_BOT_PHONE_NUMBER
+const WA_ME_LINK = env.NEXT_PUBLIC_WA_ME_LINK
 
 export default function CommunityPage() {
   return (

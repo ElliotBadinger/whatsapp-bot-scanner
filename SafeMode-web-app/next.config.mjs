@@ -3,6 +3,11 @@ const nextConfig = {
   // Enable React strict mode for better development warnings
   reactStrictMode: true,
 
+  env: {
+    NEXT_PUBLIC_BOT_PHONE_NUMBER: process.env.NEXT_PUBLIC_BOT_PHONE_NUMBER,
+    NEXT_PUBLIC_WA_ME_LINK: process.env.NEXT_PUBLIC_WA_ME_LINK,
+  },
+
   // Image optimization configuration
   images: {
     formats: ["image/avif", "image/webp"],

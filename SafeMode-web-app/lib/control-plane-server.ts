@@ -1,5 +1,7 @@
 import "server-only";
 
+import { getEnv } from "./env";
+
 export class ControlPlaneError extends Error {
   public readonly status: number;
   public readonly code?: string;
@@ -13,29 +15,21 @@ export class ControlPlaneError extends Error {
 }
 
 function resolveControlPlaneBase(): string {
-  const candidate = (
-    process.env.CONTROL_PLANE_BASE || "http://localhost:8080"
-  ).trim();
+  const candidate = getEnv().CONTROL_PLANE_URL;
+  const parsed = new URL(candidate);
 
-  try {
-    const parsed = new URL(candidate);
-    if (!["http:", "https:"].includes(parsed.protocol)) {
-      throw new Error("invalid protocol");
-    }
-    parsed.hash = "";
-    let base = parsed.toString();
-    while (base.endsWith("/")) {
-      base = base.slice(0, -1);
-    }
-    return base;
-  } catch {
-    return "http://localhost:8080";
+  parsed.hash = "";
+
+  let base = parsed.toString();
+  while (base.endsWith("/")) {
+    base = base.slice(0, -1);
   }
+
+  return base;
 }
 
 function getControlPlaneToken(): string {
-  const token = (process.env.CONTROL_PLANE_API_TOKEN || "").trim();
-  return token;
+  return getEnv().CONTROL_PLANE_API_TOKEN;
 }
 
 export async function controlPlaneFetch(
