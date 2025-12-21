@@ -64,15 +64,17 @@ export function hasPendingSuggestion(comments) {
     const t = Date.parse(comment.createdAt);
     if (Number.isNaN(t)) continue;
 
-    const author = (comment.author?.login ?? "").toLowerCase();
+    const authorLogin = (comment.author?.login ?? "").toLowerCase();
     const body = comment.body || "";
 
-    if (author !== "charliecreates" && yesPleaseRegex.test(body)) {
+    if (authorLogin !== "charliecreates" && yesPleaseRegex.test(body)) {
+      const authorType = comment.author?.__typename;
+      if (authorType != null && authorType !== "User") continue;
       latestAckTime = Math.max(latestAckTime, t);
       continue;
     }
 
-    if (author === "charliecreates" && isSuggestionComment(body)) {
+    if (authorLogin === "charliecreates" && isSuggestionComment(body)) {
       latestSuggestionTime = Math.max(latestSuggestionTime, t);
     }
   }

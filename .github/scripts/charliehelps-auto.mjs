@@ -153,7 +153,7 @@ async function fetchThreadComments(threadId) {
           ... on PullRequestReviewThread{
             comments(first:100, after:$after){
               pageInfo { hasNextPage endCursor }
-              nodes { author { login } body createdAt url }
+              nodes { author { __typename login } body createdAt url }
             }
           }
         }
@@ -212,7 +212,7 @@ async function getPullRequestWithThreads() {
                 isResolved
                 comments(last:${commentsPerThread}){
                   pageInfo { hasPreviousPage startCursor }
-                  nodes { author { login } body createdAt url }
+                  nodes { author { __typename login } body createdAt url }
                 }
               }
             }

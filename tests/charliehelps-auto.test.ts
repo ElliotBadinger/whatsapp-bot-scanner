@@ -91,12 +91,12 @@ describe("charliehelps-auto helpers", () => {
     const lib = await importEsm(libPath);
     const comments = [
       {
-        author: { login: "charliecreates" },
+        author: { __typename: "Bot", login: "charliecreates" },
         body: 'Reply with \"@CharlieHelps yes please\" if you want this.',
         createdAt: "2025-12-21T08:00:00Z",
       },
       {
-        author: { login: "ElliotBadinger" },
+        author: { __typename: "User", login: "ElliotBadinger" },
         body: "@CharlieHelps yes please",
         createdAt: "2025-12-21T08:01:00Z",
       },
@@ -114,6 +114,23 @@ describe("charliehelps-auto helpers", () => {
       },
       {
         author: { login: "charliecreates" },
+        body: "@CharlieHelps yes please",
+        createdAt: "2025-12-21T08:01:00Z",
+      },
+    ];
+    expect(lib.hasPendingSuggestion(comments)).toBe(true);
+  });
+
+  test("does not clear pending suggestion when ack is from a bot", async () => {
+    const lib = await importEsm(libPath);
+    const comments = [
+      {
+        author: { __typename: "Bot", login: "charliecreates" },
+        body: 'Reply with \"@CharlieHelps yes please\" if you want this.',
+        createdAt: "2025-12-21T08:00:00Z",
+      },
+      {
+        author: { __typename: "Bot", login: "chatgpt-codex-connector" },
         body: "@CharlieHelps yes please",
         createdAt: "2025-12-21T08:01:00Z",
       },
