@@ -13,10 +13,11 @@ const repo = process.env.GITHUB_REPOSITORY;
 const prNumberRaw = process.env.PR_NUMBER;
 const rawMode = process.env.MODE ?? "reply";
 const mode = rawMode.toLowerCase();
+const mergeMethod = (process.env.MERGE_METHOD ?? "rebase").toLowerCase();
 const eventName = process.env.GITHUB_EVENT_NAME;
 const eventPath = process.env.GITHUB_EVENT_PATH;
 
-const allowedModes = new Set(["reply", "fast-forward"]);
+const allowedModes = new Set(["reply", "merge"]);
 if (!allowedModes.has(mode)) {
   console.error(
     `Invalid MODE=${rawMode}. Expected one of: ${Array.from(allowedModes).join(
@@ -24,6 +25,18 @@ if (!allowedModes.has(mode)) {
     )}.`,
   );
   process.exit(1);
+}
+
+if (mode === "merge") {
+  const allowedMergeMethods = new Set(["merge", "rebase", "squash"]);
+  if (!allowedMergeMethods.has(mergeMethod)) {
+    console.error(
+      `Invalid MERGE_METHOD=${mergeMethod}. Expected one of: ${Array.from(
+        allowedMergeMethods,
+      ).join(", ")}.`,
+    );
+    process.exit(1);
+  }
 }
 
 if (!token) {
@@ -363,39 +376,39 @@ async function main() {
     } else {
       console.log("No pending suggestion threads to reply to.");
     }
-    console.log(`MODE=${mode}; skipping fast-forward to main.`);
+    console.log(`MODE=${mode}; skipping merge to main.`);
     return;
   }
 
   if (workingFound) {
     console.log(
-      "CharlieHelps is still working; skipping fast-forward to main.",
+      "CharlieHelps is still working; skipping merge to main.",
     );
     return;
   }
 
   if (toReply.length > 0) {
     console.log(
-      `Found ${toReply.length} pending suggestion thread(s); skipping fast-forward to main.`,
+      `Found ${toReply.length} pending suggestion thread(s); skipping merge to main.`,
     );
     return;
   }
 
   if (pr.isDraft) {
-    console.log("PR is a draft; skipping fast-forward to main.");
+    console.log("PR is a draft; skipping merge to main.");
     return;
   }
 
   const unresolvedThreads = threads.filter((thread) => !thread.isResolved);
   if (unresolvedThreads.length > 0) {
     console.log(
-      `PR has ${unresolvedThreads.length} unresolved review thread(s); skipping fast-forward to main.`,
+      `PR has ${unresolvedThreads.length} unresolved review thread(s); skipping merge to main.`,
     );
     return;
   }
 
   if (pr.baseRefName !== "main") {
-    console.log(`PR base is ${pr.baseRefName}; skipping fast-forward to main.`);
+    console.log(`PR base is ${pr.baseRefName}; skipping merge to main.`);
     return;
   }
 
@@ -403,21 +416,21 @@ async function main() {
   const headRepo = pr.headRepository?.name;
   if (!headOwner || !headRepo || headOwner !== owner || headRepo !== name) {
     console.log(
-      "PR head is not in the base repository; skipping fast-forward to main.",
+      "PR head is not in the base repository; skipping merge to main.",
     );
     return;
   }
 
   if (pr.mergeStateStatus !== "CLEAN" || pr.mergeable !== "MERGEABLE") {
     console.log(
-      `PR is not mergeable (mergeStateStatus=${pr.mergeStateStatus}, mergeable=${pr.mergeable}); skipping fast-forward.`,
+      `PR is not mergeable (mergeStateStatus=${pr.mergeStateStatus}, mergeable=${pr.mergeable}); skipping merge.`,
     );
     return;
   }
 
   if (pr.statusCheckRollup?.state !== "SUCCESS") {
     console.log(
-      `Status checks are not green (state=${pr.statusCheckRollup?.state ?? "UNKNOWN"}); skipping fast-forward.`,
+      `Status checks are not green (state=${pr.statusCheckRollup?.state ?? "UNKNOWN"}); skipping merge.`,
     );
     return;
   }
@@ -428,30 +441,30 @@ async function main() {
   );
   const mainSha = ref?.object?.sha;
   if (!mainSha) {
-    console.log("Could not resolve main ref SHA; skipping fast-forward.");
+    console.log("Could not resolve main ref SHA; skipping merge.");
     return;
   }
 
   if (mainSha !== pr.baseRefOid) {
-    console.log("PR base is not up-to-date with main; skipping fast-forward.");
+    console.log("PR base is not up-to-date with main; skipping merge.");
     return;
   }
 
   const latestPr = await getPullRequestState();
   if (latestPr.headRefOid !== pr.headRefOid) {
     console.log(
-      `PR head changed from ${pr.headRefOid} to ${latestPr.headRefOid}; skipping fast-forward.`,
+      `PR head changed from ${pr.headRefOid} to ${latestPr.headRefOid}; skipping merge.`,
     );
     return;
   }
   if (latestPr.baseRefOid !== pr.baseRefOid) {
     console.log(
-      `PR base changed from ${pr.baseRefOid} to ${latestPr.baseRefOid}; skipping fast-forward.`,
+      `PR base changed from ${pr.baseRefOid} to ${latestPr.baseRefOid}; skipping merge.`,
     );
     return;
   }
   if (latestPr.isDraft) {
-    console.log("PR is a draft; skipping fast-forward to main.");
+    console.log("PR is a draft; skipping merge to main.");
     return;
   }
   if (
@@ -459,23 +472,31 @@ async function main() {
     latestPr.mergeable !== pr.mergeable
   ) {
     console.log(
-      `PR mergeability changed (mergeStateStatus=${latestPr.mergeStateStatus}, mergeable=${latestPr.mergeable}); skipping fast-forward.`,
+      `PR mergeability changed (mergeStateStatus=${latestPr.mergeStateStatus}, mergeable=${latestPr.mergeable}); skipping merge.`,
     );
     return;
   }
   if (latestPr.statusCheckRollup?.state !== pr.statusCheckRollup?.state) {
     console.log(
-      `PR status rollup changed (state=${latestPr.statusCheckRollup?.state ?? "UNKNOWN"}); skipping fast-forward.`,
+      `PR status rollup changed (state=${latestPr.statusCheckRollup?.state ?? "UNKNOWN"}); skipping merge.`,
     );
     return;
   }
 
-  console.log(`Fast-forwarding main from ${mainSha} to ${pr.headRefOid}...`);
-  await ghRest("PATCH", `/repos/${owner}/${name}/git/refs/heads/main`, {
-    sha: pr.headRefOid,
-    force: false,
-  });
-  console.log("Fast-forward to main completed.");
+  console.log(
+    `Merging PR #${pr.number} to main (method=${mergeMethod}, expectedSha=${pr.headRefOid})...`,
+  );
+  const result = await ghRest(
+    "PUT",
+    `/repos/${owner}/${name}/pulls/${prNumber}/merge`,
+    {
+      sha: pr.headRefOid,
+      merge_method: mergeMethod,
+    },
+  );
+  console.log(
+    `Merge to main completed (sha=${result?.sha ?? "UNKNOWN"}, merged=${result?.merged ?? "UNKNOWN"}).`,
+  );
 }
 
 main().catch((err) => {

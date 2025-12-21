@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       pr_number:
-        description: "Pull request number to fast-forward (trusted only)"
+        description: "Pull request number to merge to main (trusted only)"
         required: true
         type: number
 
@@ -48,12 +48,12 @@ jobs:
           MODE: reply
         run: node .github/scripts/charliehelps-auto.mjs
 
-  fast-forward:
-    # WARNING: This job can update refs/heads/main; only the repo owner may trigger it.
+  merge-to-main:
+    # WARNING: This job can merge to main; only the repo owner may trigger it.
     if: github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner && github.ref_name == 'main'
     permissions:
       contents: write
-      pull-requests: read
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -62,5 +62,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.inputs.pr_number }}
-          MODE: fast-forward
+          MODE: merge
+          MERGE_METHOD: rebase
         run: node .github/scripts/charliehelps-auto.mjs
