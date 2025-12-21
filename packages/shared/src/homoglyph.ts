@@ -230,27 +230,32 @@ function stringSimilarity(a: string, b: string): number {
 }
 
 function levenshteinDistance(a: string, b: string): number {
-  const matrix: number[][] = [];
-  for (let i = 0; i <= b.length; i += 1) {
-    matrix[i] = [i];
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+
+  if (a.length > b.length) {
+    [a, b] = [b, a];
   }
-  for (let j = 0; j <= a.length; j += 1) {
-    matrix[0][j] = j;
-  }
+
+  let row = Array.from({ length: a.length + 1 }, (_, i) => i);
+  let nextRow = new Array(a.length + 1);
+
   for (let i = 1; i <= b.length; i += 1) {
+    nextRow[0] = i;
     for (let j = 1; j <= a.length; j += 1) {
       if (b.charAt(i - 1) === a.charAt(j - 1)) {
-        matrix[i][j] = matrix[i - 1][j - 1];
+        nextRow[j] = row[j - 1];
       } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1,
-          matrix[i][j - 1] + 1,
-          matrix[i - 1][j] + 1,
+        nextRow[j] = Math.min(
+          row[j - 1] + 1, // substitution
+          row[j] + 1,     // deletion
+          nextRow[j - 1] + 1, // insertion
         );
       }
     }
+    [row, nextRow] = [nextRow, row];
   }
-  return matrix[b.length][a.length];
+  return row[a.length];
 }
 
 function pushUnique(reasons: string[], reason: string) {
