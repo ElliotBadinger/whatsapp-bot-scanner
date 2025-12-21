@@ -32,11 +32,17 @@ export class ApiError extends Error {
   public readonly status: number;
   public readonly code?: string;
 
-  constructor(message: string, options: { status: number; code?: string }) {
+  constructor(
+    message: string,
+    options: { status: number; code?: string; cause?: unknown },
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = options.status;
     this.code = options.code;
+    if (options.cause !== undefined) {
+      this.cause = options.cause;
+    }
   }
 }
 
@@ -58,11 +64,22 @@ async function fetchJsonInternal<T>(
   const headers = new Headers(init.headers);
   headers.set("accept", "application/json");
 
-  const resp = await fetch(path, {
-    ...init,
-    headers,
-    cache: "no-store",
-  });
+  let resp: Response;
+  try {
+    resp = await fetch(path, {
+      ...init,
+      headers,
+      cache: "no-store",
+    });
+  } catch (err) {
+    const isAbort = err instanceof Error && err.name === "AbortError";
+    const message = isAbort ? "Request timed out." : "Network request failed.";
+    throw new ApiError(message, {
+      status: 0,
+      code: isAbort ? "timeout" : "network_error",
+      cause: err,
+    });
+  }
 
   const contentType = resp.headers.get("content-type") ?? "";
   const isJson =
