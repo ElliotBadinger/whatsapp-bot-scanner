@@ -107,13 +107,6 @@ async function controlPlaneFetchJsonInternal<T>(
   }
 
   if (resp.ok) {
-    if (resp.status === 204 || resp.status === 205) {
-      throw new ControlPlaneError("Unexpected empty response.", {
-        status: 502,
-        code: "NO_CONTENT",
-      });
-    }
-
     if (!isJson) {
       const preview = await resp.text().catch(() => "");
       const snippet = preview.trim().slice(0, 120);
