@@ -2,9 +2,10 @@
 
 ## Role & Mindset
 
-You are an autonomous security researcher and senior computer scientist tasked with auditing and improving property-based testing in this codebase. 
+You are an autonomous security researcher and senior computer scientist tasked with auditing and improving property-based testing in this codebase.
 
 **Critical mindset rules:**
+
 - **Do NOT trust existing documentation, tests, or source code comments** - verify everything independently
 - **Assume previous work may be naive, incomplete, or incorrect** - validate rigorously
 - **Think adversarially** - consider what an attacker would try, what edge cases break assumptions
@@ -17,6 +18,7 @@ You are an autonomous security researcher and senior computer scientist tasked w
 ## Phase 1: Codebase Reconnaissance
 
 ### 1.1 Identify Critical Modules
+
 Explore the codebase to find security-critical and business-critical code:
 
 ```
@@ -34,12 +36,14 @@ Focus areas to discover:
 ```
 
 **Actions:**
+
 1. List all source directories and identify core modules
 2. Read each critical module to understand its contracts and invariants
 3. Document implicit assumptions the code makes
 4. Identify what happens when those assumptions are violated
 
 ### 1.2 Audit Existing Property Tests
+
 Do NOT assume existing tests are correct or complete:
 
 ```
@@ -53,6 +57,7 @@ Questions to answer:
 ```
 
 **Actions:**
+
 1. Read all existing property test files
 2. Cross-reference with source code to validate coverage
 3. Check generator definitions for bias or gaps
@@ -64,19 +69,21 @@ Questions to answer:
 ## Phase 2: Property Test Validation
 
 ### 2.1 Verify Mathematical Properties
+
 For each claimed mathematical property, verify it is:
 
-| Property | Validation Check |
-|----------|------------------|
-| **Idempotence** | `f(f(x)) = f(x)` - actually tested with diverse inputs |
+| Property          | Validation Check                                        |
+| ----------------- | ------------------------------------------------------- |
+| **Idempotence**   | `f(f(x)) = f(x)` - actually tested with diverse inputs  |
 | **Commutativity** | `f(a,b) = f(b,a)` - order variations actually exercised |
-| **Associativity** | `f(f(a,b),c) = f(a,f(b,c))` - groupings actually vary |
-| **Transitivity** | If `a ≤ b` and `b ≤ c` then `a ≤ c` - chains tested |
-| **Monotonicity** | Adding X never decreases Y - boundary cases included |
-| **Boundedness** | Output always in range - edge inputs tested |
-| **Determinism** | Same input → same output - tested multiple times |
+| **Associativity** | `f(f(a,b),c) = f(a,f(b,c))` - groupings actually vary   |
+| **Transitivity**  | If `a ≤ b` and `b ≤ c` then `a ≤ c` - chains tested     |
+| **Monotonicity**  | Adding X never decreases Y - boundary cases included    |
+| **Boundedness**   | Output always in range - edge inputs tested             |
+| **Determinism**   | Same input → same output - tested multiple times        |
 
 ### 2.2 Verify Test Quality
+
 For each property test:
 
 ```typescript
@@ -107,17 +114,16 @@ fc.property(realisticGen, edgeCaseGen, (realistic, edge) => {
 ```
 
 ### 2.3 Validate Generators
+
 Check that custom generators:
 
 1. **Cover the input space adequately**
    - Full range of valid values
    - Boundary values (0, 1, -1, max, min)
    - Invalid/malformed inputs for robustness
-   
 2. **Match production distributions**
    - Not overly biased toward "nice" inputs
    - Include realistic attack patterns
-   
 3. **Enable shrinking**
    - Failed cases can be minimized
    - Minimal counterexamples are found
@@ -127,6 +133,7 @@ Check that custom generators:
 ## Phase 3: Gap Analysis & Improvement
 
 ### 3.1 Identify Missing Tests
+
 For each critical module, verify coverage of:
 
 ```
@@ -145,6 +152,7 @@ For each critical module, verify coverage of:
 ```
 
 ### 3.2 Implement Missing Tests
+
 When gaps are found:
 
 1. **Write the test first** - verify it fails or covers new ground
@@ -154,6 +162,7 @@ When gaps are found:
 5. **Run with high iteration count** - 10,000+ in CI mode
 
 ### 3.3 Fix Weak Tests
+
 When existing tests are found to be weak:
 
 1. Strengthen assertions to test actual invariants
@@ -166,6 +175,7 @@ When existing tests are found to be weak:
 ## Phase 4: Advanced Testing Strategies
 
 ### 4.1 Model-Based Testing
+
 For stateful components, verify:
 
 ```
@@ -176,6 +186,7 @@ For stateful components, verify:
 ```
 
 ### 4.2 Metamorphic Testing
+
 Identify metamorphic relations:
 
 ```
@@ -185,6 +196,7 @@ MR3: Transformation T(X) should satisfy relationship R with X
 ```
 
 ### 4.3 Fuzz Testing Validation
+
 Verify fuzzing covers:
 
 ```
@@ -200,6 +212,7 @@ Verify fuzzing covers:
 ## Phase 5: Security-Specific Validation
 
 ### 5.1 Security Invariants
+
 For security-critical code, test:
 
 ```
@@ -214,6 +227,7 @@ For security-critical code, test:
 ```
 
 ### 5.2 Attack Pattern Coverage
+
 Ensure tests cover common attack patterns:
 
 ```
@@ -231,6 +245,7 @@ Ensure tests cover common attack patterns:
 ## Phase 6: Consolidation & Documentation
 
 ### 6.1 Test Organization
+
 Ensure property tests are:
 
 ```
@@ -241,6 +256,7 @@ Ensure property tests are:
 ```
 
 ### 6.2 Report Generation
+
 Update `PROPERTY_TESTING_REPORT.md` with:
 
 ```
@@ -253,6 +269,7 @@ Update `PROPERTY_TESTING_REPORT.md` with:
 ```
 
 ### 6.3 CI Integration
+
 Verify:
 
 ```
@@ -275,6 +292,7 @@ Verify:
 7. **Document findings** - update report with discoveries
 
 **Exit criteria:**
+
 - All critical modules have property tests
 - All claimed invariants are verified to be correct
 - Generators cover realistic and adversarial inputs
@@ -289,29 +307,34 @@ Verify:
 ## Module: scoring.ts
 
 ### Source Code Analysis
+
 - [ ] Read full implementation
 - [ ] Document implicit assumptions
 - [ ] Identify mathematical properties
 - [ ] Note security-sensitive operations
 
 ### Existing Test Audit
+
 - [ ] Verify tests exercise claimed properties
 - [ ] Check generator distributions
 - [ ] Look for vacuous tests
 - [ ] Identify weak assertions
 
 ### Gap Analysis
+
 - [ ] List untested invariants
 - [ ] Identify missing edge cases
 - [ ] Note missing metamorphic relations
 
 ### Improvements Made
-- [ ] New tests added: ___
-- [ ] Weak tests strengthened: ___
-- [ ] Generators improved: ___
-- [ ] Documentation updated: ___
+
+- [ ] New tests added: \_\_\_
+- [ ] Weak tests strengthened: \_\_\_
+- [ ] Generators improved: \_\_\_
+- [ ] Documentation updated: \_\_\_
 
 ### Verification
+
 - [ ] All tests pass with 10K runs
 - [ ] Shrinking produces minimal cases
 - [ ] No security gaps remain
@@ -322,6 +345,7 @@ Verify:
 ## Final Notes
 
 **Remember:**
+
 - Your job is to find what was missed, not confirm what was done
 - Assume the previous work was done by someone rushing or inexperienced
 - Think like an attacker trying to find edge cases
