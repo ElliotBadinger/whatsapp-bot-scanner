@@ -59,10 +59,12 @@ function createAuthHook(expectedToken: string) {
   ) {
     const rawHeader = req.headers["authorization"];
     const headerValue = Array.isArray(rawHeader)
-      ? rawHeader[0] ?? ""
-      : rawHeader ?? "";
+      ? (rawHeader[0] ?? "")
+      : (rawHeader ?? "");
     const trimmed = headerValue.trim();
-    const token = trimmed.startsWith("Bearer ") ? trimmed.slice(7).trim() : trimmed;
+    const token = trimmed.startsWith("Bearer ")
+      ? trimmed.slice(7).trim()
+      : trimmed;
     const tokenHash = crypto.createHash("sha256").update(token).digest();
     const expectedHash = crypto
       .createHash("sha256")
@@ -213,9 +215,7 @@ export async function buildServer(options: BuildOptions = {}) {
       ];
       await Promise.all(keys.map((key) => redisClient.del(key)));
 
-      let latestMessage:
-        | { chatId?: string; messageId?: string }
-        | undefined;
+      let latestMessage: { chatId?: string; messageId?: string } | undefined;
       const raw = await redisClient.get(`${SCAN_LAST_MESSAGE_PREFIX}${hash}`);
       if (raw) {
         try {
