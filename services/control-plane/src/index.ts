@@ -97,17 +97,84 @@ export async function buildServer(options: BuildOptions = {}) {
 
     protectedApp.get("/status", async () => {
       const { rows } = await dbClient.query(
-        "SELECT COUNT(*) AS scans, SUM(CASE WHEN verdict = ? THEN 1 ELSE 0 END) AS malicious FROM scans",
+        "SELECT (SELECT COUNT(*) FROM scans) AS scans, (SELECT COUNT(*) FROM scans WHERE verdict = ?) AS malicious, (SELECT COUNT(*) FROM groups) AS groups",
         ["malicious"],
       );
       const stats = rows[0] as {
         scans: number | string;
         malicious: number | string;
+        groups: number | string;
       };
       return {
         scans: Number(stats.scans),
         malicious: Number(stats.malicious || 0),
+        groups: Number(stats.groups || 0),
       };
+    });
+
+    protectedApp.get("/scans/recent", async (req, reply) => {
+      const rawLimit = (req.query as { limit?: string | number })?.limit;
+      const parsedLimit = Number.parseInt(String(rawLimit ?? "10"), 10);
+      const limit =
+        Number.isFinite(parsedLimit) && parsedLimit > 0
+          ? Math.min(parsedLimit, 100)
+          : 10;
+
+      const rawAfter = (req.query as { after?: string })?.after;
+      let after: { lastSeenAt: string; id: number } | null = null;
+      if (typeof rawAfter === "string" && rawAfter.trim().length > 0) {
+        try {
+          const decoded = Buffer.from(rawAfter, "base64url").toString("utf8");
+          const parsed = JSON.parse(decoded) as unknown;
+          if (!parsed || typeof parsed !== "object") {
+            throw new Error("Invalid cursor payload");
+          }
+          const obj = parsed as { ts?: unknown; id?: unknown };
+          const lastSeenAt =
+            typeof obj.ts === "string" && obj.ts.trim().length > 0
+              ? obj.ts
+              : null;
+          const rawId = String(obj.id ?? "").trim();
+          const parsedId =
+            rawId.length > 0 && /^[0-9]+$/.test(rawId)
+              ? Number.parseInt(rawId, 10)
+              : Number.NaN;
+          const parsedDate = lastSeenAt ? new Date(lastSeenAt) : null;
+
+          if (
+            !lastSeenAt ||
+            !parsedDate ||
+            Number.isNaN(parsedDate.getTime()) ||
+            !Number.isSafeInteger(parsedId) ||
+            parsedId < 0
+          ) {
+            throw new Error("Invalid cursor fields");
+          }
+
+          after = { lastSeenAt, id: parsedId };
+        } catch {
+          return reply.code(400).send({ error: "invalid_after_cursor" });
+        }
+      }
+
+      try {
+        const orderBy = after
+          ? "ORDER BY last_seen_at ASC, id ASC"
+          : "ORDER BY last_seen_at DESC, id DESC";
+
+        const { rows } = await dbClient.query(
+          after
+            ? `SELECT id, url_hash, normalized_url, verdict, last_seen_at FROM scans WHERE last_seen_at > ? OR (last_seen_at = ? AND id > ?) ${orderBy} LIMIT ?`
+            : `SELECT id, url_hash, normalized_url, verdict, last_seen_at FROM scans ${orderBy} LIMIT ?`,
+          after
+            ? [after.lastSeenAt, after.lastSeenAt, after.id, limit]
+            : [limit],
+        );
+        return rows;
+      } catch (err) {
+        logger.error({ err, limit, after }, "Failed to list recent scans");
+        return reply.code(500).send({ error: "recent_scans_unavailable" });
+      }
     });
 
     interface OverrideBody {

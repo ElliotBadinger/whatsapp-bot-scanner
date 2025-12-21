@@ -5,19 +5,9 @@ import useSWR from "swr";
 import { getStatus, type SystemStatus } from "@/lib/api";
 import { StatsCard } from "./stats-card";
 
-const FALLBACK_DATA: SystemStatus = {
-  scansToday: 1247,
-  threatsBlocked: 23,
-  cacheHitRate: 87,
-  groupsProtected: 342,
-  uptime: "99.97%",
-  version: "1.0.0",
-};
-
 export const StatsDisplay = memo(function StatsDisplay() {
-  const { data: status } = useSWR<SystemStatus>("status", getStatus, {
+  const { data: status, error } = useSWR<SystemStatus>("status", getStatus, {
     refreshInterval: 10000,
-    fallbackData: FALLBACK_DATA,
     dedupingInterval: 5000, // Dedupe requests within 5 seconds
     revalidateOnFocus: false, // Don't refetch on window focus
     revalidateOnReconnect: true,
@@ -25,13 +15,13 @@ export const StatsDisplay = memo(function StatsDisplay() {
 
   // Memoize calculations
   const { formattedScans, threatPercent } = useMemo(() => {
-    const scans = status?.scansToday ?? 0;
-    const blocked = status?.threatsBlocked ?? 0;
+    const scans = status?.scans ?? 0;
+    const blocked = status?.malicious ?? 0;
     return {
       formattedScans: scans.toLocaleString(),
       threatPercent: scans > 0 ? ((blocked / scans) * 100).toFixed(1) : "0",
     };
-  }, [status?.scansToday, status?.threatsBlocked]);
+  }, [status?.scans, status?.malicious]);
 
   return (
     <section className="py-8 lg:py-12" aria-labelledby="stats-heading">
@@ -49,22 +39,24 @@ export const StatsDisplay = memo(function StatsDisplay() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-8">
+        <StatsCard value={formattedScans} label="SCANS" variant="neutral" />
         <StatsCard
-          value={formattedScans}
-          label="SCANS (24H)"
-          variant="neutral"
-        />
-        <StatsCard
-          value={status?.threatsBlocked ?? "---"}
-          label={`BLOCKED (${threatPercent}%)`}
+          value={status?.malicious ?? "---"}
+          label={`MALICIOUS (${threatPercent}%)`}
           variant="danger"
         />
         <StatsCard
-          value={status?.groupsProtected ?? "---"}
-          label="GROUPS PROTECTED"
+          value={status?.groups ?? "---"}
+          label="GROUPS"
           variant="success"
         />
       </div>
+
+      {error && (
+        <div className="mt-4 font-mono text-xs text-danger/70">
+          Control-plane unavailable. Showing latest cached values.
+        </div>
+      )}
     </section>
   );
 });

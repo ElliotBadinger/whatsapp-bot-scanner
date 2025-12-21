@@ -1,48 +1,102 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { muteGroup } from "@/lib/api"
-import { cn } from "@/lib/utils"
+import { useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { ApiError, muteGroup, unmuteGroup } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 interface Group {
-  id: string
-  name: string
-  members: number
-  scansTotal: number
-  threatsBlocked: number
-  isMuted: boolean
+  id: string;
+  name: string;
+  members: number;
+  scansTotal: number;
+  threatsBlocked: number;
+  isMuted: boolean;
 }
 
 // Mock data
 const mockGroups: Group[] = [
-  { id: "1", name: "Family Chat", members: 12, scansTotal: 156, threatsBlocked: 3, isMuted: false },
-  { id: "2", name: "Work Team", members: 45, scansTotal: 892, threatsBlocked: 15, isMuted: false },
-  { id: "3", name: "Gaming Squad", members: 8, scansTotal: 234, threatsBlocked: 7, isMuted: true },
-  { id: "4", name: "Crypto Traders", members: 128, scansTotal: 2341, threatsBlocked: 89, isMuted: false },
-  { id: "5", name: "School Group", members: 67, scansTotal: 445, threatsBlocked: 12, isMuted: false },
-]
+  {
+    id: "1",
+    name: "Family Chat",
+    members: 12,
+    scansTotal: 156,
+    threatsBlocked: 3,
+    isMuted: false,
+  },
+  {
+    id: "2",
+    name: "Work Team",
+    members: 45,
+    scansTotal: 892,
+    threatsBlocked: 15,
+    isMuted: false,
+  },
+  {
+    id: "3",
+    name: "Gaming Squad",
+    members: 8,
+    scansTotal: 234,
+    threatsBlocked: 7,
+    isMuted: true,
+  },
+  {
+    id: "4",
+    name: "Crypto Traders",
+    members: 128,
+    scansTotal: 2341,
+    threatsBlocked: 89,
+    isMuted: false,
+  },
+  {
+    id: "5",
+    name: "School Group",
+    members: 67,
+    scansTotal: 445,
+    threatsBlocked: 12,
+    isMuted: false,
+  },
+];
 
 export function GroupsManager() {
-  const [groups, setGroups] = useState<Group[]>(mockGroups)
-  const [loadingId, setLoadingId] = useState<string | null>(null)
+  const [groups, setGroups] = useState<Group[]>(mockGroups);
+  const requestInFlight = useRef(false);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleToggleMute = async (groupId: string) => {
-    setLoadingId(groupId)
+  const handleSetMute = async (groupId: string, nextIsMuted: boolean) => {
+    if (requestInFlight.current) return;
+    requestInFlight.current = true;
+    setLoadingId(groupId);
+    setError(null);
     try {
-      await muteGroup(groupId)
-      setGroups((prev) => prev.map((g) => (g.id === groupId ? { ...g, isMuted: !g.isMuted } : g)))
+      await (nextIsMuted ? muteGroup(groupId) : unmuteGroup(groupId));
+
+      setGroups((prev) =>
+        prev.map((g) =>
+          g.id === groupId ? { ...g, isMuted: nextIsMuted } : g,
+        ),
+      );
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(`REQUEST_FAILED: ${err.message}`);
+      } else {
+        setError("REQUEST_FAILED: Unable to update group");
+      }
     } finally {
-      setLoadingId(null)
+      setLoadingId(null);
+      requestInFlight.current = false;
     }
-  }
+  };
 
   return (
     <div className="space-y-4">
       {/* Stats summary */}
       <div className="grid grid-cols-3 gap-4 mb-4">
         <div className="text-center">
-          <div className="font-mono text-2xl text-primary font-bold">{groups.length}</div>
+          <div className="font-mono text-2xl text-primary font-bold">
+            {groups.length}
+          </div>
           <div className="font-mono text-xs text-primary/60">GROUPS</div>
         </div>
         <div className="text-center">
@@ -61,6 +115,11 @@ export function GroupsManager() {
 
       {/* Groups list */}
       <div className="border border-border divide-y divide-border">
+        {error && (
+          <div className="px-4 py-3 font-mono text-xs text-danger/80 border-b border-border bg-danger/5">
+            {error}
+          </div>
+        )}
         {groups.map((group) => (
           <div
             key={group.id}
@@ -68,17 +127,22 @@ export function GroupsManager() {
           >
             <div className="flex-1">
               <div className="flex items-center gap-2">
-                <span className="font-mono text-sm text-secondary">{group.name}</span>
+                <span className="font-mono text-sm text-secondary">
+                  {group.name}
+                </span>
                 {group.isMuted && (
-                  <span className="px-2 py-0.5 bg-warning/10 text-warning text-xs font-mono">MUTED</span>
+                  <span className="px-2 py-0.5 bg-warning/10 text-warning text-xs font-mono">
+                    MUTED
+                  </span>
                 )}
               </div>
               <div className="font-mono text-xs text-muted-foreground/60 mt-1">
-                {group.members} members • {group.scansTotal} scans • {group.threatsBlocked} threats
+                {group.members} members • {group.scansTotal} scans •{" "}
+                {group.threatsBlocked} threats
               </div>
             </div>
             <Button
-              onClick={() => handleToggleMute(group.id)}
+              onClick={() => handleSetMute(group.id, !group.isMuted)}
               disabled={loadingId === group.id}
               variant="outline"
               size="sm"
@@ -89,11 +153,15 @@ export function GroupsManager() {
                   : "border-warning/40 text-warning hover:bg-warning/10",
               )}
             >
-              {loadingId === group.id ? "..." : group.isMuted ? "[ UNMUTE ]" : "[ MUTE ]"}
+              {loadingId === group.id
+                ? "..."
+                : group.isMuted
+                  ? "[ UNMUTE ]"
+                  : "[ MUTE ]"}
             </Button>
           </div>
         ))}
       </div>
     </div>
-  )
+  );
 }
