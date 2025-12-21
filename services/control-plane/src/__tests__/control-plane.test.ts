@@ -183,7 +183,9 @@ describe("control-plane buildServer", () => {
         headers: authHeader,
       });
       expect(res.statusCode).toBe(400);
-      expect(JSON.parse(res.payload)).toEqual({ error: "invalid_after_cursor" });
+      expect(JSON.parse(res.payload)).toEqual({
+        error: "invalid_after_cursor",
+      });
       expect(dbClient.query).not.toHaveBeenCalled();
     } finally {
       await app.close();
