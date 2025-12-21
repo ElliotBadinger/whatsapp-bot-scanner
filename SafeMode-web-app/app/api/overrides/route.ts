@@ -6,6 +6,7 @@ import {
   controlPlaneFetchJsonWithStatus,
 } from "@/lib/control-plane-server";
 import type { Override } from "@/lib/api";
+import { hasValidAdminSession } from "@/lib/admin-session";
 
 type ControlPlaneOverrideRow = {
   id: number | string;
@@ -61,6 +62,10 @@ const PostBodySchema = z.object({
 });
 
 export async function GET() {
+  if (!(await hasValidAdminSession())) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
   try {
     const rows =
       await controlPlaneFetchJson<ControlPlaneOverrideRow[]>("/overrides");
@@ -84,6 +89,10 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  if (!(await hasValidAdminSession())) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
   const body = await req.json().catch(() => null);
   const parsed = PostBodySchema.safeParse(body);
   if (!parsed.success) {

@@ -39,7 +39,10 @@ export default function AdminPage() {
             <h1 className="font-mono text-2xl md:text-3xl text-primary terminal-glow">ADMIN CONTROL PANEL</h1>
           </div>
           <button
-            onClick={() => setIsAuthenticated(false)}
+            onClick={async () => {
+              await fetch("/api/auth/logout", { method: "POST" }).catch(() => {})
+              setIsAuthenticated(false)
+            }}
             className="font-mono text-xs text-danger/60 hover:text-danger transition-colors focus-ring px-3 py-1.5 border border-danger/30 hover:border-danger/60"
           >
             [ LOGOUT ]
