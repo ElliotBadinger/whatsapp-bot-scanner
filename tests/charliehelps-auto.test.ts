@@ -86,6 +86,18 @@ describe("charliehelps-auto helpers", () => {
     expect(lib.hasPendingSuggestion(comments)).toBe(true);
   });
 
+  test("does not treat generic CharlieHelps comment as suggestion", async () => {
+    const lib = await import(libPath);
+    const comments = [
+      {
+        author: { login: "charliecreates" },
+        body: "FYI, I reran CI.",
+        createdAt: "2025-12-21T08:00:00Z",
+      },
+    ];
+    expect(lib.hasPendingSuggestion(comments)).toBe(false);
+  });
+
   test("ignores work summary updates", async () => {
     const lib = await import(libPath);
     const comments = [

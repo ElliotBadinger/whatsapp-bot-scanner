@@ -1,10 +1,11 @@
-export const suggestionRegex = /reply with\s+"?@CharlieHelps\s+yes\s+please"?/i;
+export const suggestionRegex =
+  /reply with\s+["“”]?@CharlieHelps\s+yes\s+please["“”]?/i;
 export const yesPleaseRegex = /@CharlieHelps\s+yes\s+please/i;
 
 const workingVerbs =
   /(I[’']?m working|Starting|Reviewing|Investigating|Summarizing)/i;
 const noReplies =
-  /(can'?t be interrupted|can'?t.*see replies|won'?t see replies|can'?t pause|can'?t be stopped)/i;
+  /(can[’']?t be interrupted|can[’']?t.*see replies|won[’']?t see replies|can[’']?t pause|can[’']?t be stopped)/i;
 const suggestionSummary = /<summary>\s*Suggestion\s*<\/summary>/i;
 const suggestionInvite = /if you(?:'|’)?d like me to add/i;
 const suggestionNudge = /at minimum/i;
@@ -35,11 +36,12 @@ export function isSuggestionComment(body) {
   if (nonSuggestionMarkers.some((marker) => lowered.includes(marker))) {
     return false;
   }
-  if (suggestionRegex.test(body)) return true;
-  if (suggestionSummary.test(body)) return true;
-  if (suggestionInvite.test(body)) return true;
-  if (suggestionNudge.test(body)) return true;
-  return true;
+  return (
+    suggestionRegex.test(body) ||
+    suggestionSummary.test(body) ||
+    suggestionInvite.test(body) ||
+    suggestionNudge.test(body)
+  );
 }
 
 export function hasPendingSuggestion(comments) {
