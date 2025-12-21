@@ -23,7 +23,11 @@ function resolveControlPlaneBase(): string {
       throw new Error("invalid protocol");
     }
     parsed.hash = "";
-    return parsed.toString().replace(/\/+$/, "");
+    let base = parsed.toString();
+    while (base.endsWith("/")) {
+      base = base.slice(0, -1);
+    }
+    return base;
   } catch {
     return "http://localhost:8080";
   }
