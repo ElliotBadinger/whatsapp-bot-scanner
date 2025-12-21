@@ -141,9 +141,7 @@ describe("EnhancedSecurityAnalyzer", () => {
     (advancedHeuristics as jest.Mock).mockRejectedValue(new Error("boom"));
     (dnsIntelligence as jest.Mock).mockRejectedValue(new Error("dns"));
     localThreatDbMock.check.mockRejectedValueOnce(new Error("local"));
-    (certificateIntelligence as jest.Mock).mockRejectedValue(
-      new Error("cert"),
-    );
+    (certificateIntelligence as jest.Mock).mockRejectedValue(new Error("cert"));
     (httpFingerprinting as jest.Mock).mockResolvedValue({
       suspicionScore: 0.2,
       reasons: ["http"],
@@ -237,7 +235,7 @@ describe("EnhancedSecurityAnalyzer", () => {
 
     const analyzer = new EnhancedSecurityAnalyzer({} as any);
     const result = await analyzer.analyze("http://example.com", "hash");
-    
+
     expect(certificateIntelligence).not.toHaveBeenCalled();
     expect(result.tier2Results?.certIntel).toBeDefined();
     expect(result.tier2Results?.certIntel.isValid).toBe(true);
@@ -264,7 +262,7 @@ describe("EnhancedSecurityAnalyzer", () => {
 
     const analyzer = new EnhancedSecurityAnalyzer({} as any);
     const result = await analyzer.analyze("https://example.com", "hash");
-    
+
     expect(dnsIntelligence).not.toHaveBeenCalled();
     expect(result.tier1Results?.dnsIntel).toBeDefined();
   });
@@ -291,7 +289,7 @@ describe("EnhancedSecurityAnalyzer", () => {
 
     const analyzer = new EnhancedSecurityAnalyzer({} as any);
     const result = await analyzer.analyze("https://example.com", "hash");
-    
+
     expect(certificateIntelligence).not.toHaveBeenCalled();
     expect(result.tier2Results?.certIntel.issuer).toBe("unknown");
   });
@@ -318,7 +316,7 @@ describe("EnhancedSecurityAnalyzer", () => {
 
     const analyzer = new EnhancedSecurityAnalyzer({} as any);
     const result = await analyzer.analyze("https://example.com", "hash");
-    
+
     expect(httpFingerprinting).not.toHaveBeenCalled();
     expect(result.tier2Results?.httpFingerprint.statusCode).toBe(0);
   });
@@ -337,12 +335,16 @@ describe("EnhancedSecurityAnalyzer", () => {
       score: 0.1,
       reasons: [] as string[],
     });
-    (certificateIntelligence as jest.Mock).mockRejectedValue(new Error("cert error"));
-    (httpFingerprinting as jest.Mock).mockRejectedValue(new Error("http error"));
+    (certificateIntelligence as jest.Mock).mockRejectedValue(
+      new Error("cert error"),
+    );
+    (httpFingerprinting as jest.Mock).mockRejectedValue(
+      new Error("http error"),
+    );
 
     const analyzer = new EnhancedSecurityAnalyzer({} as any);
     const result = await analyzer.analyze("https://example.com", "hash");
-    
+
     expect(result.tier2Results?.certIntel.isValid).toBe(true);
     expect(result.tier2Results?.httpFingerprint.statusCode).toBe(0);
   });
@@ -376,9 +378,12 @@ describe("EnhancedSecurityAnalyzer", () => {
 
     const analyzer = new EnhancedSecurityAnalyzer({} as any);
     const result = await analyzer.analyze("https://example.com", "hash");
-    
+
     expect(localThreatDbMock.check).not.toHaveBeenCalled();
-    expect(result.tier1Results?.localThreats).toEqual({ score: 0, reasons: [] });
+    expect(result.tier1Results?.localThreats).toEqual({
+      score: 0,
+      reasons: [],
+    });
   });
 
   describe("Tier 1 threshold boundary tests (mutation testing)", () => {
@@ -387,7 +392,12 @@ describe("EnhancedSecurityAnalyzer", () => {
         score: 2.0,
         reasons: ["heuristics"],
         entropy: 0,
-        subdomainAnalysis: { count: 0, maxDepth: 0, hasNumericSubdomains: false, suspicionScore: 0 },
+        subdomainAnalysis: {
+          count: 0,
+          maxDepth: 0,
+          hasNumericSubdomains: false,
+          suspicionScore: 0,
+        },
         suspiciousPatterns: [],
       });
       (dnsIntelligence as jest.Mock).mockResolvedValue({
@@ -410,7 +420,7 @@ describe("EnhancedSecurityAnalyzer", () => {
 
       const analyzer = new EnhancedSecurityAnalyzer({} as any);
       const result = await analyzer.analyze("https://example.com", "hash");
-      
+
       expect(result.score).toBe(2.0);
       expect(result.verdict).not.toBe("malicious");
       expect(result.skipExternalAPIs).toBe(false);
@@ -421,7 +431,12 @@ describe("EnhancedSecurityAnalyzer", () => {
         score: 2.01,
         reasons: ["heuristics"],
         entropy: 0,
-        subdomainAnalysis: { count: 0, maxDepth: 0, hasNumericSubdomains: false, suspicionScore: 0 },
+        subdomainAnalysis: {
+          count: 0,
+          maxDepth: 0,
+          hasNumericSubdomains: false,
+          suspicionScore: 0,
+        },
         suspiciousPatterns: [],
       });
       (dnsIntelligence as jest.Mock).mockResolvedValue({
@@ -436,7 +451,7 @@ describe("EnhancedSecurityAnalyzer", () => {
 
       const analyzer = new EnhancedSecurityAnalyzer({} as any);
       const result = await analyzer.analyze("https://example.com", "hash");
-      
+
       expect(result.score).toBeGreaterThan(2.0);
       expect(result.verdict).toBe("malicious");
       expect(result.confidence).toBe("high");
@@ -448,7 +463,12 @@ describe("EnhancedSecurityAnalyzer", () => {
         score: 2.1,
         reasons: ["entropy"],
         entropy: 0,
-        subdomainAnalysis: { count: 0, maxDepth: 0, hasNumericSubdomains: false, suspicionScore: 0 },
+        subdomainAnalysis: {
+          count: 0,
+          maxDepth: 0,
+          hasNumericSubdomains: false,
+          suspicionScore: 0,
+        },
         suspiciousPatterns: [],
       });
       (dnsIntelligence as jest.Mock).mockResolvedValue({
@@ -463,7 +483,7 @@ describe("EnhancedSecurityAnalyzer", () => {
 
       const analyzer = new EnhancedSecurityAnalyzer({} as any);
       const result = await analyzer.analyze("https://example.com", "hash");
-      
+
       expect(result.verdict).toBe("malicious");
       expect(result.confidence).toBe("high");
       expect(result.skipExternalAPIs).toBe(true);
@@ -475,7 +495,12 @@ describe("EnhancedSecurityAnalyzer", () => {
         score: 2.5,
         reasons: ["high entropy"],
         entropy: 0,
-        subdomainAnalysis: { count: 0, maxDepth: 0, hasNumericSubdomains: false, suspicionScore: 0 },
+        subdomainAnalysis: {
+          count: 0,
+          maxDepth: 0,
+          hasNumericSubdomains: false,
+          suspicionScore: 0,
+        },
         suspiciousPatterns: [],
       });
       (dnsIntelligence as jest.Mock).mockResolvedValue({
@@ -490,7 +515,7 @@ describe("EnhancedSecurityAnalyzer", () => {
 
       const analyzer = new EnhancedSecurityAnalyzer({} as any);
       const result = await analyzer.analyze("https://example.com", "hash");
-      
+
       expect(result.verdict).toBe("malicious");
       expect(result.score).toBe(2.5);
     });
