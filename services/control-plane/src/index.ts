@@ -52,12 +52,22 @@ async function getSharedQueue(): Promise<Queue> {
 }
 
 function createAuthHook(expectedToken: string) {
+  const expectedHash = crypto
+    .createHash("sha256")
+    .update(expectedToken)
+    .digest();
+
   return function authHook(
     req: FastifyRequest,
     reply: FastifyReply,
     done: (err?: Error) => void,
   ) {
     const rawHeader = req.headers["authorization"];
+    if (Array.isArray(rawHeader) && rawHeader.length !== 1) {
+      reply.code(401).send({ error: "unauthorized" });
+      return;
+    }
+
     const headerValue = Array.isArray(rawHeader)
       ? (rawHeader[0] ?? "")
       : (rawHeader ?? "");
@@ -66,11 +76,15 @@ function createAuthHook(expectedToken: string) {
       ? trimmed.slice(7).trim()
       : trimmed;
     const tokenHash = crypto.createHash("sha256").update(token).digest();
-    const expectedHash = crypto
-      .createHash("sha256")
-      .update(expectedToken)
-      .digest();
-    if (!crypto.timingSafeEqual(tokenHash, expectedHash)) {
+
+    let matches = false;
+    try {
+      matches = crypto.timingSafeEqual(tokenHash, expectedHash);
+    } catch {
+      matches = false;
+    }
+
+    if (!matches) {
       reply.code(401).send({ error: "unauthorized" });
       return;
     }
