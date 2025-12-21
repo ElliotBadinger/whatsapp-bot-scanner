@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   createSignedSessionToken,
@@ -66,6 +67,40 @@ describe('SafeMode session token', () => {
     expect(verified.ok).toBe(false);
     if (!verified.ok) {
       expect(verified.reason).toBe('expired');
+    }
+  });
+
+  it('rejects tokens with invalid format', () => {
+    const verified = verifySignedSessionToken('not-a-token', {
+      secret: 'test-secret',
+      nowMs: Date.UTC(2025, 0, 1, 0, 0, 0),
+    });
+
+    expect(verified.ok).toBe(false);
+    if (!verified.ok) {
+      expect(verified.reason).toBe('invalid_format');
+    }
+  });
+
+  it('rejects tokens with invalid claims', () => {
+    const secret = 'test-secret';
+    const payload = Buffer.from('{"iat":"not-a-number"}', 'utf8').toString(
+      'base64url',
+    );
+    const signature = crypto
+      .createHmac('sha256', secret)
+      .update(payload)
+      .digest('base64url');
+    const token = `${payload}.${signature}`;
+
+    const verified = verifySignedSessionToken(token, {
+      secret,
+      nowMs: Date.UTC(2025, 0, 1, 0, 0, 0),
+    });
+
+    expect(verified.ok).toBe(false);
+    if (!verified.ok) {
+      expect(verified.reason).toBe('invalid_claims');
     }
   });
 });

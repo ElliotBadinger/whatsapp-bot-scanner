@@ -34,11 +34,11 @@ function getSessionSecret(): string {
     return secret;
   }
 
-  if (process.env.NODE_ENV === "production") {
-    throw new Error("SAFEMODE_SESSION_SECRET is required in production");
+  if (process.env.NODE_ENV === "test") {
+    return getSafemodeAdminToken();
   }
 
-  return getSafemodeAdminToken();
+  throw new Error("SAFEMODE_SESSION_SECRET is required");
 }
 
 function getSessionCookieBaseOptions(): {

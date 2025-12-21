@@ -19,7 +19,8 @@ export async function POST(req: Request) {
 
   try {
     getSafemodeAdminToken();
-  } catch {
+  } catch (err) {
+    console.error("SafeMode admin token not configured", { err });
     return NextResponse.json(
       { error: "server_not_configured" },
       { status: 500 },
@@ -33,7 +34,8 @@ export async function POST(req: Request) {
   const response = NextResponse.json({ ok: true });
   try {
     setAdminSessionCookie(response);
-  } catch {
+  } catch (err) {
+    console.error("Failed to set admin session cookie", { err });
     return NextResponse.json(
       { error: "server_not_configured" },
       { status: 500 },
