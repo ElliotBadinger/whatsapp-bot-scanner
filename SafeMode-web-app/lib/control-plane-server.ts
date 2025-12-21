@@ -88,7 +88,10 @@ export async function controlPlaneFetchWithBearerToken(
   path: string,
   init: RequestInit & { timeoutMs?: number } = {},
 ): Promise<Response> {
-  const normalized = token.trim();
+  let normalized = token.trim();
+  if (normalized.toLowerCase().startsWith("bearer ")) {
+    normalized = normalized.slice("bearer ".length).trim();
+  }
   if (!normalized) {
     throw new ControlPlaneError("Bearer token is required", {
       status: 400,

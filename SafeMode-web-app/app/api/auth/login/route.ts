@@ -56,7 +56,7 @@ export async function POST(req: Request) {
 
     const logPayload =
       err instanceof ControlPlaneError
-        ? { name: err.name, message: err.message, status: err.status, code: err.code }
+        ? { name: err.name, status: err.status, code: err.code }
         : {
             name: err instanceof Error ? err.name : "UnknownError",
             message: err instanceof Error ? err.message : undefined,
