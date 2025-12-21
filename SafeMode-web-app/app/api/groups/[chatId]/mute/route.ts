@@ -6,9 +6,9 @@ import {
 
 export async function POST(
   _req: Request,
-  context: { params: { chatId: string } },
+  context: { params: Promise<{ chatId: string }> },
 ) {
-  const { chatId } = context.params;
+  const { chatId } = await context.params;
   try {
     const result = await controlPlaneFetchJson<{ ok: boolean; muted_until: string }>(
       `/groups/${encodeURIComponent(chatId)}/mute`,
