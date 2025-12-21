@@ -1,0 +1,27 @@
+name: Cleanup Workflow Runs
+
+on:
+  schedule:
+    - cron: "30 3 * * 0"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+concurrency:
+  group: cleanup-actions
+  cancel-in-progress: true
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Delete old workflow runs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KEEP_DAYS: "14"
+        run: node .github/scripts/cleanup-actions.mjs
