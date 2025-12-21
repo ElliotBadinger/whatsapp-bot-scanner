@@ -123,9 +123,11 @@ export async function POST(req: Request) {
       return NextResponse.json(result, { status: resp.status });
     }
 
-    const errorBody = (await resp
-      .json()
-      .catch(() => ({}))) as { error?: string; code?: string; message?: string };
+    const errorBody = (await resp.json().catch(() => ({}))) as {
+      error?: string;
+      code?: string;
+      message?: string;
+    };
 
     const code =
       typeof errorBody.error === "string"
