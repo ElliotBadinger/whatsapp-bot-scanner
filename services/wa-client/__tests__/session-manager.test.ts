@@ -261,5 +261,100 @@ describe("SessionManager", () => {
       const isValid = await manager.validateSession(sessionId, ipv6Fingerprint);
       expect(isValid).toBe(true);
     });
+
+    it("should allow IPv6 changes within the same /64", async () => {
+      const sessionId = "ipv6-same-subnet-session";
+      const storedFingerprint: SessionFingerprint = {
+        ...testFingerprint,
+        ipAddress: "2001:db8:1:2::1",
+      };
+      await manager.recordSessionCreation(sessionId, storedFingerprint);
+
+      const sameSubnetFingerprint: SessionFingerprint = {
+        ...storedFingerprint,
+        ipAddress: "2001:db8:1:2::abcd",
+      };
+
+      const isValid = await manager.validateSession(
+        sessionId,
+        sameSubnetFingerprint,
+      );
+      expect(isValid).toBe(true);
+    });
+
+    it("should reject IPv6 changes to a different /64", async () => {
+      const sessionId = "ipv6-different-subnet-session";
+      const storedFingerprint: SessionFingerprint = {
+        ...testFingerprint,
+        ipAddress: "2001:db8:1:2::1",
+      };
+      await manager.recordSessionCreation(sessionId, storedFingerprint);
+
+      const differentSubnetFingerprint: SessionFingerprint = {
+        ...storedFingerprint,
+        ipAddress: "2001:db8:1:3::1",
+      };
+
+      const isValid = await manager.validateSession(
+        sessionId,
+        differentSubnetFingerprint,
+      );
+      expect(isValid).toBe(false);
+    });
+
+    it("should treat IPv4-mapped IPv6 addresses as IPv4 for subnet checks", async () => {
+      const sessionId = "ipv4-mapped-session";
+      const storedFingerprint: SessionFingerprint = {
+        ...testFingerprint,
+        ipAddress: "::ffff:192.168.1.10",
+      };
+      await manager.recordSessionCreation(sessionId, storedFingerprint);
+
+      const sameSubnetFingerprint: SessionFingerprint = {
+        ...storedFingerprint,
+        ipAddress: "::ffff:192.168.1.20",
+      };
+
+      const isValid = await manager.validateSession(
+        sessionId,
+        sameSubnetFingerprint,
+      );
+      expect(isValid).toBe(true);
+    });
+
+    it("should reject IPv4-mapped IPv6 changes to a different subnet", async () => {
+      const sessionId = "ipv4-mapped-different-subnet-session";
+      const storedFingerprint: SessionFingerprint = {
+        ...testFingerprint,
+        ipAddress: "::ffff:192.168.1.10",
+      };
+      await manager.recordSessionCreation(sessionId, storedFingerprint);
+
+      const differentSubnetFingerprint: SessionFingerprint = {
+        ...storedFingerprint,
+        ipAddress: "::ffff:192.168.2.10",
+      };
+
+      const isValid = await manager.validateSession(
+        sessionId,
+        differentSubnetFingerprint,
+      );
+      expect(isValid).toBe(false);
+    });
+
+    it("should reject invalid IP formats when both sides are present", async () => {
+      const sessionId = "invalid-ip-session";
+      const invalidFingerprint: SessionFingerprint = {
+        ...testFingerprint,
+        ipAddress: "not-an-ip",
+      };
+      await manager.recordSessionCreation(sessionId, invalidFingerprint);
+
+      const isValid = await manager.validateSession(
+        sessionId,
+        invalidFingerprint,
+      );
+      expect(isValid).toBe(false);
+    });
   });
 });

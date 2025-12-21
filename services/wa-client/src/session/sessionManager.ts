@@ -324,6 +324,17 @@ export class SessionManager {
     }
 
     if (ipType1 === 6 && ipType2 === 6) {
+      const mappedIpv4_1 = this.extractMappedIpv4(ip1);
+      const mappedIpv4_2 = this.extractMappedIpv4(ip2);
+
+      if (mappedIpv4_1 || mappedIpv4_2) {
+        if (!mappedIpv4_1 || !mappedIpv4_2) {
+          return false;
+        }
+
+        return this.ipv4InSameSubnet(mappedIpv4_1, mappedIpv4_2);
+      }
+
       const bytes1 = this.ipv6ToBytes(ip1);
       const bytes2 = this.ipv6ToBytes(ip2);
 
@@ -341,6 +352,30 @@ export class SessionManager {
     }
 
     return false;
+  }
+
+  private ipv4InSameSubnet(ip1: string, ip2: string): boolean {
+    const parts1 = ip1.split(".");
+    const parts2 = ip2.split(".");
+    return (
+      parts1[0] === parts2[0] &&
+      parts1[1] === parts2[1] &&
+      parts1[2] === parts2[2]
+    );
+  }
+
+  private extractMappedIpv4(ip: string): string | null {
+    if (!ip.includes(".")) {
+      return null;
+    }
+
+    const lastColon = ip.lastIndexOf(":");
+    if (lastColon < 0) {
+      return null;
+    }
+
+    const ipv4 = ip.slice(lastColon + 1);
+    return isIP(ipv4) === 4 ? ipv4 : null;
   }
 
   private ipv6ToBytes(ip: string): Uint8Array | null {

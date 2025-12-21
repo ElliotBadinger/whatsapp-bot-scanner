@@ -37,13 +37,16 @@ describe("safeGetGroupChatById", () => {
 
     expect(result).toBeNull();
     expect(client.getChatById).not.toHaveBeenCalled();
-    expect(logger.debug).toHaveBeenCalledWith(
-      {
-        chatIdHash: expect.any(String),
+    expect(logger.debug).toHaveBeenCalledTimes(1);
+
+    const [context, message] = logger.debug.mock.calls[0];
+    expect(message).toBe("Skipping chat lookup because session is not ready");
+    expect(context).toEqual(
+      expect.objectContaining({
         session: expect.stringContaining("state=disconnected"),
-      },
-      "Skipping chat lookup because session is not ready",
+      }),
     );
+    expect(JSON.stringify(context)).not.toContain("123@c.us");
   });
 
   it("wraps evaluation errors with descriptive context", async () => {

@@ -586,6 +586,8 @@ describe("Load Testing", () => {
         `   ${throughput.toLocaleString(undefined, { maximumFractionDigits: 0 })} ops/sec`,
       );
 
+      // This benchmark is sensitive to CPU and contention; keep the threshold
+      // conservative to avoid flakiness across CI and local machines.
       expect(throughput).toBeGreaterThan(400000);
     });
   });
