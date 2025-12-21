@@ -1,4 +1,8 @@
-import { createMockDatabase, createMockQueue, createMockRedis } from "../../../../test-utils/setup";
+import {
+  createMockDatabase,
+  createMockQueue,
+  createMockRedis,
+} from "../../../../test-utils/setup";
 
 type SharedModule = typeof import("@wbscanner/shared");
 
@@ -169,7 +173,12 @@ describe("scan-orchestrator verdict generation", () => {
 
     const blocklistResult = {
       gsbMatches: [],
-      gsbResult: { matches: [], error: new Error("gsb down"), fromCache: false, durationMs: 0 },
+      gsbResult: {
+        matches: [],
+        error: new Error("gsb down"),
+        fromCache: false,
+        durationMs: 0,
+      },
       phishtankResult: null,
       phishtankNeeded: true,
       phishtankError: new Error("phishtank down"),
@@ -196,7 +205,13 @@ describe("scan-orchestrator verdict generation", () => {
       false,
       { detected: false, riskLevel: "low", confusableChars: [] } as any,
       {},
-      { verdict: "suspicious", confidence: "medium", score: 10, reasons: [], skipExternalAPIs: false },
+      {
+        verdict: "suspicious",
+        confidence: "medium",
+        score: 10,
+        reasons: [],
+        skipExternalAPIs: false,
+      },
       null,
     );
 

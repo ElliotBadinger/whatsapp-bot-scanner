@@ -145,7 +145,11 @@ describe("BaileysAdapter coverage", () => {
       type: "notify",
       messages: [
         {
-          key: { remoteJid: "chat@g.us", id: "msg-1", participant: "user@c.us" },
+          key: {
+            remoteJid: "chat@g.us",
+            id: "msg-1",
+            participant: "user@c.us",
+          },
           message: { conversation: "hi" },
           messageTimestamp: 1,
         },

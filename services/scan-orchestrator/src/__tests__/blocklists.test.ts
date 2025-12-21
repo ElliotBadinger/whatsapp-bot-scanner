@@ -1,6 +1,6 @@
-import { checkBlocklistsWithRedundancy } from '../blocklists';
+import { checkBlocklistsWithRedundancy } from "../blocklists";
 
-jest.mock('@wbscanner/shared', () => ({
+jest.mock("@wbscanner/shared", () => ({
   logger: {
     info: jest.fn(),
   },
@@ -10,8 +10,8 @@ jest.mock('@wbscanner/shared', () => ({
   },
 }));
 
-describe('blocklists redundancy', () => {
-  it('queries Phishtank when GSB is clean', async () => {
+describe("blocklists redundancy", () => {
+  it("queries Phishtank when GSB is clean", async () => {
     const fetchGsbAnalysis = jest.fn().mockResolvedValue({
       matches: [],
       fromCache: false,
@@ -25,8 +25,8 @@ describe('blocklists redundancy', () => {
     });
 
     const result = await checkBlocklistsWithRedundancy({
-      finalUrl: 'https://example.com',
-      hash: 'hash',
+      finalUrl: "https://example.com",
+      hash: "hash",
       fallbackLatencyMs: 500,
       gsbApiKeyPresent: true,
       phishtankEnabled: true,
@@ -39,9 +39,16 @@ describe('blocklists redundancy', () => {
     expect(result.phishtankResult?.inDatabase).toBe(true);
   });
 
-  it('skips Phishtank when disabled and GSB hits', async () => {
+  it("skips Phishtank when disabled and GSB hits", async () => {
     const fetchGsbAnalysis = jest.fn().mockResolvedValue({
-      matches: [{ threatType: 'MALWARE', platformType: 'ANY_PLATFORM', threatEntryType: 'URL', threat: { url: 'https://example.com' } }],
+      matches: [
+        {
+          threatType: "MALWARE",
+          platformType: "ANY_PLATFORM",
+          threatEntryType: "URL",
+          threat: { url: "https://example.com" },
+        },
+      ],
       fromCache: true,
       durationMs: 10,
       error: null,
@@ -49,8 +56,8 @@ describe('blocklists redundancy', () => {
     const fetchPhishtank = jest.fn();
 
     const result = await checkBlocklistsWithRedundancy({
-      finalUrl: 'https://example.com',
-      hash: 'hash',
+      finalUrl: "https://example.com",
+      hash: "hash",
       fallbackLatencyMs: 500,
       gsbApiKeyPresent: true,
       phishtankEnabled: false,
@@ -62,12 +69,19 @@ describe('blocklists redundancy', () => {
     expect(fetchPhishtank).not.toHaveBeenCalled();
   });
 
-  it('queries Phishtank on GSB fallback scenarios', async () => {
+  it("queries Phishtank on GSB fallback scenarios", async () => {
     const fetchGsbAnalysis = jest.fn().mockResolvedValue({
-      matches: [{ threatType: 'SOCIAL_ENGINEERING', platformType: 'ANY_PLATFORM', threatEntryType: 'URL', threat: { url: 'https://example.com' } }],
+      matches: [
+        {
+          threatType: "SOCIAL_ENGINEERING",
+          platformType: "ANY_PLATFORM",
+          threatEntryType: "URL",
+          threat: { url: "https://example.com" },
+        },
+      ],
       fromCache: false,
       durationMs: 700,
-      error: new Error('timeout'),
+      error: new Error("timeout"),
     });
     const fetchPhishtank = jest.fn().mockResolvedValue({
       result: { inDatabase: false, verified: false },
@@ -76,8 +90,8 @@ describe('blocklists redundancy', () => {
     });
 
     const result = await checkBlocklistsWithRedundancy({
-      finalUrl: 'https://example.com',
-      hash: 'hash',
+      finalUrl: "https://example.com",
+      hash: "hash",
       fallbackLatencyMs: 500,
       gsbApiKeyPresent: false,
       phishtankEnabled: true,

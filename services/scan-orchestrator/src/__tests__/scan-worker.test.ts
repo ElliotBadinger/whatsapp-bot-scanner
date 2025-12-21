@@ -3,7 +3,10 @@ import { __testables } from "../index";
 const { handleScanRequestJob } = __testables;
 
 const makeMetrics = () => {
-  const counter = () => ({ inc: jest.fn(), labels: () => ({ inc: jest.fn() }) });
+  const counter = () => ({
+    inc: jest.fn(),
+    labels: () => ({ inc: jest.fn() }),
+  });
   const histogram = () => ({
     observe: jest.fn(),
     labels: () => ({ observe: jest.fn() }),
