@@ -72,24 +72,24 @@ describe("CircuitBreaker - Model-Based Property Tests", () => {
   describe("Configuration Properties", () => {
     test("PROPERTY: Failure threshold must be respected", () => {
       fc.assert(
-        fc.property(
-          fc.integer({ min: 1, max: 10 }),
-          (failureThreshold) => {
-            const stateChanges: Array<{ from: CircuitState; to: CircuitState }> = [];
-            const breaker = new CircuitBreaker({
-              ...defaultOpts,
-              failureThreshold,
-              onStateChange: (to, from) => stateChanges.push({ from, to }),
-            });
+        fc.property(fc.integer({ min: 1, max: 10 }), (failureThreshold) => {
+          const stateChanges: Array<{ from: CircuitState; to: CircuitState }> =
+            [];
+          const breaker = new CircuitBreaker({
+            ...defaultOpts,
+            failureThreshold,
+            onStateChange: (to, from) => stateChanges.push({ from, to }),
+          });
 
-            for (let i = 0; i < failureThreshold - 1; i++) {
-              breaker.execute(() => Promise.reject(new Error("fail"))).catch(() => {});
-            }
+          for (let i = 0; i < failureThreshold - 1; i++) {
+            breaker
+              .execute(() => Promise.reject(new Error("fail")))
+              .catch(() => {});
+          }
 
-            expect(breaker.getState()).toBe(CircuitState.CLOSED);
-            expect(stateChanges.length).toBe(0);
-          },
-        ),
+          expect(breaker.getState()).toBe(CircuitState.CLOSED);
+          expect(stateChanges.length).toBe(0);
+        }),
         { numRuns: NUM_RUNS },
       );
     });
@@ -132,7 +132,9 @@ describe("CircuitBreaker - Model-Based Property Tests", () => {
           });
 
           for (let i = 0; i < failureThreshold; i++) {
-            breaker.execute(() => Promise.reject(new Error("fail"))).catch(() => {});
+            breaker
+              .execute(() => Promise.reject(new Error("fail")))
+              .catch(() => {});
           }
 
           if (changes.length > 0) {
@@ -197,7 +199,9 @@ describe("withRetry - Property Tests", () => {
 
         const retryable = () => false;
 
-        await withRetry(task, { retries, baseDelayMs: 1, retryable }).catch(() => {});
+        await withRetry(task, { retries, baseDelayMs: 1, retryable }).catch(
+          () => {},
+        );
         expect(attempts).toBe(1);
       }),
       { numRuns: Math.min(NUM_RUNS, 100) },

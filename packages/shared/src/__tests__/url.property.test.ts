@@ -10,7 +10,13 @@
 
 import { describe, expect, test } from "@jest/globals";
 import fc from "fast-check";
-import { extractUrls, normalizeUrl, urlHash, isSuspiciousTld, isShortener } from "../url";
+import {
+  extractUrls,
+  normalizeUrl,
+  urlHash,
+  isSuspiciousTld,
+  isShortener,
+} from "../url";
 
 const NUM_RUNS = process.env.CI ? 10000 : 1000;
 
@@ -18,30 +24,30 @@ const validUrlArb = fc.webUrl({ validSchemes: ["http", "https"] });
 
 const suspiciousTldArb = fc
   .tuple(
-    fc.stringOf(fc.constantFrom(...'abcdefghijklmnopqrstuvwxyz0123456789'), {
+    fc.stringOf(fc.constantFrom(..."abcdefghijklmnopqrstuvwxyz0123456789"), {
       minLength: 1,
       maxLength: 10,
     }),
-    fc.constantFrom('.tk', '.ml', '.cf', '.gq', '.xyz', '.top', '.club'),
+    fc.constantFrom(".tk", ".ml", ".cf", ".gq", ".xyz", ".top", ".club"),
   )
   .map(([name, tld]) => `https://${name}${tld}`);
 
 const safeTldArb = fc
   .tuple(
-    fc.stringOf(fc.constantFrom(...'abcdefghijklmnopqrstuvwxyz0123456789'), {
+    fc.stringOf(fc.constantFrom(..."abcdefghijklmnopqrstuvwxyz0123456789"), {
       minLength: 1,
       maxLength: 10,
     }),
-    fc.constantFrom('.com', '.org', '.net', '.edu', '.gov'),
+    fc.constantFrom(".com", ".org", ".net", ".edu", ".gov"),
   )
   .map(([name, tld]) => `https://${name}${tld}`);
 
 const shortenerArb = fc.constantFrom(
-  'https://bit.ly/abc123',
-  'https://t.co/xyz789',
-  'https://goo.gl/short',
-  'https://tinyurl.com/test',
-  'https://ow.ly/link',
+  "https://bit.ly/abc123",
+  "https://t.co/xyz789",
+  "https://goo.gl/short",
+  "https://tinyurl.com/test",
+  "https://ow.ly/link",
 );
 
 describe("URL Functions - Property Tests", () => {
@@ -95,7 +101,9 @@ describe("URL Functions - Property Tests", () => {
     test("PROPERTY: Non-default ports are preserved", () => {
       fc.assert(
         fc.property(
-          fc.integer({ min: 1, max: 65535 }).filter((p) => p !== 80 && p !== 443),
+          fc
+            .integer({ min: 1, max: 65535 })
+            .filter((p) => p !== 80 && p !== 443),
           (port) => {
             const url = `https://example.com:${port}/path`;
             const normalized = normalizeUrl(url);
@@ -129,7 +137,11 @@ describe("URL Functions - Property Tests", () => {
     test("PROPERTY: Only http and https protocols are valid", () => {
       fc.assert(
         fc.property(
-          fc.constantFrom("ftp://example.com", "file:///etc/passwd", "javascript:alert(1)"),
+          fc.constantFrom(
+            "ftp://example.com",
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+          ),
           (url) => {
             const normalized = normalizeUrl(url);
             expect(normalized).toBeNull();
@@ -254,7 +266,7 @@ describe("URL Functions - Property Tests", () => {
     test("PROPERTY: Detection is case-insensitive", () => {
       fc.assert(
         fc.property(
-          fc.constantFrom('example.TK', 'EXAMPLE.tk', 'Example.Tk'),
+          fc.constantFrom("example.TK", "EXAMPLE.tk", "Example.Tk"),
           (hostname) => {
             const result = isSuspiciousTld(hostname);
             expect(result).toBe(true);
@@ -281,7 +293,7 @@ describe("URL Functions - Property Tests", () => {
     test("PROPERTY: Detection is deterministic", () => {
       fc.assert(
         fc.property(
-          fc.constantFrom('bit.ly', 't.co', 'example.com', 'google.com'),
+          fc.constantFrom("bit.ly", "t.co", "example.com", "google.com"),
           (hostname) => {
             const result1 = isShortener(hostname);
             const result2 = isShortener(hostname);

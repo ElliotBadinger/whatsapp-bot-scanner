@@ -16,29 +16,36 @@ const NUM_RUNS = process.env.CI ? 10000 : 1000;
 
 const asciiDomainArb = fc
   .tuple(
-    fc.stringOf(fc.constantFrom(...'abcdefghijklmnopqrstuvwxyz0123456789'), {
+    fc.stringOf(fc.constantFrom(..."abcdefghijklmnopqrstuvwxyz0123456789"), {
       minLength: 1,
       maxLength: 20,
     }),
-    fc.constantFrom('.com', '.org', '.net', '.io', '.co'),
+    fc.constantFrom(".com", ".org", ".net", ".io", ".co"),
   )
   .map(([name, tld]) => name + tld);
 
 const brandLikeDomainArb = fc
   .tuple(
-    fc.constantFrom('google', 'facebook', 'paypal', 'amazon', 'microsoft', 'apple'),
-    fc.constantFrom('.com', '.org', '.net'),
+    fc.constantFrom(
+      "google",
+      "facebook",
+      "paypal",
+      "amazon",
+      "microsoft",
+      "apple",
+    ),
+    fc.constantFrom(".com", ".org", ".net"),
   )
   .map(([brand, tld]) => brand + tld);
 
 const punycodeArb = fc
   .tuple(
-    fc.constant('xn--'),
-    fc.stringOf(fc.constantFrom(...'abcdefghijklmnopqrstuvwxyz0123456789'), {
+    fc.constant("xn--"),
+    fc.stringOf(fc.constantFrom(..."abcdefghijklmnopqrstuvwxyz0123456789"), {
       minLength: 1,
       maxLength: 15,
     }),
-    fc.constantFrom('.com', '.org'),
+    fc.constantFrom(".com", ".org"),
   )
   .map(([prefix, name, tld]) => prefix + name + tld);
 
@@ -186,7 +193,9 @@ describe("Homoglyph Detection - Property Tests", () => {
         fc.property(asciiDomainArb, (domain) => {
           const result = detectHomoglyphs(domain);
 
-          expect(result.normalizedDomain).toBe(result.normalizedDomain.toLowerCase());
+          expect(result.normalizedDomain).toBe(
+            result.normalizedDomain.toLowerCase(),
+          );
         }),
         { numRuns: NUM_RUNS },
       );
@@ -198,7 +207,8 @@ describe("Homoglyph Detection - Property Tests", () => {
           const result = detectHomoglyphs(domain);
 
           const originalDots = (domain.match(/\./g) || []).length;
-          const unicodeDots = (result.unicodeHostname.match(/\./g) || []).length;
+          const unicodeDots = (result.unicodeHostname.match(/\./g) || [])
+            .length;
 
           expect(unicodeDots).toBe(originalDots);
         }),
