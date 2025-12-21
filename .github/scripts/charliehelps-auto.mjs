@@ -9,6 +9,7 @@ import {
 const token = process.env.GITHUB_TOKEN;
 const repo = process.env.GITHUB_REPOSITORY;
 const prNumberRaw = process.env.PR_NUMBER;
+const mode = (process.env.MODE ?? "reply").toLowerCase();
 
 if (!token) {
   console.error("GITHUB_TOKEN is required");
@@ -287,16 +288,23 @@ async function main() {
     }
   }
 
-  if (toReply.length > 0) {
-    console.log(
-      `Replying to ${toReply.length} suggestion threads on PR #${pr.number}...`,
-    );
-    for (const threadId of toReply) {
-      const url = await replyToThread(threadId);
-      console.log(`Replied: ${url}`);
+  if (mode === "reply") {
+    if (toReply.length > 0) {
+      console.log(
+        `Replying to ${toReply.length} suggestion threads on PR #${pr.number}...`,
+      );
+      for (const threadId of toReply) {
+        const url = await replyToThread(threadId);
+        console.log(`Replied: ${url}`);
+      }
+    } else {
+      console.log("No pending suggestion threads to reply to.");
     }
-  } else {
-    console.log("No pending suggestion threads to reply to.");
+  }
+
+  if (mode !== "fast-forward") {
+    console.log(`MODE=${mode}; skipping fast-forward to main.`);
+    return;
   }
 
   if (workingFound) {
@@ -308,7 +316,7 @@ async function main() {
 
   if (toReply.length > 0) {
     console.log(
-      "Pending suggestions were just acknowledged; skipping fast-forward to main.",
+      `Found ${toReply.length} pending suggestion thread(s); skipping fast-forward to main.`,
     );
     return;
   }
