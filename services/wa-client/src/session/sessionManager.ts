@@ -25,6 +25,8 @@ const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const SESSION_ROTATION_AGE_MS = 6 * 24 * 60 * 60 * 1000; // 6 days (rotate before expiry)
 
 export class SessionManager {
+  private static warnedUnkeyedDigest = false;
+
   constructor(
     private readonly redis: Redis,
     private readonly logger: Logger,
@@ -236,6 +238,18 @@ export class SessionManager {
     }
 
     const secret = process.env.IDENTIFIER_HASH_SECRET;
+
+    if (
+      !secret &&
+      !SessionManager.warnedUnkeyedDigest &&
+      process.env.NODE_ENV !== "test"
+    ) {
+      SessionManager.warnedUnkeyedDigest = true;
+      this.logger.warn(
+        "IDENTIFIER_HASH_SECRET not set; using unkeyed hashing for session fingerprint logs",
+      );
+    }
+
     const digest = secret
       ? crypto
           .createHmac("sha256", secret)
