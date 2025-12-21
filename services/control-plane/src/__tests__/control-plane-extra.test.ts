@@ -304,7 +304,9 @@ describe("control-plane extra routes", () => {
         payload: { invalid_field: "no url field" },
       });
       expect(res.statusCode).toBe(400);
-      expect(JSON.parse(res.payload).error).toBe("invalid_body");
+      const body = JSON.parse(res.payload) as Record<string, unknown>;
+      expect(body.code).toBe("VALIDATION_ERROR");
+      expect(body.message).toBe("Validation failed");
     } finally {
       await app.close();
     }
