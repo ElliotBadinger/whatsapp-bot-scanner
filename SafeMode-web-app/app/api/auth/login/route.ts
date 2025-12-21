@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
+  ControlPlaneError,
   controlPlaneFetchWithBearerToken,
-  normalizeBearerToken,
 } from "@/lib/control-plane-server";
 
 const PostBodySchema = z.object({
@@ -16,13 +16,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid_request" }, { status: 400 });
   }
 
-  const token = normalizeBearerToken(parsed.data.token);
-  if (!token) {
-    return NextResponse.json({ error: "invalid_request" }, { status: 400 });
-  }
-
   try {
-    const resp = await controlPlaneFetchWithBearerToken(token, "/status");
+    const resp = await controlPlaneFetchWithBearerToken(parsed.data.token, "/status");
 
     if (resp.status === 200) {
       return NextResponse.json({ ok: true });
@@ -51,10 +46,18 @@ export async function POST(req: Request) {
       { status: 502 },
     );
   } catch (err) {
+    if (
+      err instanceof ControlPlaneError &&
+      err.status === 400 &&
+      err.code === "INVALID_INPUT_MISSING_BEARER_TOKEN"
+    ) {
+      return NextResponse.json({ error: "invalid_request" }, { status: 400 });
+    }
+
     const logPayload =
-      err && typeof err === "object" && "name" in err
-        ? { name: String((err as { name?: unknown }).name) }
-        : { name: "UnknownError" };
+      err instanceof ControlPlaneError
+        ? { name: err.name, status: err.status, code: err.code }
+        : { name: err instanceof Error ? err.name : "UnknownError" };
 
     console.warn("LOGIN_TOKEN_VALIDATION_FAILED", logPayload);
     return NextResponse.json({ error: "control_plane_unavailable" }, { status: 502 });
