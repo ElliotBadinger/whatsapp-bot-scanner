@@ -161,6 +161,7 @@ async function getPullRequestWithThreads() {
   const threads = [];
   let cursor = null;
   let prInfo = null;
+  const commentsPerThread = 10;
 
   while (true) {
     const data = await ghGraphQL(
@@ -182,6 +183,10 @@ async function getPullRequestWithThreads() {
               nodes {
                 id
                 isResolved
+                comments(last:${commentsPerThread}){
+                  pageInfo { hasPreviousPage startCursor }
+                  nodes { author { login } body createdAt url }
+                }
               }
             }
           }
@@ -197,10 +202,6 @@ async function getPullRequestWithThreads() {
 
     if (!pr.reviewThreads.pageInfo.hasNextPage) break;
     cursor = pr.reviewThreads.pageInfo.endCursor;
-  }
-
-  for (const thread of threads) {
-    thread.comments = { nodes: await fetchThreadComments(thread.id) };
   }
 
   prInfo.reviewThreads = { nodes: threads };
@@ -251,10 +252,10 @@ async function main() {
   const toReply = [];
 
   for (const thread of threads) {
-    const comments = thread.comments.nodes || [];
-    if (comments.length === 0) continue;
+    const commentPreview = thread.comments?.nodes || [];
+    if (commentPreview.length === 0) continue;
 
-    const latest = latestComment(comments);
+    const latest = latestComment(commentPreview);
     if (
       latest?.author?.login?.toLowerCase() === "charliecreates" &&
       isWorkingMessage(latest.body || "")
@@ -263,7 +264,13 @@ async function main() {
       continue;
     }
 
-    if (hasPendingSuggestion(comments)) {
+    let pendingSuggestion = hasPendingSuggestion(commentPreview);
+    if (pendingSuggestion && thread.comments?.pageInfo?.hasPreviousPage) {
+      const fullComments = await fetchThreadComments(thread.id);
+      pendingSuggestion = hasPendingSuggestion(fullComments);
+    }
+
+    if (pendingSuggestion) {
       toReply.push(thread.id);
     }
   }
