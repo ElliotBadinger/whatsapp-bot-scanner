@@ -37,7 +37,7 @@ async function getSharedRedis(): Promise<Redis> {
   if (!sharedRedisInstance) {
     sharedRedisInstance = await getConnectedSharedRedis("control-plane");
   }
-  return sharedRedisInstance;
+  return sharedRedisInstance!;
 }
 
 async function getSharedQueue(): Promise<Queue> {
@@ -45,7 +45,7 @@ async function getSharedQueue(): Promise<Queue> {
     const redis = await getSharedRedis();
     sharedQueue = new Queue(config.queues.scanRequest, { connection: redis });
   }
-  return sharedQueue;
+  return sharedQueue!;
 }
 
 function createAuthHook(expectedToken: string) {

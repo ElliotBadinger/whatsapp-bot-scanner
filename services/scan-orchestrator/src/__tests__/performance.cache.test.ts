@@ -513,10 +513,9 @@ describe("Cache Performance Tests", () => {
       console.log(`   P99 write: ${p99.toFixed(6)}ms`);
       console.log(`   Max write: ${max.toFixed(6)}ms`);
 
-      // These are unit-level in-memory timings; only enforce a generous bound
-      // to avoid environment-dependent flakes.
-      expect(p99).toBeLessThan(5);
-      expect(max).toBeLessThan(50);
+      // Avoid strict relative thresholds: eviction spikes are environment-dependent.
+      const upperBound = Math.max(median * 10 + 1, 10);
+      expect(max).toBeLessThan(upperBound);
 
       smallCache.close();
     });

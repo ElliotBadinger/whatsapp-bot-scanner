@@ -83,21 +83,33 @@ describe("scan-orchestrator database", () => {
     expect(endMock).toHaveBeenCalled();
   });
 
-  it("creates connections based on DATABASE_URL", () => {
-    const prev = process.env.DATABASE_URL;
+  it("creates connections based on DB_SCAN_ORCHESTRATOR_URL", () => {
+    const prevScanOrchestratorUrl = process.env.DB_SCAN_ORCHESTRATOR_URL;
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    delete process.env.DB_SCAN_ORCHESTRATOR_URL;
     delete process.env.DATABASE_URL;
-    const sqlite = createConnection();
-    expect(sqlite).toBeInstanceOf(SQLiteConnection);
 
-    process.env.DATABASE_URL = "postgres://example.com";
-    const pg = createConnection();
-    expect(pg).toBeInstanceOf(PostgresConnection);
+    jest.isolateModules(() => {
+      const db = require("../database") as typeof import("../database");
+      const sqlite = db.createConnection();
+      expect(sqlite).toBeInstanceOf(db.SQLiteConnection);
+    });
 
-    process.env.DATABASE_URL = prev;
+    process.env.DB_SCAN_ORCHESTRATOR_URL = "postgres://example.com";
+    jest.isolateModules(() => {
+      const db = require("../database") as typeof import("../database");
+      const pg = db.createConnection();
+      expect(pg).toBeInstanceOf(db.PostgresConnection);
+    });
+
+    process.env.DB_SCAN_ORCHESTRATOR_URL = prevScanOrchestratorUrl;
+    process.env.DATABASE_URL = prevDatabaseUrl;
   });
 
   it("getSharedConnection reuses the singleton per env", () => {
-    const prev = process.env.DATABASE_URL;
+    const prevScanOrchestratorUrl = process.env.DB_SCAN_ORCHESTRATOR_URL;
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    delete process.env.DB_SCAN_ORCHESTRATOR_URL;
     delete process.env.DATABASE_URL;
 
     jest.isolateModules(() => {
@@ -106,14 +118,15 @@ describe("scan-orchestrator database", () => {
       expect(conn).toBeInstanceOf(db.SQLiteConnection);
     });
 
-    process.env.DATABASE_URL = "postgres://example.com";
+    process.env.DB_SCAN_ORCHESTRATOR_URL = "postgres://example.com";
     jest.isolateModules(() => {
       const db = require("../database");
       const conn = db.getSharedConnection();
       expect(conn).toBeInstanceOf(db.PostgresConnection);
     });
 
-    process.env.DATABASE_URL = prev;
+    process.env.DB_SCAN_ORCHESTRATOR_URL = prevScanOrchestratorUrl;
+    process.env.DATABASE_URL = prevDatabaseUrl;
   });
 
   it("runs Postgres transaction wrapper", async () => {

@@ -104,34 +104,50 @@ describe("control-plane database", () => {
     expect(endMock).toHaveBeenCalled();
   });
 
-  it("creates connections based on DATABASE_URL", () => {
-    const prev = process.env.DATABASE_URL;
+  it("creates connections based on DB_CONTROL_PLANE_URL", () => {
+    const prevControlPlaneUrl = process.env.DB_CONTROL_PLANE_URL;
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    delete process.env.DB_CONTROL_PLANE_URL;
     delete process.env.DATABASE_URL;
-    const sqlite = createConnection();
-    expect(sqlite).toBeInstanceOf(SQLiteConnection);
 
-    process.env.DATABASE_URL = "postgres://example.com";
-    const pg = createConnection();
-    expect(pg).toBeInstanceOf(PostgresConnection);
+    jest.isolateModules(() => {
+      const db = require("../database") as typeof import("../database");
+      const sqlite = db.createConnection();
+      expect(sqlite).toBeInstanceOf(db.SQLiteConnection);
+    });
 
-    process.env.DATABASE_URL = prev;
+    process.env.DB_CONTROL_PLANE_URL = "postgres://example.com";
+    jest.isolateModules(() => {
+      const db = require("../database") as typeof import("../database");
+      const pg = db.createConnection();
+      expect(pg).toBeInstanceOf(db.PostgresConnection);
+    });
+
+    process.env.DB_CONTROL_PLANE_URL = prevControlPlaneUrl;
+    process.env.DATABASE_URL = prevDatabaseUrl;
   });
 
   it("getSharedConnection selects driver based on env", () => {
-    const prev = process.env.DATABASE_URL;
+    const prevControlPlaneUrl = process.env.DB_CONTROL_PLANE_URL;
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    delete process.env.DB_CONTROL_PLANE_URL;
     delete process.env.DATABASE_URL;
-    jest.resetModules();
-    const dbSqlite = require("../database") as typeof import("../database");
-    const sqlite = dbSqlite.getSharedConnection();
-    expect(sqlite).toBeInstanceOf(dbSqlite.SQLiteConnection);
 
-    process.env.DATABASE_URL = "postgres://example.com";
-    jest.resetModules();
-    const dbPg = require("../database") as typeof import("../database");
-    const pg = dbPg.getSharedConnection();
-    expect(pg).toBeInstanceOf(dbPg.PostgresConnection);
+    jest.isolateModules(() => {
+      const db = require("../database") as typeof import("../database");
+      const sqlite = db.getSharedConnection();
+      expect(sqlite).toBeInstanceOf(db.SQLiteConnection);
+    });
 
-    process.env.DATABASE_URL = prev;
+    process.env.DB_CONTROL_PLANE_URL = "postgres://example.com";
+    jest.isolateModules(() => {
+      const db = require("../database") as typeof import("../database");
+      const pg = db.getSharedConnection();
+      expect(pg).toBeInstanceOf(db.PostgresConnection);
+    });
+
+    process.env.DB_CONTROL_PLANE_URL = prevControlPlaneUrl;
+    process.env.DATABASE_URL = prevDatabaseUrl;
   });
 
   it("runs Postgres transaction wrapper", async () => {
