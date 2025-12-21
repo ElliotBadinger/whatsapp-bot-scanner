@@ -34,15 +34,53 @@ const SCAN_LAST_MESSAGE_PREFIX = "scan:last-message:";
 const DEFAULT_SCANS_LIMIT = 50;
 const DEFAULT_RECENT_SCANS_LIMIT = 10;
 const MAX_SCANS_LIMIT = 100;
+const ALLOWED_SCAN_VERDICTS = new Set(["benign", "suspicious", "malicious"]);
+
+type ScanTimestampError = "invalid_from" | "invalid_to";
+type TimestampParseResult =
+  | { ok: true; value: Date | null }
+  | { ok: false; error: ScanTimestampError };
+
+const ISO_DATETIME_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+
+function parseScanTimestamp(
+  value: unknown,
+  error: ScanTimestampError,
+): TimestampParseResult {
+  if (typeof value === "undefined" || value === null) {
+    return { ok: true, value: null };
+  }
+
+  if (typeof value !== "string") {
+    return { ok: false, error };
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return { ok: true, value: null };
+  }
+
+  if (!ISO_DATETIME_PATTERN.test(trimmed)) {
+    return { ok: false, error };
+  }
+
+  const date = new Date(trimmed);
+  if (Number.isNaN(date.getTime())) {
+    return { ok: false, error };
+  }
+
+  return { ok: true, value: date };
+}
 
 let sharedQueue: Queue | null = null;
-let sharedRedisInstance: Redis | null = null;
+let sharedRedisInstance: Redis | undefined;
 
 async function getSharedRedis(): Promise<Redis> {
   if (!sharedRedisInstance) {
     sharedRedisInstance = await getConnectedSharedRedis("control-plane");
   }
-  return sharedRedisInstance as Redis;
+  return sharedRedisInstance;
 }
 
 async function getSharedQueue(): Promise<Queue> {
@@ -129,57 +167,15 @@ export async function buildServer(options: BuildOptions = {}) {
           ? query.verdict.trim()
           : null;
       const verdict = rawVerdict ? rawVerdict.toLowerCase() : null;
-      if (
-        verdict &&
-        verdict !== "benign" &&
-        verdict !== "suspicious" &&
-        verdict !== "malicious"
-      ) {
+      if (verdict && !ALLOWED_SCAN_VERDICTS.has(verdict)) {
         return reply.code(400).send({ error: "invalid_verdict" });
       }
 
-      type ScanTimestampError = "invalid_from" | "invalid_to";
-      type TimestampParseResult =
-        | { ok: true; value: Date | null }
-        | { ok: false; error: ScanTimestampError };
-
-      const ISO_DATETIME_PATTERN =
-        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
-
-      const parseTimestamp = (
-        value: unknown,
-        error: ScanTimestampError,
-      ): TimestampParseResult => {
-        if (typeof value === "undefined" || value === null) {
-          return { ok: true, value: null };
-        }
-
-        if (typeof value !== "string") {
-          return { ok: false, error };
-        }
-
-        const trimmed = value.trim();
-        if (trimmed.length === 0) {
-          return { ok: true, value: null };
-        }
-
-        if (!ISO_DATETIME_PATTERN.test(trimmed)) {
-          return { ok: false, error };
-        }
-
-        const date = new Date(trimmed);
-        if (Number.isNaN(date.getTime())) {
-          return { ok: false, error };
-        }
-
-        return { ok: true, value: date };
-      };
-
-      const fromRes = parseTimestamp(query.from, "invalid_from");
+      const fromRes = parseScanTimestamp(query.from, "invalid_from");
       if (!fromRes.ok) {
         return reply.code(400).send({ error: fromRes.error });
       }
-      const toRes = parseTimestamp(query.to, "invalid_to");
+      const toRes = parseScanTimestamp(query.to, "invalid_to");
       if (!toRes.ok) {
         return reply.code(400).send({ error: toRes.error });
       }
