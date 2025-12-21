@@ -48,11 +48,12 @@ export async function GET() {
     async start(controller) {
       streamController = controller;
       const safeEnqueue = (chunk: Uint8Array) => {
-        if (closed) return;
+        const target = streamController;
+        if (closed || !target) return;
         try {
-          controller.enqueue(chunk);
+          target.enqueue(chunk);
         } catch {
-          cleanup(controller);
+          cleanup(target);
         }
       };
 

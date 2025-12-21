@@ -10,8 +10,11 @@ export type ControlPlaneScanRow = {
   last_seen_at: string;
 };
 
-export function mapVerdictLevel(verdict: string): ScanVerdict["verdict"] {
-  switch (verdict) {
+export function mapVerdictLevel(
+  verdict: ControlPlaneScanRow["verdict"],
+): ScanVerdict["verdict"] {
+  const normalized = String(verdict);
+  switch (normalized) {
     case "malicious":
       return "DENY";
     case "suspicious":
@@ -19,7 +22,8 @@ export function mapVerdictLevel(verdict: string): ScanVerdict["verdict"] {
     case "benign":
       return "SAFE";
     default:
-      console.warn("Unknown control-plane verdict", { verdict });
+      console.warn("Unknown control-plane verdict", { verdict: normalized });
+      // Prefer a noisy/visible fallback (not SAFE) in case the control-plane expands its verdict set.
       return "WARN";
   }
 }
