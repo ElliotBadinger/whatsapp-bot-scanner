@@ -177,7 +177,7 @@ describe("control-plane extra routes", () => {
         expect.objectContaining({
           rescan: true,
         }),
-        expect.any(Object)
+        expect.any(Object),
       );
       // Should not have chatId/messageId when not found in cache
       const callArgs = (queue.add as jest.Mock).mock.calls[0][1];
@@ -299,7 +299,7 @@ describe("control-plane extra routes", () => {
         payload: { invalid_field: "no url field" },
       });
       expect(res.statusCode).toBe(400);
-      expect(JSON.parse(res.payload).error).toBe("invalid_body");
+      expect(JSON.parse(res.payload).code).toBe("VALIDATION_ERROR");
     } finally {
       await app.close();
     }

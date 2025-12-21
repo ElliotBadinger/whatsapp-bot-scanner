@@ -1,5 +1,5 @@
-import { logger, metrics } from '@wbscanner/shared';
-import type { GsbThreatMatch, PhishtankLookupResult } from '@wbscanner/shared';
+import { logger, metrics } from "@wbscanner/shared";
+import type { GsbThreatMatch, PhishtankLookupResult } from "@wbscanner/shared";
 
 export interface GsbFetchResult {
   matches: GsbThreatMatch[];
@@ -24,6 +24,12 @@ export interface PhishtankDecisionInput {
   phishtankEnabled: boolean;
 }
 
+/**
+ * Determines whether Phishtank should be queried in addition to GSB.
+ *
+ * Phishtank is treated as a redundancy/fallback mechanism when GSB is slow,
+ * misconfigured, or errors while reporting a hit.
+ */
 export function shouldQueryPhishtank({
   gsbHit,
   gsbError,
@@ -35,7 +41,7 @@ export function shouldQueryPhishtank({
 }: PhishtankDecisionInput): boolean {
   if (!phishtankEnabled) return false;
   if (!gsbHit) return true;
-  if (gsbError) return false;
+  if (gsbError) return true;
   if (!gsbApiKeyPresent) return true;
   if (!gsbFromCache && gsbDurationMs > fallbackLatencyMs) return true;
   return false;
@@ -99,11 +105,17 @@ export async function checkBlocklistsWithRedundancy({
       gsbFromCache: gsbResult.fromCache,
     };
     if (!gsbHit) {
-      logger.info(logContext, 'GSB clean -> running Phishtank redundancy check');
+      logger.info(
+        logContext,
+        "GSB clean -> running Phishtank redundancy check",
+      );
     } else {
       logger.info(
-        { ...logContext, gsbError: gsbResult.error ? gsbResult.error.message : undefined },
-        'GSB fallback -> running Phishtank redundancy check'
+        {
+          ...logContext,
+          gsbError: gsbResult.error ? gsbResult.error.message : undefined,
+        },
+        "GSB fallback -> running Phishtank redundancy check",
       );
     }
 
@@ -113,19 +125,27 @@ export async function checkBlocklistsWithRedundancy({
     phishtankError = phishResponse.error ?? null;
 
     if (phishResponse.result?.inDatabase) {
-      metrics.phishtankSecondaryHits.labels(phishResponse.result.verified ? 'true' : 'false').inc();
+      metrics.phishtankSecondaryHits
+        .labels(phishResponse.result.verified ? "true" : "false")
+        .inc();
     }
   } else if (gsbHit) {
     logger.info(
       { urlHash: hash, url: finalUrl, gsbMatches: gsbMatches.length },
-      'GSB found threats -> skipping Phishtank redundancy check'
+      "GSB found threats -> skipping Phishtank redundancy check",
     );
   } else if (!phishtankEnabled) {
     logger.info(
       { urlHash: hash, url: finalUrl },
-      'Phishtank disabled -> skipping redundancy check for clean GSB result'
+      "Phishtank disabled -> skipping redundancy check for clean GSB result",
     );
   }
 
-  return { gsbMatches, gsbResult, phishtankResult, phishtankNeeded, phishtankError };
+  return {
+    gsbMatches,
+    gsbResult,
+    phishtankResult,
+    phishtankNeeded,
+    phishtankError,
+  };
 }
