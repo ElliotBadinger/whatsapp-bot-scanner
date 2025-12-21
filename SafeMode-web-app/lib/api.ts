@@ -43,6 +43,16 @@ export class ApiError extends Error {
 async function fetchJsonInternal<T>(
   path: string,
   init: RequestInit,
+  options: { allowNoContent: false },
+): Promise<T>;
+async function fetchJsonInternal<T>(
+  path: string,
+  init: RequestInit,
+  options: { allowNoContent: true },
+): Promise<T | undefined>;
+async function fetchJsonInternal<T>(
+  path: string,
+  init: RequestInit,
   options: { allowNoContent: boolean },
 ): Promise<T | undefined> {
   const headers = new Headers(init.headers);
@@ -122,13 +132,9 @@ async function fetchJsonInternal<T>(
 }
 
 async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const result = await fetchJsonInternal<T>(path, init, {
+  return fetchJsonInternal<T>(path, init, {
     allowNoContent: false,
   });
-  if (result === undefined) {
-    throw new ApiError("Unexpected empty response.", { status: 204 });
-  }
-  return result;
 }
 
 async function fetchJsonAllowNoContent<T = void>(
