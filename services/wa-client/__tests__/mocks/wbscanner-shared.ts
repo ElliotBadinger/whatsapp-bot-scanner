@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import FakeRedis from "../../src/__tests__/fake-redis";
 
 const noop = () => undefined;
@@ -139,3 +140,12 @@ export const assertControlPlaneToken = (): string =>
   (process.env.CONTROL_PLANE_API_TOKEN || "test-token").trim();
 export const createRedisConnection = () => new (FakeRedis as any)();
 export const connectRedis = async () => undefined;
+
+export const hashChatId = (input: string) =>
+  `chat_${crypto.createHash("sha256").update(input).digest("hex").slice(0, 12)}`;
+export const hashMessageId = (input: string) =>
+  `msg_${crypto.createHash("sha256").update(input).digest("hex").slice(0, 12)}`;
+export const isIdentifierHash = (input: string) =>
+  input.startsWith("chat_") || input.startsWith("msg_");
+
+export class InMemoryRedis extends FakeRedis {}

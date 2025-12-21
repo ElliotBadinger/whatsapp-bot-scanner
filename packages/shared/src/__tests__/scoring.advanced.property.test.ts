@@ -24,7 +24,7 @@ import {
   edgeCaseSignalsArb,
   signalsNoOverrideArb,
   makeHomoglyph,
-} from "./arbitraries";
+} from "../testing/arbitraries";
 
 describe("Advanced Property Tests - Mathematical Invariants", () => {
   describe("Idempotence Properties", () => {
