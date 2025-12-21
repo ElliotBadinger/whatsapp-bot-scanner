@@ -94,7 +94,9 @@ const featureFlags = {
 };
 
 export const config = {
-  nodeEnv: process.env.NODE_ENV || "development",
+  get nodeEnv() {
+    return process.env.NODE_ENV || "development";
+  },
   redisUrl: process.env.REDIS_URL || "redis://redis:6379/0",
   database: {
     controlPlane: {

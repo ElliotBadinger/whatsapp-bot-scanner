@@ -11,9 +11,10 @@ import {
   RateLimitError,
 } from "../errors/sanitizer";
 
-function resolveStatusCode(error: FastifyError): number {
-  if (typeof error.statusCode === "number") {
-    return error.statusCode;
+function resolveStatusCode(error: FastifyError | Error): number {
+  const statusCode = (error as { statusCode?: unknown }).statusCode;
+  if (typeof statusCode === "number") {
+    return statusCode;
   }
 
   if (error instanceof ValidationError) return 400;
@@ -28,22 +29,43 @@ export function globalErrorHandler(
   request: FastifyRequest,
   reply: FastifyReply,
 ): void {
+  const statusCode = resolveStatusCode(error);
   const sanitized = sanitizeError(error, {
     url: request.url,
     method: request.method,
     requestId: request.id,
   });
 
-  logger.error(
-    {
-      error,
-      url: request.url,
-      method: request.method,
-      requestId: request.id,
-    },
-    "Unhandled error in request",
-  );
+  if (statusCode >= 500) {
+    logger.error(
+      {
+        error,
+        url: request.url,
+        method: request.method,
+        requestId: request.id,
+      },
+      "Unhandled error in request",
+    );
+  } else {
+    logger.warn(
+      {
+        statusCode,
+        error: sanitized,
+        url: request.url,
+        method: request.method,
+        requestId: request.id,
+      },
+      "Request failed",
+    );
+  }
 
-  const statusCode = resolveStatusCode(error);
+  if (
+    error instanceof RateLimitError &&
+    typeof error.retryAfter === "number" &&
+    Number.isFinite(error.retryAfter)
+  ) {
+    reply.header("Retry-After", String(error.retryAfter));
+  }
+
   reply.code(statusCode).send(sanitized);
 }
