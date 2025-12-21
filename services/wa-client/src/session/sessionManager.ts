@@ -1,6 +1,7 @@
 import type { Logger } from "pino";
 import type { Redis } from "ioredis";
 import crypto from "node:crypto";
+import { isIP } from "node:net";
 import { config } from "@wbscanner/shared";
 import { forceRemoteSessionReset } from "./cleanup.js";
 import { createRemoteAuthStore } from "../remoteAuthStore.js";
@@ -309,18 +310,101 @@ export class SessionManager {
       return true;
     }
 
-    const parts1 = ip1.split(".");
-    const parts2 = ip2.split(".");
+    const ipType1 = isIP(ip1);
+    const ipType2 = isIP(ip2);
 
-    if (parts1.length !== 4 || parts2.length !== 4) {
+    if (ipType1 === 4 && ipType2 === 4) {
+      const parts1 = ip1.split(".");
+      const parts2 = ip2.split(".");
+      return (
+        parts1[0] === parts2[0] &&
+        parts1[1] === parts2[1] &&
+        parts1[2] === parts2[2]
+      );
+    }
+
+    if (ipType1 === 6 && ipType2 === 6) {
+      const bytes1 = this.ipv6ToBytes(ip1);
+      const bytes2 = this.ipv6ToBytes(ip2);
+
+      if (!bytes1 || !bytes2) {
+        return false;
+      }
+
+      for (let i = 0; i < 8; i++) {
+        if (bytes1[i] !== bytes2[i]) {
+          return false;
+        }
+      }
+
       return true;
     }
 
-    return (
-      parts1[0] === parts2[0] &&
-      parts1[1] === parts2[1] &&
-      parts1[2] === parts2[2]
+    return false;
+  }
+
+  private ipv6ToBytes(ip: string): Uint8Array | null {
+    const hextets = this.ipv6ToHextets(ip);
+    if (!hextets) {
+      return null;
+    }
+
+    const bytes = new Uint8Array(16);
+    hextets.forEach((hextet, index) => {
+      const value = Number.parseInt(hextet, 16);
+      bytes[index * 2] = (value >> 8) & 0xff;
+      bytes[index * 2 + 1] = value & 0xff;
+    });
+
+    return bytes;
+  }
+
+  private ipv6ToHextets(ip: string): string[] | null {
+    const rawParts = ip.split("::");
+    if (rawParts.length > 2) {
+      return null;
+    }
+
+    const left = rawParts[0]
+      ? rawParts[0].split(":").filter((part) => part.length > 0)
+      : [];
+    const right = rawParts[1]
+      ? rawParts[1].split(":").filter((part) => part.length > 0)
+      : [];
+
+    const mappedIpv4 = right.length > 0 && right[right.length - 1].includes(".");
+    const rightHextets = mappedIpv4
+      ? right.slice(0, -1).concat(this.ipv4ToHextets(right[right.length - 1]))
+      : right;
+
+    const missing = 8 - (left.length + rightHextets.length);
+    if (missing < 0) {
+      return null;
+    }
+
+    const full = left.concat(
+      Array.from({ length: missing }, () => "0"),
+      rightHextets,
     );
+    if (full.length !== 8) {
+      return null;
+    }
+
+    return full.map((part) => {
+      const normalized = part.toLowerCase().replace(/^0+/, "");
+      return normalized.length === 0 ? "0" : normalized;
+    });
+  }
+
+  private ipv4ToHextets(ip: string): string[] {
+    const parts = ip.split(".").map((part) => Number.parseInt(part, 10));
+    if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) {
+      return ["0", "0"];
+    }
+
+    const first = ((parts[0] << 8) | parts[1]).toString(16);
+    const second = ((parts[2] << 8) | parts[3]).toString(16);
+    return [first, second];
   }
 
   async clearSession(reason: string): Promise<void> {
