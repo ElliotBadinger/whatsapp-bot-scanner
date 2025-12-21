@@ -76,7 +76,7 @@ describe("charliehelps-auto helpers", () => {
   });
 
   test("detects suggestion prompt with smart quotes", async () => {
-    const lib = await import(libPath);
+    const lib = await importEsm(libPath);
     const comments = [
       {
         author: { login: "charliecreates" },
