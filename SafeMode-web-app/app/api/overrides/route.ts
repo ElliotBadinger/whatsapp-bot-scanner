@@ -120,10 +120,12 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "invalid_request" }, { status: 400 });
       }
 
-      return NextResponse.json(
-        { error: err.code || "override_create_failed" },
-        { status: err.status },
-      );
+      const status =
+        typeof err.status === "number" && err.status >= 400 && err.status < 600
+          ? err.status
+          : 502;
+
+      return NextResponse.json({ error: "override_create_failed" }, { status });
     }
 
     return NextResponse.json({ error: "override_create_failed" }, { status: 502 });
