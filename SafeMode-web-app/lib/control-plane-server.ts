@@ -38,20 +38,25 @@ function getControlPlaneToken(): string {
   return token;
 }
 
-function normalizeBearerToken(raw: string): string {
+export function normalizeBearerToken(raw: string): string {
   const token = raw.trim();
-  const bearerPrefix = "bearer ";
-  if (token.toLowerCase().startsWith(bearerPrefix)) {
-    return token.slice(bearerPrefix.length).trim();
+  const lower = token.toLowerCase();
+  const bearerPrefix = "bearer";
+  if (lower === bearerPrefix) {
+    return "";
+  }
+
+  if (lower.startsWith(`${bearerPrefix} `)) {
+    return token.slice(bearerPrefix.length + 1).trim();
   }
   return token;
 }
 
 /**
-* Low-level control-plane fetch.
-*
-* @param token A prevalidated bearer token string (without the `Bearer ` prefix).
-*/
+  * Low-level control-plane fetch.
+  *
+  * @param token A prevalidated bearer token string (without the `Bearer ` prefix).
+  */
 async function controlPlaneFetchInternal(
   path: string,
   token: string,
@@ -83,10 +88,10 @@ async function controlPlaneFetchInternal(
 }
 
 /**
-* Fetch from the control-plane using the service token from `CONTROL_PLANE_API_TOKEN`.
-*
-* Throws a `ControlPlaneError` when the token is missing.
-*/
+  * Fetch from the control-plane using the service token from `CONTROL_PLANE_API_TOKEN`.
+  *
+  * Throws a `ControlPlaneError` when the token is missing.
+  */
 export async function controlPlaneFetch(
   path: string,
   init: RequestInit & { timeoutMs?: number } = {},
