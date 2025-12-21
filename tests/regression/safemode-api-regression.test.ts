@@ -14,6 +14,15 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
+function textResponse(body: string, status: number): Response {
+  return new Response(body, {
+    status,
+    headers: {
+      "content-type": "text/plain",
+    },
+  });
+}
+
 describe("SafeMode-web-app API helpers", () => {
   const originalFetch = globalThis.fetch;
 
@@ -105,6 +114,35 @@ describe("SafeMode-web-app API helpers", () => {
       name: "ApiError",
       status: 400,
       code: "invalid_url",
+    });
+  });
+
+  it("falls back to status-based message when JSON error lacks code", async () => {
+    const fetchMock = jest.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        jsonResponse({ message: "something went wrong" }, 500),
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(rescanUrl("https://example.com")).rejects.toMatchObject({
+      name: "ApiError",
+      status: 500,
+      code: undefined,
+      message: "Control-plane is temporarily unavailable.",
+    });
+  });
+
+  it("surfaces plain-text error codes", async () => {
+    const fetchMock = jest.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        textResponse("rate_limited", 429),
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(rescanUrl("https://example.com")).rejects.toMatchObject({
+      name: "ApiError",
+      status: 429,
+      code: "rate_limited",
     });
   });
 });
