@@ -7,17 +7,17 @@ import {
 import type { SystemStatus } from "@/lib/api";
 import {
   ADMIN_SESSION_COOKIE,
-  validateAndTouchAdminSession,
+  getAdminSession,
 } from "@/lib/auth/admin-session";
 
 export async function GET() {
   try {
     const jar = await cookies();
     const sessionId = jar.get(ADMIN_SESSION_COOKIE)?.value;
-    const session = sessionId ? validateAndTouchAdminSession(sessionId) : null;
+    const session = sessionId ? getAdminSession(sessionId) : null;
 
     const status = await controlPlaneFetchJson<SystemStatus>("/status", {
-      authToken: session && session.ok ? session.session.controlPlaneToken : undefined,
+      authToken: session ? session.controlPlaneToken : undefined,
     });
     return NextResponse.json(status, {
       headers: {

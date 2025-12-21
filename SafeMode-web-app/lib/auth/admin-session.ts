@@ -55,6 +55,16 @@ export function deleteAdminSession(id: string): void {
   sessions.delete(id);
 }
 
+export function getAdminSession(id: string, nowMs = Date.now()): AdminSession | null {
+  const session = sessions.get(id);
+  if (!session) return null;
+  if (nowMs >= session.absoluteExpiresAtMs || nowMs >= session.idleExpiresAtMs) {
+    sessions.delete(id);
+    return null;
+  }
+  return session;
+}
+
 export function validateAndTouchAdminSession(
   id: string,
   nowMs = Date.now(),

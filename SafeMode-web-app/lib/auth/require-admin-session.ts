@@ -19,7 +19,6 @@ export type RequireAdminSessionResult =
   | {
       ok: true;
       session: AdminSession;
-      nowMs: number;
       cookieExpiresAtMs: number;
     }
   | { ok: false; response: NextResponseType };
@@ -49,7 +48,6 @@ export async function requireAdminSession(
   return {
     ok: true,
     session: validated.session,
-    nowMs,
     cookieExpiresAtMs: validated.cookieExpiresAtMs,
   };
 }
@@ -58,8 +56,9 @@ export function applyAdminSessionCookie(
   response: NextResponseType,
   result: RequireAdminSessionResult & { ok: true },
 ): NextResponseType {
+  const nowMs = Date.now();
   const maxAgeSeconds = Math.max(
-    Math.floor((result.cookieExpiresAtMs - result.nowMs) / 1000),
+    Math.floor((result.cookieExpiresAtMs - nowMs) / 1000),
     0,
   );
   response.cookies.set(ADMIN_SESSION_COOKIE, result.session.id, {

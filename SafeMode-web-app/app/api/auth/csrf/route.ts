@@ -7,7 +7,7 @@ export async function GET() {
   res.cookies.set(CSRF_COOKIE, csrfToken, {
     httpOnly: false,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    sameSite: "strict",
     path: "/api/auth",
     maxAge: 15 * 60,
   });

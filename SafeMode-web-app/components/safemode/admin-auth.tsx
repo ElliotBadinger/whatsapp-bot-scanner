@@ -62,10 +62,11 @@ export function AdminAuth({ onAuthenticated }: AdminAuthProps) {
       const resp = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token, csrfToken }),
+        body: JSON.stringify({ token: token.trim(), csrfToken }),
       })
 
       if (resp.ok) {
+        setToken("")
         onAuthenticated()
         return
       }

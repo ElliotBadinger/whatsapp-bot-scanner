@@ -4,6 +4,7 @@ type Bucket = {
 };
 
 const buckets = new Map<string, Bucket>();
+let lastCleanupMs = 0;
 
 export type RateLimitResult =
   | { ok: true; remaining: number; resetAtMs: number }
@@ -34,6 +35,8 @@ export function checkRateLimit(
 }
 
 export function cleanupRateLimitBuckets(nowMs: number): void {
+  if (nowMs - lastCleanupMs < 1000) return;
+  lastCleanupMs = nowMs;
   for (const [key, bucket] of buckets.entries()) {
     if (nowMs >= bucket.resetAtMs) {
       buckets.delete(key);

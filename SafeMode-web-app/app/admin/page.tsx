@@ -41,20 +41,51 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!isAuthenticated) return
-    const interval = setInterval(() => {
-      fetch("/api/auth/session", { cache: "no-store" })
-        .then((resp) => {
-          if (!resp.ok) {
-            setIsAuthenticated(false)
-          }
-        })
-        .catch(() => {
+    let cancelled = false
+    let timeout: ReturnType<typeof setTimeout> | null = null
+
+    const schedule = (delayMs: number) => {
+      if (cancelled) return
+      if (timeout) clearTimeout(timeout)
+      timeout = setTimeout(tick, delayMs)
+    }
+
+    const tick = async () => {
+      if (cancelled) return
+      if (document.visibilityState === "hidden") {
+        schedule(60 * 1000)
+        return
+      }
+
+      try {
+        const resp = await fetch("/api/auth/session", { cache: "no-store" })
+        if (!resp.ok) {
           setIsAuthenticated(false)
-        })
-    }, 4 * 60 * 1000)
+          return
+        }
+
+        const body = (await resp.json().catch(() => null)) as
+          | { idleTimeoutMs?: unknown }
+          | null
+        const idleTimeoutMs =
+          body && typeof body.idleTimeoutMs === "number" && body.idleTimeoutMs > 0
+            ? body.idleTimeoutMs
+            : 30 * 60 * 1000
+        const delayMs = Math.max(
+          Math.min(Math.floor(idleTimeoutMs * 0.8), 10 * 60 * 1000),
+          60 * 1000,
+        )
+        schedule(delayMs)
+      } catch {
+        setIsAuthenticated(false)
+      }
+    }
+
+    tick()
 
     return () => {
-      clearInterval(interval)
+      cancelled = true
+      if (timeout) clearTimeout(timeout)
     }
   }, [isAuthenticated])
 

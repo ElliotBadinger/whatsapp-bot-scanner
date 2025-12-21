@@ -13,6 +13,30 @@ const LoginBodySchema = z.object({
   csrfToken: z.string().trim().min(1).max(256),
 });
 
+async function readJsonWithLimit(
+  req: NextRequest,
+  maxBytes: number,
+): Promise<unknown | null> {
+  const reader = req.body?.getReader();
+  if (!reader) return null;
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      throw new Error("body_too_large");
+    }
+    chunks.push(value);
+  }
+
+  const text = Buffer.concat(chunks).toString("utf8");
+  return JSON.parse(text) as unknown;
+}
+
 function getClientIp(req: NextRequest): string {
   const forwardedFor = req.headers.get("x-forwarded-for");
   if (forwardedFor) {
@@ -27,6 +51,12 @@ function getClientIp(req: NextRequest): string {
 export async function POST(req: NextRequest) {
   const nowMs = Date.now();
   cleanupRateLimitBuckets(nowMs);
+
+  const rawLength = req.headers.get("content-length");
+  const length = rawLength ? Number.parseInt(rawLength, 10) : 0;
+  if (Number.isFinite(length) && length > 8 * 1024) {
+    return NextResponse.json({ error: "invalid_request" }, { status: 413 });
+  }
 
   const ip = getClientIp(req);
   const rate = checkRateLimit(`admin-login:${ip}`, nowMs, {
@@ -47,10 +77,23 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const body = await req.json().catch(() => null);
+  let body: unknown = null;
+  try {
+    body = await readJsonWithLimit(req, 8 * 1024);
+  } catch (err) {
+    if (err instanceof Error && err.message === "body_too_large") {
+      return NextResponse.json({ error: "invalid_request" }, { status: 413 });
+    }
+    return NextResponse.json({ error: "invalid_request" }, { status: 400 });
+  }
   const parsed = LoginBodySchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: "invalid_request" }, { status: 400 });
+  }
+
+  const origin = req.headers.get("origin");
+  if (origin && origin !== req.nextUrl.origin) {
+    return NextResponse.json({ error: "csrf_failed" }, { status: 403 });
   }
 
   const jar = await cookies();
@@ -82,7 +125,7 @@ export async function POST(req: NextRequest) {
   res.cookies.set(CSRF_COOKIE, "", {
     httpOnly: false,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    sameSite: "strict",
     path: "/api/auth",
     maxAge: 0,
   });
