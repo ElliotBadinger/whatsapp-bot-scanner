@@ -72,14 +72,19 @@ async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
     try {
       return (await resp.json()) as T;
     } catch {
-      throw new ApiError("Unexpected response format.", { status: resp.status });
+      throw new ApiError("Unexpected response format.", {
+        status: resp.status,
+      });
     }
   }
 
   let code: string | undefined;
   if (isJson) {
-    const parsed = (await resp.json().catch(() => null)) as { error?: string } | null;
-    code = parsed && typeof parsed.error === "string" ? parsed.error : undefined;
+    const parsed = (await resp.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    code =
+      parsed && typeof parsed.error === "string" ? parsed.error : undefined;
   } else {
     const text = await resp.text().catch(() => "");
     const trimmed = text.trim();
