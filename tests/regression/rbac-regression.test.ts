@@ -17,8 +17,7 @@ describe("RBAC Regression Suite", () => {
     ).resolves.toBeDefined();
 
     const cpConn = createRbacConnection("control-plane");
-    await expect(cpConn.query("SELECT * FROM scans"))
-      .resolves.toBeDefined();
+    await expect(cpConn.query("SELECT * FROM scans")).resolves.toBeDefined();
   });
 
   it("should preserve admin override workflow", async () => {

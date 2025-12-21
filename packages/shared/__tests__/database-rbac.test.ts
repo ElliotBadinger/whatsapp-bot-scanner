@@ -3,9 +3,9 @@ import { createRbacConnection } from "../../../tests/helpers/rbac";
 describe("Database RBAC", () => {
   it("should prevent control-plane from reading messages table", async () => {
     const conn = createRbacConnection("control-plane");
-    await expect(
-      conn.query("SELECT * FROM messages LIMIT 1"),
-    ).rejects.toThrow(/permission denied/i);
+    await expect(conn.query("SELECT * FROM messages LIMIT 1")).rejects.toThrow(
+      /permission denied/i,
+    );
   });
 
   it("should allow control-plane to write overrides", async () => {
@@ -19,9 +19,9 @@ describe("Database RBAC", () => {
 
   it("should prevent scan-orchestrator from accessing messages", async () => {
     const conn = createRbacConnection("scan-orchestrator");
-    await expect(
-      conn.query("SELECT * FROM messages LIMIT 1"),
-    ).rejects.toThrow(/permission denied/i);
+    await expect(conn.query("SELECT * FROM messages LIMIT 1")).rejects.toThrow(
+      /permission denied/i,
+    );
   });
 
   it("should allow scan-orchestrator to write scans", async () => {
@@ -35,8 +35,8 @@ describe("Database RBAC", () => {
 
   it("should prevent wa-client from reading scans table", async () => {
     const conn = createRbacConnection("wa-client");
-    await expect(
-      conn.query("SELECT * FROM scans LIMIT 1"),
-    ).rejects.toThrow(/permission denied/i);
+    await expect(conn.query("SELECT * FROM scans LIMIT 1")).rejects.toThrow(
+      /permission denied/i,
+    );
   });
 });
