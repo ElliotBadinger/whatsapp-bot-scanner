@@ -18,6 +18,7 @@ const BLOCKED_HOSTNAMES = [
   "localhost",
   "127.0.0.1",
   "0.0.0.0",
+  "::",
   "::1",
   "internal",
   "metadata",
@@ -26,15 +27,36 @@ const BLOCKED_HOSTNAMES = [
 
 export async function isPrivateHostname(hostname: string): Promise<boolean> {
   const lowerHostname = hostname.toLowerCase();
+  const normalizedHost = lowerHostname.replace(/^\[(.*)\]$/, "$1");
 
   // Check blocked hostnames first
-  if (BLOCKED_HOSTNAMES.includes(lowerHostname)) {
+  if (BLOCKED_HOSTNAMES.includes(normalizedHost)) {
     return true;
   }
 
+  // If this is already an IP literal, avoid DNS and apply the same policy.
+  if (ipaddr.isValid(normalizedHost)) {
+    return isPrivateIp(normalizedHost);
+  }
+
   try {
-    const addrs = await dns.lookup(hostname, { all: true, family: 0 });
-    return addrs.some((a) => isPrivateIp(a.address));
+    const [a, aaaa] = await Promise.allSettled([
+      dns.resolve4(normalizedHost),
+      dns.resolve6(normalizedHost),
+    ]);
+
+    const ips = [
+      ...(a.status === "fulfilled" ? a.value : []),
+      ...(aaaa.status === "fulfilled" ? aaaa.value : []),
+    ];
+
+    if (ips.length > 0) {
+      return ips.some(isPrivateIp);
+    }
+
+    const addrs = await dns.lookup(normalizedHost, { all: true, family: 0 });
+    if (addrs.length === 0) return true;
+    return addrs.some((addr) => isPrivateIp(addr.address));
   } catch {
     return true; // fail closed
   }
@@ -45,8 +67,11 @@ export function isPrivateIp(ip: string): boolean {
     let addr = ipaddr.parse(ip);
 
     // Handle IPv4-mapped IPv6 addresses (e.g., ::ffff:127.0.0.1)
-    if (addr.kind() === "ipv6" && (addr as ipaddr.IPv6).isIPv4MappedAddress()) {
-      addr = (addr as ipaddr.IPv6).toIPv4Address();
+    if (addr.kind() === "ipv6") {
+      const ipv6 = addr as ipaddr.IPv6;
+      if (ipv6.isIPv4MappedAddress()) {
+        addr = ipv6.toIPv4Address();
+      }
     }
 
     return privateCidrs.some(([range, prefix]) => {
