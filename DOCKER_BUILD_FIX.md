@@ -20,6 +20,7 @@ The `shared-builder` stage in the Dockerfile had two issues:
 Modified `docker/Dockerfile` in the `shared-builder` stage:
 
 ### Before
+
 ```dockerfile
 COPY packages/confusable /app/packages/confusable
 COPY packages/shared/package.json packages/shared/tsconfig.json /app/packages/shared/
@@ -35,6 +36,7 @@ RUN --mount=type=cache,target=/root/.npm \
 ```
 
 ### After
+
 ```dockerfile
 # Copy confusable package (complete)
 COPY packages/confusable /app/packages/confusable
