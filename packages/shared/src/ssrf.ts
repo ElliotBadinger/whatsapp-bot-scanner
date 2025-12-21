@@ -26,15 +26,30 @@ const BLOCKED_HOSTNAMES = [
 
 export async function isPrivateHostname(hostname: string): Promise<boolean> {
   const lowerHostname = hostname.toLowerCase();
+  const normalizedHostname = lowerHostname.replace(/^\[(.*)\]$/, "$1");
 
   // Check blocked hostnames first
-  if (BLOCKED_HOSTNAMES.includes(lowerHostname)) {
+  if (BLOCKED_HOSTNAMES.includes(normalizedHostname)) {
     return true;
   }
 
+  if (ipaddr.isValid(normalizedHostname)) {
+    return isPrivateIp(normalizedHostname);
+  }
+
   try {
-    const addrs = await dns.lookup(hostname, { all: true, family: 0 });
-    return addrs.some((a) => isPrivateIp(a.address));
+    const [aResult, aaaaResult] = await Promise.allSettled([
+      dns.resolve4(normalizedHostname),
+      dns.resolve6(normalizedHostname),
+    ]);
+
+    const ips = [
+      ...(aResult.status === "fulfilled" ? aResult.value : []),
+      ...(aaaaResult.status === "fulfilled" ? aaaaResult.value : []),
+    ];
+
+    if (ips.length === 0) return true;
+    return ips.some((ip) => isPrivateIp(ip));
   } catch {
     return true; // fail closed
   }
