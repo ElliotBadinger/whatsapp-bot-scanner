@@ -6,7 +6,7 @@ type ControlPlaneScanRow = {
   url_hash: string;
   normalized_url: string;
   verdict: "benign" | "suspicious" | "malicious";
-  last_seen_at: string | Date;
+  last_seen_at: string;
 };
 
 function mapVerdictLevel(
@@ -21,10 +21,7 @@ function mapRow(row: ControlPlaneScanRow): ScanVerdict {
   return {
     id: String(row.id),
     urlHash: row.url_hash,
-    timestamp:
-      row.last_seen_at instanceof Date
-        ? row.last_seen_at.toISOString()
-        : String(row.last_seen_at),
+    timestamp: row.last_seen_at,
     url: row.normalized_url,
     verdict: mapVerdictLevel(row.verdict),
   };
@@ -106,7 +103,11 @@ export async function GET() {
 
       await seed();
 
+      let isPolling = false;
+
       pollInterval = setInterval(async () => {
+        if (closed || isPolling) return;
+        isPolling = true;
         try {
           const items = await fetchRecent();
           const fresh = items
@@ -124,6 +125,8 @@ export async function GET() {
           }
         } catch {
           // Allow transient failures and keep the SSE connection alive.
+        } finally {
+          isPolling = false;
         }
       }, 5000);
 

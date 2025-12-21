@@ -10,7 +10,7 @@ type ControlPlaneScanRow = {
   url_hash: string;
   normalized_url: string;
   verdict: "benign" | "suspicious" | "malicious";
-  last_seen_at: string | Date;
+  last_seen_at: string;
 };
 
 function mapVerdictLevel(
@@ -31,17 +31,15 @@ export async function GET(req: Request) {
       : 10;
 
   try {
+    const limitParam = encodeURIComponent(String(limit));
     const rows = await controlPlaneFetchJson<ControlPlaneScanRow[]>(
-      `/scans/recent?limit=${limit}`,
+      `/scans/recent?limit=${limitParam}`,
       { timeoutMs: 6000 },
     );
     const mapped = rows.map((row) => ({
       id: String(row.id),
       urlHash: row.url_hash,
-      timestamp:
-        row.last_seen_at instanceof Date
-          ? row.last_seen_at.toISOString()
-          : String(row.last_seen_at),
+      timestamp: row.last_seen_at,
       url: row.normalized_url,
       verdict: mapVerdictLevel(row.verdict),
     }));
