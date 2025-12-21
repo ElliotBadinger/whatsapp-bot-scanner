@@ -21,10 +21,25 @@ const serverEnvSchema = z.object({
 export type Env = z.infer<typeof serverEnvSchema>;
 
 let cachedEnv: Env | undefined;
+let didWarnDeprecatedControlPlaneBase = false;
 
 export function validateEnv(): Env {
+  const controlPlaneUrl =
+    process.env.CONTROL_PLANE_URL ?? process.env.CONTROL_PLANE_BASE;
+
+  if (
+    !didWarnDeprecatedControlPlaneBase &&
+    !process.env.CONTROL_PLANE_URL &&
+    process.env.CONTROL_PLANE_BASE
+  ) {
+    didWarnDeprecatedControlPlaneBase = true;
+    console.warn(
+      "SafeMode-web-app: CONTROL_PLANE_BASE is deprecated; use CONTROL_PLANE_URL instead.",
+    );
+  }
+
   const parsed = serverEnvSchema.parse({
-    CONTROL_PLANE_URL: process.env.CONTROL_PLANE_URL,
+    CONTROL_PLANE_URL: controlPlaneUrl,
     CONTROL_PLANE_API_TOKEN: process.env.CONTROL_PLANE_API_TOKEN,
   });
 
