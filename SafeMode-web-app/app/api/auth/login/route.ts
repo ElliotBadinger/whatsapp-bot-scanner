@@ -31,7 +31,14 @@ export async function POST(req: Request) {
   }
 
   const response = NextResponse.json({ ok: true });
-  setAdminSessionCookie(response);
+  try {
+    setAdminSessionCookie(response);
+  } catch {
+    return NextResponse.json(
+      { error: "server_not_configured" },
+      { status: 500 },
+    );
+  }
   return response;
 }
 

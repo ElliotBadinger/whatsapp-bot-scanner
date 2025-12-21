@@ -30,7 +30,15 @@ export function isValidSafemodeAdminToken(candidate: string): boolean {
 
 function getSessionSecret(): string {
   const secret = (process.env.SAFEMODE_SESSION_SECRET || "").trim();
-  return secret || getSafemodeAdminToken();
+  if (secret) {
+    return secret;
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("SAFEMODE_SESSION_SECRET is required in production");
+  }
+
+  return getSafemodeAdminToken();
 }
 
 function getSessionCookieBaseOptions(): {
@@ -92,6 +100,9 @@ export async function readAdminSessionClaims(
       nowMs: options.nowMs,
     });
     if (!verification.ok) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("Admin session invalid", { reason: verification.reason });
+      }
       return null;
     }
 

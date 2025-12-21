@@ -40,8 +40,16 @@ export default function AdminPage() {
           </div>
           <button
             onClick={async () => {
-              await fetch("/api/auth/logout", { method: "POST" }).catch(() => {})
-              setIsAuthenticated(false)
+              try {
+                const resp = await fetch("/api/auth/logout", {
+                  method: "POST",
+                })
+                if (resp.ok) {
+                  setIsAuthenticated(false)
+                }
+              } catch {
+                // Ignore
+              }
             }}
             className="font-mono text-xs text-danger/60 hover:text-danger transition-colors focus-ring px-3 py-1.5 border border-danger/30 hover:border-danger/60"
           >

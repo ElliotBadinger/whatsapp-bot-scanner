@@ -57,7 +57,12 @@ export function verifySignedSessionToken(
     .createHmac("sha256", options.secret)
     .update(payload)
     .digest();
-  const providedSigBuffer = Buffer.from(signature, "base64url");
+  let providedSigBuffer: Buffer;
+  try {
+    providedSigBuffer = Buffer.from(signature, "base64url");
+  } catch {
+    return { ok: false, reason: "invalid_format" };
+  }
 
   if (providedSigBuffer.length !== expectedSigBuffer.length) {
     return { ok: false, reason: "invalid_signature" };
