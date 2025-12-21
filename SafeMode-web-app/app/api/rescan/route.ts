@@ -5,12 +5,17 @@ import {
   controlPlaneFetchJson,
 } from "@/lib/control-plane-server";
 import type { RescanResult } from "@/lib/api";
+import { hasValidAdminSession } from "@/lib/admin-session";
 
 const PostBodySchema = z.object({
   url: z.string().trim().min(1),
 });
 
 export async function POST(req: Request) {
+  if (!(await hasValidAdminSession())) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
   const body = await req.json().catch(() => null);
   const parsed = PostBodySchema.safeParse(body);
   if (!parsed.success) {

@@ -4,11 +4,16 @@ import {
   controlPlaneFetchJson,
 } from "@/lib/control-plane-server";
 import { ChatIdSchema } from "@/lib/chat-id-schema";
+import { hasValidAdminSession } from "@/lib/admin-session";
 
 export async function POST(
   _req: Request,
   context: { params: Promise<{ chatId: string }> },
 ) {
+  if (!(await hasValidAdminSession())) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
   const { chatId } = await context.params;
   const parsedChatId = ChatIdSchema.safeParse(chatId);
   if (!parsedChatId.success) {
