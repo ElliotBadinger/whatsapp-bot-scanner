@@ -27,16 +27,26 @@ export function latestComment(comments) {
 
   let latest = null;
   let latestTime = -Infinity;
+  let invalidCount = 0;
   for (const comment of comments) {
     const t = Date.parse(comment.createdAt);
-    if (Number.isNaN(t)) continue;
+    if (Number.isNaN(t)) {
+      invalidCount += 1;
+      continue;
+    }
     if (t > latestTime) {
       latestTime = t;
       latest = comment;
     }
   }
 
-  return latest;
+  if (invalidCount > 0) {
+    console.warn(
+      `latestComment ignored ${invalidCount} comment(s) with invalid createdAt`,
+    );
+  }
+
+  return latest ?? comments[comments.length - 1] ?? null;
 }
 
 export function isSuggestionComment(body) {
@@ -55,6 +65,8 @@ export function isSuggestionComment(body) {
 }
 
 export function hasPendingSuggestion(comments) {
+  // We only care about the latest suggestion and the latest non-Charlie ack.
+  // Once a newer suggestion is present, earlier suggestion/ack cycles are irrelevant.
   if (!comments || comments.length === 0) return false;
 
   let latestAckTime = -Infinity;
@@ -102,6 +114,7 @@ export function getEventPrNumber(eventName, payload) {
   }
 
   if (eventName === "issue_comment") {
+    if (!payload.issue?.pull_request) return null;
     return parsePrNumber(payload.issue?.number);
   }
 

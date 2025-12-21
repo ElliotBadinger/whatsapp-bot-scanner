@@ -11,14 +11,15 @@ import fs from "node:fs/promises";
 const token = process.env.GITHUB_TOKEN;
 const repo = process.env.GITHUB_REPOSITORY;
 const prNumberRaw = process.env.PR_NUMBER;
-const mode = (process.env.MODE ?? "reply").toLowerCase();
+const rawMode = process.env.MODE ?? "reply";
+const mode = rawMode.toLowerCase();
 const eventName = process.env.GITHUB_EVENT_NAME;
 const eventPath = process.env.GITHUB_EVENT_PATH;
 
 const allowedModes = new Set(["reply", "fast-forward"]);
 if (!allowedModes.has(mode)) {
   console.error(
-    `Invalid MODE=${mode}. Expected one of: ${Array.from(allowedModes).join(
+    `Invalid MODE=${rawMode}. Expected one of: ${Array.from(allowedModes).join(
       ", ",
     )}.`,
   );
@@ -292,9 +293,17 @@ async function replyToThread(threadId) {
 
 async function validateEventContext() {
   if (!eventName || !eventPath) return;
-  const raw = await fs.readFile(eventPath, "utf8");
-  const payload = JSON.parse(raw);
-  validateEventPrNumber(eventName, payload, prNumber);
+  try {
+    const raw = await fs.readFile(eventPath, "utf8");
+    const payload = JSON.parse(raw);
+    validateEventPrNumber(eventName, payload, prNumber);
+  } catch (err) {
+    console.error(
+      `Failed to validate event context for ${eventName} from ${eventPath}:`,
+      err,
+    );
+    throw err;
+  }
 }
 
 async function hasPendingSuggestionForThread(thread, commentPreview) {
