@@ -89,25 +89,27 @@ describe("control-plane buildServer", () => {
 
   test("GET /scans returns paginated scan rows", async () => {
     const now = new Date().toISOString();
-    const { app, dbClient } = await buildTestServer(async (sql: string) => {
-      if (sql.startsWith("SELECT COUNT(*) AS total")) {
-        return { rows: [{ total: "12" }] };
-      }
-      if (sql.startsWith("SELECT id, url_hash")) {
-        return {
-          rows: [
-            {
-              id: 1,
-              url_hash: "hash-1",
-              normalized_url: "https://example.com/",
-              verdict: "benign",
-              last_seen_at: now,
-            },
-          ],
-        };
-      }
-      return { rows: [] };
-    });
+    const { app, dbClient } = await buildTestServer(
+      async (sql: string, _params?: unknown[]) => {
+        if (sql.startsWith("SELECT COUNT(*) AS total")) {
+          return { rows: [{ total: "12" }] };
+        }
+        if (sql.startsWith("SELECT id, url_hash")) {
+          return {
+            rows: [
+              {
+                id: 1,
+                url_hash: "hash-1",
+                normalized_url: "https://example.com/",
+                verdict: "benign",
+                last_seen_at: now,
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    );
 
     try {
       const res = await app.inject({
@@ -147,25 +149,27 @@ describe("control-plane buildServer", () => {
 
   test("GET /scans supports verdict filtering", async () => {
     const now = new Date().toISOString();
-    const { app, dbClient } = await buildTestServer(async (sql: string) => {
-      if (sql.startsWith("SELECT COUNT(*) AS total")) {
-        return { rows: [{ total: 1 }] };
-      }
-      if (sql.startsWith("SELECT id, url_hash")) {
-        return {
-          rows: [
-            {
-              id: 99,
-              url_hash: "hash-99",
-              normalized_url: "https://phish.example/",
-              verdict: "malicious",
-              last_seen_at: now,
-            },
-          ],
-        };
-      }
-      return { rows: [] };
-    });
+    const { app, dbClient } = await buildTestServer(
+      async (sql: string, _params?: unknown[]) => {
+        if (sql.startsWith("SELECT COUNT(*) AS total")) {
+          return { rows: [{ total: 1 }] };
+        }
+        if (sql.startsWith("SELECT id, url_hash")) {
+          return {
+            rows: [
+              {
+                id: 99,
+                url_hash: "hash-99",
+                normalized_url: "https://phish.example/",
+                verdict: "malicious",
+                last_seen_at: now,
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    );
 
     try {
       const res = await app.inject({
@@ -194,15 +198,17 @@ describe("control-plane buildServer", () => {
     const from = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
     const to = now.toISOString();
 
-    const { app, dbClient } = await buildTestServer(async (sql: string) => {
-      if (sql.startsWith("SELECT COUNT(*) AS total")) {
-        return { rows: [{ total: 0 }] };
-      }
-      if (sql.startsWith("SELECT id, url_hash")) {
+    const { app, dbClient } = await buildTestServer(
+      async (sql: string, _params?: unknown[]) => {
+        if (sql.startsWith("SELECT COUNT(*) AS total")) {
+          return { rows: [{ total: 0 }] };
+        }
+        if (sql.startsWith("SELECT id, url_hash")) {
+          return { rows: [] };
+        }
         return { rows: [] };
-      }
-      return { rows: [] };
-    });
+      },
+    );
 
     try {
       const res = await app.inject({

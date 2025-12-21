@@ -139,37 +139,40 @@ export async function buildServer(options: BuildOptions = {}) {
         return reply.code(400).send({ error: "invalid_verdict" });
       }
 
+      class ScanQueryValidationError extends Error {
+        constructor(readonly code: "invalid_from" | "invalid_to") {
+          super(code);
+        }
+      }
+
       const parseTimestamp = (
         value: unknown,
-        errorCode: "invalid_from" | "invalid_to",
-      ): string | null => {
+        code: "invalid_from" | "invalid_to",
+      ): Date | null => {
         if (typeof value !== "string" || value.trim().length === 0) {
           return null;
         }
         const date = new Date(value);
         if (Number.isNaN(date.getTime())) {
-          throw new Error(errorCode);
+          throw new ScanQueryValidationError(code);
         }
-        return date.toISOString();
+        return date;
       };
 
-      let from: string | null = null;
-      let to: string | null = null;
+      let from: Date | null = null;
+      let to: Date | null = null;
       try {
         from = parseTimestamp(query.from, "invalid_from");
         to = parseTimestamp(query.to, "invalid_to");
       } catch (err) {
-        const code = (err as Error).message;
-        if (code === "invalid_from" || code === "invalid_to") {
-          return reply.code(400).send({ error: code });
+        if (err instanceof ScanQueryValidationError) {
+          return reply.code(400).send({ error: err.code });
         }
         throw err;
       }
 
       if (from && to) {
-        const fromMs = new Date(from).getTime();
-        const toMs = new Date(to).getTime();
-        if (fromMs > toMs) {
+        if (from.getTime() > to.getTime()) {
           return reply.code(400).send({ error: "invalid_date_range" });
         }
       }
@@ -197,11 +200,11 @@ export async function buildServer(options: BuildOptions = {}) {
       }
       if (from) {
         whereParts.push("last_seen_at >= ?");
-        whereParams.push(from);
+        whereParams.push(from.toISOString());
       }
       if (to) {
         whereParts.push("last_seen_at <= ?");
-        whereParams.push(to);
+        whereParams.push(to.toISOString());
       }
 
       const whereClause = whereParts.length
@@ -227,7 +230,14 @@ export async function buildServer(options: BuildOptions = {}) {
         };
       } catch (err) {
         logger.error(
-          { err, verdict, from, to, limit, offset },
+          {
+            err,
+            verdict,
+            from: from?.toISOString() ?? null,
+            to: to?.toISOString() ?? null,
+            limit,
+            offset,
+          },
           "Failed to list scans",
         );
         return reply.code(500).send({ error: "scans_unavailable" });
