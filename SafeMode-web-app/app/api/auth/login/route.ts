@@ -17,7 +17,6 @@ export async function POST(req: Request) {
     const resp = await controlPlaneFetchWithBearerToken(
       parsed.data.token,
       "/status",
-      { timeoutMs: 6000 },
     );
 
     if (resp.ok) {
@@ -28,9 +27,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "invalid_token" }, { status: 401 });
     }
 
+    if (resp.status >= 500) {
+      return NextResponse.json(
+        { error: "control_plane_unavailable" },
+        { status: 502 },
+      );
+    }
+
     return NextResponse.json({ error: "login_failed" }, { status: 502 });
   } catch {
-    return NextResponse.json({ error: "login_failed" }, { status: 502 });
+    return NextResponse.json({ error: "control_plane_unavailable" }, { status: 502 });
   }
 }
 

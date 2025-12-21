@@ -38,18 +38,12 @@ function getControlPlaneToken(): string {
   return token;
 }
 
-export async function controlPlaneFetch(
+async function controlPlaneFetchInternal(
   path: string,
+  token: string,
   init: RequestInit & { timeoutMs?: number } = {},
 ): Promise<Response> {
   const base = resolveControlPlaneBase();
-  const token = getControlPlaneToken();
-  if (!token) {
-    throw new ControlPlaneError("CONTROL_PLANE_API_TOKEN is required", {
-      status: 500,
-      code: "MISSING_TOKEN",
-    });
-  }
   const url = `${base}${path.startsWith("/") ? path : `/${path}`}`;
 
   const headers = new Headers(init.headers);
@@ -74,34 +68,27 @@ export async function controlPlaneFetch(
   }
 }
 
+export async function controlPlaneFetch(
+  path: string,
+  init: RequestInit & { timeoutMs?: number } = {},
+): Promise<Response> {
+  const token = getControlPlaneToken();
+  if (!token) {
+    throw new ControlPlaneError("CONTROL_PLANE_API_TOKEN is required", {
+      status: 500,
+      code: "MISSING_TOKEN",
+    });
+  }
+
+  return controlPlaneFetchInternal(path, token, init);
+}
+
 export async function controlPlaneFetchWithBearerToken(
   token: string,
   path: string,
   init: RequestInit & { timeoutMs?: number } = {},
 ): Promise<Response> {
-  const base = resolveControlPlaneBase();
-  const url = `${base}${path.startsWith("/") ? path : `/${path}`}`;
-
-  const headers = new Headers(init.headers);
-  headers.set("authorization", `Bearer ${token}`);
-  if (!headers.has("accept")) {
-    headers.set("accept", "application/json");
-  }
-
-  const timeoutMs = init.timeoutMs ?? 8000;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(url, {
-      ...init,
-      headers,
-      signal: controller.signal,
-      cache: "no-store",
-    });
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  return controlPlaneFetchInternal(path, token, init);
 }
 
 async function controlPlaneFetchJsonInternal<T>(
