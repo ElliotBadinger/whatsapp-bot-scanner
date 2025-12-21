@@ -1,13 +1,22 @@
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const libPath = path.resolve(
   __dirname,
   "../.github/scripts/charliehelps-auto-lib.mjs",
 );
 
+// TypeScript downlevels `import()` to `require()` under CJS, which breaks `.mjs`.
+// This keeps a true runtime `import()` so Jest can load ESM helpers.
+const importEsm = (() => {
+  // eslint-disable-next-line no-new-func
+  const importer = new Function("url", "return import(url);");
+  return async (filePath: string) => importer(pathToFileURL(filePath).href);
+})();
+
 describe("charliehelps-auto helpers", () => {
   test("detects working messages", async () => {
-    const lib = await import(libPath);
+    const lib = await importEsm(libPath);
     expect(
       lib.isWorkingMessage(
         "I’m working on this now and can’t be interrupted or see replies.",
@@ -24,7 +33,7 @@ describe("charliehelps-auto helpers", () => {
   });
 
   test("detects pending suggestions without newer ack", async () => {
-    const lib = await import(libPath);
+    const lib = await importEsm(libPath);
     const comments = [
       {
         author: { login: "charliecreates" },
@@ -41,7 +50,7 @@ describe("charliehelps-auto helpers", () => {
   });
 
   test("clears pending suggestion when ack is after", async () => {
-    const lib = await import(libPath);
+    const lib = await importEsm(libPath);
     const comments = [
       {
         author: { login: "charliecreates" },
@@ -57,8 +66,25 @@ describe("charliehelps-auto helpers", () => {
     expect(lib.hasPendingSuggestion(comments)).toBe(false);
   });
 
+  test("does not treat CharlieCreates ack as satisfying suggestion", async () => {
+    const lib = await importEsm(libPath);
+    const comments = [
+      {
+        author: { login: "charliecreates" },
+        body: 'Reply with \"@CharlieHelps yes please\" if you want this.',
+        createdAt: "2025-12-21T08:00:00Z",
+      },
+      {
+        author: { login: "charliecreates" },
+        body: "@CharlieHelps yes please",
+        createdAt: "2025-12-21T08:01:00Z",
+      },
+    ];
+    expect(lib.hasPendingSuggestion(comments)).toBe(true);
+  });
+
   test("does not treat older ack as satisfying newer suggestion", async () => {
-    const lib = await import(libPath);
+    const lib = await importEsm(libPath);
     const comments = [
       {
         author: { login: "ElliotBadinger" },
@@ -75,7 +101,7 @@ describe("charliehelps-auto helpers", () => {
   });
 
   test("treats non-working CharlieHelps review comment as suggestion", async () => {
-    const lib = await import(libPath);
+    const lib = await importEsm(libPath);
     const comments = [
       {
         author: { login: "charliecreates" },
@@ -99,11 +125,23 @@ describe("charliehelps-auto helpers", () => {
   });
 
   test("ignores work summary updates", async () => {
-    const lib = await import(libPath);
+    const lib = await importEsm(libPath);
     const comments = [
       {
         author: { login: "charliecreates" },
         body: "<details><summary>Expand this to see my work.</summary>\n\n- Did things\n</details>",
+        createdAt: "2025-12-21T08:00:00Z",
+      },
+    ];
+    expect(lib.hasPendingSuggestion(comments)).toBe(false);
+  });
+
+  test("does not treat generic Charlie comment as suggestion", async () => {
+    const lib = await importEsm(libPath);
+    const comments = [
+      {
+        author: { login: "charliecreates" },
+        body: "FYI, I reran CI.",
         createdAt: "2025-12-21T08:00:00Z",
       },
     ];

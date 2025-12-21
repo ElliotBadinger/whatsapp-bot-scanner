@@ -24,10 +24,19 @@ export function isWorkingMessage(body) {
 
 export function latestComment(comments) {
   if (!comments || comments.length === 0) return null;
-  const sorted = [...comments].sort(
-    (a, b) => new Date(a.createdAt) - new Date(b.createdAt),
-  );
-  return sorted[sorted.length - 1];
+
+  let latest = null;
+  let latestTime = -Infinity;
+  for (const comment of comments) {
+    const t = Date.parse(comment.createdAt);
+    if (Number.isNaN(t)) continue;
+    if (t > latestTime) {
+      latestTime = t;
+      latest = comment;
+    }
+  }
+
+  return latest;
 }
 
 export function isSuggestionComment(body) {
@@ -36,6 +45,7 @@ export function isSuggestionComment(body) {
   if (nonSuggestionMarkers.some((marker) => lowered.includes(marker))) {
     return false;
   }
+
   return (
     suggestionRegex.test(body) ||
     suggestionSummary.test(body) ||
@@ -46,26 +56,27 @@ export function isSuggestionComment(body) {
 
 export function hasPendingSuggestion(comments) {
   if (!comments || comments.length === 0) return false;
-  const sorted = [...comments].sort(
-    (a, b) => new Date(a.createdAt) - new Date(b.createdAt),
-  );
-  const suggestions = sorted.filter((comment) => {
-    const author = comment.author?.login || "";
-    return (
-      author.toLowerCase() === "charliecreates" &&
-      isSuggestionComment(comment.body || "")
-    );
-  });
-  if (suggestions.length === 0) return false;
 
-  for (const suggestion of suggestions) {
-    const suggestionTime = new Date(suggestion.createdAt).getTime();
-    const hasAckAfter = sorted.some((comment) => {
-      if (!yesPleaseRegex.test(comment.body || "")) return false;
-      return new Date(comment.createdAt).getTime() > suggestionTime;
-    });
-    if (!hasAckAfter) return true;
+  let latestAckTime = -Infinity;
+  let latestSuggestionTime = -Infinity;
+
+  for (const comment of comments) {
+    const t = Date.parse(comment.createdAt);
+    if (Number.isNaN(t)) continue;
+
+    const author = (comment.author?.login ?? "").toLowerCase();
+    const body = comment.body || "";
+
+    if (author !== "charliecreates" && yesPleaseRegex.test(body)) {
+      latestAckTime = Math.max(latestAckTime, t);
+      continue;
+    }
+
+    if (author === "charliecreates" && isSuggestionComment(body)) {
+      latestSuggestionTime = Math.max(latestSuggestionTime, t);
+    }
   }
 
-  return false;
+  if (latestSuggestionTime === -Infinity) return false;
+  return latestSuggestionTime > latestAckTime;
 }
