@@ -1,110 +1,112 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { NavBar } from "@/components/safemode/nav-bar"
-import { TerminalCard } from "@/components/safemode/terminal-card"
-import { StatsDisplay } from "@/components/safemode/stats-display"
-import { LiveFeed } from "@/components/safemode/live-feed"
-import { RescanForm } from "@/components/safemode/rescan-form"
-import { OverridesTable } from "@/components/safemode/overrides-table"
-import { GroupsManager } from "@/components/safemode/groups-manager"
-import { AdminAuth } from "@/components/safemode/admin-auth"
-import { cn } from "@/lib/utils"
+import { useEffect, useState } from "react";
+import { NavBar } from "@/components/safemode/nav-bar";
+import { TerminalCard } from "@/components/safemode/terminal-card";
+import { StatsDisplay } from "@/components/safemode/stats-display";
+import { LiveFeed } from "@/components/safemode/live-feed";
+import { RescanForm } from "@/components/safemode/rescan-form";
+import { OverridesTable } from "@/components/safemode/overrides-table";
+import { GroupsManager } from "@/components/safemode/groups-manager";
+import { AdminAuth } from "@/components/safemode/admin-auth";
+import { cn } from "@/lib/utils";
 
-type Tab = "overview" | "rescan" | "overrides" | "groups"
+type Tab = "overview" | "rescan" | "overrides" | "groups";
 
 export default function AdminPage() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [activeTab, setActiveTab] = useState<Tab>("overview")
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [activeTab, setActiveTab] = useState<Tab>("overview");
 
   useEffect(() => {
-    let cancelled = false
+    let cancelled = false;
 
     const check = async () => {
       try {
         const resp = await fetch("/api/auth/session", {
           cache: "no-store",
           credentials: "same-origin",
-        })
+        });
         if (!cancelled) {
-          setIsAuthenticated(resp.ok)
+          setIsAuthenticated(resp.ok);
         }
       } catch {
         if (!cancelled) {
-          setIsAuthenticated(false)
+          setIsAuthenticated(false);
         }
       }
-    }
+    };
 
-    check()
+    check();
     return () => {
-      cancelled = true
-    }
-  }, [])
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
-    if (!isAuthenticated) return
-    let cancelled = false
-    let timeout: ReturnType<typeof setTimeout> | null = null
+    if (!isAuthenticated) return;
+    let cancelled = false;
+    let timeout: ReturnType<typeof setTimeout> | null = null;
 
     const schedule = (delayMs: number) => {
-      if (cancelled) return
-      if (timeout) clearTimeout(timeout)
-      timeout = setTimeout(tick, delayMs)
-    }
+      if (cancelled) return;
+      if (timeout) clearTimeout(timeout);
+      timeout = setTimeout(tick, delayMs);
+    };
 
     const tick = async () => {
-      if (cancelled) return
+      if (cancelled) return;
       if (document.visibilityState === "hidden") {
-        schedule(60 * 1000)
-        return
+        schedule(60 * 1000);
+        return;
       }
 
       try {
         const resp = await fetch("/api/auth/session", {
           cache: "no-store",
           credentials: "same-origin",
-        })
+        });
         if (!resp.ok) {
-          setIsAuthenticated(false)
-          return
+          setIsAuthenticated(false);
+          return;
         }
 
-        const body = (await resp.json().catch(() => null)) as
-          | { idleTimeoutMs?: unknown }
-          | null
+        const body = (await resp.json().catch(() => null)) as {
+          idleTimeoutMs?: unknown;
+        } | null;
         const idleTimeoutMs =
-          body && typeof body.idleTimeoutMs === "number" && body.idleTimeoutMs > 0
+          body &&
+          typeof body.idleTimeoutMs === "number" &&
+          body.idleTimeoutMs > 0
             ? body.idleTimeoutMs
-            : 30 * 60 * 1000
+            : 30 * 60 * 1000;
         const delayMs = Math.max(
           Math.min(Math.floor(idleTimeoutMs * 0.8), 10 * 60 * 1000),
           60 * 1000,
-        )
-        schedule(delayMs)
+        );
+        schedule(delayMs);
       } catch {
-        setIsAuthenticated(false)
+        setIsAuthenticated(false);
       }
-    }
+    };
 
-    tick()
+    tick();
 
     return () => {
-      cancelled = true
-      if (timeout) clearTimeout(timeout)
-    }
-  }, [isAuthenticated])
+      cancelled = true;
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [isAuthenticated]);
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", {
       method: "POST",
       credentials: "same-origin",
-    }).catch(() => {})
-    setIsAuthenticated(false)
-  }
+    }).catch(() => {});
+    setIsAuthenticated(false);
+  };
 
   if (!isAuthenticated) {
-    return <AdminAuth onAuthenticated={() => setIsAuthenticated(true)} />
+    return <AdminAuth onAuthenticated={() => setIsAuthenticated(true)} />;
   }
 
   const tabs: { id: Tab; label: string }[] = [
@@ -112,7 +114,7 @@ export default function AdminPage() {
     { id: "rescan", label: "RESCAN" },
     { id: "overrides", label: "OVERRIDES" },
     { id: "groups", label: "GROUPS" },
-  ]
+  ];
 
   return (
     <div className="min-h-screen bg-background">
@@ -122,7 +124,9 @@ export default function AdminPage() {
         {/* Header */}
         <div className="mb-8 flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h1 className="font-mono text-2xl md:text-3xl text-primary terminal-glow">ADMIN CONTROL PANEL</h1>
+            <h1 className="font-mono text-2xl md:text-3xl text-primary terminal-glow">
+              ADMIN CONTROL PANEL
+            </h1>
           </div>
           <button
             onClick={handleLogout}
@@ -165,7 +169,10 @@ export default function AdminPage() {
                   <div className="space-y-3">
                     {[
                       { tab: "rescan" as Tab, label: "Force rescan a URL" },
-                      { tab: "overrides" as Tab, label: "Manage URL overrides" },
+                      {
+                        tab: "overrides" as Tab,
+                        label: "Manage URL overrides",
+                      },
                       { tab: "groups" as Tab, label: "View protected groups" },
                     ].map((action) => (
                       <button
@@ -174,7 +181,9 @@ export default function AdminPage() {
                         className="w-full text-left px-4 py-3 border border-border hover:border-primary/40 hover:bg-primary/5 transition-all font-mono text-sm focus-ring"
                       >
                         <span className="text-primary">{`>`}</span>
-                        <span className="text-muted-foreground ml-2">{action.label}</span>
+                        <span className="text-muted-foreground ml-2">
+                          {action.label}
+                        </span>
                       </button>
                     ))}
                   </div>
@@ -189,7 +198,8 @@ export default function AdminPage() {
             <TerminalCard title="FORCE URL RESCAN" variant="solid">
               <div className="space-y-4">
                 <p className="font-mono text-sm text-muted-foreground">
-                  Force a fresh scan of any URL, bypassing cache. Results will be updated immediately.
+                  Force a fresh scan of any URL, bypassing cache. Results will
+                  be updated immediately.
                 </p>
                 <RescanForm />
               </div>
@@ -200,7 +210,8 @@ export default function AdminPage() {
             <TerminalCard title="URL PATTERN OVERRIDES" variant="solid">
               <div className="space-y-4">
                 <p className="font-mono text-sm text-muted-foreground">
-                  Configure manual allow/block rules that override automatic scanning results.
+                  Configure manual allow/block rules that override automatic
+                  scanning results.
                 </p>
                 <OverridesTable />
               </div>
@@ -211,7 +222,8 @@ export default function AdminPage() {
             <TerminalCard title="PROTECTED GROUPS" variant="solid">
               <div className="space-y-4">
                 <p className="font-mono text-sm text-muted-foreground">
-                  Manage WhatsApp groups protected by SafeMode. Muted groups will not receive bot messages.
+                  Manage WhatsApp groups protected by SafeMode. Muted groups
+                  will not receive bot messages.
                 </p>
                 <GroupsManager />
               </div>
@@ -225,5 +237,5 @@ export default function AdminPage() {
         </footer>
       </main>
     </div>
-  )
+  );
 }

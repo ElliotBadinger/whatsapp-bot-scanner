@@ -1,5 +1,8 @@
 import { cookies } from "next/headers";
-import { NextResponse, type NextResponse as NextResponseType } from "next/server";
+import {
+  NextResponse,
+  type NextResponse as NextResponseType,
+} from "next/server";
 import {
   ADMIN_SESSION_COOKIE,
   validateAndTouchAdminSession,

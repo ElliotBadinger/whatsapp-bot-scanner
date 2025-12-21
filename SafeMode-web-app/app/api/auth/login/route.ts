@@ -6,7 +6,10 @@ import { cleanupRateLimitBuckets, checkRateLimit } from "@/lib/auth/rate-limit";
 import { readJsonWithLimit } from "@/lib/auth/read-json-with-limit";
 import { createAdminSession } from "@/lib/auth/admin-session";
 import { setAdminSessionCookie } from "@/lib/auth/require-admin-session";
-import { ControlPlaneError, controlPlaneFetchJson } from "@/lib/control-plane-server";
+import {
+  ControlPlaneError,
+  controlPlaneFetchJson,
+} from "@/lib/control-plane-server";
 import type { SystemStatus } from "@/lib/api";
 
 const LoginBodySchema = z.object({
@@ -75,10 +78,7 @@ export async function POST(req: NextRequest) {
 
   const jar = await cookies();
   const csrfCookie = jar.get(CSRF_COOKIE)?.value;
-  if (
-    !csrfCookie ||
-    !timingSafeEqual(csrfCookie, parsed.data.csrfToken)
-  ) {
+  if (!csrfCookie || !timingSafeEqual(csrfCookie, parsed.data.csrfToken)) {
     return NextResponse.json({ error: "csrf_failed" }, { status: 403 });
   }
 

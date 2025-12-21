@@ -70,10 +70,12 @@ export async function GET() {
   if (!auth.ok) return auth.response;
 
   try {
-    const rows =
-      await controlPlaneFetchJson<ControlPlaneOverrideRow[]>("/overrides", {
+    const rows = await controlPlaneFetchJson<ControlPlaneOverrideRow[]>(
+      "/overrides",
+      {
         authToken: auth.session.controlPlaneToken,
-      });
+      },
+    );
 
     const overrides = rows
       .map(mapOverride)
