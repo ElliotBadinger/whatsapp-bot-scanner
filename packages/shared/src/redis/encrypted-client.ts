@@ -178,8 +178,14 @@ export class EncryptedRedisClient {
     const encrypted = await this.client.hgetall(key);
     const decrypted: Record<string, string> = {};
     for (const [field, value] of Object.entries(encrypted)) {
-      decrypted[field] =
-        this.decrypt(value, { operation: "hgetall", key, field }) ?? value;
+      const decryptedValue = this.decrypt(value, {
+        operation: "hgetall",
+        key,
+        field,
+      });
+      if (decryptedValue !== null) {
+        decrypted[field] = decryptedValue;
+      }
     }
     return decrypted;
   }
@@ -214,9 +220,10 @@ export class EncryptedRedisClient {
 
   async lrange(key: RedisKey, start: number, stop: number): Promise<string[]> {
     const encrypted = await this.client.lrange(key, start, stop);
-    return encrypted.map(
-      (v) => this.decrypt(v, { operation: "lrange", key }) ?? v,
-    );
+    return encrypted.flatMap((v) => {
+      const decrypted = this.decrypt(v, { operation: "lrange", key });
+      return decrypted === null ? [] : [decrypted];
+    });
   }
 
   async sadd(key: RedisKey, ...members: string[]): Promise<number> {
@@ -226,9 +233,10 @@ export class EncryptedRedisClient {
 
   async smembers(key: RedisKey): Promise<string[]> {
     const encrypted = await this.client.smembers(key);
-    return encrypted.map(
-      (v) => this.decrypt(v, { operation: "smembers", key }) ?? v,
-    );
+    return encrypted.flatMap((v) => {
+      const decrypted = this.decrypt(v, { operation: "smembers", key });
+      return decrypted === null ? [] : [decrypted];
+    });
   }
 
   async zadd(key: RedisKey, score: number, member: string): Promise<number> {
@@ -238,9 +246,10 @@ export class EncryptedRedisClient {
 
   async zrange(key: RedisKey, start: number, stop: number): Promise<string[]> {
     const encrypted = await this.client.zrange(key, start, stop);
-    return encrypted.map(
-      (v) => this.decrypt(v, { operation: "zrange", key }) ?? v,
-    );
+    return encrypted.flatMap((v) => {
+      const decrypted = this.decrypt(v, { operation: "zrange", key });
+      return decrypted === null ? [] : [decrypted];
+    });
   }
 
   async zrem(key: RedisKey, ...members: string[]): Promise<number> {
