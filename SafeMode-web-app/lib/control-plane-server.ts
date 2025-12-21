@@ -68,6 +68,11 @@ async function controlPlaneFetchInternal(
   }
 }
 
+/**
+* Fetch from the control-plane using the service token from `CONTROL_PLANE_API_TOKEN`.
+*
+* Throws a `ControlPlaneError` when the token is missing.
+*/
 export async function controlPlaneFetch(
   path: string,
   init: RequestInit & { timeoutMs?: number } = {},

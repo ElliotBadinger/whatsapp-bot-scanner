@@ -22,7 +22,7 @@ export async function POST(req: Request) {
       "/status",
     );
 
-    if (resp.ok) {
+    if (resp.status === 200) {
       return NextResponse.json({ ok: true });
     }
 
