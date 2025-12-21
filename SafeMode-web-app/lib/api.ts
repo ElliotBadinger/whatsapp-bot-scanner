@@ -40,6 +40,18 @@ export class ApiError extends Error {
   }
 }
 
+function getBrowserCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const cookies = document.cookie ? document.cookie.split(";") : [];
+  for (const cookie of cookies) {
+    const [rawKey, ...rawValueParts] = cookie.trim().split("=");
+    if (!rawKey) continue;
+    if (rawKey !== name) continue;
+    return rawValueParts.join("=");
+  }
+  return null;
+}
+
 async function fetchJsonInternal<T>(
   path: string,
   init: RequestInit,
@@ -57,6 +69,15 @@ async function fetchJsonInternal<T>(
 ): Promise<T | undefined> {
   const headers = new Headers(init.headers);
   headers.set("accept", "application/json");
+
+  const method = (init.method || "GET").toUpperCase();
+  const isStateChanging = !["GET", "HEAD", "OPTIONS"].includes(method);
+  if (isStateChanging) {
+    const csrf = getBrowserCookie("safemode_admin_csrf");
+    if (csrf && !headers.has("x-csrf-token")) {
+      headers.set("x-csrf-token", csrf);
+    }
+  }
 
   const resp = await fetch(path, {
     ...init,
@@ -198,4 +219,26 @@ export async function unmuteGroup(chatId: string): Promise<{ ok: boolean }> {
     `/api/groups/${encodeURIComponent(chatId)}/unmute`,
     { method: "POST" },
   );
+}
+
+export async function loginAdmin(password: string): Promise<{ expiresAt: string }> {
+  return fetchJson<{ expiresAt: string }>("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
+}
+
+export async function logoutAdmin(): Promise<void> {
+  await fetchJsonAllowNoContent("/api/auth/logout", { method: "POST" });
+}
+
+export async function getAdminSession(): Promise<
+  | { authenticated: false }
+  | { authenticated: true; expiresAt: string }
+> {
+  return fetchJson<
+    | { authenticated: false }
+    | { authenticated: true; expiresAt: string }
+  >("/api/auth/session");
 }

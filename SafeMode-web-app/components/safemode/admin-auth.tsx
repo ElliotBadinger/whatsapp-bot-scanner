@@ -2,20 +2,16 @@
 
 import type React from "react"
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NavBar } from "./nav-bar"
 import { TerminalCard } from "./terminal-card"
+import { ApiError, loginAdmin } from "@/lib/api"
 
-interface AdminAuthProps {
-  onAuthenticated: () => void
-}
-
-// Demo token for proof of concept
-const DEMO_TOKEN = "safemode-admin-demo"
-
-export function AdminAuth({ onAuthenticated }: AdminAuthProps) {
-  const [token, setToken] = useState("")
+export function AdminAuth() {
+  const router = useRouter()
+  const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
@@ -24,15 +20,20 @@ export function AdminAuth({ onAuthenticated }: AdminAuthProps) {
     setIsLoading(true)
     setError(null)
 
-    // Simulate auth check
-    await new Promise((resolve) => setTimeout(resolve, 800))
-
-    if (token === DEMO_TOKEN || token === "demo") {
-      onAuthenticated()
-    } else {
-      setError("ACCESS_DENIED: Invalid token")
+    try {
+      await loginAdmin(password)
+      router.refresh()
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 429) {
+        setError("RATE_LIMITED: Try again shortly")
+      } else if (err instanceof ApiError && err.status === 401) {
+        setError("ACCESS_DENIED: Invalid credentials")
+      } else {
+        setError("AUTH_FAILED: Unable to authenticate")
+      }
+    } finally {
+      setIsLoading(false)
     }
-    setIsLoading(false)
   }
 
   return (
@@ -58,12 +59,12 @@ export function AdminAuth({ onAuthenticated }: AdminAuthProps) {
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                  <label className="block font-mono text-xs text-primary/60 mb-2">{`> ENTER API TOKEN`}</label>
+                  <label className="block font-mono text-xs text-primary/60 mb-2">{`> ENTER ADMIN PASSWORD`}</label>
                   <Input
                     type="password"
                     placeholder="••••••••••••••••"
-                    value={token}
-                    onChange={(e) => setToken(e.target.value)}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                     className="bg-background border-border text-secondary placeholder:text-muted-foreground/40 font-mono focus-ring"
                   />
                 </div>
@@ -74,16 +75,12 @@ export function AdminAuth({ onAuthenticated }: AdminAuthProps) {
 
                 <Button
                   type="submit"
-                  disabled={isLoading || !token.trim()}
+                  disabled={isLoading || !password.trim()}
                   className="w-full bg-primary text-background hover:bg-primary/80 font-mono font-bold"
                 >
                   {isLoading ? "AUTHENTICATING..." : "[ AUTHENTICATE ]"}
                 </Button>
               </form>
-
-              <div className="text-center font-mono text-xs text-primary/40">
-                <p>Demo token: "demo"</p>
-              </div>
             </div>
           </TerminalCard>
         </div>
