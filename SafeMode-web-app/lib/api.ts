@@ -40,10 +40,7 @@ export class ApiError extends Error {
   }
 }
 
-async function fetchJson<T>(
-  path: string,
-  init: RequestInit = {},
-): Promise<T> {
+async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("accept", "application/json");
 

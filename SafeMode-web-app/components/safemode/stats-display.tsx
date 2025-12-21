@@ -39,11 +39,7 @@ export const StatsDisplay = memo(function StatsDisplay() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-8">
-        <StatsCard
-          value={formattedScans}
-          label="SCANS"
-          variant="neutral"
-        />
+        <StatsCard value={formattedScans} label="SCANS" variant="neutral" />
         <StatsCard
           value={status?.malicious ?? "---"}
           label={`MALICIOUS (${threatPercent}%)`}

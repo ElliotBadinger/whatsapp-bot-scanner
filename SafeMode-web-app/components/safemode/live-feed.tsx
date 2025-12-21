@@ -121,7 +121,9 @@ export const LiveFeed = memo(function LiveFeed({
 
     eventSource.onerror = () => {
       setConnectionStatus(
-        eventSource.readyState === EventSource.CLOSED ? "offline" : "connecting",
+        eventSource.readyState === EventSource.CLOSED
+          ? "offline"
+          : "connecting",
       );
     };
 

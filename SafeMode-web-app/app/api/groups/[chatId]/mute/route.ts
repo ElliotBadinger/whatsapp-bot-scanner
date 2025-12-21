@@ -10,10 +10,10 @@ export async function POST(
 ) {
   const { chatId } = await context.params;
   try {
-    const result = await controlPlaneFetchJson<{ ok: boolean; muted_until: string }>(
-      `/groups/${encodeURIComponent(chatId)}/mute`,
-      { method: "POST" },
-    );
+    const result = await controlPlaneFetchJson<{
+      ok: boolean;
+      muted_until: string;
+    }>(`/groups/${encodeURIComponent(chatId)}/mute`, { method: "POST" });
     return NextResponse.json(result);
   } catch (err) {
     const status = err instanceof ControlPlaneError ? err.status : 502;

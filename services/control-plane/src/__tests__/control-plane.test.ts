@@ -56,7 +56,11 @@ describe("control-plane buildServer", () => {
         headers: authHeader,
       });
       expect(res.statusCode).toBe(200);
-      expect(JSON.parse(res.payload)).toEqual({ scans: 10, malicious: 2, groups: 3 });
+      expect(JSON.parse(res.payload)).toEqual({
+        scans: 10,
+        malicious: 2,
+        groups: 3,
+      });
       expect(dbClient.query).toHaveBeenCalledTimes(1);
     } finally {
       await app.close();

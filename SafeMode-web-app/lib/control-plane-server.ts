@@ -13,7 +13,9 @@ export class ControlPlaneError extends Error {
 }
 
 function resolveControlPlaneBase(): string {
-  const candidate = (process.env.CONTROL_PLANE_BASE || "http://localhost:8080").trim();
+  const candidate = (
+    process.env.CONTROL_PLANE_BASE || "http://localhost:8080"
+  ).trim();
 
   try {
     const parsed = new URL(candidate);

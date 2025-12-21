@@ -40,16 +40,12 @@ const PostBodySchema = z.object({
 
 export async function GET() {
   try {
-    const rows = await controlPlaneFetchJson<ControlPlaneOverrideRow[]>(
-      "/overrides",
-    );
+    const rows =
+      await controlPlaneFetchJson<ControlPlaneOverrideRow[]>("/overrides");
     return NextResponse.json(rows.map(mapOverride));
   } catch (err) {
     const status = err instanceof ControlPlaneError ? err.status : 502;
-    return NextResponse.json(
-      { error: "overrides_unavailable" },
-      { status },
-    );
+    return NextResponse.json({ error: "overrides_unavailable" }, { status });
   }
 }
 
@@ -75,9 +71,6 @@ export async function POST(req: Request) {
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
     const status = err instanceof ControlPlaneError ? err.status : 502;
-    return NextResponse.json(
-      { error: "override_create_failed" },
-      { status },
-    );
+    return NextResponse.json({ error: "override_create_failed" }, { status });
   }
 }
