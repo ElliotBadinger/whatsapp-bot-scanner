@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { controlPlaneFetchWithBearerToken } from "@/lib/control-plane-server";
+import {
+  ControlPlaneError,
+  controlPlaneFetchWithBearerToken,
+} from "@/lib/control-plane-server";
 
 const PostBodySchema = z.object({
   token: z.string().trim().min(1),
@@ -34,8 +37,23 @@ export async function POST(req: Request) {
       );
     }
 
+    if (resp.status >= 400) {
+      return NextResponse.json({ error: "control_plane_error" }, { status: 502 });
+    }
+
     return NextResponse.json({ error: "login_failed" }, { status: 502 });
-  } catch {
+  } catch (err) {
+    if (
+      err instanceof ControlPlaneError &&
+      err.status === 400 &&
+      err.code === "MISSING_BEARER_TOKEN"
+    ) {
+      return NextResponse.json({ error: "invalid_request" }, { status: 400 });
+    }
+
+    const name = err instanceof Error ? err.name : "UnknownError";
+    const message = err instanceof Error ? err.message : undefined;
+    console.warn("Control-plane token validation failed", { name, message });
     return NextResponse.json({ error: "control_plane_unavailable" }, { status: 502 });
   }
 }

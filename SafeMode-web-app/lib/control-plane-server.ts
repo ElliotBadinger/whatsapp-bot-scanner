@@ -88,7 +88,15 @@ export async function controlPlaneFetchWithBearerToken(
   path: string,
   init: RequestInit & { timeoutMs?: number } = {},
 ): Promise<Response> {
-  return controlPlaneFetchInternal(path, token, init);
+  const normalized = token.trim();
+  if (!normalized) {
+    throw new ControlPlaneError("Bearer token is required", {
+      status: 400,
+      code: "MISSING_BEARER_TOKEN",
+    });
+  }
+
+  return controlPlaneFetchInternal(path, normalized, init);
 }
 
 async function controlPlaneFetchJsonInternal<T>(
