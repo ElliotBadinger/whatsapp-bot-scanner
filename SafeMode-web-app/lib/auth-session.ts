@@ -34,7 +34,10 @@ function getSessionSecret(options?: { secret?: string }): string {
 }
 
 function computeSignature(payload: string, secret: string): string {
-  return crypto.createHmac("sha256", secret).update(payload).digest("base64url");
+  return crypto
+    .createHmac("sha256", secret)
+    .update(payload)
+    .digest("base64url");
 }
 
 function timingSafeEqualString(a: string, b: string): boolean {
@@ -90,7 +93,8 @@ export function isValidSessionCookieValue(
 
   if (!payload || payload.v !== 1) return false;
   if (!Number.isFinite(payload.exp) || payload.exp <= nowMs) return false;
-  if (!Number.isFinite(payload.iat) || payload.iat > nowMs + 60_000) return false;
+  if (!Number.isFinite(payload.iat) || payload.iat > nowMs + 60_000)
+    return false;
 
   return true;
 }

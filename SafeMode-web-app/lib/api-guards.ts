@@ -21,7 +21,10 @@ export async function requireAdminSession(): Promise<NextResponse | null> {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
   } catch {
-    return NextResponse.json({ error: "server_misconfigured" }, { status: 500 });
+    return NextResponse.json(
+      { error: "server_misconfigured" },
+      { status: 500 },
+    );
   }
 
   return null;

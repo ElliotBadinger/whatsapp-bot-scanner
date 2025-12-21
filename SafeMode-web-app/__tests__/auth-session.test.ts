@@ -26,7 +26,8 @@ describe("auth-session", () => {
     const secret = "test-secret";
     const cookie = createSessionCookieValue({ nowMs, ttlMs: 1, secret });
 
-    expect(isValidSessionCookieValue(cookie, { nowMs: nowMs + 5_000, secret }))
-      .toBe(false);
+    expect(
+      isValidSessionCookieValue(cookie, { nowMs: nowMs + 5_000, secret }),
+    ).toBe(false);
   });
 });

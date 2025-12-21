@@ -138,11 +138,11 @@ async function fetchJsonInternal<T>(
         ? "Authentication failed."
         : resp.status === 403
           ? "Request was rejected."
-        : resp.status === 404
-          ? "Resource not found."
-          : resp.status >= 500
-            ? "Control-plane is temporarily unavailable."
-            : "Request failed.";
+          : resp.status === 404
+            ? "Resource not found."
+            : resp.status >= 500
+              ? "Control-plane is temporarily unavailable."
+              : "Request failed.";
 
   throw new ApiError(message, { status: resp.status, code });
 }

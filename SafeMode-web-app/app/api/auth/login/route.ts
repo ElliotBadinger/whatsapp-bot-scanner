@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import crypto from "node:crypto";
-import { createSessionCookieValue, SESSION_COOKIE_NAME } from "@/lib/auth-session";
+import {
+  createSessionCookieValue,
+  SESSION_COOKIE_NAME,
+} from "@/lib/auth-session";
 import { requireCsrf } from "@/lib/api-guards";
 
 const PostBodySchema = z.object({
@@ -31,7 +34,10 @@ export async function POST(req: Request) {
 
   const expected = getExpectedToken();
   if (!expected) {
-    return NextResponse.json({ error: "server_misconfigured" }, { status: 500 });
+    return NextResponse.json(
+      { error: "server_misconfigured" },
+      { status: 500 },
+    );
   }
 
   if (!timingSafeEqualString(parsed.data.token, expected)) {
