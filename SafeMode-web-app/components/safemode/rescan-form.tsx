@@ -4,13 +4,13 @@ import type React from "react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { rescanUrl, type ScanVerdict } from "@/lib/api"
+import { ApiError, rescanUrl, type RescanResult } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 export function RescanForm() {
   const [url, setUrl] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-  const [result, setResult] = useState<ScanVerdict | null>(null)
+  const [result, setResult] = useState<RescanResult | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -24,23 +24,14 @@ export function RescanForm() {
     try {
       const verdict = await rescanUrl(url)
       setResult(verdict)
-    } catch {
-      setError("SCAN_FAILED: Unable to process URL")
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "invalid_url") {
+        setError("INVALID_URL: Please enter a valid http(s) URL")
+      } else {
+        setError("RESCAN_FAILED: Unable to queue rescan")
+      }
     } finally {
       setIsLoading(false)
-    }
-  }
-
-  const getVerdictStyle = (verdict: ScanVerdict["verdict"]) => {
-    switch (verdict) {
-      case "SAFE":
-        return "text-success bg-success/10 border-success/40"
-      case "DENY":
-        return "text-danger bg-danger/10 border-danger/40"
-      case "WARN":
-        return "text-warning bg-warning/10 border-warning/40"
-      default:
-        return "text-muted-foreground bg-muted/10 border-border"
     }
   }
 
@@ -65,13 +56,13 @@ export function RescanForm() {
 
       {/* Result */}
       {result && (
-        <div className={cn("border p-4 font-mono text-sm", getVerdictStyle(result.verdict))}>
+        <div className={cn("border p-4 font-mono text-sm", "border-success/40 bg-success/10 text-success")}>
           <div className="flex items-center justify-between mb-2">
-            <span className="font-bold">VERDICT: {result.verdict}</span>
-            <span className="text-xs opacity-60">{new Date(result.timestamp).toLocaleString()}</span>
+            <span className="font-bold">RESCAN QUEUED</span>
+            <span className="text-xs opacity-60">{new Date().toLocaleString()}</span>
           </div>
-          <div className="text-xs opacity-70 break-all">URL: {result.url}</div>
-          {result.category && <div className="text-xs opacity-70 mt-1">CATEGORY: {result.category}</div>}
+          <div className="text-xs opacity-70 break-all">URL_HASH: {result.urlHash}</div>
+          <div className="text-xs opacity-70 mt-1 break-all">JOB_ID: {result.jobId}</div>
         </div>
       )}
 

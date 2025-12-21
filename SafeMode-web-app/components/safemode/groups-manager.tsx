@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { muteGroup } from "@/lib/api"
+import { ApiError, muteGroup, unmuteGroup } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 interface Group {
@@ -26,12 +26,30 @@ const mockGroups: Group[] = [
 export function GroupsManager() {
   const [groups, setGroups] = useState<Group[]>(mockGroups)
   const [loadingId, setLoadingId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const handleToggleMute = async (groupId: string) => {
     setLoadingId(groupId)
+    setError(null)
     try {
-      await muteGroup(groupId)
-      setGroups((prev) => prev.map((g) => (g.id === groupId ? { ...g, isMuted: !g.isMuted } : g)))
+      const group = groups.find((g) => g.id === groupId)
+      if (!group) return
+
+      if (group.isMuted) {
+        await unmuteGroup(groupId)
+      } else {
+        await muteGroup(groupId)
+      }
+
+      setGroups((prev) =>
+        prev.map((g) => (g.id === groupId ? { ...g, isMuted: !g.isMuted } : g)),
+      )
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(`REQUEST_FAILED: ${err.message}`)
+      } else {
+        setError("REQUEST_FAILED: Unable to update group")
+      }
     } finally {
       setLoadingId(null)
     }
@@ -61,6 +79,11 @@ export function GroupsManager() {
 
       {/* Groups list */}
       <div className="border border-border divide-y divide-border">
+        {error && (
+          <div className="px-4 py-3 font-mono text-xs text-danger/80 border-b border-border bg-danger/5">
+            {error}
+          </div>
+        )}
         {groups.map((group) => (
           <div
             key={group.id}

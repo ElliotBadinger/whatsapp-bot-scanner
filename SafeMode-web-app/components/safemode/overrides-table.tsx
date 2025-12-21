@@ -5,25 +5,45 @@ import { useState } from "react"
 import useSWR from "swr"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { getOverrides, addOverride, type Override } from "@/lib/api"
+import { ApiError, getOverrides, addOverride, type Override } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 export function OverridesTable() {
-  const { data: overrides, mutate } = useSWR<Override[]>("overrides", getOverrides)
+  const {
+    data: overrides,
+    mutate,
+    error,
+    isLoading,
+  } = useSWR<Override[]>("overrides", getOverrides)
   const [isAdding, setIsAdding] = useState(false)
   const [newPattern, setNewPattern] = useState("")
   const [newAction, setNewAction] = useState<"allow" | "block">("block")
   const [newReason, setNewReason] = useState("")
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newPattern.trim()) return
 
-    const override = await addOverride(newPattern, newAction, newReason)
-    mutate([...(overrides || []), override])
-    setNewPattern("")
-    setNewReason("")
-    setIsAdding(false)
+    setIsSubmitting(true)
+    setSubmitError(null)
+
+    try {
+      await addOverride(newPattern, newAction, newReason)
+      await mutate()
+      setNewPattern("")
+      setNewReason("")
+      setIsAdding(false)
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 400) {
+        setSubmitError("INVALID_OVERRIDE: Check pattern/status")
+      } else {
+        setSubmitError("SAVE_FAILED: Unable to create override")
+      }
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -66,9 +86,20 @@ export function OverridesTable() {
               className="bg-background border-border text-secondary placeholder:text-muted-foreground/30 font-mono text-xs focus-ring"
             />
           </div>
-          <Button type="submit" size="sm" className="bg-primary text-background hover:bg-primary/80 font-mono text-xs">
-            [ SAVE OVERRIDE ]
+          <Button
+            type="submit"
+            size="sm"
+            disabled={isSubmitting}
+            className="bg-primary text-background hover:bg-primary/80 font-mono text-xs"
+          >
+            {isSubmitting ? "[ SAVING... ]" : "[ SAVE OVERRIDE ]"}
           </Button>
+
+          {submitError && (
+            <div className="border border-danger/40 bg-danger/10 p-3 font-mono text-xs text-danger">
+              {submitError}
+            </div>
+          )}
         </form>
       )}
 
@@ -84,6 +115,12 @@ export function OverridesTable() {
 
         {/* Table body */}
         <div className="divide-y divide-border">
+          {error && (
+            <div className="px-4 py-4 font-mono text-xs text-danger/80">
+              Failed to load overrides.
+            </div>
+          )}
+
           {overrides?.map((override) => (
             <div
               key={override.id}
@@ -100,7 +137,7 @@ export function OverridesTable() {
 
           {(!overrides || overrides.length === 0) && (
             <div className="px-4 py-8 text-center font-mono text-sm text-muted-foreground/60">
-              No overrides configured
+              {isLoading ? "Loading overrides..." : "No overrides configured"}
             </div>
           )}
         </div>
