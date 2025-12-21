@@ -34,7 +34,7 @@ export interface AuditLoggerConfig {
 
 /**
  * Audit logger for security-sensitive operations.
-* Logs to structured output and can optionally persist entries.
+ * Logs to structured output and can optionally persist entries.
  */
 export class AuditLogger {
   private readonly persist?: AuditLoggerConfig["persist"];
