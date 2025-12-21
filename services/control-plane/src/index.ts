@@ -3,6 +3,7 @@ import Fastify, {
   FastifyReply,
   type FastifyInstance,
 } from "fastify";
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import path from "node:path";
@@ -56,9 +57,18 @@ function createAuthHook(expectedToken: string) {
     reply: FastifyReply,
     done: (err?: Error) => void,
   ) {
-    const hdr = req.headers["authorization"] || "";
-    const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : hdr;
-    if (token !== expectedToken) {
+    const rawHeader = req.headers["authorization"];
+    const headerValue = Array.isArray(rawHeader)
+      ? rawHeader[0] ?? ""
+      : rawHeader ?? "";
+    const trimmed = headerValue.trim();
+    const token = trimmed.startsWith("Bearer ") ? trimmed.slice(7).trim() : trimmed;
+    const tokenHash = crypto.createHash("sha256").update(token).digest();
+    const expectedHash = crypto
+      .createHash("sha256")
+      .update(expectedToken)
+      .digest();
+    if (!crypto.timingSafeEqual(tokenHash, expectedHash)) {
       reply.code(401).send({ error: "unauthorized" });
       return;
     }
