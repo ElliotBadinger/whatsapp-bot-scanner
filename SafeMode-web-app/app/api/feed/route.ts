@@ -16,24 +16,15 @@ export async function GET() {
   const cleanup = (controller?: ReadableStreamDefaultController) => {
     const target = controller ?? streamController;
     streamController = null;
-    if (closed) {
-      if (target) {
-        try {
-          target.close();
-        } catch {
-          // Ignore close races.
-        }
-      }
-      return;
+    if (!closed) {
+      closed = true;
+      if (pollInterval) clearInterval(pollInterval);
+      if (pingInterval) clearInterval(pingInterval);
+      if (autoCloseTimeout) clearTimeout(autoCloseTimeout);
+      pollInterval = null;
+      pingInterval = null;
+      autoCloseTimeout = null;
     }
-
-    closed = true;
-    if (pollInterval) clearInterval(pollInterval);
-    if (pingInterval) clearInterval(pingInterval);
-    if (autoCloseTimeout) clearTimeout(autoCloseTimeout);
-    pollInterval = null;
-    pingInterval = null;
-    autoCloseTimeout = null;
 
     if (target) {
       try {
