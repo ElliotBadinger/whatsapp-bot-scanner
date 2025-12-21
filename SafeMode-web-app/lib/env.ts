@@ -24,6 +24,8 @@ let cachedEnv: Env | undefined;
 let didWarnDeprecatedControlPlaneBase = false;
 
 export function validateEnv(): Env {
+  if (cachedEnv) return cachedEnv;
+
   const controlPlaneUrl =
     process.env.CONTROL_PLANE_URL ?? process.env.CONTROL_PLANE_BASE;
 

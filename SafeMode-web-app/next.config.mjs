@@ -3,10 +3,7 @@ const nextConfig = {
   // Enable React strict mode for better development warnings
   reactStrictMode: true,
 
-  env: {
-    NEXT_PUBLIC_BOT_PHONE_NUMBER: process.env.NEXT_PUBLIC_BOT_PHONE_NUMBER,
-    NEXT_PUBLIC_WA_ME_LINK: process.env.NEXT_PUBLIC_WA_ME_LINK,
-  },
+  // Public env vars are exposed via the `NEXT_PUBLIC_` prefix (validated in `lib/public-env.ts`).
 
   // Image optimization configuration
   images: {
