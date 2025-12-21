@@ -31,7 +31,7 @@
 - Follow conventional commits: `type(scope): summary`, where `scope` maps to a service or package (e.g., `feat(control-plane): add mute audit log`); keep subjects imperative and under 72 characters.
 - Reference migrations, dashboards, or external tickets in the body when relevant, and squash fixups before pushing.
 - Pull requests should highlight behaviour changes, deployment or rollback notes, and test evidence; add screenshots or logs when altering APIs, dashboards, or alert rules.
-- Commits must be opened as pull requests every time.
+- Changes must be delivered via pull requests (do not push directly to the default branch).
 - After completing any code change or documentation update, agents must create a descriptive commit and push the branch before handing off work. Do not leave uncommitted edits in the workspace.
 
 ## Security & Configuration Tips

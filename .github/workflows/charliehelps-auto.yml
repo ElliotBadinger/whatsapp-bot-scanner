@@ -23,11 +23,19 @@ concurrency:
 
 jobs:
   auto-respond:
-    if: github.event_name != 'issue_comment' || github.event.issue.pull_request != null
+    if: >-
+      ${{
+        (github.event_name != 'issue_comment' || github.event.issue.pull_request != null) &&
+        (
+          github.actor == github.repository_owner ||
+          github.actor == 'charliecreates[bot]' ||
+          github.actor == 'CharlieHelps'
+        )
+      }}
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
-    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,7 +50,7 @@ jobs:
 
   fast-forward:
     # WARNING: This job can update refs/heads/main; only the repo owner may trigger it.
-    if: github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner
+    if: github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner && github.ref_name == 'main'
     permissions:
       contents: write
       pull-requests: read
