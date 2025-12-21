@@ -167,7 +167,6 @@ export class PostgresConnection implements IDatabaseConnection {
   private logger: Logger | undefined;
   private readonly role: string;
   private readonly enforceRole: boolean;
-  private readonly roleCache = new WeakMap<PoolClient, string>();
 
   constructor(config: DatabaseConfig = {}) {
     this.logger = config.logger;
@@ -210,12 +209,7 @@ export class PostgresConnection implements IDatabaseConnection {
       throw new Error("Invalid Postgres role name");
     }
 
-    if (this.roleCache.get(client) === role) {
-      return;
-    }
-
     await client.query(`SET ROLE ${role}`);
-    this.roleCache.set(client, role);
   }
 
   async query(
