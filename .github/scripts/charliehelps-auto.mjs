@@ -366,7 +366,11 @@ async function main() {
     );
   }
 
-  if (mode === "merge" && actor && actor.toLowerCase() !== owner.toLowerCase()) {
+  if (
+    mode === "merge" &&
+    actor &&
+    actor.toLowerCase() !== owner.toLowerCase()
+  ) {
     throw new Error(
       `MODE=merge may only be invoked by the repository owner (${owner}).`,
     );
