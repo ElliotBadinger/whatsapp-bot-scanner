@@ -112,7 +112,11 @@ export async function controlPlaneFetchJson<T>(
   if (isJson) {
     let body: { error?: string; code?: string; message?: string };
     try {
-      body = (await resp.json()) as { error?: string; code?: string; message?: string };
+      body = (await resp.json()) as {
+        error?: string;
+        code?: string;
+        message?: string;
+      };
     } catch {
       throw new ControlPlaneError("Unexpected response format.", {
         status: 502,
