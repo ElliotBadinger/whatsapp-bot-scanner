@@ -1,4 +1,7 @@
-import { SessionManager, SessionFingerprint } from "../src/session/sessionManager";
+import {
+  SessionManager,
+  SessionFingerprint,
+} from "../src/session/sessionManager";
 import { InMemoryRedis } from "@wbscanner/shared/src/testing/in-memory-redis";
 import pino from "pino";
 
@@ -61,7 +64,10 @@ describe("SessionManager", () => {
         userAgent: "different-agent",
       };
 
-      const isValid = await manager.validateSession(sessionId, hijackedFingerprint);
+      const isValid = await manager.validateSession(
+        sessionId,
+        hijackedFingerprint,
+      );
       expect(isValid).toBe(false);
     });
 
@@ -74,7 +80,10 @@ describe("SessionManager", () => {
         platform: "win32",
       };
 
-      const isValid = await manager.validateSession(sessionId, hijackedFingerprint);
+      const isValid = await manager.validateSession(
+        sessionId,
+        hijackedFingerprint,
+      );
       expect(isValid).toBe(false);
     });
 
@@ -87,7 +96,10 @@ describe("SessionManager", () => {
         ipAddress: "192.168.1.20", // Same /24 subnet
       };
 
-      const isValid = await manager.validateSession(sessionId, sameSubnetFingerprint);
+      const isValid = await manager.validateSession(
+        sessionId,
+        sameSubnetFingerprint,
+      );
       expect(isValid).toBe(true);
     });
 

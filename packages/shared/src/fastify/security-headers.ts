@@ -65,7 +65,10 @@ export function registerSecurityHeaders(
       }
 
       if (mergedOptions.xContentTypeOptions !== false) {
-        reply.header("X-Content-Type-Options", mergedOptions.xContentTypeOptions);
+        reply.header(
+          "X-Content-Type-Options",
+          mergedOptions.xContentTypeOptions,
+        );
       }
 
       if (mergedOptions.xFrameOptions !== false) {

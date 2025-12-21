@@ -14,10 +14,16 @@ export class InMemoryRedis {
     return this.store.get(key) ?? null;
   }
 
-  async set(key: string, value: string, mode?: string, ttlArg?: number, nxArg?: string): Promise<'OK' | null> {
-    if (mode === 'EX') {
-      const ttlSeconds = typeof ttlArg === 'number' ? ttlArg : 0;
-      if (nxArg === 'NX' && this.store.has(key)) {
+  async set(
+    key: string,
+    value: string,
+    mode?: string,
+    ttlArg?: number,
+    nxArg?: string,
+  ): Promise<"OK" | null> {
+    if (mode === "EX") {
+      const ttlSeconds = typeof ttlArg === "number" ? ttlArg : 0;
+      if (nxArg === "NX" && this.store.has(key)) {
         return null;
       }
       this.store.set(key, value);
@@ -26,11 +32,11 @@ export class InMemoryRedis {
       } else {
         this.ttlStore.delete(key);
       }
-      return 'OK';
+      return "OK";
     }
     this.store.set(key, value);
     this.ttlStore.delete(key);
-    return 'OK';
+    return "OK";
   }
 
   async del(key: string): Promise<number> {
@@ -85,11 +91,15 @@ export class InMemoryRedis {
     return this.setStore.get(key)?.size ?? 0;
   }
 
-  async hset(key: string, fieldOrData: string | Record<string, string>, value?: string): Promise<number> {
+  async hset(
+    key: string,
+    fieldOrData: string | Record<string, string>,
+    value?: string,
+  ): Promise<number> {
     const hash = this.hashStore.get(key) ?? new Map<string, string>();
     let added = 0;
-    
-    if (typeof fieldOrData === 'object') {
+
+    if (typeof fieldOrData === "object") {
       for (const [field, val] of Object.entries(fieldOrData)) {
         if (!hash.has(field)) added++;
         hash.set(field, val);
@@ -98,7 +108,7 @@ export class InMemoryRedis {
       if (!hash.has(fieldOrData)) added = 1;
       hash.set(fieldOrData, value);
     }
-    
+
     this.hashStore.set(key, hash);
     return added;
   }
@@ -169,13 +179,18 @@ export class InMemoryRedis {
   }
 
   async ping(): Promise<string> {
-    return 'PONG';
+    return "PONG";
   }
 
   async exists(...keys: string[]): Promise<number> {
     let count = 0;
     for (const key of keys) {
-      if (this.store.has(key) || this.hashStore.has(key) || this.listStore.has(key) || this.setStore.has(key)) {
+      if (
+        this.store.has(key) ||
+        this.hashStore.has(key) ||
+        this.listStore.has(key) ||
+        this.setStore.has(key)
+      ) {
         count++;
       }
     }
@@ -183,7 +198,9 @@ export class InMemoryRedis {
   }
 
   async keys(pattern: string): Promise<string[]> {
-    const regex = new RegExp('^' + pattern.replaceAll('*', '.*').replaceAll('?', '.') + '$');
+    const regex = new RegExp(
+      "^" + pattern.replaceAll("*", ".*").replaceAll("?", ".") + "$",
+    );
     const allKeys = [
       ...this.store.keys(),
       ...this.hashStore.keys(),
@@ -194,21 +211,21 @@ export class InMemoryRedis {
   }
 
   async incr(key: string): Promise<number> {
-    const current = Number.parseInt(this.store.get(key) ?? '0', 10);
+    const current = Number.parseInt(this.store.get(key) ?? "0", 10);
     const next = current + 1;
     this.store.set(key, String(next));
     return next;
   }
 
   async decr(key: string): Promise<number> {
-    const current = Number.parseInt(this.store.get(key) ?? '0', 10);
+    const current = Number.parseInt(this.store.get(key) ?? "0", 10);
     const next = current - 1;
     this.store.set(key, String(next));
     return next;
   }
 
   async incrby(key: string, increment: number): Promise<number> {
-    const current = Number.parseInt(this.store.get(key) ?? '0', 10);
+    const current = Number.parseInt(this.store.get(key) ?? "0", 10);
     const next = current + increment;
     this.store.set(key, String(next));
     return next;
@@ -217,7 +234,7 @@ export class InMemoryRedis {
   async setex(key: string, seconds: number, value: string): Promise<string> {
     this.store.set(key, value);
     this.ttlStore.set(key, seconds);
-    return 'OK';
+    return "OK";
   }
 
   async setnx(key: string, value: string): Promise<number> {
@@ -232,7 +249,7 @@ export class InMemoryRedis {
       hash.set(field, value);
     }
     this.hashStore.set(key, hash);
-    return 'OK';
+    return "OK";
   }
 
   private readonly zsetStore = new Map<string, Map<string, number>>();

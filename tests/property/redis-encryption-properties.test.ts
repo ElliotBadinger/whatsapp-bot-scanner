@@ -80,7 +80,7 @@ describe("Redis Encryption Properties", () => {
         (plaintext, partToTamper) => {
           const encrypted = encryptValue(plaintext);
           const parts = encrypted.split(":");
-          
+
           // Tamper with one character in the selected part
           const part = parts[partToTamper];
           if (part.length > 0) {
@@ -91,9 +91,9 @@ describe("Redis Encryption Properties", () => {
               part.substring(0, charIndex) +
               tamperedChar +
               part.substring(charIndex + 1);
-            
+
             const tampered = parts.join(":");
-            
+
             expect(() => decryptValue(tampered)).toThrow();
           }
         },

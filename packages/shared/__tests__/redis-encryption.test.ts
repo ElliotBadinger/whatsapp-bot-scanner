@@ -87,7 +87,9 @@ describe("Redis Encryption", () => {
     delete process.env.REDIS_ENCRYPTION_KEY;
     resetEncryptionKey();
 
-    expect(() => encryptValue("test")).toThrow(/REDIS_ENCRYPTION_KEY must be set/);
+    expect(() => encryptValue("test")).toThrow(
+      /REDIS_ENCRYPTION_KEY must be set/,
+    );
 
     process.env.REDIS_ENCRYPTION_KEY = originalKey;
     resetEncryptionKey();
