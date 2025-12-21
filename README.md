@@ -114,6 +114,21 @@ This folder is **automatically synchronized** with a standalone repository at [g
 - [`.github/SYNC_QUICKSTART.md`](.github/SYNC_QUICKSTART.md) - Quick reference guide
 - [`SafeMode-web-app/SYNC_INFO.md`](SafeMode-web-app/SYNC_INFO.md) - Developer info
 
+### SafeMode-web-app configuration
+
+Create `SafeMode-web-app/.env.local` from `SafeMode-web-app/.env.example` and set:
+
+- `CONTROL_PLANE_URL` (server-only): base URL for the control-plane API (e.g. `http://localhost:8080`; `CONTROL_PLANE_BASE` is deprecated)
+- `CONTROL_PLANE_API_TOKEN` (server-only): bearer token used by the web app's `/api/*` routes
+- `NEXT_PUBLIC_BOT_PHONE_NUMBER` (public): display phone number in international format (e.g. `+1234567890`)
+- `NEXT_PUBLIC_WA_ME_LINK` (public): wa.me link used for the "Add bot" CTA (e.g. `https://wa.me/1234567890`)
+
+These variables are validated at startup; missing or invalid values will prevent the SafeMode web app from starting.
+
+The SafeMode web app does not default `CONTROL_PLANE_URL`; you must set it (or temporarily `CONTROL_PLANE_BASE` during the deprecation window).
+
+Public variables are validated in `SafeMode-web-app/lib/public-env.ts`.
+
 ## 📚 Documentation
 
 ### Unified CLI Documentation
