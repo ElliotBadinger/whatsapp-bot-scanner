@@ -53,10 +53,10 @@ export function normalizeBearerToken(raw: string): string {
 }
 
 /**
-  * Low-level control-plane fetch.
-  *
-  * @param token A prevalidated bearer token string (without the `Bearer ` prefix).
-  */
+ * Low-level control-plane fetch.
+ *
+ * @param token A prevalidated bearer token string (without the `Bearer ` prefix).
+ */
 async function controlPlaneFetchInternal(
   path: string,
   token: string,
@@ -88,10 +88,10 @@ async function controlPlaneFetchInternal(
 }
 
 /**
-  * Fetch from the control-plane using the service token from `CONTROL_PLANE_API_TOKEN`.
-  *
-  * Throws a `ControlPlaneError` when the token is missing.
-  */
+ * Fetch from the control-plane using the service token from `CONTROL_PLANE_API_TOKEN`.
+ *
+ * Throws a `ControlPlaneError` when the token is missing.
+ */
 export async function controlPlaneFetch(
   path: string,
   init: RequestInit & { timeoutMs?: number } = {},

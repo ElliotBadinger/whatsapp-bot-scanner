@@ -21,7 +21,10 @@ export async function POST(req: Request) {
   }
 
   try {
-    const resp = await controlPlaneFetchWithBearerToken(parsed.data.token, "/status");
+    const resp = await controlPlaneFetchWithBearerToken(
+      parsed.data.token,
+      "/status",
+    );
 
     if (resp.status === 200) {
       return NextResponse.json({ ok: true });
@@ -40,13 +43,19 @@ export async function POST(req: Request) {
 
     if (resp.status >= 400 && resp.status < 500) {
       return NextResponse.json(
-        { error: "control_plane_client_error", controlPlaneStatus: resp.status },
+        {
+          error: "control_plane_client_error",
+          controlPlaneStatus: resp.status,
+        },
         { status: resp.status },
       );
     }
 
     return NextResponse.json(
-      { error: "unexpected_control_plane_status", controlPlaneStatus: resp.status },
+      {
+        error: "unexpected_control_plane_status",
+        controlPlaneStatus: resp.status,
+      },
       { status: 502 },
     );
   } catch (err) {
@@ -64,7 +73,10 @@ export async function POST(req: Request) {
         : { name: err instanceof Error ? err.name : "UnknownError" };
 
     console.warn("LOGIN_TOKEN_VALIDATION_FAILED", logPayload);
-    return NextResponse.json({ error: "control_plane_unavailable" }, { status: 502 });
+    return NextResponse.json(
+      { error: "control_plane_unavailable" },
+      { status: 502 },
+    );
   }
 }
 
