@@ -25,9 +25,9 @@ describe("Rate Limiter", () => {
     it("should require Redis outside tests unless allowMemory is set", () => {
       const originalEnv = process.env.NODE_ENV;
       process.env.NODE_ENV = "production";
-      expect(() =>
-        createApiRateLimiter(null, RATE_LIMIT_CONFIGS.api),
-      ).toThrow(/Redis is required/i);
+      expect(() => createApiRateLimiter(null, RATE_LIMIT_CONFIGS.api)).toThrow(
+        /Redis is required/i,
+      );
       const limiter = createApiRateLimiter(null, RATE_LIMIT_CONFIGS.api, {
         allowMemory: true,
       });
