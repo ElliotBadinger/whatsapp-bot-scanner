@@ -2,15 +2,11 @@ name: Sync SafeMode from Standalone Repo (Pull)
 
 on:
   schedule:
-    # Run hourly to reduce noise
-    - cron: '0 * * * *'
+    # Run every 15 minutes to check for changes
+    - cron: '*/15 * * * *'
   workflow_dispatch: # Allow manual trigger
   repository_dispatch:
     types: [safemode-update]
-
-concurrency:
-  group: sync-safemode-pull
-  cancel-in-progress: true
 
 jobs:
   sync-from-standalone:
@@ -82,3 +78,4 @@ jobs:
             echo "::error::Failed to sync SafeMode-web-app from standalone repository"
             exit 1
           fi
+

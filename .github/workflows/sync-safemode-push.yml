@@ -8,10 +8,6 @@ on:
       - 'SafeMode-web-app/**'
   workflow_dispatch: # Allow manual trigger
 
-concurrency:
-  group: sync-safemode-push
-  cancel-in-progress: true
-
 jobs:
   sync-to-standalone:
     runs-on: ubuntu-latest

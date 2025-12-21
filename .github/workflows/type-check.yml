@@ -3,29 +3,9 @@ name: Type Check and Test
 on:
   push:
     branches: [ main, develop ]
-    paths:
-      - "services/**"
-      - "packages/**"
-      - "scripts/**"
-      - "jest.config.js"
-      - "tsconfig*.json"
-      - "package*.json"
-      - ".github/workflows/type-check.yml"
   pull_request:
     branches: [ main, develop ]
-    paths:
-      - "services/**"
-      - "packages/**"
-      - "scripts/**"
-      - "jest.config.js"
-      - "tsconfig*.json"
-      - "package*.json"
-      - ".github/workflows/type-check.yml"
   workflow_dispatch:
-
-concurrency:
-  group: type-check-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   type-check:
@@ -33,7 +13,7 @@ jobs:
     
     strategy:
       matrix:
-        node-version: [20.x]
+        node-version: [20.x, 22.x]
     
     steps:
     - uses: actions/checkout@v4
@@ -68,7 +48,6 @@ jobs:
 
   validate:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
     
     steps:
     - uses: actions/checkout@v4
