@@ -1,4 +1,60 @@
 import FakeRedis from "../../src/__tests__/fake-redis";
+import crypto from "node:crypto";
+
+export class InMemoryRedis {
+  private readonly store = new Map<string, string>();
+  private readonly hashStore = new Map<string, Map<string, string>>();
+  private readonly ttlStore = new Map<string, number>();
+
+  async hset(
+    key: string,
+    fieldOrData: string | Record<string, string>,
+    value?: string,
+  ): Promise<number> {
+    const hash = this.hashStore.get(key) ?? new Map<string, string>();
+    let added = 0;
+
+    if (typeof fieldOrData === "object") {
+      for (const [field, val] of Object.entries(fieldOrData)) {
+        if (!hash.has(field)) added++;
+        hash.set(field, val);
+      }
+    } else if (value !== undefined) {
+      if (!hash.has(fieldOrData)) added = 1;
+      hash.set(fieldOrData, value);
+    }
+
+    this.hashStore.set(key, hash);
+    return added;
+  }
+
+  async hget(key: string, field: string): Promise<string | null> {
+    return this.hashStore.get(key)?.get(field) ?? null;
+  }
+
+  async hgetall(key: string): Promise<Record<string, string>> {
+    const hash = this.hashStore.get(key);
+    if (!hash) return {};
+    return Object.fromEntries(hash.entries());
+  }
+
+  async expire(key: string, seconds: number): Promise<number> {
+    if (seconds > 0) {
+      this.ttlStore.set(key, seconds);
+      return 1;
+    }
+    this.ttlStore.delete(key);
+    return 0;
+  }
+
+  async del(key: string): Promise<number> {
+    const existed =
+      this.store.delete(key) ||
+      this.hashStore.delete(key) ||
+      this.ttlStore.delete(key);
+    return existed ? 1 : 0;
+  }
+}
 
 const noop = () => undefined;
 const counter = () => ({ inc: noop, labels: () => ({ inc: noop }) });
@@ -139,3 +195,23 @@ export const assertControlPlaneToken = (): string =>
   (process.env.CONTROL_PLANE_API_TOKEN || "test-token").trim();
 export const createRedisConnection = () => new (FakeRedis as any)();
 export const connectRedis = async () => undefined;
+
+export function isIdentifierHash(value: string): boolean {
+  return /^[a-f0-9]{64}$/i.test(value);
+}
+
+function digest(value: string): string {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+export function hashChatId(chatId: string): string {
+  return digest(`chat:${chatId}`);
+}
+
+export function hashMessageId(messageId: string): string {
+  return digest(`msg:${messageId}`);
+}
+
+export function hashIdentifierPair(chatId: string, messageId: string): string {
+  return digest(`pair:${chatId}:${messageId}`);
+}
