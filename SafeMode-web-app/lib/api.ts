@@ -58,11 +58,20 @@ async function fetchJsonInternal<T>(
   const headers = new Headers(init.headers);
   headers.set("accept", "application/json");
 
-  const resp = await fetch(path, {
-    ...init,
-    headers,
-    cache: "no-store",
-  });
+  let resp: Response;
+  try {
+    resp = await fetch(path, {
+      ...init,
+      headers,
+      cache: "no-store",
+    });
+  } catch (err) {
+    const message =
+      err instanceof Error && err.name === "AbortError"
+        ? "Request timed out."
+        : "Network request failed.";
+    throw new ApiError(message, { status: 502, code: "network_error" });
+  }
 
   const contentType = resp.headers.get("content-type") ?? "";
   const isJson =
