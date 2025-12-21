@@ -32,6 +32,32 @@ describe("charliehelps-auto helpers", () => {
     );
   });
 
+  test("detects suggestion comment markers", async () => {
+    const lib = await importEsm(libPath);
+    expect(
+      lib.isSuggestionComment(
+        'Reply with "@CharlieHelps yes please" if you want this.',
+      ),
+    ).toBe(true);
+    expect(
+      lib.isSuggestionComment(
+        "<details><summary>Suggestion</summary>\n\nTry doing X</details>",
+      ),
+    ).toBe(true);
+    expect(
+      lib.isSuggestionComment(
+        "If you'd like me to add a commit implementing this, reply yes.",
+      ),
+    ).toBe(true);
+    expect(lib.isSuggestionComment("At minimum, add a guard.")).toBe(true);
+    expect(lib.isSuggestionComment("FYI, I reran CI.")).toBe(false);
+    expect(
+      lib.isSuggestionComment(
+        "<details><summary>Expand this to see my work.</summary>\n\n- Did things\n</details>",
+      ),
+    ).toBe(false);
+  });
+
   test("detects pending suggestions without newer ack", async () => {
     const lib = await importEsm(libPath);
     const comments = [
