@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
+  applyAdminSessionCookie,
+  requireAdminSession,
+} from "@/lib/auth/require-admin-session";
+import {
   ControlPlaneError,
   controlPlaneFetchJson,
   controlPlaneFetchJsonWithStatus,
@@ -61,9 +65,14 @@ const PostBodySchema = z.object({
 });
 
 export async function GET() {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   try {
     const rows =
-      await controlPlaneFetchJson<ControlPlaneOverrideRow[]>("/overrides");
+      await controlPlaneFetchJson<ControlPlaneOverrideRow[]>("/overrides", {
+        authToken: auth.session.controlPlaneToken,
+      });
 
     const overrides = rows
       .map(mapOverride)
@@ -76,7 +85,7 @@ export async function GET() {
       });
     }
 
-    return NextResponse.json(overrides);
+    return applyAdminSessionCookie(NextResponse.json(overrides), auth);
   } catch (err) {
     const status = err instanceof ControlPlaneError ? err.status : 502;
     return NextResponse.json({ error: "overrides_unavailable" }, { status });
@@ -84,6 +93,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   const body = await req.json().catch(() => null);
   const parsed = PostBodySchema.safeParse(body);
   if (!parsed.success) {
@@ -100,6 +112,7 @@ export async function POST(req: Request) {
       {
         method: "POST",
         headers: { "content-type": "application/json" },
+        authToken: auth.session.controlPlaneToken,
         body: JSON.stringify({
           pattern,
           status: action === "allow" ? "allow" : "deny",
@@ -110,10 +123,13 @@ export async function POST(req: Request) {
     );
 
     if (status === 204 || status === 205 || data === undefined) {
-      return new NextResponse(undefined, { status });
+      return applyAdminSessionCookie(
+        new NextResponse(undefined, { status }),
+        auth,
+      );
     }
 
-    return NextResponse.json(data, { status });
+    return applyAdminSessionCookie(NextResponse.json(data, { status }), auth);
   } catch (err) {
     const status = err instanceof ControlPlaneError ? err.status : 502;
     return NextResponse.json({ error: "override_create_failed" }, { status });

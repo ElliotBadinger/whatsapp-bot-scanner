@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { NavBar } from "@/components/safemode/nav-bar"
 import { TerminalCard } from "@/components/safemode/terminal-card"
 import { StatsDisplay } from "@/components/safemode/stats-display"
@@ -16,6 +16,52 @@ type Tab = "overview" | "rescan" | "overrides" | "groups"
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [activeTab, setActiveTab] = useState<Tab>("overview")
+
+  useEffect(() => {
+    let cancelled = false
+
+    const check = async () => {
+      try {
+        const resp = await fetch("/api/auth/session", { cache: "no-store" })
+        if (!cancelled) {
+          setIsAuthenticated(resp.ok)
+        }
+      } catch {
+        if (!cancelled) {
+          setIsAuthenticated(false)
+        }
+      }
+    }
+
+    check()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isAuthenticated) return
+    const interval = setInterval(() => {
+      fetch("/api/auth/session", { cache: "no-store" })
+        .then((resp) => {
+          if (!resp.ok) {
+            setIsAuthenticated(false)
+          }
+        })
+        .catch(() => {
+          setIsAuthenticated(false)
+        })
+    }, 4 * 60 * 1000)
+
+    return () => {
+      clearInterval(interval)
+    }
+  }, [isAuthenticated])
+
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {})
+    setIsAuthenticated(false)
+  }
 
   if (!isAuthenticated) {
     return <AdminAuth onAuthenticated={() => setIsAuthenticated(true)} />
@@ -39,7 +85,7 @@ export default function AdminPage() {
             <h1 className="font-mono text-2xl md:text-3xl text-primary terminal-glow">ADMIN CONTROL PANEL</h1>
           </div>
           <button
-            onClick={() => setIsAuthenticated(false)}
+            onClick={handleLogout}
             className="font-mono text-xs text-danger/60 hover:text-danger transition-colors focus-ring px-3 py-1.5 border border-danger/30 hover:border-danger/60"
           >
             [ LOGOUT ]
