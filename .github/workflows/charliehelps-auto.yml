@@ -27,6 +27,7 @@ jobs:
         (github.event_name != 'issue_comment' || github.event.issue.pull_request != null) &&
         (
           github.actor == github.repository_owner ||
+          github.actor == 'deepsource-autofix[bot]' ||
           github.actor == 'charliecreates[bot]' ||
           github.actor == 'CharlieHelps'
         )
