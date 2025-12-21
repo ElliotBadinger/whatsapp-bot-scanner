@@ -5,7 +5,10 @@ import { createMockQueue, createMockRedis } from "../../../../test-utils/setup";
 const authHeader = { authorization: "Bearer test-token" };
 
 async function buildTestServer(
-  dbQueryImpl?: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>,
+  dbQueryImpl?: (
+    sql: string,
+    params?: unknown[],
+  ) => Promise<{ rows: unknown[] }>,
 ) {
   const dbClient = {
     query: jest.fn(dbQueryImpl ?? (async () => ({ rows: [] }))),

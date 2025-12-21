@@ -237,7 +237,9 @@ export async function buildServer(options: BuildOptions = {}) {
           `SELECT id, url_hash, normalized_url, verdict, last_seen_at FROM scans ${whereClause} ORDER BY last_seen_at DESC, id DESC LIMIT ? OFFSET ?`,
           listParams,
         );
-        const totalRow = countRows[0] as { total?: number | string } | undefined;
+        const totalRow = countRows[0] as
+          | { total?: number | string }
+          | undefined;
 
         return {
           total: Number(totalRow?.total ?? 0),
