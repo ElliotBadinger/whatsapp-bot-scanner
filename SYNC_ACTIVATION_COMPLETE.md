@@ -36,11 +36,13 @@ Your SafeMode-web-app bidirectional sync has been **fully automated and is now a
 ## 🔄 How It Works
 
 ### Monorepo → Standalone (TESTED ✓)
+
 - **Trigger:** Push to `main` branch with changes in `SafeMode-web-app/**`
 - **Speed:** ~30-60 seconds
 - **Status:** ACTIVE and TESTED
 
 ### Standalone → Monorepo (READY ✓)
+
 - **Trigger:** Every 15 minutes (cron) + webhook (instant)
 - **Speed:** ~1-15 minutes
 - **Status:** CONFIGURED and READY
@@ -50,12 +52,14 @@ Your SafeMode-web-app bidirectional sync has been **fully automated and is now a
 ## 📊 Repository Status
 
 ### Monorepo
+
 - **URL:** https://github.com/ElliotBadinger/whatsapp-bot-scanner
 - **Branch:** `main`
 - **Sync Files:** All workflow files merged and active
 - **Last Sync Commit:** daab37d
 
 ### Standalone
+
 - **URL:** https://github.com/ElliotBadinger/SafeMode-web-app
 - **Branch:** `main`
 - **Files Synced:** All SafeMode-web-app contents
@@ -96,6 +100,7 @@ git push origin main
 ## 🎯 Monitoring
 
 ### GitHub Actions
+
 - **Monorepo Actions:** https://github.com/ElliotBadinger/whatsapp-bot-scanner/actions
 - **Standalone Actions:** https://github.com/ElliotBadinger/SafeMode-web-app/actions
 
@@ -115,24 +120,26 @@ If you need to sync manually:
 
 ## 📚 Documentation
 
-| Document | Purpose |
-|----------|---------|
-| `SAFEMODE_SYNC_SUMMARY.md` | Complete overview and setup guide |
-| `docs/SAFEMODE_SYNC_SETUP.md` | Detailed setup, troubleshooting, best practices |
-| `.github/SYNC_QUICKSTART.md` | Quick reference card |
-| `SafeMode-web-app/SYNC_INFO.md` | Developer-facing usage info |
-| `README.md` | Updated with SafeMode sync section |
+| Document                        | Purpose                                         |
+| ------------------------------- | ----------------------------------------------- |
+| `SAFEMODE_SYNC_SUMMARY.md`      | Complete overview and setup guide               |
+| `docs/SAFEMODE_SYNC_SETUP.md`   | Detailed setup, troubleshooting, best practices |
+| `.github/SYNC_QUICKSTART.md`    | Quick reference card                            |
+| `SafeMode-web-app/SYNC_INFO.md` | Developer-facing usage info                     |
+| `README.md`                     | Updated with SafeMode sync section              |
 
 ---
 
 ## ⚠️ Important Notes
 
 ### Conflict Prevention
+
 - Work in one repo at a time for a given feature
 - Always pull latest changes before starting work
 - Avoid making simultaneous changes in both repos
 
 ### What Gets Synced
+
 - ✅ All source files (`.ts`, `.tsx`, `.js`, `.jsx`)
 - ✅ Configuration files (`package.json`, `tsconfig.json`, etc.)
 - ✅ Public assets and documentation
@@ -141,6 +148,7 @@ If you need to sync manually:
 - ❌ `.vercel/` deployment artifacts (ignored)
 
 ### Branch Configuration
+
 - Sync only happens on `main` branch
 - Feature branches are not synced
 - This prevents sync noise during development
@@ -150,16 +158,19 @@ If you need to sync manually:
 ## 🐛 Troubleshooting
 
 ### "Workflow not running"
+
 - Verify you're pushing to `main` branch
 - Check workflow files exist in `.github/workflows/`
 - Review Actions tab for errors
 
 ### "Changes not syncing"
+
 - Wait up to 15 minutes for pull sync (unless webhook configured)
 - Check Actions logs for errors
 - Verify paths in workflow files are correct
 
 ### "Merge conflicts"
+
 - Pull latest from both repos
 - Resolve conflicts manually in monorepo
 - Push resolved changes
@@ -202,9 +213,6 @@ Enjoy your synchronized SafeMode-web-app! 🚀
 
 ---
 
-*Setup completed: December 4, 2025*  
-*Automated by: GitHub MCP Server & Git automation*  
-*Status: ✅ ACTIVE*
-
-
-
+_Setup completed: December 4, 2025_  
+_Automated by: GitHub MCP Server & Git automation_  
+_Status: ✅ ACTIVE_
