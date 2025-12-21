@@ -3,10 +3,7 @@ import {
   ControlPlaneError,
   controlPlaneFetchJson,
 } from "@/lib/control-plane-server";
-import {
-  mapScanRow,
-  type ControlPlaneScanRow,
-} from "@/lib/control-plane-mappers";
+import { mapScanRow, type ControlPlaneScanRow } from "@/lib/control-plane-mappers";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
