@@ -51,22 +51,46 @@ async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
 
   const contentType = resp.headers.get("content-type") ?? "";
-  const isJson = contentType.includes("application/json");
+  const isJson =
+    contentType.includes("application/json") || contentType.includes("+json");
+
+  if (resp.ok && (resp.status === 204 || resp.status === 205)) {
+    return undefined as T;
+  }
 
   if (resp.ok) {
     if (!isJson) {
-      throw new ApiError("Unexpected response format.", {
-        status: resp.status,
-      });
+      const preview = await resp.text().catch(() => "");
+      const snippet = preview.trim().slice(0, 120);
+      const hasSnippet = snippet && !snippet.includes("<");
+      const details = hasSnippet ? ` body=${JSON.stringify(snippet)}` : "";
+      throw new ApiError(
+        `Unexpected response format (content-type=${contentType || "<missing>"})${details}.`,
+        { status: resp.status },
+      );
     }
-    return resp.json() as Promise<T>;
+    try {
+      return (await resp.json()) as T;
+    } catch {
+      throw new ApiError("Unexpected response format.", { status: resp.status });
+    }
   }
 
-  const body = isJson
-    ? ((await resp.json().catch(() => ({}))) as { error?: string })
-    : {};
-  const code =
-    isJson && typeof body.error === "string" ? body.error : undefined;
+  let code: string | undefined;
+  if (isJson) {
+    const parsed = (await resp.json().catch(() => null)) as { error?: string } | null;
+    code = parsed && typeof parsed.error === "string" ? parsed.error : undefined;
+  } else {
+    const text = await resp.text().catch(() => "");
+    const trimmed = text.trim();
+    if (
+      trimmed.includes("_") &&
+      trimmed.length <= 120 &&
+      /^[a-z0-9_]+$/.test(trimmed)
+    ) {
+      code = trimmed;
+    }
+  }
 
   const message =
     resp.status === 400
