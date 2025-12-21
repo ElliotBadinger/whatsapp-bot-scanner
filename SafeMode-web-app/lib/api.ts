@@ -55,7 +55,9 @@ async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   if (resp.ok) {
     if (!isJson) {
-      throw new ApiError("Unexpected response format.", { status: resp.status });
+      throw new ApiError("Unexpected response format.", {
+        status: resp.status,
+      });
     }
     return resp.json() as Promise<T>;
   }
@@ -63,7 +65,8 @@ async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   const body = isJson
     ? ((await resp.json().catch(() => ({}))) as { error?: string })
     : {};
-  const code = isJson && typeof body.error === "string" ? body.error : undefined;
+  const code =
+    isJson && typeof body.error === "string" ? body.error : undefined;
 
   const message =
     resp.status === 400

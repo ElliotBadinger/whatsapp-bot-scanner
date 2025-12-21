@@ -128,9 +128,7 @@ export async function buildServer(options: BuildOptions = {}) {
         return rows;
       } catch (err) {
         logger.error({ err, limit }, "Failed to list recent scans");
-        return reply
-          .code(500)
-          .send({ error: "recent_scans_unavailable" });
+        return reply.code(500).send({ error: "recent_scans_unavailable" });
       }
     });
 
