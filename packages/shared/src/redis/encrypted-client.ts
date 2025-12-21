@@ -1,19 +1,33 @@
 import type { Redis, RedisKey } from "ioredis";
+import type { Logger } from "pino";
 import {
   encryptValue,
   decryptValue,
   isEncryptedValue,
 } from "../crypto/redis-encryption";
+import { logger as sharedLogger } from "../log";
 
 /**
  * A Redis client wrapper that automatically encrypts values before storage
  * and decrypts them on retrieval. Only string values are encrypted.
  */
 export class EncryptedRedisClient {
+  private readonly allowUnencryptedReads: boolean;
+  private readonly strictDecryption: boolean;
+  private readonly logger: Logger;
+  private readonly decryptWarnings = new Set<string>();
+
   constructor(
     public readonly client: Redis,
     private readonly encryptionEnabled: boolean = true,
-  ) {}
+    allowUnencryptedReads: boolean = true,
+    strictDecryption: boolean = false,
+    logger: Logger = sharedLogger,
+  ) {
+    this.allowUnencryptedReads = allowUnencryptedReads;
+    this.strictDecryption = strictDecryption;
+    this.logger = logger;
+  }
 
   private encrypt(value: string): string {
     if (!this.encryptionEnabled) {
@@ -22,7 +36,14 @@ export class EncryptedRedisClient {
     return encryptValue(value);
   }
 
-  private decrypt(value: string | null): string | null {
+  private decrypt(
+    value: string | null,
+    context?: {
+      operation: string;
+      key: RedisKey;
+      field?: string;
+    },
+  ): string | null {
     if (value === null) {
       return null;
     }
@@ -30,13 +51,74 @@ export class EncryptedRedisClient {
       return value;
     }
     if (!isEncryptedValue(value)) {
-      return value;
+      if (this.allowUnencryptedReads) {
+        return value;
+      }
+
+      this.warnDecryptFailure(
+        {
+          message: "Redis value is not encrypted",
+          operation: context?.operation ?? "unknown",
+          key: context?.key,
+          field: context?.field,
+        },
+      );
+
+      if (this.strictDecryption) {
+        throw new Error("Redis value is not encrypted");
+      }
+
+      return null;
     }
     try {
       return decryptValue(value);
-    } catch {
-      return value;
+    } catch (err) {
+      this.warnDecryptFailure(
+        {
+          message: "Failed to decrypt redis value",
+          operation: context?.operation ?? "unknown",
+          key: context?.key,
+          field: context?.field,
+          err,
+        },
+      );
+
+      if (this.strictDecryption) {
+        throw err;
+      }
+
+      return this.allowUnencryptedReads ? value : null;
     }
+  }
+
+  private warnDecryptFailure(context: {
+    message: string;
+    operation: string;
+    key?: RedisKey;
+    field?: string;
+    err?: unknown;
+  }): void {
+    const key = context.key ? String(context.key) : "unknown";
+    const field = context.field ?? "";
+    const warnKey = `${context.operation}:${key}:${field}`;
+
+    if (this.decryptWarnings.has(warnKey)) {
+      return;
+    }
+    this.decryptWarnings.add(warnKey);
+    if (this.decryptWarnings.size > 1000) {
+      this.decryptWarnings.clear();
+    }
+
+    this.logger.warn(
+      {
+        err: context.err,
+        operation: context.operation,
+        key,
+        field: context.field,
+      },
+      context.message,
+    );
   }
 
   async set(
@@ -57,7 +139,7 @@ export class EncryptedRedisClient {
 
   async get(key: RedisKey): Promise<string | null> {
     const encrypted = await this.client.get(key);
-    return this.decrypt(encrypted);
+    return this.decrypt(encrypted, { operation: "get", key });
   }
 
   async setex(key: RedisKey, seconds: number, value: string): Promise<string> {
@@ -93,14 +175,15 @@ export class EncryptedRedisClient {
 
   async hget(key: RedisKey, field: string): Promise<string | null> {
     const encrypted = await this.client.hget(key, field);
-    return this.decrypt(encrypted);
+    return this.decrypt(encrypted, { operation: "hget", key, field });
   }
 
   async hgetall(key: RedisKey): Promise<Record<string, string>> {
     const encrypted = await this.client.hgetall(key);
     const decrypted: Record<string, string> = {};
     for (const [field, value] of Object.entries(encrypted)) {
-      decrypted[field] = this.decrypt(value) ?? value;
+      decrypted[field] =
+        this.decrypt(value, { operation: "hgetall", key, field }) ?? value;
     }
     return decrypted;
   }
@@ -125,17 +208,19 @@ export class EncryptedRedisClient {
 
   async lpop(key: RedisKey): Promise<string | null> {
     const encrypted = await this.client.lpop(key);
-    return this.decrypt(encrypted);
+    return this.decrypt(encrypted, { operation: "lpop", key });
   }
 
   async rpop(key: RedisKey): Promise<string | null> {
     const encrypted = await this.client.rpop(key);
-    return this.decrypt(encrypted);
+    return this.decrypt(encrypted, { operation: "rpop", key });
   }
 
   async lrange(key: RedisKey, start: number, stop: number): Promise<string[]> {
     const encrypted = await this.client.lrange(key, start, stop);
-    return encrypted.map((v) => this.decrypt(v) ?? v);
+    return encrypted.map((v) =>
+      this.decrypt(v, { operation: "lrange", key }) ?? v,
+    );
   }
 
   async sadd(key: RedisKey, ...members: string[]): Promise<number> {
@@ -145,7 +230,9 @@ export class EncryptedRedisClient {
 
   async smembers(key: RedisKey): Promise<string[]> {
     const encrypted = await this.client.smembers(key);
-    return encrypted.map((v) => this.decrypt(v) ?? v);
+    return encrypted.map((v) =>
+      this.decrypt(v, { operation: "smembers", key }) ?? v,
+    );
   }
 
   async zadd(key: RedisKey, score: number, member: string): Promise<number> {
@@ -155,7 +242,9 @@ export class EncryptedRedisClient {
 
   async zrange(key: RedisKey, start: number, stop: number): Promise<string[]> {
     const encrypted = await this.client.zrange(key, start, stop);
-    return encrypted.map((v) => this.decrypt(v) ?? v);
+    return encrypted.map((v) =>
+      this.decrypt(v, { operation: "zrange", key }) ?? v,
+    );
   }
 
   async zrem(key: RedisKey, ...members: string[]): Promise<number> {
@@ -224,6 +313,13 @@ export class EncryptedRedisClient {
 export function createEncryptedRedis(
   client: Redis,
   encryptionEnabled = true,
+  allowUnencryptedReads = true,
+  strictDecryption = false,
 ): EncryptedRedisClient {
-  return new EncryptedRedisClient(client, encryptionEnabled);
+  return new EncryptedRedisClient(
+    client,
+    encryptionEnabled,
+    allowUnencryptedReads,
+    strictDecryption,
+  );
 }
