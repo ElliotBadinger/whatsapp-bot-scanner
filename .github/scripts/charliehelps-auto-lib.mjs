@@ -69,7 +69,7 @@ export function hasPendingSuggestion(comments) {
 
     if (authorLogin !== "charliecreates" && yesPleaseRegex.test(body)) {
       const authorType = comment.author?.__typename;
-      if (authorType != null && authorType !== "User") continue;
+      if (authorType === "Bot") continue;
       latestAckTime = Math.max(latestAckTime, t);
       continue;
     }
