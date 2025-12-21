@@ -12,7 +12,7 @@ describe("RBAC E2E", () => {
     const waConn = getWaClientConnection();
     await waConn.query(
       "INSERT INTO messages (chat_id_hash, message_id_hash, url_hash, verdict) VALUES (?, ?, ?, ?)",
-      ["chat-hash", "msg1", "http://evil.com", "pending"],
+      ["chat-hash", "msg1", "https://evil.com", "pending"],
     );
 
     const soConn = getScanOrchestratorConnection();
@@ -22,7 +22,7 @@ describe("RBAC E2E", () => {
 
     await soConn.query(
       "INSERT INTO scans (url_hash, verdict, score) VALUES (?, ?, ?)",
-      ["http://evil.com", "benign", 1],
+      ["https://evil.com", "benign", 1],
     );
 
     const cpConn = getControlPlaneConnection();
