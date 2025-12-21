@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { CSRF_COOKIE, timingSafeEqual } from "@/lib/auth/csrf";
 import { cleanupRateLimitBuckets, checkRateLimit } from "@/lib/auth/rate-limit";
+import { readJsonWithLimit } from "@/lib/auth/read-json-with-limit";
 import { createAdminSession } from "@/lib/auth/admin-session";
 import { setAdminSessionCookie } from "@/lib/auth/require-admin-session";
 import { ControlPlaneError, controlPlaneFetchJson } from "@/lib/control-plane-server";
@@ -12,30 +13,6 @@ const LoginBodySchema = z.object({
   token: z.string().trim().min(1).max(2048),
   csrfToken: z.string().trim().min(1).max(256),
 });
-
-async function readJsonWithLimit(
-  req: NextRequest,
-  maxBytes: number,
-): Promise<unknown | null> {
-  const reader = req.body?.getReader();
-  if (!reader) return null;
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (!value) continue;
-    total += value.byteLength;
-    if (total > maxBytes) {
-      throw new Error("body_too_large");
-    }
-    chunks.push(value);
-  }
-
-  const text = Buffer.concat(chunks).toString("utf8");
-  return JSON.parse(text) as unknown;
-}
 
 function getClientIp(req: NextRequest): string {
   const forwardedFor = req.headers.get("x-forwarded-for");
@@ -115,8 +92,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "invalid_token" }, { status: 401 });
     }
 
-    const status = err instanceof ControlPlaneError ? err.status : 502;
-    return NextResponse.json({ error: "auth_unavailable" }, { status });
+    return NextResponse.json({ error: "auth_unavailable" }, { status: 503 });
   }
 
   const session = createAdminSession(parsed.data.token, nowMs);

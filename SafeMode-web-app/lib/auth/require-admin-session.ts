@@ -59,7 +59,7 @@ export function applyAdminSessionCookie(
   const nowMs = Date.now();
   const maxAgeSeconds = Math.max(
     Math.floor((result.cookieExpiresAtMs - nowMs) / 1000),
-    0,
+    1,
   );
   response.cookies.set(ADMIN_SESSION_COOKIE, result.session.id, {
     ...baseCookieOptions(),
@@ -79,7 +79,7 @@ export function setAdminSessionCookie(
   );
   const maxAgeSeconds = Math.max(
     Math.floor((cookieExpiresAtMs - nowMs) / 1000),
-    0,
+    1,
   );
   response.cookies.set(ADMIN_SESSION_COOKIE, session.id, {
     ...baseCookieOptions(),

@@ -4,6 +4,7 @@ import {
   applyAdminSessionCookie,
   requireAdminSession,
 } from "@/lib/auth/require-admin-session";
+import { readJsonWithLimit } from "@/lib/auth/read-json-with-limit";
 import {
   ControlPlaneError,
   controlPlaneFetchJson,
@@ -96,7 +97,15 @@ export async function POST(req: Request) {
   const auth = await requireAdminSession();
   if (!auth.ok) return auth.response;
 
-  const body = await req.json().catch(() => null);
+  let body: unknown = null;
+  try {
+    body = await readJsonWithLimit(req, 16 * 1024);
+  } catch (err) {
+    if (err instanceof Error && err.message === "body_too_large") {
+      return NextResponse.json({ error: "invalid_request" }, { status: 413 });
+    }
+    return NextResponse.json({ error: "invalid_request" }, { status: 400 });
+  }
   const parsed = PostBodySchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: "invalid_request" }, { status: 400 });

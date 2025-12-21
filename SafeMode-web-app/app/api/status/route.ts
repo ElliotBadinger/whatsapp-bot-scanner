@@ -12,6 +12,9 @@ import {
 
 export async function GET() {
   try {
+    // Status is intentionally readable without an admin session so the landing page
+    // can render basic health/metrics when a server-side control-plane token is
+    // configured.
     const jar = await cookies();
     const sessionId = jar.get(ADMIN_SESSION_COOKIE)?.value;
     const session = sessionId ? getAdminSession(sessionId) : null;

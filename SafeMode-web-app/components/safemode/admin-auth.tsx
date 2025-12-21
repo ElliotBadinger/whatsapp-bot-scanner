@@ -79,7 +79,15 @@ export function AdminAuth({ onAuthenticated }: AdminAuthProps) {
       if (resp.status === 401) {
         setError("ACCESS_DENIED: Invalid token")
       } else if (resp.status === 403) {
-        setError("ACCESS_DENIED: CSRF check failed")
+        setError("ACCESS_DENIED: CSRF check failed (retry)")
+        fetch("/api/auth/csrf", { cache: "no-store" })
+          .then((csrfResp) => csrfResp.json())
+          .then((csrfBody: { csrfToken?: unknown }) => {
+            if (typeof csrfBody.csrfToken === "string") {
+              setCsrfToken(csrfBody.csrfToken)
+            }
+          })
+          .catch(() => {})
       } else if (resp.status === 429) {
         setError("RATE_LIMITED: Try again later")
       } else if (code) {
