@@ -75,6 +75,18 @@ describe("charliehelps-auto helpers", () => {
     expect(lib.hasPendingSuggestion(comments)).toBe(true);
   });
 
+  test("detects suggestion prompt with smart quotes", async () => {
+    const lib = await import(libPath);
+    const comments = [
+      {
+        author: { login: "charliecreates" },
+        body: "Reply with “@CharlieHelps yes please” if you want this.",
+        createdAt: "2025-12-21T08:00:00Z",
+      },
+    ];
+    expect(lib.hasPendingSuggestion(comments)).toBe(true);
+  });
+
   test("clears pending suggestion when ack is after", async () => {
     const lib = await importEsm(libPath);
     const comments = [
