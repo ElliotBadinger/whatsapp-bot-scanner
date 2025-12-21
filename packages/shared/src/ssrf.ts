@@ -2,26 +2,26 @@ import dns from "node:dns/promises";
 import ipaddr from "ipaddr.js";
 
 const privateCidrs = [
-  "0.0.0.0/8", // Current network (includes 0.0.0.0)
-  "10.0.0.0/8", // Private network
-  "172.16.0.0/12", // Private network
-  "192.168.0.0/16", // Private network
-  "127.0.0.0/8", // Loopback
-  "169.254.0.0/16", // Link-local
-  "::/128", // IPv6 Unspecified
-  "::1/128", // IPv6 Loopback
-  "fc00::/7", // Unique Local
-  "fe80::/10", // Link-local
+  "0.0.0.0/8", // NOSONAR - reserved current network range
+  "10.0.0.0/8", // NOSONAR - RFC1918 private range
+  "172.16.0.0/12", // NOSONAR - RFC1918 private range
+  "192.168.0.0/16", // NOSONAR - RFC1918 private range
+  "127.0.0.0/8", // NOSONAR - loopback range
+  "169.254.0.0/16", // NOSONAR - link-local range
+  "::/128", // NOSONAR - IPv6 unspecified
+  "::1/128", // NOSONAR - IPv6 loopback
+  "fc00::/7", // NOSONAR - IPv6 unique local range
+  "fe80::/10", // NOSONAR - IPv6 link-local range
 ].map((c) => ipaddr.parseCIDR(c));
 
 const BLOCKED_HOSTNAMES = [
-  "localhost",
-  "127.0.0.1",
-  "0.0.0.0",
-  "::1",
-  "internal",
-  "metadata",
-  "169.254.169.254",
+  "localhost", // NOSONAR - local-only hostname
+  "127.0.0.1", // NOSONAR - loopback
+  "0.0.0.0", // NOSONAR - invalid/unspecified
+  "::1", // NOSONAR - IPv6 loopback
+  "internal", // NOSONAR - internal keyword
+  "metadata", // NOSONAR - metadata keyword
+  "169.254.169.254", // NOSONAR - cloud metadata IP
 ];
 
 export async function isPrivateHostname(hostname: string): Promise<boolean> {

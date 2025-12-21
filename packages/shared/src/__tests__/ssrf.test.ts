@@ -26,26 +26,26 @@ describe("SSRF guards", () => {
   });
 
   it("detects private ipv4 ranges", () => {
-    expect(isPrivateIp("10.0.0.1")).toBe(true);
-    expect(isPrivateIp("172.16.5.2")).toBe(true);
-    expect(isPrivateIp("192.168.1.10")).toBe(true);
-    expect(isPrivateIp("8.8.8.8")).toBe(false);
+    expect(isPrivateIp("10.0.0.1")).toBe(true); // NOSONAR - test vector
+    expect(isPrivateIp("172.16.5.2")).toBe(true); // NOSONAR - test vector
+    expect(isPrivateIp("192.168.1.10")).toBe(true); // NOSONAR - test vector
+    expect(isPrivateIp("8.8.8.8")).toBe(false); // NOSONAR - test vector
   });
 
   it("detects private ipv6 and loopback addresses", () => {
-    expect(isPrivateIp("::1")).toBe(true);
-    expect(isPrivateIp("fc00::1")).toBe(true);
-    expect(isPrivateIp("::ffff:10.0.0.1")).toBe(true);
-    expect(isPrivateIp("2001:4860:4860::8888")).toBe(false);
-    expect(isPrivateIp("::ffff:8.8.8.8")).toBe(false);
+    expect(isPrivateIp("::1")).toBe(true); // NOSONAR - test vector
+    expect(isPrivateIp("fc00::1")).toBe(true); // NOSONAR - test vector
+    expect(isPrivateIp("::ffff:10.0.0.1")).toBe(true); // NOSONAR - test vector
+    expect(isPrivateIp("2001:4860:4860::8888")).toBe(false); // NOSONAR
+    expect(isPrivateIp("::ffff:8.8.8.8")).toBe(false); // NOSONAR
   });
 
   it("flags private hostnames based on dns lookup", async () => {
-    resolve4.mockResolvedValueOnce(["192.168.1.5"]);
+    resolve4.mockResolvedValueOnce(["192.168.1.5"]); // NOSONAR - test vector
     resolve6.mockResolvedValueOnce([]);
     await expect(isPrivateHostname("internal.test")).resolves.toBe(true);
 
-    resolve4.mockResolvedValueOnce(["8.8.8.8"]);
+    resolve4.mockResolvedValueOnce(["8.8.8.8"]); // NOSONAR - test vector
     resolve6.mockResolvedValueOnce([]);
     await expect(isPrivateHostname("public.test")).resolves.toBe(false);
   });
