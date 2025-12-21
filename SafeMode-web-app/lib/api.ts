@@ -41,6 +41,8 @@ export class ApiError extends Error {
 }
 
 function getBrowserCookie(name: string): string | null {
+  // Note: This helper is browser-only. Server-side calls must set CSRF headers
+  // explicitly when required.
   if (typeof document === "undefined") return null;
   const cookies = document.cookie ? document.cookie.split(";") : [];
   for (const cookie of cookies) {

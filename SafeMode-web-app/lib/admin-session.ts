@@ -22,11 +22,14 @@ export function getAdminAuthConfig():
   | { ok: true; config: AdminAuthConfig }
   | { ok: false; error: string } {
   const adminPassword = (process.env.SAFEMODE_ADMIN_PASSWORD || "").trim();
-  if (!adminPassword) {
-    return { ok: false, error: "SAFEMODE_ADMIN_PASSWORD is required" };
+  if (adminPassword.length < 12) {
+    return {
+      ok: false,
+      error: "SAFEMODE_ADMIN_PASSWORD is required (>= 12 chars)",
+    };
   }
 
-  const sessionSecret = (process.env.SAFEMODE_SESSION_SECRET || "").trim();
+  const sessionSecret = process.env.SAFEMODE_SESSION_SECRET || "";
   if (sessionSecret.length < 32) {
     return {
       ok: false,
@@ -150,6 +153,9 @@ export function getCookieFromHeader(
 }
 
 export function getRequestIp(req: Request): string {
+  // This trusts that a proxy/load balancer overwrites and sanitizes these
+  // headers. If you are not behind a trusted proxy, these values can be
+  // client-controlled.
   const forwarded = req.headers.get("x-forwarded-for") || "";
   const first = forwarded.split(",")[0]?.trim();
   if (first) return first;

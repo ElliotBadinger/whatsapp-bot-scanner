@@ -17,6 +17,8 @@ type Bucket = {
   resetAt: number;
 };
 
+// Process-local limiter. For strong abuse prevention in multi-instance
+// deployments, use a shared backend (e.g. Redis) instead.
 const buckets = new Map<string, Bucket>();
 
 function getNow(): number {

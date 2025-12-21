@@ -26,6 +26,8 @@ export function AdminAuth() {
     } catch (err) {
       if (err instanceof ApiError && err.status === 429) {
         setError("RATE_LIMITED: Try again shortly")
+      } else if (err instanceof ApiError && err.status === 400) {
+        setError("INVALID_REQUEST: Check password")
       } else if (err instanceof ApiError && err.status === 401) {
         setError("ACCESS_DENIED: Invalid credentials")
       } else {

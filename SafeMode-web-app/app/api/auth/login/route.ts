@@ -10,7 +10,7 @@ import {
 import { consumeRateLimit } from "@/lib/rate-limit";
 
 const PostBodySchema = z.object({
-  password: z.string().trim().min(1).max(256),
+  password: z.string().trim().min(12).max(256),
 });
 
 export async function POST(req: Request) {
@@ -40,8 +40,9 @@ export async function POST(req: Request) {
 
   const config = getAdminAuthConfig();
   if (!config.ok) {
+    console.error("SafeMode admin auth misconfigured", { error: config.error });
     return NextResponse.json(
-      { error: "server_misconfigured" },
+      { error: "server_error" },
       { status: 500 },
     );
   }

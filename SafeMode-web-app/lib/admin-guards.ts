@@ -25,7 +25,8 @@ export function getAdminSessionFromRequest(
   | { ok: false; status: number; error: string } {
   const config = getAdminAuthConfig();
   if (!config.ok) {
-    return { ok: false, status: 500, error: "server_misconfigured" };
+    console.error("SafeMode admin auth misconfigured", { error: config.error });
+    return { ok: false, status: 500, error: "server_error" };
   }
 
   const cookieHeader = req.headers.get("cookie");
@@ -54,6 +55,8 @@ export function requireCsrf(
   req: Request,
   session: AdminSession,
 ): { ok: true } | { ok: false; status: number; error: string } {
+  // Admin-only state changing endpoints must send the CSRF token in both the
+  // `safemode_admin_csrf` cookie and the `x-csrf-token` header.
   const headerToken = (req.headers.get("x-csrf-token") || "").trim();
   if (!headerToken) {
     return { ok: false, status: 403, error: "csrf_missing" };
