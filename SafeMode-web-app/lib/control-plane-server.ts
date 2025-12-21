@@ -74,15 +74,37 @@ export async function controlPlaneFetch(
   }
 }
 
-export async function controlPlaneFetchJson<T>(
+async function controlPlaneFetchJsonInternal<T>(
   path: string,
-  init: RequestInit & { timeoutMs?: number } = {},
-): Promise<T> {
+  init: RequestInit & { timeoutMs?: number },
+  options: { allowNoContent: false },
+): Promise<{ status: number; data: T }>;
+async function controlPlaneFetchJsonInternal<T>(
+  path: string,
+  init: RequestInit & { timeoutMs?: number },
+  options: { allowNoContent: true },
+): Promise<{ status: number; data: T | undefined }>;
+async function controlPlaneFetchJsonInternal<T>(
+  path: string,
+  init: RequestInit & { timeoutMs?: number },
+  options: { allowNoContent: boolean },
+): Promise<{ status: number; data: T | undefined }> {
   const resp = await controlPlaneFetch(path, init);
 
   const contentType = resp.headers.get("content-type") ?? "";
   const isJson =
     contentType.includes("application/json") || contentType.includes("+json");
+
+  if (resp.ok && (resp.status === 204 || resp.status === 205)) {
+    if (options.allowNoContent) {
+      return { status: resp.status, data: undefined };
+    }
+
+    throw new ControlPlaneError("Unexpected empty response.", {
+      status: 502,
+      code: "UNEXPECTED_NO_CONTENT",
+    });
+  }
 
   if (resp.ok) {
     if (resp.status === 204 || resp.status === 205) {
@@ -104,7 +126,7 @@ export async function controlPlaneFetchJson<T>(
     }
 
     try {
-      return (await resp.json()) as T;
+      return { status: resp.status, data: (await resp.json()) as T };
     } catch {
       throw new ControlPlaneError("Unexpected response format.", {
         status: 502,
@@ -161,4 +183,36 @@ export async function controlPlaneFetchJson<T>(
     status: resp.status,
     code,
   });
+}
+
+export async function controlPlaneFetchJsonWithStatus<T>(
+  path: string,
+  init: RequestInit & { timeoutMs?: number },
+  options: { allowNoContent: false },
+): Promise<{ status: number; data: T }>;
+export async function controlPlaneFetchJsonWithStatus<T>(
+  path: string,
+  init: RequestInit & { timeoutMs?: number },
+  options: { allowNoContent: true },
+): Promise<{ status: number; data: T | undefined }>;
+export async function controlPlaneFetchJsonWithStatus<T>(
+  path: string,
+  init: RequestInit & { timeoutMs?: number } = {},
+  options: { allowNoContent: boolean } = { allowNoContent: false },
+): Promise<{ status: number; data: T | undefined }> {
+  if (options.allowNoContent) {
+    return controlPlaneFetchJsonInternal(path, init, { allowNoContent: true });
+  }
+
+  return controlPlaneFetchJsonInternal(path, init, { allowNoContent: false });
+}
+
+export async function controlPlaneFetchJson<T>(
+  path: string,
+  init: RequestInit & { timeoutMs?: number } = {},
+): Promise<T> {
+  const { data } = await controlPlaneFetchJsonWithStatus<T>(path, init, {
+    allowNoContent: false,
+  });
+  return data;
 }

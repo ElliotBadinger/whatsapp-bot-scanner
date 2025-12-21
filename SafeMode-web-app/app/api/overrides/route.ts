@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
   ControlPlaneError,
-  controlPlaneFetch,
   controlPlaneFetchJson,
+  controlPlaneFetchJsonWithStatus,
 } from "@/lib/control-plane-server";
 import type { Override } from "@/lib/api";
 
@@ -93,55 +93,27 @@ export async function POST(req: Request) {
   const { pattern, action, reason } = parsed.data;
 
   try {
-    const resp = await controlPlaneFetch("/overrides", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        pattern,
-        status: action === "allow" ? "allow" : "deny",
-        reason: reason || undefined,
-      }),
-    });
+    const { status, data } = await controlPlaneFetchJsonWithStatus<
+      { ok: boolean }
+    >(
+      "/overrides",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          pattern,
+          status: action === "allow" ? "allow" : "deny",
+          reason: reason || undefined,
+        }),
+      },
+      { allowNoContent: true },
+    );
 
-    const contentType = resp.headers.get("content-type") ?? "";
-    const isJson =
-      contentType.includes("application/json") || contentType.includes("+json");
-
-    if (resp.ok && (resp.status === 204 || resp.status === 205)) {
-      return new NextResponse(undefined, { status: resp.status });
+    if (status === 204 || status === 205 || data === undefined) {
+      return new NextResponse(undefined, { status });
     }
 
-    if (resp.ok) {
-      if (!isJson) {
-        throw new ControlPlaneError("Unexpected response format", {
-          status: 502,
-          code: "NON_JSON_RESPONSE",
-        });
-      }
-
-      const result = (await resp.json().catch(() => ({}))) as unknown;
-      return NextResponse.json(result, { status: resp.status });
-    }
-
-    const errorBody = (await resp.json().catch(() => ({}))) as {
-      error?: string;
-      code?: string;
-      message?: string;
-    };
-
-    const code =
-      typeof errorBody.error === "string"
-        ? errorBody.error
-        : typeof errorBody.code === "string"
-          ? errorBody.code
-          : undefined;
-
-    const message =
-      (typeof errorBody.message === "string" ? errorBody.message : undefined) ||
-      (typeof errorBody.error === "string" ? errorBody.error : undefined) ||
-      "Control-plane request failed";
-
-    throw new ControlPlaneError(message, { status: resp.status, code });
+    return NextResponse.json(data, { status });
   } catch (err) {
     const status = err instanceof ControlPlaneError ? err.status : 502;
     return NextResponse.json({ error: "override_create_failed" }, { status });
