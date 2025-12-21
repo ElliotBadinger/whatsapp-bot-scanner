@@ -41,10 +41,7 @@ export async function POST(req: Request) {
   const config = getAdminAuthConfig();
   if (!config.ok) {
     console.error("SafeMode admin auth misconfigured", { error: config.error });
-    return NextResponse.json(
-      { error: "server_error" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "server_error" }, { status: 500 });
   }
 
   const isValid = verifyAdminPassword(

@@ -1,42 +1,42 @@
-"use client"
+"use client";
 
-import type React from "react"
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { NavBar } from "./nav-bar"
-import { TerminalCard } from "./terminal-card"
-import { ApiError, loginAdmin } from "@/lib/api"
+import type React from "react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NavBar } from "./nav-bar";
+import { TerminalCard } from "./terminal-card";
+import { ApiError, loginAdmin } from "@/lib/api";
 
 export function AdminAuth() {
-  const router = useRouter()
-  const [password, setPassword] = useState("")
-  const [error, setError] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const router = useRouter();
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsLoading(true)
-    setError(null)
+    e.preventDefault();
+    setIsLoading(true);
+    setError(null);
 
     try {
-      await loginAdmin(password)
-      router.refresh()
+      await loginAdmin(password);
+      router.refresh();
     } catch (err) {
       if (err instanceof ApiError && err.status === 429) {
-        setError("RATE_LIMITED: Try again shortly")
+        setError("RATE_LIMITED: Try again shortly");
       } else if (err instanceof ApiError && err.status === 400) {
-        setError("INVALID_REQUEST: Check password")
+        setError("INVALID_REQUEST: Check password");
       } else if (err instanceof ApiError && err.status === 401) {
-        setError("ACCESS_DENIED: Invalid credentials")
+        setError("ACCESS_DENIED: Invalid credentials");
       } else {
-        setError("AUTH_FAILED: Unable to authenticate")
+        setError("AUTH_FAILED: Unable to authenticate");
       }
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -72,7 +72,9 @@ export function AdminAuth() {
                 </div>
 
                 {error && (
-                  <div className="font-mono text-xs text-danger bg-danger/10 border border-danger/30 p-3">{error}</div>
+                  <div className="font-mono text-xs text-danger bg-danger/10 border border-danger/30 p-3">
+                    {error}
+                  </div>
                 )}
 
                 <Button
@@ -88,5 +90,5 @@ export function AdminAuth() {
         </div>
       </div>
     </div>
-  )
+  );
 }

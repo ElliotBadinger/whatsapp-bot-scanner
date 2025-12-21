@@ -223,7 +223,9 @@ export async function unmuteGroup(chatId: string): Promise<{ ok: boolean }> {
   );
 }
 
-export async function loginAdmin(password: string): Promise<{ expiresAt: string }> {
+export async function loginAdmin(
+  password: string,
+): Promise<{ expiresAt: string }> {
   return fetchJson<{ expiresAt: string }>("/api/auth/login", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -236,11 +238,9 @@ export async function logoutAdmin(): Promise<void> {
 }
 
 export async function getAdminSession(): Promise<
-  | { authenticated: false }
-  | { authenticated: true; expiresAt: string }
+  { authenticated: false } | { authenticated: true; expiresAt: string }
 > {
   return fetchJson<
-    | { authenticated: false }
-    | { authenticated: true; expiresAt: string }
+    { authenticated: false } | { authenticated: true; expiresAt: string }
   >("/api/auth/session");
 }

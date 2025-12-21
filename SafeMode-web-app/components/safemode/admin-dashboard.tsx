@@ -105,7 +105,10 @@ export function AdminDashboard() {
                   <div className="space-y-3">
                     {[
                       { tab: "rescan" as Tab, label: "Force rescan a URL" },
-                      { tab: "overrides" as Tab, label: "Manage URL overrides" },
+                      {
+                        tab: "overrides" as Tab,
+                        label: "Manage URL overrides",
+                      },
                       { tab: "groups" as Tab, label: "View protected groups" },
                     ].map((action) => (
                       <button

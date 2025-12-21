@@ -63,9 +63,9 @@ export function requireCsrf(
   }
 
   const cookieHeader = req.headers.get("cookie");
-  const cookieToken = (getCookieFromHeader(cookieHeader, ADMIN_CSRF_COOKIE) ||
-    "")
-    .trim();
+  const cookieToken = (
+    getCookieFromHeader(cookieHeader, ADMIN_CSRF_COOKIE) || ""
+  ).trim();
   if (!cookieToken) {
     return { ok: false, status: 403, error: "csrf_missing" };
   }
