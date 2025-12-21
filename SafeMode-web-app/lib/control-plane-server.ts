@@ -13,11 +13,7 @@ export class ControlPlaneError extends Error {
 }
 
 function resolveControlPlaneBase(): string {
-  const candidate = (
-    process.env.CONTROL_PLANE_URL ||
-    process.env.CONTROL_PLANE_BASE ||
-    "http://localhost:8080"
-  ).trim();
+  const candidate = (process.env.CONTROL_PLANE_BASE || "http://localhost:8080").trim();
 
   try {
     const parsed = new URL(candidate);
@@ -33,9 +29,6 @@ function resolveControlPlaneBase(): string {
 
 function getControlPlaneToken(): string {
   const token = (process.env.CONTROL_PLANE_API_TOKEN || "").trim();
-  if (!token) {
-    throw new Error("CONTROL_PLANE_API_TOKEN is required");
-  }
   return token;
 }
 
@@ -45,6 +38,12 @@ export async function controlPlaneFetch(
 ): Promise<Response> {
   const base = resolveControlPlaneBase();
   const token = getControlPlaneToken();
+  if (!token) {
+    throw new ControlPlaneError("CONTROL_PLANE_API_TOKEN is required", {
+      status: 500,
+      code: "MISSING_TOKEN",
+    });
+  }
   const url = `${base}${path.startsWith("/") ? path : `/${path}`}`;
 
   const headers = new Headers(init.headers);
@@ -80,9 +79,15 @@ export async function controlPlaneFetchJson<T>(
 
   const body = (await resp.json().catch(() => ({}))) as {
     error?: string;
+    code?: string;
     message?: string;
   };
-  const code = typeof body.error === "string" ? body.error : undefined;
+  const code =
+    typeof body.error === "string"
+      ? body.error
+      : typeof body.code === "string"
+        ? body.code
+        : undefined;
   const message =
     (typeof body.message === "string" ? body.message : undefined) ||
     (typeof body.error === "string" ? body.error : undefined) ||

@@ -66,7 +66,7 @@ export const LiveFeed = memo(function LiveFeed({
 }: LiveFeedProps) {
   const [feed, setFeed] = useState<ScanVerdict[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<
-    "connecting" | "connected" | "offline" | "paused"
+    "connecting" | "connected" | "offline"
   >("connecting");
   const [isPaused, setIsPaused] = useState(false);
   const newestIdRef = useRef<string | null>(null);
@@ -100,7 +100,20 @@ export const LiveFeed = memo(function LiveFeed({
         ) {
           return;
         }
-        addVerdict(data as ScanVerdict);
+
+        if (
+          data &&
+          typeof data === "object" &&
+          typeof (data as { id?: unknown }).id === "string" &&
+          typeof (data as { timestamp?: unknown }).timestamp === "string" &&
+          typeof (data as { url?: unknown }).url === "string" &&
+          (data as { verdict?: unknown }).verdict &&
+          ["SAFE", "WARN", "DENY"].includes(
+            String((data as { verdict?: unknown }).verdict),
+          )
+        ) {
+          addVerdict(data as ScanVerdict);
+        }
       } catch {
         // Ignore parse errors
       }

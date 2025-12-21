@@ -65,7 +65,17 @@ export async function GET() {
       // Initial connection message (helps client distinguish connect vs. no-data)
       send({ type: "connected" });
 
-      let lastSeenId = 0;
+      const sentIds = new Set<string>();
+      const sentQueue: string[] = [];
+      const rememberId = (id: string) => {
+        if (sentIds.has(id)) return;
+        sentIds.add(id);
+        sentQueue.push(id);
+        if (sentQueue.length > 500) {
+          const oldest = sentQueue.shift();
+          if (oldest) sentIds.delete(oldest);
+        }
+      };
 
       const fetchRecent = async (): Promise<ScanVerdict[]> => {
         const rows = await controlPlaneFetchJson<ControlPlaneScanRow[]>(
@@ -78,16 +88,16 @@ export async function GET() {
       const seed = async () => {
         try {
           const items = await fetchRecent();
-          const sorted = [...items].sort(
-            (a, b) => Number(a.id) - Number(b.id),
-          );
+          const sorted = [...items].sort((a, b) => {
+            const ts = a.timestamp.localeCompare(b.timestamp);
+            if (ts !== 0) return ts;
+            return a.id.localeCompare(b.id);
+          });
           for (const item of sorted) {
             if (closed) return;
+            if (sentIds.has(item.id)) continue;
             send(item);
-            const id = Number(item.id);
-            if (Number.isFinite(id)) {
-              lastSeenId = Math.max(lastSeenId, id);
-            }
+            rememberId(item.id);
           }
         } catch {
           // If seeding fails, keep the connection open so clients can retry.
@@ -100,16 +110,17 @@ export async function GET() {
         try {
           const items = await fetchRecent();
           const fresh = items
-            .filter((item) => {
-              const id = Number(item.id);
-              return Number.isFinite(id) && id > lastSeenId;
-            })
-            .sort((a, b) => Number(a.id) - Number(b.id));
+            .filter((item) => !sentIds.has(item.id))
+            .sort((a, b) => {
+              const ts = a.timestamp.localeCompare(b.timestamp);
+              if (ts !== 0) return ts;
+              return a.id.localeCompare(b.id);
+            });
 
           for (const item of fresh) {
             if (closed) return;
             send(item);
-            lastSeenId = Math.max(lastSeenId, Number(item.id));
+            rememberId(item.id);
           }
         } catch {
           // Allow transient failures and keep the SSE connection alive.

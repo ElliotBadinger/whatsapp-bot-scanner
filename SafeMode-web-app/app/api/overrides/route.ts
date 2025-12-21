@@ -22,7 +22,7 @@ type ControlPlaneOverrideRow = {
 function mapOverride(row: ControlPlaneOverrideRow): Override {
   return {
     id: String(row.id),
-    pattern: row.pattern || row.url_hash || "",
+    pattern: row.pattern || row.url_hash || "<missing-pattern>",
     action: row.status === "allow" ? "allow" : "block",
     reason: row.reason || "",
     createdAt:
