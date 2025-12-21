@@ -3,9 +3,9 @@ import { TerminalCard } from "@/components/safemode/terminal-card"
 import { QRCodeDisplay } from "@/components/safemode/qr-code"
 import { LiveFeed } from "@/components/safemode/live-feed"
 import { StatsDisplay } from "@/components/safemode/stats-display"
-import { getEnv } from "@/lib/env"
+import { getPublicEnv } from "@/lib/public-env"
 
-const env = getEnv()
+const env = getPublicEnv()
 const BOT_PHONE = env.NEXT_PUBLIC_BOT_PHONE_NUMBER
 const WA_ME_LINK = env.NEXT_PUBLIC_WA_ME_LINK
 
