@@ -18,7 +18,7 @@ import {
   benignSignalsArb,
   maliciousSignalsArb,
   makeHomoglyph,
-} from "./arbitraries";
+} from "../testing/arbitraries";
 
 describe("Scoring - Metamorphic Property Tests", () => {
   describe("Additive Transformations", () => {
