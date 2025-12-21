@@ -1,9 +1,9 @@
-import { request } from 'undici';
-import { config } from '../config';
-import { metrics } from '../metrics';
-import { FeatureDisabledError } from '../errors';
-import { logger } from '../log';
-import { HttpError } from '../http-errors';
+import { request } from "undici";
+import { config } from "../config";
+import { metrics } from "../metrics";
+import { FeatureDisabledError } from "../errors";
+import { logger } from "../log";
+import { HttpError } from "../http-errors";
 
 export interface WhoDatRecord {
   domainName?: string;
@@ -75,7 +75,7 @@ interface WhoDatApiResponse {
  */
 export async function whoDatLookup(domain: string): Promise<WhoDatResponse> {
   if (!config.whodat.enabled) {
-    throw new FeatureDisabledError('whodat', 'Who-dat WHOIS service disabled');
+    throw new FeatureDisabledError("whodat", "Who-dat WHOIS service disabled");
   }
 
   // who-dat API uses /{domain} endpoint directly
@@ -86,7 +86,7 @@ export async function whoDatLookup(domain: string): Promise<WhoDatResponse> {
 
   try {
     const res = await request(url.toString(), {
-      method: 'GET',
+      method: "GET",
       headersTimeout: config.whodat.timeoutMs,
       bodyTimeout: config.whodat.timeoutMs,
     });
@@ -94,39 +94,44 @@ export async function whoDatLookup(domain: string): Promise<WhoDatResponse> {
     const latency = Date.now() - start;
 
     if (res.statusCode === 404) {
-      metrics.whoisResults.labels('not_found').inc();
-      logger.debug({ domain }, 'Who-dat: domain not found');
+      metrics.whoisResults.labels("not_found").inc();
+      logger.debug({ domain }, "Who-dat: domain not found");
       return { record: undefined };
     }
 
     if (res.statusCode >= 500) {
-      metrics.whoisResults.labels('error').inc();
-      const err = new Error(`Who-dat service error: ${res.statusCode}`) as HttpError;
+      metrics.whoisResults.labels("error").inc();
+      const err = new Error(
+        `Who-dat service error: ${res.statusCode}`,
+      ) as HttpError;
       err.statusCode = res.statusCode;
       throw err;
     }
 
     if (res.statusCode >= 400) {
-      metrics.whoisResults.labels('error').inc();
-      const err = new Error(`Who-dat request failed: ${res.statusCode}`) as HttpError;
+      metrics.whoisResults.labels("error").inc();
+      const err = new Error(
+        `Who-dat request failed: ${res.statusCode}`,
+      ) as HttpError;
       err.statusCode = res.statusCode;
       throw err;
     }
 
-    const json = await res.body.json() as WhoDatApiResponse;
+    const json = (await res.body.json()) as WhoDatApiResponse;
 
     // Check for API error response
     if (json.error) {
-      metrics.whoisResults.labels('error').inc();
-      logger.warn({ domain, error: json.error }, 'Who-dat API returned error');
+      metrics.whoisResults.labels("error").inc();
+      logger.warn({ domain, error: json.error }, "Who-dat API returned error");
       return { record: undefined };
     }
 
-    metrics.whoisResults.labels('success').inc();
+    metrics.whoisResults.labels("success").inc();
 
     // Parse creation date and calculate domain age
     // Prefer the ISO timestamp if available
-    const createdDate = json.domain?.created_date_in_time || json.domain?.created_date;
+    const createdDate =
+      json.domain?.created_date_in_time || json.domain?.created_date;
     let ageDays: number | undefined;
 
     if (createdDate) {
@@ -137,14 +142,16 @@ export async function whoDatLookup(domain: string): Promise<WhoDatResponse> {
       }
     }
 
-    logger.debug({ domain, latency, ageDays }, 'Who-dat lookup completed');
+    logger.debug({ domain, latency, ageDays }, "Who-dat lookup completed");
 
     return {
       record: {
         domainName: json.domain?.domain || domain,
         createdDate: createdDate,
-        updatedDate: json.domain?.updated_date_in_time || json.domain?.updated_date,
-        expiresDate: json.domain?.expiration_date_in_time || json.domain?.expiration_date,
+        updatedDate:
+          json.domain?.updated_date_in_time || json.domain?.updated_date,
+        expiresDate:
+          json.domain?.expiration_date_in_time || json.domain?.expiration_date,
         registrarName: json.registrar?.name,
         estimatedDomainAgeDays: ageDays,
         nameServers: json.domain?.name_servers || [],
@@ -152,8 +159,8 @@ export async function whoDatLookup(domain: string): Promise<WhoDatResponse> {
       },
     };
   } catch (err) {
-    metrics.whoisResults.labels('error').inc();
-    logger.warn({ err, domain }, 'Who-dat lookup failed');
+    metrics.whoisResults.labels("error").inc();
+    logger.warn({ err, domain }, "Who-dat lookup failed");
     throw err;
   }
 }
