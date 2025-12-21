@@ -7,6 +7,7 @@ import { validatePublicEnv } from "@/lib/public-env";
 // Note: invalid env can fail Next.js builds, not just runtime startup.
 export function register(): void {
   // Note: `NEXT_PUBLIC_*` values are baked into the client bundle at build time.
+  // All fields in `publicEnvSchema` are required for app startup.
   validatePublicEnv();
   validateEnv();
 }
