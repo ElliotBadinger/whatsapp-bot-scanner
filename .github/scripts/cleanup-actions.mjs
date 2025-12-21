@@ -18,9 +18,9 @@ if (!Number.isFinite(keepDays) || keepDays <= 0) {
 const [owner, name] = repo.split("/");
 
 const headers = {
-  "Authorization": `Bearer ${token}`,
+  Authorization: `Bearer ${token}`,
   "Content-Type": "application/json",
-  "Accept": "application/vnd.github+json",
+  Accept: "application/vnd.github+json",
 };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -46,7 +46,9 @@ function cutoffIso(days) {
 }
 
 async function listRuns(page = 1) {
-  const url = new URL(`https://api.github.com/repos/${owner}/${name}/actions/runs`);
+  const url = new URL(
+    `https://api.github.com/repos/${owner}/${name}/actions/runs`,
+  );
   url.searchParams.set("per_page", "100");
   url.searchParams.set("page", String(page));
   url.searchParams.set("status", "completed");
