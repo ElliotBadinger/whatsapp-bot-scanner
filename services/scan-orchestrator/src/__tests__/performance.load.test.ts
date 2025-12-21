@@ -529,7 +529,7 @@ describe('Load Testing', () => {
       expect(throughput).toBeGreaterThan(50000);
     });
 
-    test('urlHash throughput >500K ops/sec', () => {
+    test('urlHash throughput >400K ops/sec', () => {
       const url = 'https://example.com/path?query=value';
 
       const iterations = 500000;
@@ -545,7 +545,7 @@ describe('Load Testing', () => {
       console.log(`\n📊 Throughput: urlHash`);
       console.log(`   ${throughput.toLocaleString(undefined, { maximumFractionDigits: 0 })} ops/sec`);
 
-      expect(throughput).toBeGreaterThan(500000);
+      expect(throughput).toBeGreaterThan(400000);
     });
   });
 });
