@@ -35,7 +35,9 @@ describe("SSRF guards", () => {
   it("detects private ipv6 and loopback addresses", () => {
     expect(isPrivateIp("::1")).toBe(true);
     expect(isPrivateIp("fc00::1")).toBe(true);
+    expect(isPrivateIp("::ffff:10.0.0.1")).toBe(true);
     expect(isPrivateIp("2001:4860:4860::8888")).toBe(false);
+    expect(isPrivateIp("::ffff:8.8.8.8")).toBe(false);
   });
 
   it("flags private hostnames based on dns lookup", async () => {
@@ -53,6 +55,25 @@ describe("SSRF guards", () => {
     resolve6.mockRejectedValueOnce(new Error("dns failure"));
     lookup.mockRejectedValueOnce(new Error("dns failure"));
     await expect(isPrivateHostname("unknown.test")).resolves.toBe(true);
+  });
+
+  it("fails closed for non-ipv6 bracketed hostnames", async () => {
+    resolve4.mockImplementationOnce(async (value) => {
+      expect(value).toBe("[example.com]");
+      throw new Error("dns failure");
+    });
+    resolve6.mockRejectedValueOnce(new Error("dns failure"));
+    lookup.mockRejectedValueOnce(new Error("dns failure"));
+
+    await expect(isPrivateHostname("[example.com]")).resolves.toBe(true);
+  });
+
+  it("fails closed when dns lookup returns no results", async () => {
+    resolve4.mockResolvedValueOnce([]);
+    resolve6.mockResolvedValueOnce([]);
+    lookup.mockResolvedValueOnce([]);
+
+    await expect(isPrivateHostname("empty.test")).resolves.toBe(true);
   });
 
   it("blocks bracketed ipv6 literals", async () => {
