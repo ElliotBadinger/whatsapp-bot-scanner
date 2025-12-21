@@ -37,9 +37,9 @@ let sharedQueue: Queue | null = null;
 let sharedRedisInstance: Redis | null = null;
 
 async function getSharedRedis(): Promise<Redis> {
-  if (!sharedRedisInstance) {
-    sharedRedisInstance = await getConnectedSharedRedis("control-plane");
-  }
+  if (sharedRedisInstance) return sharedRedisInstance;
+
+  sharedRedisInstance = await getConnectedSharedRedis("control-plane");
   return sharedRedisInstance;
 }
 
