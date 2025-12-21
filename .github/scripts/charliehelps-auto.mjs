@@ -318,6 +318,26 @@ async function replyToThread(threadId) {
   return data.addPullRequestReviewThreadReply.comment.url;
 }
 
+async function clearOwnerReviewRequest() {
+  const data = await ghRest(
+    "GET",
+    `/repos/${owner}/${name}/pulls/${prNumber}/requested_reviewers`,
+  );
+  const requestedUsers = Array.isArray(data?.users) ? data.users : [];
+  const ownerRequested = requestedUsers.some(
+    (user) => user?.login?.toLowerCase() === owner.toLowerCase(),
+  );
+
+  if (!ownerRequested) return;
+
+  await ghRest(
+    "DELETE",
+    `/repos/${owner}/${name}/pulls/${prNumber}/requested_reviewers`,
+    { reviewers: [owner] },
+  );
+  console.log(`Removed ${owner} from requested reviewers.`);
+}
+
 async function validateEventContext() {
   const inActions = process.env.GITHUB_ACTIONS === "true";
   if (!eventName || !eventPath) {
@@ -377,6 +397,10 @@ async function main() {
   }
 
   const pr = await getPullRequestWithThreads();
+
+  if (mode === "reply") {
+    await clearOwnerReviewRequest();
+  }
 
   if (pr.isDraft) {
     console.log("PR is draft; skipping automation.");
