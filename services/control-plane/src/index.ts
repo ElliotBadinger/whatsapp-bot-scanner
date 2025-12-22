@@ -24,6 +24,9 @@ import {
   getConnectedSharedRedis,
   ValidationError,
   globalErrorHandler,
+  createApiRateLimiter,
+  consumeRateLimit,
+  RATE_LIMIT_CONFIGS,
 } from "@wbscanner/shared";
 import { getSharedConnection } from "./database.js";
 
@@ -81,6 +84,44 @@ export async function buildServer(options: BuildOptions = {}) {
   const ownsClient = !options.dbClient;
   const redisClient = options.redisClient ?? (await getSharedRedis());
   const queue = options.queue ?? (await getSharedQueue());
+
+  const rescanLimiter = createApiRateLimiter(
+    redisClient,
+    RATE_LIMIT_CONFIGS.rescan,
+    { allowMemory: process.env.NODE_ENV === "test" },
+  );
+
+  const overrideLimiter = createApiRateLimiter(
+    redisClient,
+    RATE_LIMIT_CONFIGS.override,
+    { allowMemory: process.env.NODE_ENV === "test" },
+  );
+
+  function createRateLimitHook(
+    limiter: Parameters<typeof consumeRateLimit>[0],
+    limitConfig: { points: number },
+  ) {
+    return async (req: FastifyRequest, reply: FastifyReply) => {
+      const token = req.headers["authorization"] || "";
+      // Use token (hashed ideally, but here raw) or IP
+      const key = token ? `token:${token}` : `ip:${req.ip}`;
+
+      const res = await consumeRateLimit(limiter, key);
+
+      reply.header("X-RateLimit-Limit", limitConfig.points);
+      reply.header("X-RateLimit-Remaining", res.remaining);
+      reply.header("X-RateLimit-Reset", Math.ceil(res.resetMs / 1000));
+
+      if (!res.allowed) {
+        reply.header("Retry-After", res.retryAfter);
+        reply.code(429).send({
+          error: "too_many_requests",
+          retry_after: res.retryAfter,
+        });
+        return reply;
+      }
+    };
+  }
 
   const app = Fastify();
   app.setErrorHandler(globalErrorHandler);
@@ -187,12 +228,20 @@ export async function buildServer(options: BuildOptions = {}) {
       expires_at?: string;
     }
 
-    protectedApp.post("/overrides", async (req, reply) => {
-      const validation = OverrideBodySchema.safeParse(req.body);
-      if (!validation.success) {
-        throw new ValidationError(validation.error);
-      }
-      const body = validation.data;
+    protectedApp.post(
+      "/overrides",
+      {
+        preHandler: createRateLimitHook(
+          overrideLimiter,
+          RATE_LIMIT_CONFIGS.override,
+        ),
+      },
+      async (req, reply) => {
+        const validation = OverrideBodySchema.safeParse(req.body);
+        if (!validation.success) {
+          throw new ValidationError(validation.error);
+        }
+        const body = validation.data;
       await dbClient.query(
         `INSERT INTO overrides (url_hash, pattern, status, scope, scope_id, created_by, reason, expires_at)
       VALUES (?,?,?,?,?,?,?,?)`,
@@ -246,12 +295,20 @@ export async function buildServer(options: BuildOptions = {}) {
       reply.send({ ok: true });
     });
 
-    protectedApp.post("/rescan", async (req, reply) => {
-      const validation = RescanBodySchema.safeParse(req.body);
-      if (!validation.success) {
-        throw new ValidationError(validation.error);
-      }
-      const { url } = validation.data;
+    protectedApp.post(
+      "/rescan",
+      {
+        preHandler: createRateLimitHook(
+          rescanLimiter,
+          RATE_LIMIT_CONFIGS.rescan,
+        ),
+      },
+      async (req, reply) => {
+        const validation = RescanBodySchema.safeParse(req.body);
+        if (!validation.success) {
+          throw new ValidationError(validation.error);
+        }
+        const { url } = validation.data;
       const normalized = normalizeUrl(url);
       if (!normalized) {
         reply.code(400).send({ error: "invalid_url" });
