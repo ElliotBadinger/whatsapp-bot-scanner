@@ -25,15 +25,15 @@ export interface PhishtankDecisionInput {
 }
 
 /**
-* Decide whether to query Phishtank as a redundancy fallback.
-*
-* Policy:
-* - If Phishtank is disabled -> never query.
-* - If GSB has no matches -> query.
-* - If GSB matched but errored -> query (treat as a fallback scenario).
-* - If the GSB API key is missing -> query.
-* - If GSB wasn't cached and exceeded the latency budget -> query.
-*/
+ * Decide whether to query Phishtank as a redundancy fallback.
+ *
+ * Policy:
+ * - If Phishtank is disabled -> never query.
+ * - If GSB has no matches -> query.
+ * - If GSB matched but errored -> query (treat as a fallback scenario).
+ * - If the GSB API key is missing -> query.
+ * - If GSB wasn't cached and exceeded the latency budget -> query.
+ */
 export function shouldQueryPhishtank({
   gsbHit,
   gsbError,

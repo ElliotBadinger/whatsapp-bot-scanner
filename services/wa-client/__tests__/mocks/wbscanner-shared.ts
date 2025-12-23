@@ -148,6 +148,7 @@ function hashIdentifier(prefix: string, value: string): string {
 
 export const hashChatId = (input: string) => hashIdentifier("chat", input);
 export const hashMessageId = (input: string) => hashIdentifier("msg", input);
-export const isIdentifierHash = (value: string) => /^[a-f0-9]{64}$/i.test(value);
+export const isIdentifierHash = (value: string) =>
+  /^[a-f0-9]{64}$/i.test(value);
 
 export class InMemoryRedis extends FakeRedis {}

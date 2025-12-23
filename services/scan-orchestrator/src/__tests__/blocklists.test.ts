@@ -1,4 +1,7 @@
-import { checkBlocklistsWithRedundancy, shouldQueryPhishtank } from "../blocklists";
+import {
+  checkBlocklistsWithRedundancy,
+  shouldQueryPhishtank,
+} from "../blocklists";
 
 jest.mock("@wbscanner/shared", () => ({
   logger: {

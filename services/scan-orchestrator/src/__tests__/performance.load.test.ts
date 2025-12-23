@@ -525,7 +525,10 @@ describe("Load Testing", () => {
     // These checks are meant as a basic regression guard. Arm64 runners (like this
     // devbox) can be materially slower than typical x64 CI machines, so we use
     // slightly lower targets for arm64 to reduce flaky failures.
-    function throughputTarget(defaultTarget: number, arm64Target: number): number {
+    function throughputTarget(
+      defaultTarget: number,
+      arm64Target: number,
+    ): number {
       return process.arch === "arm64" ? arm64Target : defaultTarget;
     }
 
