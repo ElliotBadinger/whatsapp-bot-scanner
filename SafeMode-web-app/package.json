@@ -8,7 +8,7 @@
     "dev": "next dev",
     "lint": "eslint .",
     "start": "next start",
-    "test": "echo 'No tests configured for SafeMode-web-app'"
+    "test": "rm -rf -- /tmp/safemode-auth-tests && tsc --module commonjs --moduleResolution node --target es2022 --types node --esModuleInterop --skipLibCheck --outDir /tmp/safemode-auth-tests scripts/auth-tests.ts && node /tmp/safemode-auth-tests/scripts/auth-tests.js"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.3",

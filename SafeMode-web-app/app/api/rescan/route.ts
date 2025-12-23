@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
+  applyAdminSessionCookie,
+  requireAdminSession,
+} from "@/lib/auth/require-admin-session";
+import {
   ControlPlaneError,
   controlPlaneFetchJson,
 } from "@/lib/control-plane-server";
@@ -11,6 +15,9 @@ const PostBodySchema = z.object({
 });
 
 export async function POST(req: Request) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   const body = await req.json().catch(() => null);
   const parsed = PostBodySchema.safeParse(body);
   if (!parsed.success) {
@@ -21,9 +28,10 @@ export async function POST(req: Request) {
     const result = await controlPlaneFetchJson<RescanResult>("/rescan", {
       method: "POST",
       headers: { "content-type": "application/json" },
+      authToken: auth.session.controlPlaneToken,
       body: JSON.stringify({ url: parsed.data.url }),
     });
-    return NextResponse.json(result);
+    return applyAdminSessionCookie(NextResponse.json(result), auth);
   } catch (err) {
     const status = err instanceof ControlPlaneError ? err.status : 502;
     const errorCode = err instanceof ControlPlaneError ? err.code : undefined;

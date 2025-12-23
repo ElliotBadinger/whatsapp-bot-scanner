@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
+  applyAdminSessionCookie,
+  requireAdminSession,
+} from "@/lib/auth/require-admin-session";
+import { readJsonWithLimit } from "@/lib/auth/read-json-with-limit";
+import {
   ControlPlaneError,
   controlPlaneFetchJson,
   controlPlaneFetchJsonWithStatus,
@@ -61,9 +66,16 @@ const PostBodySchema = z.object({
 });
 
 export async function GET() {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   try {
-    const rows =
-      await controlPlaneFetchJson<ControlPlaneOverrideRow[]>("/overrides");
+    const rows = await controlPlaneFetchJson<ControlPlaneOverrideRow[]>(
+      "/overrides",
+      {
+        authToken: auth.session.controlPlaneToken,
+      },
+    );
 
     const overrides = rows
       .map(mapOverride)
@@ -76,7 +88,7 @@ export async function GET() {
       });
     }
 
-    return NextResponse.json(overrides);
+    return applyAdminSessionCookie(NextResponse.json(overrides), auth);
   } catch (err) {
     const status = err instanceof ControlPlaneError ? err.status : 502;
     return NextResponse.json({ error: "overrides_unavailable" }, { status });
@@ -84,7 +96,18 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const body = await req.json().catch(() => null);
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
+  let body: unknown = null;
+  try {
+    body = await readJsonWithLimit(req, 16 * 1024);
+  } catch (err) {
+    if (err instanceof Error && err.message === "body_too_large") {
+      return NextResponse.json({ error: "invalid_request" }, { status: 413 });
+    }
+    return NextResponse.json({ error: "invalid_request" }, { status: 400 });
+  }
   const parsed = PostBodySchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: "invalid_request" }, { status: 400 });
@@ -100,6 +123,7 @@ export async function POST(req: Request) {
       {
         method: "POST",
         headers: { "content-type": "application/json" },
+        authToken: auth.session.controlPlaneToken,
         body: JSON.stringify({
           pattern,
           status: action === "allow" ? "allow" : "deny",
@@ -110,10 +134,13 @@ export async function POST(req: Request) {
     );
 
     if (status === 204 || status === 205 || data === undefined) {
-      return new NextResponse(undefined, { status });
+      return applyAdminSessionCookie(
+        new NextResponse(undefined, { status }),
+        auth,
+      );
     }
 
-    return NextResponse.json(data, { status });
+    return applyAdminSessionCookie(NextResponse.json(data, { status }), auth);
   } catch (err) {
     if (err instanceof ControlPlaneError) {
       if (err.status === 400 && err.code === "VALIDATION_ERROR") {

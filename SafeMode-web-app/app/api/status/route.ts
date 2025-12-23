@@ -1,17 +1,30 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import {
   ControlPlaneError,
   controlPlaneFetchJson,
 } from "@/lib/control-plane-server";
 import type { SystemStatus } from "@/lib/api";
+import {
+  ADMIN_SESSION_COOKIE,
+  getAdminSession,
+} from "@/lib/auth/admin-session";
 
 export async function GET() {
   try {
-    const status = await controlPlaneFetchJson<SystemStatus>("/status");
+    // Status is intentionally readable without an admin session so the landing page
+    // can render basic health/metrics when a server-side control-plane token is
+    // configured.
+    const jar = await cookies();
+    const sessionId = jar.get(ADMIN_SESSION_COOKIE)?.value;
+    const session = sessionId ? getAdminSession(sessionId) : null;
+
+    const status = await controlPlaneFetchJson<SystemStatus>("/status", {
+      authToken: session ? session.controlPlaneToken : undefined,
+    });
     return NextResponse.json(status, {
       headers: {
-        // Allow caching for 5 seconds at the edge/browser
-        "Cache-Control": "public, s-maxage=5, stale-while-revalidate=10",
+        "Cache-Control": "no-store",
       },
     });
   } catch (err) {
