@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { URL } from "node:url";
-import { isPrivateHostname, resolveSafeIp } from "./ssrf";
+import { resolveSafeIp } from "./ssrf";
 import { Client } from "undici";
 import { toASCII } from "punycode/";
 import { parse } from "tldts";

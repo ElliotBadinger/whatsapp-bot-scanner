@@ -1,4 +1,4 @@
-jest.mock("../ssrf", () => ({
+jest.mock('../ssrf', () => ({
   isPrivateHostname: jest.fn().mockResolvedValue(false),
   resolveSafeIp: jest.fn().mockResolvedValue("1.2.3.4"),
 }));
@@ -6,7 +6,7 @@ jest.mock("../ssrf", () => ({
 const mockClientRequest = jest.fn();
 const mockClientClose = jest.fn().mockResolvedValue(undefined);
 
-jest.mock("undici", () => ({
+jest.mock('undici', () => ({
   request: jest.fn(),
   Client: jest.fn().mockImplementation(() => ({
     request: mockClientRequest,
@@ -14,22 +14,11 @@ jest.mock("undici", () => ({
   })),
 }));
 
-import {
-  extractUrls,
-  expandUrl,
-  isSuspiciousTld,
-  normalizeUrl,
-  urlHash,
-} from "../url";
-import type { request as requestType } from "undici";
+import { extractUrls, expandUrl, isSuspiciousTld, normalizeUrl, urlHash } from '../url';
+import type { request as requestType } from 'undici';
 
-const { request } = jest.requireMock("undici") as {
-  request: jest.MockedFunction<typeof requestType>;
-};
-const { isPrivateHostname, resolveSafeIp } = jest.requireMock("../ssrf") as {
-  isPrivateHostname: jest.Mock;
-  resolveSafeIp: jest.Mock;
-};
+const { request } = jest.requireMock('undici') as { request: jest.MockedFunction<typeof requestType> };
+const { isPrivateHostname, resolveSafeIp } = jest.requireMock('../ssrf') as { isPrivateHostname: jest.Mock, resolveSafeIp: jest.Mock };
 
 beforeEach(() => {
   request.mockReset();
@@ -41,114 +30,106 @@ beforeEach(() => {
   (resolveSafeIp as jest.Mock).mockResolvedValue("1.2.3.4");
 });
 
-test("extractUrls finds http and www", () => {
-  const text = "check https://example.com and www.test.org/path?x=1#frag";
+test('extractUrls finds http and www', () => {
+  const text = 'check https://example.com and www.test.org/path?x=1#frag';
   const urls = extractUrls(text);
   expect(urls.length).toBe(2);
 });
 
-test("normalize strips tracking and fragments", () => {
-  const u = normalizeUrl(
-    "https://EXAMPLE.com:443/a?utm_source=x&fbclid=123#frag",
-  );
-  expect(u).toBe("https://example.com/a");
+test('normalize strips tracking and fragments', () => {
+  const u = normalizeUrl('https://EXAMPLE.com:443/a?utm_source=x&fbclid=123#frag');
+  expect(u).toBe('https://example.com/a');
 });
 
-test("urlHash stable for normalized url", () => {
-  const u = normalizeUrl("http://example.com:80/a");
+test('urlHash stable for normalized url', () => {
+  const u = normalizeUrl('http://example.com:80/a');
   const h1 = urlHash(u!);
-  const h2 = urlHash("http://example.com/a");
+  const h2 = urlHash('http://example.com/a');
   expect(h1).toBe(h2);
 });
 
-test("expandUrl follows redirects and returns content type", async () => {
+test('expandUrl follows redirects and returns content type', async () => {
   mockClientRequest
     .mockResolvedValueOnce({
       statusCode: 302,
-      headers: {
-        location: "https://final.test/path",
-        "content-type": "text/html",
-      },
-      body: { destroy: jest.fn() },
+      headers: { location: 'https://final.test/path', 'content-type': 'text/html' },
+      body: { destroy: jest.fn() }
     })
     .mockResolvedValueOnce({
       statusCode: 200,
-      headers: { "content-type": "text/html" },
-      body: { destroy: jest.fn() },
+      headers: { 'content-type': 'text/html' },
+      body: { destroy: jest.fn() }
     });
 
-  const result = await expandUrl("https://short.test/start", {
+  const result = await expandUrl('https://short.test/start', {
     maxRedirects: 5,
     timeoutMs: 1000,
     maxContentLength: 1024,
   });
-  expect(result.finalUrl).toBe("https://final.test/path");
-  expect(result.chain).toEqual([
-    "https://short.test/start",
-    "https://final.test/path",
-  ]);
-  expect(result.contentType).toBe("text/html");
+  expect(result.finalUrl).toBe('https://final.test/path');
+  expect(result.chain).toEqual(['https://short.test/start', 'https://final.test/path']);
+  expect(result.contentType).toBe('text/html');
 });
 
-test("expandUrl aborts when hostname becomes private", async () => {
+test('expandUrl aborts when hostname becomes private', async () => {
   (resolveSafeIp as jest.Mock).mockRejectedValueOnce(new Error("Private IP"));
-  const result = await expandUrl("https://internal.test", {
+  const result = await expandUrl('https://internal.test', {
     maxRedirects: 5,
     timeoutMs: 1000,
     maxContentLength: 1024,
   });
-  expect(result.finalUrl).toBe("https://internal.test/");
+  expect(result.finalUrl).toBe('https://internal.test/');
   expect(result.chain).toHaveLength(0);
 });
 
-test("detects suspicious tlds", () => {
-  expect(isSuspiciousTld("evil.zip")).toBe(true);
-  expect(isSuspiciousTld("safe.example")).toBe(false);
-  expect(isSuspiciousTld("test.xyz")).toBe(true);
-  expect(isSuspiciousTld("sub.domain.tk")).toBe(true);
+test('detects suspicious tlds', () => {
+  expect(isSuspiciousTld('evil.zip')).toBe(true);
+  expect(isSuspiciousTld('safe.example')).toBe(false);
+  expect(isSuspiciousTld('test.xyz')).toBe(true);
+  expect(isSuspiciousTld('sub.domain.tk')).toBe(true);
 });
 
-test("normalizeUrl handles invalid inputs", () => {
-  expect(normalizeUrl("not-a-url")).toBeNull();
-  expect(normalizeUrl("ftp://example.com")).toBeNull();
-  expect(normalizeUrl("")).toBeNull();
+test('normalizeUrl handles invalid inputs', () => {
+  expect(normalizeUrl('not-a-url')).toBeNull();
+  expect(normalizeUrl('ftp://example.com')).toBeNull();
+  expect(normalizeUrl('')).toBeNull();
 });
 
-test("normalizeUrl handles IDN domains", () => {
+test('normalizeUrl handles IDN domains', () => {
   // "münchen.de" -> "xn--mnchen-3ya.de"
-  const u = normalizeUrl("http://münchen.de");
-  expect(u).toBe("http://xn--mnchen-3ya.de/");
+  const u = normalizeUrl('http://münchen.de');
+  expect(u).toBe('http://xn--mnchen-3ya.de/');
 });
 
-test("normalizeUrl handles complex paths and queries", () => {
-  const u = normalizeUrl("https://example.com/a//b///c?x=1&y=2");
-  expect(u).toBe("https://example.com/a/b/c?x=1&y=2");
+test('normalizeUrl handles complex paths and queries', () => {
+  const u = normalizeUrl('https://example.com/a//b///c?x=1&y=2');
+  expect(u).toBe('https://example.com/a/b/c?x=1&y=2');
 });
 
-test("expandUrl handles network errors gracefully", async () => {
-  mockClientRequest.mockRejectedValueOnce(new Error("Network error"));
+test('expandUrl handles network errors gracefully', async () => {
+  mockClientRequest.mockRejectedValueOnce(new Error('Network error'));
 
-  const result = await expandUrl("https://down.test", {
+  const result = await expandUrl('https://down.test', {
     maxRedirects: 2,
     timeoutMs: 100,
-    maxContentLength: 1000,
+    maxContentLength: 1000
   });
 
-  expect(result.finalUrl).toBe("https://down.test/");
-  expect(result.chain).toEqual(["https://down.test/"]);
+  expect(result.finalUrl).toBe('https://down.test/');
+  expect(result.chain).toEqual(['https://down.test/']);
 });
 
-test("expandUrl stops at max redirects", async () => {
+test('expandUrl stops at max redirects', async () => {
   mockClientRequest.mockResolvedValue({
     statusCode: 301,
-    headers: { location: "https://next.test" },
-    body: { destroy: jest.fn() },
+    headers: { location: 'https://next.test' },
+    body: { destroy: jest.fn() }
   });
 
-  const result = await expandUrl("https://start.test", {
+  const result = await expandUrl('https://start.test', {
     maxRedirects: 2,
     timeoutMs: 100,
-    maxContentLength: 1000,
+    maxContentLength: 1000
   });
 
   expect(result.chain).toHaveLength(2);
