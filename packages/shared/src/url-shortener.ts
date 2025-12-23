@@ -1,7 +1,7 @@
-import { request, fetch as undiciFetch } from 'undici';
+import { request, Client, Dispatcher } from 'undici';
 import { config } from './config';
 import { normalizeUrl } from './url';
-import { isPrivateHostname } from './ssrf';
+import { resolveSafeIp } from './ssrf';
 import { metrics } from './metrics';
 
 const DEFAULT_SHORTENERS = [
@@ -84,48 +84,92 @@ async function resolveWithUnshorten(url: string): Promise<string | null> {
   }
 }
 
-type UndiciResponse = Awaited<ReturnType<typeof undiciFetch>>;
+type ResponseLike = {
+  statusCode: number;
+  headers: Dispatcher.ResponseData['headers'];
+};
 
-async function processRedirectResponse(response: UndiciResponse, normalized: string, chain: string[]): Promise<{ nextUrl?: string; result?: { finalUrl: string; chain: string[] } }> {
-  const location = response.headers?.get?.('location');
-  if (response.status >= 300 && response.status < 400) {
+async function processRedirectResponse(
+  response: ResponseLike,
+  normalized: string,
+  chain: string[],
+): Promise<{ nextUrl?: string; result?: { finalUrl: string; chain: string[] } }> {
+  const locationHeader = response.headers['location'];
+  const location = Array.isArray(locationHeader)
+    ? locationHeader[0]
+    : locationHeader;
+
+  if (response.statusCode >= 300 && response.statusCode < 400) {
     if (!location) {
-      response.body?.cancel?.();
       return { result: { finalUrl: normalized, chain } };
     }
-    response.body?.cancel?.();
     return { nextUrl: new URL(location, normalized).toString() };
   }
 
-  response.body?.cancel?.();
   return { result: { finalUrl: normalized, chain } };
 }
 
-async function fetchAndValidateUrl(normalized: string, timeoutMs: number, maxContentLength: number): Promise<UndiciResponse | null> {
-  const response = await undiciFetch(normalized, {
-    method: 'GET',
-    redirect: 'manual',
-    signal: AbortSignal.timeout(timeoutMs),
+async function fetchAndValidateUrl(
+  normalized: string,
+  safeIp: string,
+  originalHostname: string,
+  timeoutMs: number,
+  maxContentLength: number,
+): Promise<ResponseLike | null> {
+  const safeHostname = safeIp.includes(':') ? `[${safeIp}]` : safeIp;
+  const requestUrl = new URL(normalized);
+  requestUrl.hostname = safeHostname;
+
+  const client = new Client(requestUrl.origin, {
+    connect: { servername: originalHostname },
   });
 
-  const contentLengthHeader = response.headers?.get?.('content-length');
-  if (contentLengthHeader) {
-    const contentLength = Number.parseInt(contentLengthHeader, 10);
-    if (Number.isFinite(contentLength) && contentLength > maxContentLength) {
-      response.body?.cancel?.();
-      throw new DirectExpansionError('max-content-length', `Content too large: ${contentLength} bytes`);
-    }
-  }
+  try {
+    const response = await client.request({
+      path: requestUrl.pathname + requestUrl.search,
+      method: 'GET',
+      maxRedirections: 0,
+      headersTimeout: timeoutMs,
+      bodyTimeout: timeoutMs,
+      headers: {
+        host: originalHostname,
+      },
+    });
 
-  if (response.status >= 400) {
-    if (response.status >= 500) {
-      response.body?.cancel?.();
-      throw new DirectExpansionError('http-error', `Expansion request failed with status ${response.status}`);
+    const contentLengthHeader = response.headers['content-length'];
+    if (contentLengthHeader) {
+      const val = Array.isArray(contentLengthHeader)
+        ? contentLengthHeader[0]
+        : contentLengthHeader;
+      const contentLength = Number.parseInt(val, 10);
+      if (Number.isFinite(contentLength) && contentLength > maxContentLength) {
+        response.body.destroy();
+        throw new DirectExpansionError(
+          'max-content-length',
+          `Content too large: ${contentLength} bytes`,
+        );
+      }
     }
-    return null;
-  }
 
-  return response;
+    if (response.statusCode >= 400) {
+      response.body.destroy();
+      if (response.statusCode >= 500) {
+        throw new DirectExpansionError(
+          'http-error',
+          `Expansion request failed with status ${response.statusCode}`,
+        );
+      }
+      return null;
+    }
+
+    response.body.destroy();
+    return {
+      statusCode: response.statusCode,
+      headers: response.headers,
+    };
+  } finally {
+    await client.close();
+  }
 }
 
 async function resolveDirectly(url: string): Promise<{ finalUrl: string; chain: string[] } | null> {
@@ -138,8 +182,11 @@ async function resolveDirectly(url: string): Promise<{ finalUrl: string; chain: 
     if (!normalized) break;
 
     const parsed = new URL(normalized);
-    if (await isPrivateHostname(parsed.hostname)) {
-      throw new DirectExpansionError('ssrf-blocked', 'SSRF protection: Private host blocked');
+    let safeIp: string;
+    try {
+        safeIp = await resolveSafeIp(parsed.hostname);
+    } catch {
+        throw new DirectExpansionError('ssrf-blocked', 'SSRF protection: Private host blocked');
     }
 
     if (!chain.length || chain[chain.length - 1] !== normalized) {
@@ -147,7 +194,7 @@ async function resolveDirectly(url: string): Promise<{ finalUrl: string; chain: 
     }
 
     try {
-      const response = await fetchAndValidateUrl(normalized, timeoutMs, maxContentLength);
+      const response = await fetchAndValidateUrl(normalized, safeIp, parsed.hostname, timeoutMs, maxContentLength);
       if (!response) return null;
 
       const { nextUrl, result } = await processRedirectResponse(response, normalized, chain);
@@ -172,9 +219,6 @@ async function resolveDirectly(url: string): Promise<{ finalUrl: string; chain: 
 
   return chain.length ? { finalUrl: chain[chain.length - 1], chain } : null;
 }
-
-// Note: url-expand dependency removed due to security vulnerabilities in its transitive
-// dependencies (request, tough-cookie, form-data). Direct expansion via undici is used instead.
 
 export async function resolveShortener(url: string): Promise<ShortenerResolution> {
   const normalized = normalizeUrl(url);

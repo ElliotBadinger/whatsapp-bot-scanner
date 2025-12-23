@@ -73,3 +73,47 @@ export function isPrivateIp(ip: string): boolean {
     return true;
   }
 }
+
+export async function resolveSafeIp(hostname: string): Promise<string> {
+  const lowerHostname = hostname.toLowerCase();
+
+  if (ipaddr.isValid(hostname)) {
+    if (isPrivateIp(hostname)) {
+      throw new Error(`Private IP address blocked: ${hostname}`);
+    }
+    return hostname;
+  }
+
+  // Check blocked hostnames first
+  if (BLOCKED_HOSTNAMES.includes(lowerHostname)) {
+    throw new Error(`Blocked hostname: ${hostname}`);
+  }
+
+  const results = await Promise.allSettled([
+    dns.resolve4(hostname),
+    dns.resolve6(hostname),
+  ]);
+
+  // If all failed, we consider it a failure and fail closed
+  if (results.every((r) => r.status === "rejected")) {
+    throw new Error(`DNS resolution failed for ${hostname}`);
+  }
+
+  const safeIps: string[] = [];
+  for (const res of results) {
+    if (res.status === "fulfilled") {
+      for (const ip of res.value) {
+        if (!isPrivateIp(ip)) {
+          safeIps.push(ip);
+        }
+      }
+    }
+  }
+
+  if (safeIps.length === 0) {
+    throw new Error(`No safe IP found for ${hostname}`);
+  }
+
+  // Return the first safe IP
+  return safeIps[0];
+}

@@ -1,21 +1,33 @@
-jest.mock('undici', () => ({
-  request: jest.fn(),
-}));
-
 jest.mock('../ssrf', () => ({
   isPrivateHostname: jest.fn().mockResolvedValue(false),
+  resolveSafeIp: jest.fn().mockResolvedValue("1.2.3.4"),
+}));
+
+const mockClientRequest = jest.fn();
+const mockClientClose = jest.fn().mockResolvedValue(undefined);
+
+jest.mock('undici', () => ({
+  request: jest.fn(),
+  Client: jest.fn().mockImplementation(() => ({
+    request: mockClientRequest,
+    close: mockClientClose,
+  })),
 }));
 
 import { extractUrls, expandUrl, isSuspiciousTld, normalizeUrl, urlHash } from '../url';
 import type { request as requestType } from 'undici';
 
 const { request } = jest.requireMock('undici') as { request: jest.MockedFunction<typeof requestType> };
-const { isPrivateHostname } = jest.requireMock('../ssrf') as { isPrivateHostname: jest.Mock };
+const { isPrivateHostname, resolveSafeIp } = jest.requireMock('../ssrf') as { isPrivateHostname: jest.Mock, resolveSafeIp: jest.Mock };
 
 beforeEach(() => {
   request.mockReset();
+  mockClientRequest.mockReset();
+  mockClientClose.mockClear();
   (isPrivateHostname as jest.Mock).mockReset();
   (isPrivateHostname as jest.Mock).mockResolvedValue(false);
+  (resolveSafeIp as jest.Mock).mockReset();
+  (resolveSafeIp as jest.Mock).mockResolvedValue("1.2.3.4");
 });
 
 test('extractUrls finds http and www', () => {
@@ -37,23 +49,17 @@ test('urlHash stable for normalized url', () => {
 });
 
 test('expandUrl follows redirects and returns content type', async () => {
-  request
+  mockClientRequest
     .mockResolvedValueOnce({
       statusCode: 302,
       headers: { location: 'https://final.test/path', 'content-type': 'text/html' },
-      body: null,
-      trailers: {},
-      opaque: null,
-      context: null
-    } as any)
+      body: { destroy: jest.fn() }
+    })
     .mockResolvedValueOnce({
       statusCode: 200,
       headers: { 'content-type': 'text/html' },
-      body: null,
-      trailers: {},
-      opaque: null,
-      context: null
-    } as any);
+      body: { destroy: jest.fn() }
+    });
 
   const result = await expandUrl('https://short.test/start', {
     maxRedirects: 5,
@@ -66,7 +72,7 @@ test('expandUrl follows redirects and returns content type', async () => {
 });
 
 test('expandUrl aborts when hostname becomes private', async () => {
-  (isPrivateHostname as jest.Mock).mockResolvedValueOnce(true);
+  (resolveSafeIp as jest.Mock).mockRejectedValueOnce(new Error("Private IP"));
   const result = await expandUrl('https://internal.test', {
     maxRedirects: 5,
     timeoutMs: 1000,
@@ -101,7 +107,7 @@ test('normalizeUrl handles complex paths and queries', () => {
 });
 
 test('expandUrl handles network errors gracefully', async () => {
-  request.mockRejectedValueOnce(new Error('Network error'));
+  mockClientRequest.mockRejectedValueOnce(new Error('Network error'));
   
   const result = await expandUrl('https://down.test', {
     maxRedirects: 2,
@@ -114,14 +120,11 @@ test('expandUrl handles network errors gracefully', async () => {
 });
 
 test('expandUrl stops at max redirects', async () => {
-  request.mockResolvedValue({
+  mockClientRequest.mockResolvedValue({
     statusCode: 301,
     headers: { location: 'https://next.test' },
-    body: null,
-    trailers: {},
-    opaque: null,
-    context: null
-  } as any);
+    body: { destroy: jest.fn() }
+  });
 
   const result = await expandUrl('https://start.test', {
     maxRedirects: 2,

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { URL } from "node:url";
-import { isPrivateHostname } from "./ssrf";
-import { request } from "undici";
+import { isPrivateHostname, resolveSafeIp } from "./ssrf";
+import { Client } from "undici";
 import { toASCII } from "punycode/";
 import { parse } from "tldts";
 import { isKnownShortener } from "./url-shortener";
@@ -85,19 +85,54 @@ export async function expandUrl(
     const nu = normalizeUrl(current);
     if (!nu) break;
     const u = new URL(nu);
-    if (await isPrivateHostname(u.hostname)) break; // SSRF block
-    const { statusCode, headers } = await request(u, {
-      method: "HEAD",
-      maxRedirections: 0,
-      headersTimeout: opts.timeoutMs,
-      bodyTimeout: opts.timeoutMs,
-      headers: { "user-agent": "wbscanner/0.1" },
-    }).catch(() => ({ statusCode: 0, headers: {} as Record<string, unknown> }));
+    let safeIp: string;
+    try {
+      safeIp = await resolveSafeIp(u.hostname);
+    } catch {
+      break;
+    }
+
+    const originalHostname = u.hostname;
+    const safeHostname = safeIp.includes(":") ? `[${safeIp}]` : safeIp;
+    const requestUrl = new URL(nu);
+    requestUrl.hostname = safeHostname;
+
+    const client = new Client(requestUrl.origin, {
+      connect: {
+        servername: originalHostname,
+      },
+    });
+
+    let statusCode = 0;
+    let headers: Record<string, unknown> = {};
+
+    try {
+      const response = await client.request({
+        path: requestUrl.pathname + requestUrl.search,
+        method: "HEAD",
+        maxRedirections: 0,
+        headersTimeout: opts.timeoutMs,
+        bodyTimeout: opts.timeoutMs,
+        headers: {
+          "user-agent": "wbscanner/0.1",
+          host: originalHostname,
+        },
+      });
+      statusCode = response.statusCode;
+      headers = response.headers;
+      if (response.body) {
+        response.body.destroy();
+      }
+    } catch {
+      // ignore
+    } finally {
+      await client.close();
+    }
     chain.push(nu);
     if (statusCode && statusCode >= 300 && statusCode < 400) {
       const loc = headers["location"];
       if (!loc) break;
-      current = new URL(loc as string, u).toString();
+      current = new URL(loc as string, nu).toString();
       continue;
     }
     const ct = Array.isArray(headers["content-type"])
