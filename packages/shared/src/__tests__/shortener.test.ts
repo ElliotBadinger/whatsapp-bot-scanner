@@ -150,7 +150,9 @@ describe("shortener expansion", () => {
       body: { json: async () => ({}) },
     } as any);
 
-    mockClientRequest.mockResolvedValueOnce(makeResponse({ status: 404 }) as any);
+    mockClientRequest.mockResolvedValueOnce(
+      makeResponse({ status: 404 }) as any,
+    );
 
     const result = await resolveShortener("https://tinyurl.com/abc");
     expect(result.provider).toBe("original");
