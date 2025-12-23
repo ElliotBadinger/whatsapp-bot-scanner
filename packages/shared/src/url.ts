@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
-import { URL } from "node:url";
+import { URL, domainToASCII } from "node:url";
 import { isPrivateHostname } from "./ssrf";
 import { request } from "undici";
-import { toASCII } from "punycode/";
 import { parse } from "tldts";
 import { isKnownShortener } from "./url-shortener";
 
@@ -18,6 +17,26 @@ const TRACKING_PARAMS = new Set([
   "mc_eid",
   "vero_conv",
   "vero_id",
+]);
+
+const SUSPICIOUS_TLDS = new Set([
+  "zip",
+  "mov",
+  "tk",
+  "ml",
+  "cf",
+  "gq",
+  "work",
+  "click",
+  "country",
+  "kim",
+  "men",
+  "party",
+  "science",
+  "top",
+  "xyz",
+  "club",
+  "link",
 ]);
 
 export function extractUrls(text: string): string[] {
@@ -47,9 +66,19 @@ export function normalizeUrl(raw: string): string | null {
   try {
     const u = new URL(raw);
     if (!["http:", "https:"].includes(u.protocol)) return null;
-    u.hostname = u.hostname.toLowerCase();
-    // IDN -> ASCII
-    u.hostname = toASCII(u.hostname);
+    const lowerHostname = u.hostname.toLowerCase();
+    // IDN -> ASCII (skip conversion for ASCII-only hostnames)
+    if (/[^\x00-\x7F]/.test(lowerHostname)) {
+      try {
+        const asciiHostname = domainToASCII(lowerHostname);
+        if (!asciiHostname) return null;
+        u.hostname = asciiHostname;
+      } catch {
+        return null;
+      }
+    } else {
+      u.hostname = lowerHostname;
+    }
     // strip default ports
     if (
       (u.protocol === "http:" && u.port === "80") ||
@@ -60,8 +89,8 @@ export function normalizeUrl(raw: string): string | null {
     // strip fragments
     u.hash = "";
     // strip tracking params
-    for (const p of Array.from(u.searchParams.keys())) {
-      if (TRACKING_PARAMS.has(p)) u.searchParams.delete(p);
+    for (const p of TRACKING_PARAMS) {
+      u.searchParams.delete(p);
     }
     // normalize path
     u.pathname = u.pathname.replace(/\/+/g, "/");
@@ -111,37 +140,27 @@ export async function expandUrl(
 
 export function isSuspiciousTld(hostname: string): boolean {
   const t = parse(hostname);
-  const bad = new Set([
-    "zip",
-    "mov",
-    "tk",
-    "ml",
-    "cf",
-    "gq",
-    "work",
-    "click",
-    "country",
-    "kim",
-    "men",
-    "party",
-    "science",
-    "top",
-    "xyz",
-    "club",
-    "link",
-  ]);
-  return !!t.publicSuffix && bad.has(t.publicSuffix);
+  return !!t.publicSuffix && SUSPICIOUS_TLDS.has(t.publicSuffix);
 }
 
 export function isShortener(hostname: string): boolean {
   return isKnownShortener(hostname);
 }
 
+let cachedForbiddenPatterns: string[] | null = null;
+let lastForbiddenEnv: string | undefined;
+
 function parseForbiddenPatterns(): string[] {
-  return (process.env.WA_FORBIDDEN_HOSTNAMES || "")
+  const currentEnv = process.env.WA_FORBIDDEN_HOSTNAMES;
+  if (cachedForbiddenPatterns && currentEnv === lastForbiddenEnv) {
+    return cachedForbiddenPatterns;
+  }
+  lastForbiddenEnv = currentEnv;
+  cachedForbiddenPatterns = (currentEnv || "")
     .split(",")
     .map((entry) => entry.trim().toLowerCase())
     .filter((entry) => entry.length > 0);
+  return cachedForbiddenPatterns;
 }
 
 export async function isForbiddenHostname(hostname: string): Promise<boolean> {
