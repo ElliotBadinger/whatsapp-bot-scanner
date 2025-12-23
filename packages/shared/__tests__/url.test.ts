@@ -1,4 +1,3 @@
-
 import { isSuspiciousTld, normalizeUrl, isForbiddenHostname } from "../src/url";
 
 // Save original env
@@ -17,7 +16,8 @@ describe("URL Optimization Tests", () => {
   });
 
   test("normalizeUrl strips tracking params", () => {
-    const url = "https://example.com/path?utm_source=google&utm_medium=cpc&keep=me";
+    const url =
+      "https://example.com/path?utm_source=google&utm_medium=cpc&keep=me";
     const normalized = normalizeUrl(url);
     expect(normalized).toBe("https://example.com/path?keep=me");
   });
