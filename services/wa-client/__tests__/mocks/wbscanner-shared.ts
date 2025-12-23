@@ -1,4 +1,4 @@
-import crypto from "crypto";
+import { createHash } from "node:crypto";
 import FakeRedis from "../../src/__tests__/fake-redis";
 
 const noop = () => undefined;
@@ -141,8 +141,13 @@ export const assertControlPlaneToken = (): string =>
 export const createRedisConnection = () => new (FakeRedis as any)();
 export const connectRedis = async () => undefined;
 
-export const hashChatId = (input: string) => input;
-export const hashMessageId = (input: string) => input;
-export const isIdentifierHash = () => false;
+function hashIdentifier(prefix: string, value: string): string {
+  // Deterministic test hash (production uses an HMAC with a secret).
+  return createHash("sha256").update(`${prefix}:${value}`).digest("hex");
+}
+
+export const hashChatId = (input: string) => hashIdentifier("chat", input);
+export const hashMessageId = (input: string) => hashIdentifier("msg", input);
+export const isIdentifierHash = (value: string) => /^[a-f0-9]{64}$/i.test(value);
 
 export class InMemoryRedis extends FakeRedis {}

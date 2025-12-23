@@ -1,5 +1,6 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import type { GroupChat } from 'whatsapp-web.js';
+import { hashChatId } from '@wbscanner/shared';
 import { safeGetGroupChatById } from '../utils/chatLookup';
 import type { SessionSnapshot } from '../session/guards';
 
@@ -31,10 +32,20 @@ describe('safeGetGroupChatById', () => {
 
     expect(result).toBeNull();
     expect(client.getChatById).not.toHaveBeenCalled();
+    expect(logger.debug).toHaveBeenCalledTimes(1);
     expect(logger.debug).toHaveBeenCalledWith(
-      { chatId: '123@c.us', session: expect.stringContaining('state=disconnected') },
+      {
+        chatIdHash: hashChatId('123@c.us'),
+        session: expect.stringContaining('state=disconnected'),
+      },
       'Skipping chat lookup because session is not ready',
     );
+
+    const [loggedContext] = (logger.debug as jest.Mock).mock.calls[0] as [
+      Record<string, unknown>,
+    ];
+    expect(loggedContext.chatId).toBeUndefined();
+    expect(loggedContext.chatIdHash).toMatch(/^[a-f0-9]{64}$/i);
   });
 
   it('wraps evaluation errors with descriptive context', async () => {

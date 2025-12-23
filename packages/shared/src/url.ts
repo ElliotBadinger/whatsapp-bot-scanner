@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
-import { URL } from "node:url";
+import { URL, domainToASCII } from "node:url";
 import { isPrivateHostname } from "./ssrf";
 import { request } from "undici";
-import { toASCII } from "punycode";
 import { parse } from "tldts";
 import { isKnownShortener } from "./url-shortener";
 
@@ -67,9 +66,19 @@ export function normalizeUrl(raw: string): string | null {
   try {
     const u = new URL(raw);
     if (!["http:", "https:"].includes(u.protocol)) return null;
-    u.hostname = u.hostname.toLowerCase();
-    // IDN -> ASCII
-    u.hostname = toASCII(u.hostname);
+    const lowerHostname = u.hostname.toLowerCase();
+    // IDN -> ASCII (skip conversion for ASCII-only hostnames)
+    if (/[^\x00-\x7F]/.test(lowerHostname)) {
+      try {
+        const asciiHostname = domainToASCII(lowerHostname);
+        if (!asciiHostname) return null;
+        u.hostname = asciiHostname;
+      } catch {
+        return null;
+      }
+    } else {
+      u.hostname = lowerHostname;
+    }
     // strip default ports
     if (
       (u.protocol === "http:" && u.port === "80") ||
@@ -139,7 +148,7 @@ export function isShortener(hostname: string): boolean {
 }
 
 let cachedForbiddenPatterns: string[] | null = null;
-let lastForbiddenEnv: string | undefined = undefined;
+let lastForbiddenEnv: string | undefined;
 
 function parseForbiddenPatterns(): string[] {
   const currentEnv = process.env.WA_FORBIDDEN_HOSTNAMES;

@@ -24,6 +24,16 @@ export interface PhishtankDecisionInput {
   phishtankEnabled: boolean;
 }
 
+/**
+* Decide whether to query Phishtank as a redundancy fallback.
+*
+* Policy:
+* - If Phishtank is disabled -> never query.
+* - If GSB has no matches -> query.
+* - If GSB matched but errored -> query (treat as a fallback scenario).
+* - If the GSB API key is missing -> query.
+* - If GSB wasn't cached and exceeded the latency budget -> query.
+*/
 export function shouldQueryPhishtank({
   gsbHit,
   gsbError,
@@ -35,7 +45,8 @@ export function shouldQueryPhishtank({
 }: PhishtankDecisionInput): boolean {
   if (!phishtankEnabled) return false;
   if (!gsbHit) return true;
-  if (gsbError) return false;
+  // If GSB errored while returning a hit, run Phishtank as a redundancy fallback.
+  if (gsbError) return true;
   if (!gsbApiKeyPresent) return true;
   if (!gsbFromCache && gsbDurationMs > fallbackLatencyMs) return true;
   return false;

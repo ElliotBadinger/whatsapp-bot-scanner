@@ -1,4 +1,4 @@
-import { checkBlocklistsWithRedundancy } from "../blocklists";
+import { checkBlocklistsWithRedundancy, shouldQueryPhishtank } from "../blocklists";
 
 jest.mock("@wbscanner/shared", () => ({
   logger: {
@@ -11,6 +11,62 @@ jest.mock("@wbscanner/shared", () => ({
 }));
 
 describe("blocklists redundancy", () => {
+  it("shouldQueryPhishtank returns true when GSB hits but errors", () => {
+    expect(
+      shouldQueryPhishtank({
+        gsbHit: true,
+        gsbError: new Error("timeout"),
+        gsbDurationMs: 50,
+        gsbFromCache: false,
+        fallbackLatencyMs: 500,
+        gsbApiKeyPresent: true,
+        phishtankEnabled: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("shouldQueryPhishtank returns true when GSB API key is missing", () => {
+    expect(
+      shouldQueryPhishtank({
+        gsbHit: true,
+        gsbError: null,
+        gsbDurationMs: 50,
+        gsbFromCache: false,
+        fallbackLatencyMs: 500,
+        gsbApiKeyPresent: false,
+        phishtankEnabled: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("shouldQueryPhishtank returns true when GSB exceeds latency budget", () => {
+    expect(
+      shouldQueryPhishtank({
+        gsbHit: true,
+        gsbError: null,
+        gsbDurationMs: 600,
+        gsbFromCache: false,
+        fallbackLatencyMs: 500,
+        gsbApiKeyPresent: true,
+        phishtankEnabled: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("shouldQueryPhishtank returns false for cached GSB hits", () => {
+    expect(
+      shouldQueryPhishtank({
+        gsbHit: true,
+        gsbError: null,
+        gsbDurationMs: 50,
+        gsbFromCache: true,
+        fallbackLatencyMs: 500,
+        gsbApiKeyPresent: true,
+        phishtankEnabled: true,
+      }),
+    ).toBe(false);
+  });
+
   it("queries Phishtank when GSB is clean", async () => {
     const fetchGsbAnalysis = jest.fn().mockResolvedValue({
       matches: [],
