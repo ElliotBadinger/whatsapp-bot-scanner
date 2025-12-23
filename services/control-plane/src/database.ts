@@ -19,9 +19,12 @@ type SqliteDriver = {
 };
 
 function createSqliteDriver(dbPath: string): SqliteDriver {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let bunSqlite: { Database: new (path: string) => any } | null = null;
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     bunSqlite = require("bun:sqlite") as {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       Database: new (path: string) => any;
     };
   } catch {
@@ -62,6 +65,7 @@ function createSqliteDriver(dbPath: string): SqliteDriver {
     };
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const BetterSqlite3 = require("better-sqlite3") as new (
     path: string,
   ) => SqliteDriver;
