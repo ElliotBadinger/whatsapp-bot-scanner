@@ -109,28 +109,29 @@ export async function expandUrl(
   return { finalUrl: nu, chain };
 }
 
+const SUSPICIOUS_TLDS = new Set([
+  "zip",
+  "mov",
+  "tk",
+  "ml",
+  "cf",
+  "gq",
+  "work",
+  "click",
+  "country",
+  "kim",
+  "men",
+  "party",
+  "science",
+  "top",
+  "xyz",
+  "club",
+  "link",
+]);
+
 export function isSuspiciousTld(hostname: string): boolean {
   const t = parse(hostname);
-  const bad = new Set([
-    "zip",
-    "mov",
-    "tk",
-    "ml",
-    "cf",
-    "gq",
-    "work",
-    "click",
-    "country",
-    "kim",
-    "men",
-    "party",
-    "science",
-    "top",
-    "xyz",
-    "club",
-    "link",
-  ]);
-  return !!t.publicSuffix && bad.has(t.publicSuffix);
+  return !!t.publicSuffix && SUSPICIOUS_TLDS.has(t.publicSuffix);
 }
 
 export function isShortener(hostname: string): boolean {

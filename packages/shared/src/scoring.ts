@@ -36,21 +36,22 @@ function pushReason(reasons: string[], reason: string) {
   }
 }
 
+const GSB_MALICIOUS_THREAT_TYPES = new Set([
+  "MALWARE",
+  "SOCIAL_ENGINEERING",
+  "UNWANTED_SOFTWARE",
+  "MALICIOUS_BINARY",
+  "POTENTIALLY_HARMFUL_APPLICATION",
+]);
+
 function evaluateBlocklistSignals(
   signals: Signals,
   score: number,
   reasons: string[],
 ): number {
   const threatTypes = signals.gsbThreatTypes ?? [];
-  const gsbMaliciousThreatTypes = new Set([
-    "MALWARE",
-    "SOCIAL_ENGINEERING",
-    "UNWANTED_SOFTWARE",
-    "MALICIOUS_BINARY",
-    "POTENTIALLY_HARMFUL_APPLICATION",
-  ]);
 
-  if (threatTypes.some((t) => gsbMaliciousThreatTypes.has(t))) {
+  if (threatTypes.some((t) => GSB_MALICIOUS_THREAT_TYPES.has(t))) {
     score += 10;
     pushReason(reasons, `Google Safe Browsing: ${threatTypes.join(", ")}`);
   }
@@ -246,13 +247,15 @@ export function scoreFromSignals(signals: Signals): RiskVerdict {
   return { score: finalScore, level, reasons, cacheTtl };
 }
 
+const COMMON_PORTS = new Set([80, 443, 8080, 8443]);
+
 export function extraHeuristics(u: URL): Partial<Signals> {
   const port = u.port
     ? parseInt(u.port, 10)
     : u.protocol === "http:"
       ? 80
       : 443;
-  const hasUncommonPort = ![80, 443, 8080, 8443].includes(port);
+  const hasUncommonPort = !COMMON_PORTS.has(port);
   const isIpLiteral = /^(\d+\.\d+\.\d+\.\d+|\[[0-9a-fA-F:]+\])$/.test(
     u.hostname,
   );
