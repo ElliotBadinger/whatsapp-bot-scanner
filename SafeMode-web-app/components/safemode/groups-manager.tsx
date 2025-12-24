@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ApiError, muteGroup, unmuteGroup } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -60,17 +60,40 @@ const mockGroups: Group[] = [
 
 export function GroupsManager() {
   const [groups, setGroups] = useState<Group[]>(mockGroups);
-  const requestInFlight = useRef(false);
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handleSetMute = async (groupId: string, nextIsMuted: boolean) => {
-    if (requestInFlight.current) return;
-    requestInFlight.current = true;
+    if (loadingId !== null) return;
+
+    const group = groups.find((candidate) => candidate.id === groupId);
+    if (!group) {
+      setNotice(null);
+      setError(`REQUEST_FAILED: Unknown group ${groupId}`);
+      return;
+    }
+    const groupName = group.name;
+
     setLoadingId(groupId);
+    setNotice(null);
     setError(null);
     try {
-      await (nextIsMuted ? muteGroup(groupId) : unmuteGroup(groupId));
+      if (nextIsMuted) {
+        const result = await muteGroup(groupId);
+        const parsedUntil = new Date(result.muted_until);
+        const until = Number.isNaN(parsedUntil.getTime())
+          ? null
+          : parsedUntil.toLocaleString();
+        setNotice(
+          until
+            ? `MUTE_OK: ${groupName} muted until ${until}`
+            : `MUTE_OK: ${groupName} muted`,
+        );
+      } else {
+        await unmuteGroup(groupId);
+        setNotice(`UNMUTE_OK: ${groupName} unmuted`);
+      }
 
       setGroups((prev) =>
         prev.map((g) =>
@@ -79,13 +102,13 @@ export function GroupsManager() {
       );
     } catch (err) {
       if (err instanceof ApiError) {
-        setError(`REQUEST_FAILED: ${err.message}`);
+        const code = err.code ? `${err.code}: ` : "";
+        setError(`REQUEST_FAILED: ${code}${err.message}`);
       } else {
         setError("REQUEST_FAILED: Unable to update group");
       }
     } finally {
       setLoadingId(null);
-      requestInFlight.current = false;
     }
   };
 
@@ -115,6 +138,11 @@ export function GroupsManager() {
 
       {/* Groups list */}
       <div className="border border-border divide-y divide-border">
+        {notice && (
+          <div className="px-4 py-3 font-mono text-xs text-success/80 border-b border-border bg-success/5">
+            {notice}
+          </div>
+        )}
         {error && (
           <div className="px-4 py-3 font-mono text-xs text-danger/80 border-b border-border bg-danger/5">
             {error}
@@ -143,7 +171,7 @@ export function GroupsManager() {
             </div>
             <Button
               onClick={() => handleSetMute(group.id, !group.isMuted)}
-              disabled={loadingId === group.id}
+              disabled={loadingId !== null}
               variant="outline"
               size="sm"
               className={cn(
