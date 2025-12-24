@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { URL } from "node:url";
 import { isPrivateHostname } from "./ssrf";
 import { request } from "undici";
-import { toASCII } from "punycode/";
+import { toASCII } from "punycode";
 import { parse } from "tldts";
 import { isKnownShortener } from "./url-shortener";
 
@@ -20,18 +20,39 @@ const TRACKING_PARAMS = new Set([
   "vero_id",
 ]);
 
+const URL_REGEX =
+  /((https?:\/\/|www\.)[^\s<>()]+[^\s`!()\[\]{};:'".,<>?«»“”‘’])/gi;
+const BARE_DOMAIN_REGEX =
+  /(?<!:\/\/)(?<!@)\b((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?:\/[^{\s<>()`!()\[\]{};:'".,<>?«»“”‘’}]*)?)/gi;
+
+const SUSPICIOUS_TLDS = new Set([
+  "zip",
+  "mov",
+  "tk",
+  "ml",
+  "cf",
+  "gq",
+  "work",
+  "click",
+  "country",
+  "kim",
+  "men",
+  "party",
+  "science",
+  "top",
+  "xyz",
+  "club",
+  "link",
+]);
+
 export function extractUrls(text: string): string[] {
   if (!text) return [];
-  const urlRegex =
-    /((https?:\/\/|www\.)[^\s<>()]+[^\s`!()\[\]{};:'".,<>?«»“”‘’])/gi;
-  const bareDomainRegex =
-    /(?<!:\/\/)(?<!@)\b((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?:\/[^{\s<>()`!()\[\]{};:'".,<>?«»“”‘’}]*)?)/gi;
 
   const matches = new Set<string>();
-  for (const m of text.match(urlRegex) || []) {
+  for (const m of text.match(URL_REGEX) || []) {
     matches.add(m);
   }
-  for (const m of text.match(bareDomainRegex) || []) {
+  for (const m of text.match(BARE_DOMAIN_REGEX) || []) {
     if (m.startsWith("www.")) continue;
     matches.add(m);
   }
@@ -111,37 +132,31 @@ export async function expandUrl(
 
 export function isSuspiciousTld(hostname: string): boolean {
   const t = parse(hostname);
-  const bad = new Set([
-    "zip",
-    "mov",
-    "tk",
-    "ml",
-    "cf",
-    "gq",
-    "work",
-    "click",
-    "country",
-    "kim",
-    "men",
-    "party",
-    "science",
-    "top",
-    "xyz",
-    "club",
-    "link",
-  ]);
-  return !!t.publicSuffix && bad.has(t.publicSuffix);
+  return !!t.publicSuffix && SUSPICIOUS_TLDS.has(t.publicSuffix);
 }
 
 export function isShortener(hostname: string): boolean {
   return isKnownShortener(hostname);
 }
 
+// Caching for parseForbiddenPatterns
+let cachedPatterns: string[] | null = null;
+let cachedEnvValue: string | undefined = undefined;
+
 function parseForbiddenPatterns(): string[] {
-  return (process.env.WA_FORBIDDEN_HOSTNAMES || "")
+  const envValue = process.env.WA_FORBIDDEN_HOSTNAMES;
+  // If we have a cache and the env var hasn't changed, return cached value
+  if (cachedPatterns !== null && cachedEnvValue === envValue) {
+    return cachedPatterns;
+  }
+
+  cachedEnvValue = envValue;
+  cachedPatterns = (envValue || "")
     .split(",")
     .map((entry) => entry.trim().toLowerCase())
     .filter((entry) => entry.length > 0);
+
+  return cachedPatterns;
 }
 
 export async function isForbiddenHostname(hostname: string): Promise<boolean> {
