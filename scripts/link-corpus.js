@@ -43,6 +43,18 @@ const TRICKY_PATHS = [
   "/download.exe",
   "/update",
 ];
+const TRICKY_QUERY_KEYS = [
+  "redirect",
+  "next",
+  "url",
+  "continue",
+  "return",
+  "dest",
+  "destination",
+  "target",
+];
+const TRICKY_PORTS = [8081, 8444, 3000];
+const TEST_NET_IPS = ["192.0.2.10", "198.51.100.25", "203.0.113.77"];
 
 const HOMOGLYPH_MAP = {
   a: "\u0430", // Cyrillic a
@@ -306,6 +318,11 @@ function generateTrickyUrls(domains, maliciousUrls, limit) {
     results.push(url);
   };
 
+  const pickMaliciousHost = () =>
+    maliciousHosts.length > 0
+      ? maliciousHosts[results.length % maliciousHosts.length]
+      : null;
+
   for (const domain of domains) {
     if (results.length >= limit) break;
 
@@ -321,11 +338,25 @@ function generateTrickyUrls(domains, maliciousUrls, limit) {
     const homoglyph = makeHomoglyphDomain(domain);
     if (homoglyph) add(`https://${homoglyph}${TRICKY_PATHS[3]}`);
 
-    const maliciousHost =
-      maliciousHosts[results.length % maliciousHosts.length];
+    const maliciousHost = pickMaliciousHost();
     if (maliciousHost) {
       add(`https://${domain}@${maliciousHost}${TRICKY_PATHS[4]}`);
+
+      const redirectKey =
+        TRICKY_QUERY_KEYS[results.length % TRICKY_QUERY_KEYS.length];
+      const redirectTarget = `https://${maliciousHost}${TRICKY_PATHS[0]}`;
+      add(
+        `https://${domain}${TRICKY_PATHS[1]}?${redirectKey}=${encodeURIComponent(
+          redirectTarget,
+        )}`,
+      );
     }
+
+    const port = TRICKY_PORTS[results.length % TRICKY_PORTS.length];
+    add(`https://${domain}:${port}${TRICKY_PATHS[2]}`);
+
+    const ip = TEST_NET_IPS[results.length % TEST_NET_IPS.length];
+    add(`http://${ip}/${domain}${TRICKY_PATHS[0]}`);
   }
 
   return results.slice(0, limit);

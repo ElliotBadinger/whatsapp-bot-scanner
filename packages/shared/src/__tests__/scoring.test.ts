@@ -91,6 +91,12 @@ test("userinfo in URL adds risk", () => {
   expect(result.reasons).toContain("URL contains embedded credentials");
 });
 
+test("open redirect parameter adds risk", () => {
+  const result = scoreFromSignals({ hasRedirectParam: true });
+  expect(result.score).toBeGreaterThanOrEqual(2);
+  expect(result.reasons).toContain("Open redirect parameter detected");
+});
+
 test("typosquat signals add risk", () => {
   const result = scoreFromSignals({
     typoSquatTarget: "google.com",

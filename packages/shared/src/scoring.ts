@@ -21,6 +21,7 @@ export interface Signals {
   hasExecutableExtension?: boolean;
   wasShortened?: boolean;
   hasUserInfo?: boolean;
+  hasRedirectParam?: boolean;
   typoSquatTarget?: string;
   typoSquatMethod?: string;
   manualOverride?: "allow" | "deny" | null;
@@ -173,7 +174,7 @@ function evaluateHeuristicSignals(
   reasons: string[],
 ): number {
   if (signals.isIpLiteral) {
-    score += 3;
+    score += 4;
     pushReason(reasons, "URL uses IP address");
   }
   if (signals.hasSuspiciousTld) {
@@ -185,7 +186,7 @@ function evaluateHeuristicSignals(
     pushReason(reasons, `Multiple redirects (${signals.redirectCount})`);
   }
   if (signals.hasUncommonPort) {
-    score += 2;
+    score += 4;
     pushReason(reasons, "Uncommon port");
   }
   if ((signals.urlLength ?? 0) > 200) {
@@ -203,6 +204,14 @@ function evaluateHeuristicSignals(
   if (signals.hasUserInfo) {
     score += 6;
     pushReason(reasons, "URL contains embedded credentials");
+  }
+  if (signals.hasRedirectParam) {
+    score += 4;
+    pushReason(reasons, "Open redirect parameter detected");
+  }
+  if (signals.isIpLiteral && signals.hasExecutableExtension) {
+    score += 3;
+    pushReason(reasons, "Executable hosted on IP address");
   }
   if (signals.suspiciousDomainListed) {
     score += 5;
@@ -303,6 +312,25 @@ export function extraHeuristics(u: URL): Partial<Signals> {
   const hasSuspiciousTld = isSuspiciousTld(u.hostname);
   const homoglyph = detectHomoglyphs(u.hostname);
   const hasUserInfo = Boolean(u.username || u.password);
+  const redirectParamKeys = new Set([
+    "redirect",
+    "redirect_uri",
+    "redirect_url",
+    "url",
+    "next",
+    "continue",
+    "return",
+    "dest",
+    "destination",
+    "target",
+  ]);
+  const hasRedirectParam = Array.from(u.searchParams.entries()).some(
+    ([key, value]) => {
+      if (!redirectParamKeys.has(key.toLowerCase())) return false;
+      const trimmed = value.trim().toLowerCase();
+      return trimmed.startsWith("http://") || trimmed.startsWith("https://");
+    },
+  );
   return {
     hasUncommonPort,
     isIpLiteral,
@@ -311,5 +339,6 @@ export function extraHeuristics(u: URL): Partial<Signals> {
     urlLength: u.toString().length,
     homoglyph,
     hasUserInfo,
+    hasRedirectParam,
   };
 }
