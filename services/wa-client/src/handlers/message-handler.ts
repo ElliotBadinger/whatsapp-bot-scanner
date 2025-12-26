@@ -382,6 +382,20 @@ export class SharedMessageHandler {
       };
     }
 
+    const mentionScannerCommand = this.parseMentionedScannerCommand(
+      body,
+      message,
+    );
+    if (mentionScannerCommand) {
+      return {
+        message,
+        urls,
+        isCommand: true,
+        command: mentionScannerCommand.command,
+        args: mentionScannerCommand.args,
+      };
+    }
+
     return {
       message,
       urls,
@@ -477,17 +491,8 @@ export class SharedMessageHandler {
     body: string,
     message: WAMessage,
   ): { command: string; args: string[] } | null {
-    const botId = this.adapter.botId;
-    if (!botId) return null;
-
-    const mentionedJids = message.mentionedIds ?? [];
-    if (mentionedJids.length === 0) return null;
-
-    const botUser = this.normalizeJidUser(botId);
-    const isMentioned = mentionedJids.some(
-      (jid) => this.normalizeJidUser(jid) === botUser,
-    );
-    if (!isMentioned) return null;
+    const botUser = this.getMentionedBotUser(message);
+    if (!botUser) return null;
 
     const mentionToken = `@${botUser}`;
     const trimmed = body.trim();
@@ -507,6 +512,39 @@ export class SharedMessageHandler {
     const args = argsStr ? argsStr.split(/\s+/) : [];
 
     return { command, args };
+  }
+
+  private parseMentionedScannerCommand(
+    body: string,
+    message: WAMessage,
+  ): { command: string; args: string[] } | null {
+    const botUser = this.getMentionedBotUser(message);
+    if (!botUser) return null;
+
+    const scannerMatch = body.match(/!scanner\s+(\w+)(?:\s+(.*))?/i);
+    if (!scannerMatch) return null;
+
+    const command = scannerMatch[1].toLowerCase();
+    const argsStr = scannerMatch[2]?.trim() ?? "";
+    const args = argsStr ? argsStr.split(/\s+/) : [];
+
+    return { command, args };
+  }
+
+  private getMentionedBotUser(message: WAMessage): string | null {
+    const botId = this.adapter.botId;
+    if (!botId) return null;
+
+    const mentionedJids = message.mentionedIds ?? [];
+    if (mentionedJids.length === 0) return null;
+
+    const botUser = this.normalizeJidUser(botId);
+    const isMentioned = mentionedJids.some(
+      (jid) => this.normalizeJidUser(jid) === botUser,
+    );
+    if (!isMentioned) return null;
+
+    return botUser;
   }
 
   private normalizeJidUser(jid: string): string {

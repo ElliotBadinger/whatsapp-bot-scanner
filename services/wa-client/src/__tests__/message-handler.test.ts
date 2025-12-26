@@ -94,4 +94,34 @@ describe("SharedMessageHandler", () => {
 
     expect(adapter.reply).not.toHaveBeenCalled();
   });
+
+  it("handles !scanner commands when the bot is mentioned in the same message", async () => {
+    const handler = new SharedMessageHandler({
+      adapter,
+      redis,
+      logger,
+      scanRequestQueue,
+    });
+    const message: WAMessage = {
+      id: "msg-3",
+      chatId: "chat-1",
+      senderId: "user-3",
+      body: "hello @12345 !scanner status",
+      isGroup: true,
+      timestamp: Date.now(),
+      fromMe: false,
+      mentionedIds: ["12345@c.us"],
+      raw: {},
+    };
+
+    await handler.createHandler()(message);
+
+    expect(adapter.reply).toHaveBeenCalledWith(
+      message,
+      expect.objectContaining({
+        type: "text",
+        text: expect.stringContaining("WBScanner Status"),
+      }),
+    );
+  });
 });
