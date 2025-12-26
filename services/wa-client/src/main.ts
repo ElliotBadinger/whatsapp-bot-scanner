@@ -40,7 +40,7 @@ import {
 import { createMessageHandler } from "./handlers/index.js";
 import { computeWaHealthStatus } from "./healthStatus.js";
 import type { DisconnectReason } from "./adapters/types.js";
-import type { ScanRequestQueue } from "./types/scanQueue.js";
+import type { ScanJobData, ScanRequestQueue } from "./types/scanQueue.js";
 
 // Global state
 const mvpMode = config.modes.mvp;
@@ -73,16 +73,6 @@ function formatVerdictMessage(
   if (verdict === "benign") advice = "Looks okay, stay vigilant.";
   const reasonsStr = reasons.slice(0, 3).join("; ");
   return `Link scan: ${level}\nURL: ${url}\n${advice}${reasonsStr ? `\nWhy: ${reasonsStr}` : ""}`;
-}
-
-interface ScanJobData {
-  url: string;
-  urlHash: string;
-  chatId: string;
-  messageId: string;
-  senderId?: string;
-  timestamp?: number;
-  isGroup?: boolean;
 }
 
 class InProcessScanQueue implements ScanRequestQueue {
@@ -453,6 +443,10 @@ async function main(): Promise<void> {
       "Pairing code received - enter in WhatsApp > Linked Devices",
     );
   });
+
+  if (!scanRequestQueue) {
+    throw new Error("Scan request queue not initialized");
+  }
 
   // Create and start message handler
   const messageHandler = createMessageHandler({
