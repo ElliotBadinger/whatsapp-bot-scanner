@@ -8,7 +8,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['**/*.test.mjs'],
-    exclude: ['**/node_modules/**', '**/.git/**'],
+    exclude: ['**/node_modules/**', '**/.git/**', '**/archive/**'],
   },
   resolve: {
     alias: {

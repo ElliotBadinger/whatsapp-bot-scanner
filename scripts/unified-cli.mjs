@@ -20,6 +20,11 @@ import { DockerOrchestrator } from "./cli/core/docker.mjs";
 import { UserInterface } from "./cli/ui/prompts.mjs";
 import { NotificationManager } from "./cli/ui/notifications.mjs";
 import { ProgressManager } from "./cli/ui/progress.mjs";
+import {
+  BuildByteTracker,
+  createByteProgressBar,
+  formatBytes,
+} from "./cli/core/build-progress.mjs";
 import enquirer from "enquirer";
 import net from "net";
 
@@ -38,6 +43,25 @@ const resolveComposeArgsFromEnv = async () => [
 ];
 
 const resolveComposeFileFromEnv = async () => MVP_COMPOSE_FILE;
+
+const createLineBuffer = (onLine) => {
+  let buffer = "";
+  const writer = (chunk) => {
+    buffer += chunk.toString();
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() || "";
+    for (const line of lines) {
+      onLine(line);
+    }
+  };
+  writer.flush = () => {
+    if (buffer.trim().length > 0) {
+      onLine(buffer);
+    }
+    buffer = "";
+  };
+  return writer;
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Color Palette (Cohesive Design System)
@@ -1005,6 +1029,93 @@ ${C.primary("  ╚════════════════════�
     return allResolved;
   }
 
+  async buildImagesWithByteProgress(composeArgs) {
+    const showBar = process.stdout.isTTY && !this.nonInteractive;
+    const tracker = new BuildByteTracker();
+    const env = {
+      ...process.env,
+      DOCKER_BUILDKIT: "1",
+      BUILDKIT_PROGRESS: "rawjson",
+    };
+    const barLabel = "Downloading layers";
+    const barFormat = `${C.primary(barLabel)} |{bar}| {percentage}% | {transferred}/{total}`;
+    let bar = null;
+    let barTotal = 0;
+    let lastUpdate = 0;
+    const updateBar = (totals) => {
+      const now = Date.now();
+      if (now - lastUpdate < 80) return;
+      lastUpdate = now;
+      const totalBytes = Math.max(0, totals.totalBytes);
+      const currentBytes = Math.max(0, totals.currentBytes);
+      if (totalBytes <= 0) return;
+      if (!bar) {
+        bar = createByteProgressBar(barFormat);
+        bar.start(totalBytes, currentBytes, {
+          transferred: formatBytes(currentBytes),
+          total: formatBytes(totalBytes),
+        });
+        barTotal = totalBytes;
+      } else {
+        if (totalBytes !== barTotal) {
+          bar.setTotal(totalBytes);
+          barTotal = totalBytes;
+        }
+        bar.update(currentBytes, {
+          transferred: formatBytes(currentBytes),
+          total: formatBytes(totalBytes),
+        });
+      }
+    };
+
+    const buildSpinner = showBar
+      ? null
+      : ora({
+          text: C.text("Building Docker image..."),
+          color: "cyan",
+          spinner: "dots12",
+        }).start();
+
+    const onLine = (line) => {
+      const totals = tracker.updateFromLine(line);
+      if (totals && showBar) {
+        updateBar(totals);
+      }
+    };
+    const onChunk = createLineBuffer(onLine);
+
+    try {
+      const child = execa("docker", [...composeArgs, "build"], {
+        cwd: ROOT_DIR,
+        env,
+      });
+      child.stdout?.on("data", onChunk);
+      child.stderr?.on("data", onChunk);
+      await child;
+      onChunk.flush();
+      if (bar) {
+        bar.update(barTotal, {
+          transferred: formatBytes(barTotal),
+          total: formatBytes(barTotal),
+        });
+        bar.stop();
+        bar = null;
+      }
+      if (buildSpinner) {
+        buildSpinner.succeed(C.text("Image build complete"));
+      }
+    } catch (error) {
+      onChunk.flush();
+      if (bar) {
+        bar.stop();
+      }
+      if (buildSpinner) {
+        buildSpinner.fail(C.error("Image build failed"));
+      }
+      throw error;
+    }
+  }
+
   async step4StartServices() {
     this.displayStepHeader(4, "Starting Services", ICON.docker);
 
@@ -1051,6 +1162,8 @@ ${C.primary("  ╚════════════════════�
       portSpinner.succeed(C.text("All ports available"));
     }
 
+    await this.buildImagesWithByteProgress(composeArgs);
+
     console.log(
       `\n  ${C.muted(isMvp ? "This may take a minute on first run..." : "This may take 2-5 minutes on first run...")}\n`,
     );
@@ -1064,7 +1177,7 @@ ${C.primary("  ╚════════════════════�
     try {
       // Ensure images are rebuilt so freshly pulled source changes are reflected
       // (Codespaces frequently has stale images even after `git pull`).
-      await execa("docker", [...composeArgs, "up", "-d", "--build"], {
+      await execa("docker", [...composeArgs, "up", "-d"], {
         cwd: ROOT_DIR,
       });
       spinner.succeed(C.text("Containers started"));

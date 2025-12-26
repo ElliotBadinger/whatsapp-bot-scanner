@@ -1,21 +1,18 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import os from "node:os";
-import fs from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { execa } from "execa";
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import os from 'node:os';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { execa } from 'execa';
 
-const ROOT_DIR = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../..",
-);
-const ENV_PATH = path.join(ROOT_DIR, ".env");
-const ENV_BACKUP_PATH = path.join(ROOT_DIR, ".env.e2e-backup");
+const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const ENV_PATH = path.join(ROOT_DIR, '.env');
+const ENV_BACKUP_PATH = path.join(ROOT_DIR, '.env.e2e-backup');
 
-const stripAnsi = (value) => value.replace(/\u001b\[[0-9;]*m/g, "");
+const stripAnsi = (value) => value.replace(/\u001b\[[0-9;]*m/g, '');
 
 async function createFakeDocker(binDir, logFile) {
-  const dockerPath = path.join(binDir, "docker");
+  const dockerPath = path.join(binDir, 'docker');
   const script = `#!/usr/bin/env bash
 set -euo pipefail
 LOG_FILE="${logFile}"
@@ -74,14 +71,14 @@ exit 0
   return dockerPath;
 }
 
-describe.sequential("MVP setup onboarding (end-to-end)", () => {
+describe.sequential('MVP setup onboarding (end-to-end)', () => {
   let tempDir;
   let dockerLog;
   let originalEnvExists = false;
 
   beforeEach(async () => {
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "wbscanner-mvp-e2e-"));
-    dockerLog = path.join(tempDir, "docker.log");
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'wbscanner-mvp-e2e-'));
+    dockerLog = path.join(tempDir, 'docker.log');
     await createFakeDocker(tempDir, dockerLog);
 
     try {
@@ -113,58 +110,49 @@ describe.sequential("MVP setup onboarding (end-to-end)", () => {
     }
   });
 
-  it("completes MVP setup without Docker and writes MVP env", async () => {
+  it('completes MVP setup without Docker and writes MVP env', async () => {
     const env = {
       ...process.env,
       PATH: `${tempDir}:${process.env.PATH}`,
-      FORCE_COLOR: "0",
+      FORCE_COLOR: '0',
     };
 
     const result = await execa(
-      "node",
-      [
-        "scripts/unified-cli.mjs",
-        "setup",
-        "--mvp-mode",
-        "--noninteractive",
-        "--skip-pairing",
-      ],
-      { cwd: ROOT_DIR, env },
+      'node',
+      ['scripts/unified-cli.mjs', 'setup', '--mvp-mode', '--noninteractive', '--skip-pairing'],
+      { cwd: ROOT_DIR, env }
     );
 
     const output = stripAnsi(`${result.stdout}\n${result.stderr}`);
-    expect(output).toContain("MVP defaults applied");
-    expect(output).toContain("Configuration set to mvp mode");
-    expect(output).toContain("This may take a minute on first run...");
+    expect(output).toContain('MVP defaults applied');
+    expect(output).toContain('Configuration set to mvp mode');
+    expect(output).toContain('This may take a minute on first run...');
 
-    const envContent = await fs.readFile(ENV_PATH, "utf-8");
-    expect(envContent).toContain("MVP_MODE=1");
-    expect(envContent).toContain("WA_REMOTE_AUTH_STORE=memory");
+    const envContent = await fs.readFile(ENV_PATH, 'utf-8');
+    expect(envContent).toContain('MVP_MODE=1');
+    expect(envContent).toContain('WA_REMOTE_AUTH_STORE=memory');
 
-    const logContent = await fs.readFile(dockerLog, "utf-8");
-    expect(logContent).toContain(
-      "compose -f docker-compose.mvp.yml up -d --build",
-    );
-    expect(logContent).toContain(
-      "compose -f docker-compose.mvp.yml exec -T wa-client",
-    );
+    const logContent = await fs.readFile(dockerLog, 'utf-8');
+    expect(logContent).toContain('compose -f docker-compose.mvp.yml build');
+    expect(logContent).toContain('compose -f docker-compose.mvp.yml up -d');
+    expect(logContent).toContain('compose -f docker-compose.mvp.yml exec -T wa-client');
   });
 
-  it("defaults to setup when no command is provided", async () => {
+  it('defaults to setup when no command is provided', async () => {
     const env = {
       ...process.env,
       PATH: `${tempDir}:${process.env.PATH}`,
-      FORCE_COLOR: "0",
+      FORCE_COLOR: '0',
     };
 
     const result = await execa(
-      "node",
-      ["scripts/unified-cli.mjs", "--noninteractive", "--skip-pairing"],
-      { cwd: ROOT_DIR, env },
+      'node',
+      ['scripts/unified-cli.mjs', '--noninteractive', '--skip-pairing'],
+      { cwd: ROOT_DIR, env }
     );
 
     const output = stripAnsi(`${result.stdout}\n${result.stderr}`);
-    expect(output).toContain("Setup Overview:");
-    expect(output).toContain("Configuration set to mvp mode");
+    expect(output).toContain('Setup Overview:');
+    expect(output).toContain('Configuration set to mvp mode');
   });
 });
