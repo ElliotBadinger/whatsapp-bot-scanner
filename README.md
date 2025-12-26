@@ -57,6 +57,5 @@ This path requires additional API keys and services (Redis/Postgres/etc). See `d
 ## Docs (short list)
 
 - `SETUP_GUIDE.md` — MVP-first setup and troubleshooting
-- `docs/CLI_USER_GUIDE.md` — CLI usage (includes MVP mode)
 - `docs/SECURITY_SETUP.md` — optional API keys and secrets
 - `docs/MVP_PLAN.md` — scope notes for the MVP
