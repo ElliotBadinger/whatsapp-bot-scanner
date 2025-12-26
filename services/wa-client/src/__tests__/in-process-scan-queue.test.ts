@@ -111,7 +111,7 @@ describe("InProcessScanQueue", () => {
 
   it("expires failure reply suppression after 30 minutes", async () => {
     let now = 0;
-    jest.spyOn(Date, "now").mockImplementation(() => now);
+    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
 
     const adapter = {
       sendMessage: jest.fn().mockResolvedValue({ success: true }),
@@ -167,6 +167,7 @@ describe("InProcessScanQueue", () => {
     expect(adapter.sendMessage).toHaveBeenCalledTimes(2);
 
     await queue.close();
+    nowSpy.mockRestore();
   });
 
   it("prunes expired seenUrls entries", async () => {
