@@ -40,7 +40,8 @@ import {
 import { createMessageHandler } from "./handlers/index.js";
 import { computeWaHealthStatus } from "./healthStatus.js";
 import type { DisconnectReason } from "./adapters/types.js";
-import type { ScanJobData, ScanRequestQueue } from "./types/scanQueue.js";
+import { InProcessScanQueue } from "./queues/in-process-scan-queue.js";
+import type { ScanRequestQueue } from "./types/scanQueue.js";
 
 // Global state
 const mvpMode = config.modes.mvp;
@@ -73,144 +74,6 @@ function formatVerdictMessage(
   if (verdict === "benign") advice = "Looks okay, stay vigilant.";
   const reasonsStr = reasons.slice(0, 3).join("; ");
   return `Link scan: ${level}\nURL: ${url}\n${advice}${reasonsStr ? `\nWhy: ${reasonsStr}` : ""}`;
-}
-
-class InProcessScanQueue implements ScanRequestQueue {
-  private readonly queue: { id: string; data: ScanJobData }[] = [];
-  private active = 0;
-  private closed = false;
-  private readonly ttlMs = config.wa.messageLineageTtlSeconds * 1000;
-  private readonly seenUrls = new Map<string, number>();
-  private readonly rateLimits = new Map<
-    string,
-    { windowStart: number; count: number }
-  >();
-
-  constructor(
-    private readonly opts: {
-      adapter: WhatsAppAdapter;
-      concurrency: number;
-      rateLimit: number;
-      rateWindowMs: number;
-      logger: typeof logger;
-    },
-  ) {}
-
-  async add(
-    _name: string,
-    data: ScanJobData,
-  ): Promise<{ id: string; data: ScanJobData }> {
-    if (this.closed) {
-      throw new Error("Queue closed");
-    }
-
-    if (this.isDuplicate(data)) {
-      this.opts.logger.debug(
-        { url: data.url, chatId: data.chatId },
-        "Skipping duplicate scan request",
-      );
-      return { id: `local:${Date.now()}`, data };
-    }
-
-    if (this.isRateLimited(data)) {
-      this.opts.logger.warn(
-        { chatId: data.chatId },
-        "Rate limit reached for chat; dropping scan request",
-      );
-      return { id: `local:${Date.now()}`, data };
-    }
-
-    const id = `local:${Date.now()}`;
-    this.queue.push({ id, data });
-    this.drain();
-    return { id, data };
-  }
-
-  async close(): Promise<void> {
-    this.closed = true;
-    this.queue.length = 0;
-  }
-
-  private isDuplicate(data: ScanJobData): boolean {
-    const key = `${data.chatId}:${data.urlHash}`;
-    const now = Date.now();
-    const expiry = this.seenUrls.get(key) ?? 0;
-    if (expiry > now) return true;
-    this.seenUrls.set(key, now + this.ttlMs);
-    return false;
-  }
-
-  private isRateLimited(data: ScanJobData): boolean {
-    if (!data.isGroup) return false;
-    const now = Date.now();
-    const entry = this.rateLimits.get(data.chatId) ?? {
-      windowStart: now,
-      count: 0,
-    };
-    if (now - entry.windowStart > this.opts.rateWindowMs) {
-      this.rateLimits.set(data.chatId, { windowStart: now, count: 1 });
-      return false;
-    }
-    if (entry.count >= this.opts.rateLimit) {
-      this.rateLimits.set(data.chatId, entry);
-      return true;
-    }
-    this.rateLimits.set(data.chatId, { ...entry, count: entry.count + 1 });
-    return false;
-  }
-
-  private drain(): void {
-    while (!this.closed && this.active < this.opts.concurrency) {
-      const job = this.queue.shift();
-      if (!job) return;
-      this.active += 1;
-      void this.process(job);
-    }
-  }
-
-  private async process(job: { id: string; data: ScanJobData }): Promise<void> {
-    try {
-      await this.handle(job.data);
-    } catch (err) {
-      metrics.waVerdictFailures.inc();
-      this.opts.logger.error(
-        { err, chatId: job.data.chatId, url: job.data.url, jobId: job.id },
-        "MVP scan job failed",
-      );
-    } finally {
-      this.active -= 1;
-      this.drain();
-    }
-  }
-
-  private async handle(data: ScanJobData): Promise<void> {
-    const started = Date.now();
-    const result = await scanUrl(data.url, { followRedirects: false });
-    const text = formatVerdictMessage(
-      result.verdict.level,
-      result.verdict.reasons,
-      result.finalUrl,
-    );
-
-    const sendResult = await this.opts.adapter.sendMessage(
-      data.chatId,
-      { type: "text", text },
-      { quotedMessageId: data.messageId },
-    );
-
-    if (!sendResult.success) {
-      throw new Error("Failed to send verdict message");
-    }
-
-    metrics.waVerdictsSent.inc();
-    metrics.waVerdictLatency.observe(
-      Math.max(0, (Date.now() - started) / 1000),
-    );
-    this.opts.logger.info(
-      { chatId: data.chatId, url: data.url, verdict: result.verdict.level },
-      "MVP verdict dispatched",
-    );
-  }
 }
 
 /**
@@ -289,6 +152,8 @@ async function main(): Promise<void> {
       rateLimit,
       rateWindowMs,
       logger,
+      scanUrl,
+      formatVerdictMessage,
     });
   } else {
     // Create scan request queue
