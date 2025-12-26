@@ -20,18 +20,19 @@ const TRACKING_PARAMS = new Set([
   "vero_id",
 ]);
 
+const EXTRACT_URL_REGEX =
+  /((https?:\/\/|www\.)[^\s<>()]+[^\s`!()\[\]{};:'".,<>?«»“”‘’])/gi;
+const EXTRACT_BARE_DOMAIN_REGEX =
+  /(?<!:\/\/)(?<!@)\b((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?:\/[^{\s<>()`!()\[\]{};:'".,<>?«»“”‘’}]*)?)/gi;
+
 export function extractUrls(text: string): string[] {
   if (!text) return [];
-  const urlRegex =
-    /((https?:\/\/|www\.)[^\s<>()]+[^\s`!()\[\]{};:'".,<>?«»“”‘’])/gi;
-  const bareDomainRegex =
-    /(?<!:\/\/)(?<!@)\b((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?:\/[^{\s<>()`!()\[\]{};:'".,<>?«»“”‘’}]*)?)/gi;
 
   const matches = new Set<string>();
-  for (const m of text.match(urlRegex) || []) {
+  for (const m of text.match(EXTRACT_URL_REGEX) || []) {
     matches.add(m);
   }
-  for (const m of text.match(bareDomainRegex) || []) {
+  for (const m of text.match(EXTRACT_BARE_DOMAIN_REGEX) || []) {
     if (m.startsWith("www.")) continue;
     matches.add(m);
   }
@@ -109,33 +110,34 @@ export async function expandUrl(
   return { finalUrl: nu, chain };
 }
 
+const SUSPICIOUS_TLDS = new Set([
+  "zip",
+  "mov",
+  "tk",
+  "ml",
+  "cf",
+  "gq",
+  "work",
+  "click",
+  "country",
+  "kim",
+  "men",
+  "party",
+  "science",
+  "top",
+  "xyz",
+  "club",
+  "link",
+]);
+
 export function isSuspiciousTld(hostname: string): boolean {
   const t = parse(hostname);
-  const bad = new Set([
-    "zip",
-    "mov",
-    "tk",
-    "ml",
-    "cf",
-    "gq",
-    "work",
-    "click",
-    "country",
-    "kim",
-    "men",
-    "party",
-    "science",
-    "top",
-    "xyz",
-    "club",
-    "link",
-  ]);
   if (!t.publicSuffix) {
     return false;
   }
 
   const lastLabel = t.publicSuffix.split(".").at(-1);
-  return !!lastLabel && bad.has(lastLabel);
+  return !!lastLabel && SUSPICIOUS_TLDS.has(lastLabel);
 }
 
 export function isShortener(hostname: string): boolean {
