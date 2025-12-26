@@ -853,7 +853,6 @@ ${C.primary("  ╚════════════════════�
   async checkExistingContainers() {
     try {
       const composeArgs = await this.getComposeArgs();
-      const composeCmd = await this.getComposeCommand();
       const { stdout } = await execa(
         "docker",
         [...composeArgs, "ps", "--format", "{{.Name}} {{.State}}"],
@@ -866,6 +865,52 @@ ${C.primary("  ╚════════════════════�
       return running.length > 0;
     } catch {
       return false;
+    }
+  }
+
+  async getContainerStatus() {
+    const composeArgs = await this.getComposeArgs();
+    try {
+      const { stdout } = await execa(
+        "docker",
+        [...composeArgs, "ps", "--format", "json"],
+        { cwd: ROOT_DIR },
+      );
+      if (!stdout.trim()) return [];
+      const parsed = JSON.parse(stdout.trim());
+      const entries = Array.isArray(parsed) ? parsed : [parsed];
+      return entries.map((entry) => ({
+        service: entry.Service || entry.Name || "unknown",
+        state: String(entry.State || "").toLowerCase(),
+        health: String(entry.Health || "").toLowerCase(),
+      }));
+    } catch {
+      try {
+        const { stdout } = await execa(
+          "docker",
+          [
+            ...composeArgs,
+            "ps",
+            "--format",
+            "{{.Service}}|{{.State}}|{{.Health}}",
+          ],
+          { cwd: ROOT_DIR },
+        );
+        if (!stdout.trim()) return [];
+        return stdout
+          .trim()
+          .split("\n")
+          .map((line) => {
+            const [service, state, health] = line.split("|");
+            return {
+              service: service || "unknown",
+              state: String(state || "").toLowerCase(),
+              health: String(health || "").toLowerCase(),
+            };
+          });
+      } catch {
+        return [];
+      }
     }
   }
 
@@ -1144,7 +1189,7 @@ ${C.primary("  ╚════════════════════�
     const isMvp = await this.isMvpMode();
     const composeArgs = await this.getComposeArgs();
 
-    // First, check if existing containers are running and stop them
+    // First, check if existing containers are running and decide whether to restart
     const existingSpinner = ora({
       text: C.text("Checking for existing containers..."),
       color: "cyan",
@@ -1152,7 +1197,20 @@ ${C.primary("  ╚════════════════════�
     }).start();
 
     const hasExisting = await this.checkExistingContainers();
-    if (hasExisting) {
+    const existingStatus = hasExisting ? await this.getContainerStatus() : [];
+    const hasIssues = existingStatus.some((entry) => {
+      const state = entry.state || "";
+      const health = entry.health || "";
+      return (state && state !== "running") || health === "unhealthy";
+    });
+    let reusedRunning = false;
+
+    if (hasExisting && !hasIssues) {
+      existingSpinner.succeed(
+        C.text("Existing containers healthy; reusing without restart"),
+      );
+      reusedRunning = true;
+    } else if (hasExisting) {
       existingSpinner.text = C.text("Stopping existing containers...");
       await this.stopExistingContainers();
       existingSpinner.succeed(C.text("Stopped existing containers"));
@@ -1162,53 +1220,55 @@ ${C.primary("  ╚════════════════════�
       existingSpinner.succeed(C.text("No existing containers running"));
     }
 
-    // Check for port conflicts
-    const portSpinner = ora({
-      text: C.text("Checking for port conflicts..."),
-      color: "cyan",
-      spinner: "dots12",
-    }).start();
+    if (!reusedRunning) {
+      // Check for port conflicts
+      const portSpinner = ora({
+        text: C.text("Checking for port conflicts..."),
+        color: "cyan",
+        spinner: "dots12",
+      }).start();
 
-    const conflicts = await this.checkRequiredPorts();
+      const conflicts = await this.checkRequiredPorts();
 
-    if (conflicts.length > 0) {
-      portSpinner.warn(C.warning(`Found ${conflicts.length} port conflict(s)`));
-      const resolved = await this.resolvePortConflicts(conflicts);
-      if (!resolved) {
-        throw new Error(
-          "Cannot start services due to unresolved port conflicts. " +
-            "Stop conflicting processes or modify port settings.",
-        );
+      if (conflicts.length > 0) {
+        portSpinner.warn(C.warning(`Found ${conflicts.length} port conflict(s)`));
+        const resolved = await this.resolvePortConflicts(conflicts);
+        if (!resolved) {
+          throw new Error(
+            "Cannot start services due to unresolved port conflicts. " +
+              "Stop conflicting processes or modify port settings.",
+          );
+        }
+      } else {
+        portSpinner.succeed(C.text("All ports available"));
       }
-    } else {
-      portSpinner.succeed(C.text("All ports available"));
-    }
 
-    await this.buildImagesWithByteProgress(composeArgs);
+      await this.buildImagesWithByteProgress(composeArgs);
 
-    console.log(
-      `\n  ${C.muted(isMvp ? "This may take a minute on first run..." : "This may take 2-5 minutes on first run...")}\n`,
-    );
-
-    const spinner = ora({
-      text: C.text("Starting Docker containers..."),
-      color: "cyan",
-      spinner: "dots12",
-    }).start();
-
-    try {
-      // Ensure images are rebuilt so freshly pulled source changes are reflected
-      // (Codespaces frequently has stale images even after `git pull`).
-      await execa("docker", [...composeArgs, "up", "-d"], {
-        cwd: ROOT_DIR,
-      });
-      spinner.succeed(C.text("Containers started"));
-    } catch (error) {
-      spinner.fail(C.error("Failed to start containers"));
       console.log(
-        `\n  ${ICON.info}  ${C.text("Try running:")} ${C.code(`docker ${composeArgs.join(" ")} logs`)}`,
+        `\n  ${C.muted(isMvp ? "This may take a minute on first run..." : "This may take 2-5 minutes on first run...")}\n`,
       );
-      throw error;
+
+      const spinner = ora({
+        text: C.text("Starting Docker containers..."),
+        color: "cyan",
+        spinner: "dots12",
+      }).start();
+
+      try {
+        // Ensure images are rebuilt so freshly pulled source changes are reflected
+        // (Codespaces frequently has stale images even after `git pull`).
+        await execa("docker", [...composeArgs, "up", "-d"], {
+          cwd: ROOT_DIR,
+        });
+        spinner.succeed(C.text("Containers started"));
+      } catch (error) {
+        spinner.fail(C.error("Failed to start containers"));
+        console.log(
+          `\n  ${ICON.info}  ${C.text("Try running:")} ${C.code(`docker ${composeArgs.join(" ")} logs`)}`,
+        );
+        throw error;
+      }
     }
 
     // Wait for core services (Redis) to be healthy, but not wa-client
