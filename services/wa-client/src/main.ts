@@ -139,7 +139,10 @@ async function main(): Promise<void> {
   adapter = await createAdapterFromEnv(redis, logger);
 
   if (mvpMode) {
-    const parsePositiveIntEnv = (name: string, defaultValue: number): number => {
+    const parsePositiveIntEnv = (
+      name: string,
+      defaultValue: number,
+    ): number => {
       const raw = process.env[name];
       if (raw == null) {
         return defaultValue;
@@ -159,7 +162,10 @@ async function main(): Promise<void> {
 
     const concurrency = parsePositiveIntEnv("MVP_SCAN_CONCURRENCY", 4);
     const rateLimit = parsePositiveIntEnv("MVP_GROUP_RATE_LIMIT", 10);
-    const rateWindowMs = parsePositiveIntEnv("MVP_GROUP_RATE_WINDOW_MS", 60_000);
+    const rateWindowMs = parsePositiveIntEnv(
+      "MVP_GROUP_RATE_WINDOW_MS",
+      60_000,
+    );
 
     const followRedirects =
       (process.env.MVP_SCAN_FOLLOW_REDIRECTS ?? "0") === "1";
