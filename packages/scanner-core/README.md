@@ -13,3 +13,7 @@ By default, all scans rely only on local heuristics from `@wbscanner/shared`
   — convenience helper that extracts, de-duplicates, and scans links in a message body.
 
 Enable external enrichers explicitly with `options.enableExternalEnrichers = true`.
+External enrichment is best-effort and depends on the shared provider config and
+API keys (e.g. `VT_API_KEY`, `GSB_API_KEY`).
+When external providers are unavailable or disabled, scans fall back to
+heuristics-only and set `signals.heuristicsOnly = true`.

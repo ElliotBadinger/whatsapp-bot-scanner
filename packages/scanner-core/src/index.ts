@@ -1,4 +1,10 @@
 import {
+  config,
+  domainAgeDaysFromRdap,
+  getGsbProvider,
+  getPhishtankProvider,
+  getUrlhausProvider,
+  getVirusTotalProvider,
   normalizeUrl,
   extractUrls as sharedExtractUrls,
   expandUrl,
@@ -43,6 +49,121 @@ function buildHeuristicSignals(
   };
 }
 
+function extractGsbThreatTypes(matches: unknown[]): string[] {
+  return matches
+    .map((match) => {
+      const threatType = (match as { threatType?: unknown })?.threatType;
+      return typeof threatType === "string" ? threatType : undefined;
+    })
+    .filter((threatType): threatType is string => !!threatType);
+}
+
+async function buildExternalSignals(
+  finalUrl: string,
+  parsed: URL,
+  enableExternalEnrichers: boolean,
+): Promise<{ signals: Partial<Signals>; usedExternalSignals: boolean }> {
+  const signals: Partial<Signals> = {};
+
+  if (!enableExternalEnrichers) {
+    return { signals, usedExternalSignals: false };
+  }
+
+  const [gsbProvider, vtProvider, urlhausProvider, phishtankProvider] =
+    await Promise.all([
+      getGsbProvider(),
+      getVirusTotalProvider(),
+      getUrlhausProvider(),
+      getPhishtankProvider(),
+    ]);
+
+  const externalTasks: Promise<void>[] = [];
+
+  if (gsbProvider) {
+    externalTasks.push(
+      gsbProvider
+        .gsbLookup([finalUrl])
+        .then((res) => {
+          const threatTypes = extractGsbThreatTypes(res.matches ?? []);
+          if (threatTypes.length > 0) {
+            signals.gsbThreatTypes = threatTypes;
+          }
+        })
+        .catch(() => {
+          // ignore provider failures; upstream can decide how to treat partial results
+        }),
+    );
+  }
+
+  if (vtProvider) {
+    externalTasks.push(
+      vtProvider
+        .vtAnalyzeUrl(finalUrl)
+        .then((analysis) => {
+          const stats = vtProvider.vtVerdictStats(analysis);
+          if (!stats) {
+            return;
+          }
+          signals.vtMalicious = stats.malicious;
+          signals.vtSuspicious = stats.suspicious;
+          signals.vtHarmless = stats.harmless;
+        })
+        .catch(() => {
+          // ignore provider failures; upstream can decide how to treat partial results
+        }),
+    );
+  }
+
+  if (urlhausProvider) {
+    externalTasks.push(
+      urlhausProvider
+        .urlhausLookup(finalUrl)
+        .then((res) => {
+          if (res.listed) {
+            signals.urlhausListed = true;
+          }
+        })
+        .catch(() => {
+          // ignore provider failures; upstream can decide how to treat partial results
+        }),
+    );
+  }
+
+  if (phishtankProvider) {
+    externalTasks.push(
+      phishtankProvider
+        .phishtankLookup(finalUrl)
+        .then((res) => {
+          if (res.verified) {
+            signals.phishtankVerified = true;
+          }
+        })
+        .catch(() => {
+          // ignore provider failures; upstream can decide how to treat partial results
+        }),
+    );
+  }
+
+  if (config.rdap.enabled) {
+    externalTasks.push(
+      domainAgeDaysFromRdap(parsed.hostname, config.rdap.timeoutMs)
+        .then((ageDays) => {
+          if (ageDays !== undefined) {
+            signals.domainAgeDays = ageDays;
+          }
+        })
+        .catch(() => {
+          // ignore provider failures; upstream can decide how to treat partial results
+        }),
+    );
+  }
+
+  await Promise.all(externalTasks);
+
+  const usedExternalSignals = Object.keys(signals).length > 0;
+  return { signals, usedExternalSignals };
+}
+
 export async function scanUrl(
   rawUrl: string,
   options: ScanOptions = {},
@@ -53,7 +174,7 @@ export async function scanUrl(
   }
 
   const followRedirects = options.followRedirects ?? false;
-  const heuristicsOnly = !(options.enableExternalEnrichers ?? false);
+  const enableExternalEnrichers = options.enableExternalEnrichers ?? false;
   let finalUrl = normalized;
   let redirectChain: string[] = [];
 
@@ -67,12 +188,21 @@ export async function scanUrl(
     redirectChain = expanded.chain;
   }
 
-  const signals = buildHeuristicSignals(
+  const parsedFinal = new URL(finalUrl);
+
+  const external = await buildExternalSignals(
     finalUrl,
-    redirectChain.length,
-    heuristicsOnly,
+    parsedFinal,
+    enableExternalEnrichers,
   );
-  const verdict = scoreFromSignals(signals as Signals);
+
+  const heuristicsOnly = !enableExternalEnrichers || !external.usedExternalSignals;
+
+  const signals: Signals = {
+    ...buildHeuristicSignals(finalUrl, redirectChain.length, heuristicsOnly),
+    ...external.signals,
+  };
+  const verdict = scoreFromSignals(signals);
 
   return {
     inputUrl: rawUrl,
