@@ -196,7 +196,8 @@ export async function scanUrl(
     enableExternalEnrichers,
   );
 
-  const heuristicsOnly = !enableExternalEnrichers || !external.usedExternalSignals;
+  const heuristicsOnly =
+    !enableExternalEnrichers || !external.usedExternalSignals;
 
   const signals: Signals = {
     ...buildHeuristicSignals(finalUrl, redirectChain.length, heuristicsOnly),
