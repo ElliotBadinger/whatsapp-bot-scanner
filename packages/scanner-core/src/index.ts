@@ -88,6 +88,40 @@ export interface ScanTextMessageInput {
   text: string;
 }
 
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) {
+    return [];
+  }
+
+  if (concurrency <= 0) {
+    throw new Error("concurrency must be at least 1");
+  }
+
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+
+  const workerCount = Math.min(concurrency, items.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (true) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= items.length) {
+        return;
+      }
+
+      results[index] = await mapper(items[index], index);
+    }
+  });
+
+  await Promise.all(workers);
+
+  return results;
+}
+
 export async function scanTextMessage(
   payload: ScanTextMessageInput,
   options?: ScanOptions,
@@ -97,11 +131,10 @@ export async function scanTextMessage(
     .map((url) => normalizeUrl(url))
     .filter((url): url is string => !!url);
   const deduped = Array.from(new Set(normalized));
-  const results: ScanResult[] = [];
 
-  for (const url of deduped) {
-    results.push(await scanUrl(url, options));
-  }
-
-  return results;
+  return await mapWithConcurrency(
+    deduped,
+    Math.min(deduped.length, 4),
+    async (url) => await scanUrl(url, options),
+  );
 }
