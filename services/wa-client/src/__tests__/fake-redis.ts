@@ -126,10 +126,25 @@ export default class FakeRedis {
     throw new Error("ERR no such key");
   }
 
-  async hset(key: string, field: string, value: string) {
+  async hset(
+    key: string,
+    fieldOrData: string | Record<string, string>,
+    value?: string,
+  ) {
     const map = this.hashes.get(key) ?? new Map<string, string>();
-    map.set(field, value);
-    this.hashes.set(key, map);
+
+    if (typeof fieldOrData === "object") {
+      for (const [field, val] of Object.entries(fieldOrData)) {
+        map.set(field, val);
+      }
+      this.hashes.set(key, map);
+      return;
+    }
+
+    if (typeof value === "string") {
+      map.set(fieldOrData, value);
+      this.hashes.set(key, map);
+    }
   }
 
   async hget(key: string, field: string) {

@@ -32,7 +32,10 @@ describe('safeGetGroupChatById', () => {
     expect(result).toBeNull();
     expect(client.getChatById).not.toHaveBeenCalled();
     expect(logger.debug).toHaveBeenCalledWith(
-      { chatId: '123@c.us', session: expect.stringContaining('state=disconnected') },
+      {
+        chatIdHash: 'hash:123@c.us',
+        session: expect.stringContaining('state=disconnected'),
+      },
       'Skipping chat lookup because session is not ready',
     );
   });

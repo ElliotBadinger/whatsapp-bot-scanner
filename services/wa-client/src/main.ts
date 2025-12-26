@@ -86,11 +86,7 @@ interface ScanJobData {
 }
 
 class InProcessScanQueue implements ScanRequestQueue {
-  private readonly queue: {
-    data: ScanJobData;
-    resolve: () => void;
-    reject: (err: unknown) => void;
-  }[] = [];
+  private readonly queue: { id: string; data: ScanJobData }[] = [];
   private active = 0;
   private closed = false;
   private readonly ttlMs = config.wa.messageLineageTtlSeconds * 1000;
@@ -134,14 +130,10 @@ class InProcessScanQueue implements ScanRequestQueue {
       return { id: `local:${Date.now()}`, data };
     }
 
-    return await new Promise((resolve, reject) => {
-      this.queue.push({
-        data,
-        resolve: () => resolve({ id: `local:${Date.now()}`, data }),
-        reject,
-      });
-      void this.drain();
-    });
+    const id = `local:${Date.now()}`;
+    this.queue.push({ id, data });
+    this.drain();
+    return { id, data };
   }
 
   async close(): Promise<void> {
@@ -177,22 +169,27 @@ class InProcessScanQueue implements ScanRequestQueue {
     return false;
   }
 
-  private async drain(): Promise<void> {
-    while (
-      !this.closed &&
-      this.active < this.opts.concurrency &&
-      this.queue.length > 0
-    ) {
+  private drain(): void {
+    while (!this.closed && this.active < this.opts.concurrency) {
       const job = this.queue.shift();
-      if (!job) break;
+      if (!job) return;
       this.active += 1;
-      await this.handle(job.data)
-        .catch((err) => job.reject(err))
-        .finally(() => {
-          this.active -= 1;
-          job.resolve();
-          void this.drain();
-        });
+      void this.process(job);
+    }
+  }
+
+  private async process(job: { id: string; data: ScanJobData }): Promise<void> {
+    try {
+      await this.handle(job.data);
+    } catch (err) {
+      metrics.waVerdictFailures.inc();
+      this.opts.logger.error(
+        { err, chatId: job.data.chatId, url: job.data.url, jobId: job.id },
+        "MVP scan job failed",
+      );
+    } finally {
+      this.active -= 1;
+      this.drain();
     }
   }
 
@@ -212,7 +209,6 @@ class InProcessScanQueue implements ScanRequestQueue {
     );
 
     if (!sendResult.success) {
-      metrics.waVerdictFailures.inc();
       throw new Error("Failed to send verdict message");
     }
 

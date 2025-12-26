@@ -506,6 +506,14 @@ describe("Queue Performance Tests", () => {
       const depths = [100, 500, 1000, 5000];
       const results: Array<{ depth: number; throughput: number }> = [];
 
+      await queue.addBulk(
+        Array.from({ length: 500 }, (_, i) => ({
+          name: "warmup",
+          data: { url: `https://warmup-${i}.com/` },
+        })),
+      );
+      await queue.drain();
+
       for (const depth of depths) {
         await queue.drain();
 
@@ -518,7 +526,7 @@ describe("Queue Performance Tests", () => {
         );
 
         // Measure enqueue performance at this depth
-        const iterations = 100;
+        const iterations = 1000;
         const start = performance.now();
 
         for (let i = 0; i < iterations; i++) {
