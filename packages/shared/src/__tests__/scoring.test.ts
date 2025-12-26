@@ -67,6 +67,24 @@ test("multiple blocklists escalate to malicious", () => {
   expect(result.score).toBeGreaterThanOrEqual(10);
 });
 
+test("openphish listing is malicious", () => {
+  const result = scoreFromSignals({ openphishListed: true });
+  expect(result.level).toBe("malicious");
+  expect(result.reasons).toContain("Known phishing (OpenPhish)");
+});
+
+test("suspicious domain feed adds risk", () => {
+  const result = scoreFromSignals({ suspiciousDomainListed: true });
+  expect(result.score).toBeGreaterThanOrEqual(3);
+  expect(result.reasons).toContain("Domain listed in suspicious activity feed");
+});
+
+test("userinfo in URL adds risk", () => {
+  const result = scoreFromSignals({ hasUserInfo: true });
+  expect(result.score).toBeGreaterThanOrEqual(3);
+  expect(result.reasons).toContain("URL contains embedded credentials");
+});
+
 test("final url mismatch adds risk", () => {
   const result = scoreFromSignals({ finalUrlMismatch: true });
   expect(result.score).toBeGreaterThanOrEqual(2);

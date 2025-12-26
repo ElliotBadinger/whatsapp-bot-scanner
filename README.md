@@ -46,3 +46,4 @@ bun run --filter @wbscanner/wa-client dev
 - `docs/SECURITY_SETUP.md` — optional API keys and secrets
 - `docs/MVP_PLAN.md` — scope notes for the MVP
 - `docs/LINK_CORPUS.md` — build a fresh URL corpus for stress testing
+- `docs/LOCAL_FEEDS.md` — update local threat feeds for offline scanning

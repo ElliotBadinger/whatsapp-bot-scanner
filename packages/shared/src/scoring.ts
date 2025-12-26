@@ -9,6 +9,8 @@ export interface Signals {
   vtHarmless?: number;
   urlhausListed?: boolean;
   phishtankVerified?: boolean;
+  openphishListed?: boolean;
+  suspiciousDomainListed?: boolean;
   domainAgeDays?: number;
   isIpLiteral?: boolean;
   hasSuspiciousTld?: boolean;
@@ -17,6 +19,7 @@ export interface Signals {
   urlLength?: number;
   hasExecutableExtension?: boolean;
   wasShortened?: boolean;
+  hasUserInfo?: boolean;
   manualOverride?: "allow" | "deny" | null;
   finalUrlMismatch?: boolean;
   homoglyph?: HomoglyphResult;
@@ -57,6 +60,10 @@ function evaluateBlocklistSignals(
   if (signals.phishtankVerified) {
     score += 10;
     pushReason(reasons, "Verified phishing (Phishtank)");
+  }
+  if (signals.openphishListed) {
+    score += 10;
+    pushReason(reasons, "Known phishing (OpenPhish)");
   }
   if (signals.urlhausListed) {
     score += 10;
@@ -186,6 +193,14 @@ function evaluateHeuristicSignals(
     score += 1;
     pushReason(reasons, "Shortened URL expanded");
   }
+  if (signals.hasUserInfo) {
+    score += 3;
+    pushReason(reasons, "URL contains embedded credentials");
+  }
+  if (signals.suspiciousDomainListed) {
+    score += 3;
+    pushReason(reasons, "Domain listed in suspicious activity feed");
+  }
   if (signals.finalUrlMismatch) {
     score += 2;
     pushReason(reasons, "Redirect leads to mismatched domain/brand");
@@ -260,6 +275,7 @@ export function extraHeuristics(u: URL): Partial<Signals> {
     /\.(exe|msi|apk|bat|cmd|ps1|scr|jar|pkg|dmg|iso)$/i.test(u.pathname);
   const hasSuspiciousTld = isSuspiciousTld(u.hostname);
   const homoglyph = detectHomoglyphs(u.hostname);
+  const hasUserInfo = Boolean(u.username || u.password);
   return {
     hasUncommonPort,
     isIpLiteral,
@@ -267,5 +283,6 @@ export function extraHeuristics(u: URL): Partial<Signals> {
     hasSuspiciousTld,
     urlLength: u.toString().length,
     homoglyph,
+    hasUserInfo,
   };
 }

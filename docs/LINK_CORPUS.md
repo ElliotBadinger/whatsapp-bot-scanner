@@ -21,6 +21,15 @@ The JSONL output uses:
 - `source`
 - `fetchedAt`
 
+## Evaluate scanner performance (offline)
+
+```bash
+LOCAL_FEEDS_ENABLED=true \
+npm run scan-corpus
+```
+
+This runs the local scanner against the corpus and prints verdict counts and average scores per label.
+
 ## Enqueue into the scan-request queue
 
 ```bash

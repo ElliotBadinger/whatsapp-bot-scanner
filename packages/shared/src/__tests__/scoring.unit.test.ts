@@ -127,4 +127,11 @@ describe("extraHeuristics", () => {
     const signals = extraHeuristics(new URL("http://example.zip"));
     expect(signals.hasSuspiciousTld).toBe(true);
   });
+
+  test("flags embedded credentials in URL", () => {
+    const signals = extraHeuristics(
+      new URL("https://user:pass@example.com/login"),
+    );
+    expect(signals.hasUserInfo).toBe(true);
+  });
 });
