@@ -60,6 +60,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
   private _botLid: string | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private reconnectAttempts = 0;
+  private authCreds: AuthenticationState["creds"] | null = null;
 
   // Event handlers
   private readonly messageHandlers: MessageHandler[] = [];
@@ -116,6 +117,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
         const fileState = await useMultiFileAuthState(authPath);
         authState = fileState.state;
         saveCreds = fileState.saveCreds;
+        this.authCreds = authState.creds;
         clearState = async () => {
           await fs.rm(authPath, { recursive: true, force: true });
         };
@@ -130,6 +132,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
         });
         authState = redisState.state;
         saveCreds = redisState.saveCreds;
+        this.authCreds = authState.creds;
         clearState = redisState.clearState;
       }
 
@@ -221,7 +224,9 @@ export class BaileysAdapter implements WhatsAppAdapter {
         const user = this.socket?.user;
         this._botId = user?.id ?? null;
         this._botLid =
-          user?.lid ?? (user?.id?.endsWith("@lid") ? user.id : null);
+          user?.lid ??
+          this.authCreds?.me?.lid ??
+          (user?.id?.endsWith("@lid") ? user.id : null);
         this.logger.info(
           { botId: this._botId, botLid: this._botLid },
           "Connection opened",
