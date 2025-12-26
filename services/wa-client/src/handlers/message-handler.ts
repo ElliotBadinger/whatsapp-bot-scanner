@@ -442,7 +442,10 @@ export class SharedMessageHandler {
         // Check if URL is private/internal
         const parsed = new URL(normalized);
         if (await isPrivateHostname(parsed.hostname)) {
-          this.logger.debug({ url: normalized }, "Skipping private URL");
+          this.logger.warn(
+            { url: normalized, host: parsed.hostname },
+            "Skipping private or unresolved hostname",
+          );
           continue;
         }
 
