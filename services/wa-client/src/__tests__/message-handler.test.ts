@@ -124,4 +124,34 @@ describe("SharedMessageHandler", () => {
       }),
     );
   });
+
+  it("handles mention-prefixed commands even when display name is used", async () => {
+    const handler = new SharedMessageHandler({
+      adapter,
+      redis,
+      logger,
+      scanRequestQueue,
+    });
+    const message: WAMessage = {
+      id: "msg-4",
+      chatId: "chat-1",
+      senderId: "user-4",
+      body: "@scanner status",
+      isGroup: true,
+      timestamp: Date.now(),
+      fromMe: false,
+      mentionedIds: ["12345@c.us"],
+      raw: {},
+    };
+
+    await handler.createHandler()(message);
+
+    expect(adapter.reply).toHaveBeenCalledWith(
+      message,
+      expect.objectContaining({
+        type: "text",
+        text: expect.stringContaining("WBScanner Status"),
+      }),
+    );
+  });
 });

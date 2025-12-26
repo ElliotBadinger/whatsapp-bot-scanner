@@ -494,13 +494,26 @@ export class SharedMessageHandler {
     const botUser = this.getMentionedBotUser(message);
     if (!botUser) return null;
 
-    const mentionToken = `@${botUser}`;
     const trimmed = body.trim();
-    if (!trimmed.toLowerCase().startsWith(mentionToken.toLowerCase())) {
+    if (!trimmed.startsWith("@")) return null;
+
+    const [firstToken] = trimmed.split(/\s+/, 1);
+    if (!firstToken || !firstToken.startsWith("@")) return null;
+
+    const tokenUser = firstToken.slice(1);
+    const tokenIsNumeric = /^\d+$/.test(tokenUser);
+    const singleMention =
+      (message.mentionedIds ?? []).filter(Boolean).length === 1;
+
+    if (tokenIsNumeric && tokenUser !== botUser) {
       return null;
     }
 
-    let remainder = trimmed.slice(mentionToken.length).trim();
+    if (!tokenIsNumeric && !singleMention) {
+      return null;
+    }
+
+    let remainder = trimmed.slice(firstToken.length).trim();
     remainder = remainder.replace(/^[,;:.-]+/, "").trim();
     if (!remainder) return null;
 
