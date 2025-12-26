@@ -200,7 +200,9 @@ export class InProcessScanQueue implements ScanRequestQueue {
 
   private async handle(data: ScanJobData): Promise<void> {
     const started = Date.now();
-    const result = await this.opts.scanUrl(data.url, { followRedirects: false });
+    const result = await this.opts.scanUrl(data.url, {
+      followRedirects: false,
+    });
     const text = this.opts.formatVerdictMessage(
       result.verdict.level,
       result.verdict.reasons,
