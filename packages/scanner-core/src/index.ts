@@ -107,8 +107,7 @@ async function mapWithConcurrency<T, R>(
   const workerCount = Math.min(concurrency, items.length);
   const workers = Array.from({ length: workerCount }, async () => {
     while (true) {
-      const index = nextIndex;
-      nextIndex += 1;
+      const index = nextIndex++;
       if (index >= items.length) {
         return;
       }
