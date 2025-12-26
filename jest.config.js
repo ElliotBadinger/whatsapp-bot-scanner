@@ -23,6 +23,8 @@ module.exports = {
   moduleNameMapper: {
     '^@wbscanner/shared$': '<rootDir>/packages/shared/src/index.ts',
     '^@wbscanner/shared/(.*)$': '<rootDir>/packages/shared/src/$1',
+    '^@wbscanner/scanner-core$': '<rootDir>/packages/scanner-core/src/index.ts',
+    '^@wbscanner/scanner-core/(.*)$': '<rootDir>/packages/scanner-core/src/$1',
     '^better-sqlite3$': '<rootDir>/packages/shared/__mocks__/better-sqlite3.js',
   },
   testTimeout: 10000,

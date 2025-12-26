@@ -13,6 +13,7 @@
 
 import Fastify from "fastify";
 import { Queue, Worker } from "bullmq";
+import type { Redis } from "ioredis";
 
 import {
   config,
@@ -27,6 +28,8 @@ import {
   createRedisConnection,
   connectRedis,
 } from "@wbscanner/shared";
+import { InMemoryRedis } from "@wbscanner/shared";
+import { scanUrl } from "@wbscanner/scanner-core";
 
 import {
   createAdapterFromEnv,
@@ -37,10 +40,13 @@ import {
 import { createMessageHandler } from "./handlers/index.js";
 import { computeWaHealthStatus } from "./healthStatus.js";
 import type { DisconnectReason } from "./adapters/types.js";
+import type { ScanRequestQueue } from "./types/scanQueue.js";
 
 // Global state
+const mvpMode = config.modes.mvp;
+
 let adapter: WhatsAppAdapter | null = null;
-let scanRequestQueue: Queue | null = null;
+let scanRequestQueue: ScanRequestQueue | null = null;
 let scanVerdictWorker: Worker | null = null;
 let cachedQr: string | null = null;
 let lastDisconnectReason: DisconnectReason | null = null;
@@ -69,6 +75,125 @@ function formatVerdictMessage(
   return `Link scan: ${level}\nURL: ${url}\n${advice}${reasonsStr ? `\nWhy: ${reasonsStr}` : ""}`;
 }
 
+interface ScanJobData {
+  url: string;
+  urlHash: string;
+  chatId: string;
+  messageId: string;
+  senderId?: string;
+  timestamp?: number;
+  isGroup?: boolean;
+}
+
+class InProcessScanQueue implements ScanRequestQueue {
+  private readonly queue: { data: ScanJobData; resolve: () => void; reject: (err: unknown) => void }[] = [];
+  private active = 0;
+  private closed = false;
+  private readonly ttlMs = config.wa.messageLineageTtlSeconds * 1000;
+  private readonly seenUrls = new Map<string, number>();
+  private readonly rateLimits = new Map<string, { windowStart: number; count: number }>();
+
+  constructor(
+    private readonly opts: {
+      adapter: WhatsAppAdapter;
+      concurrency: number;
+      rateLimit: number;
+      rateWindowMs: number;
+      logger: typeof logger;
+    },
+  ) {}
+
+  async add(_name: string, data: ScanJobData): Promise<{ id: string; data: ScanJobData }> {
+    if (this.closed) {
+      throw new Error("Queue closed");
+    }
+
+    if (this.isDuplicate(data)) {
+      this.opts.logger.debug({ url: data.url, chatId: data.chatId }, "Skipping duplicate scan request");
+      return { id: `local:${Date.now()}`, data };
+    }
+
+    if (this.isRateLimited(data)) {
+      this.opts.logger.warn({ chatId: data.chatId }, "Rate limit reached for chat; dropping scan request");
+      return { id: `local:${Date.now()}`, data };
+    }
+
+    return await new Promise((resolve, reject) => {
+      this.queue.push({ data, resolve: () => resolve({ id: `local:${Date.now()}`, data }), reject });
+      void this.drain();
+    });
+  }
+
+  async close(): Promise<void> {
+    this.closed = true;
+    this.queue.length = 0;
+  }
+
+  private isDuplicate(data: ScanJobData): boolean {
+    const key = `${data.chatId}:${data.urlHash}`;
+    const now = Date.now();
+    const expiry = this.seenUrls.get(key) ?? 0;
+    if (expiry > now) return true;
+    this.seenUrls.set(key, now + this.ttlMs);
+    return false;
+  }
+
+  private isRateLimited(data: ScanJobData): boolean {
+    if (!data.isGroup) return false;
+    const now = Date.now();
+    const entry = this.rateLimits.get(data.chatId) ?? { windowStart: now, count: 0 };
+    if (now - entry.windowStart > this.opts.rateWindowMs) {
+      this.rateLimits.set(data.chatId, { windowStart: now, count: 1 });
+      return false;
+    }
+    if (entry.count >= this.opts.rateLimit) {
+      this.rateLimits.set(data.chatId, entry);
+      return true;
+    }
+    this.rateLimits.set(data.chatId, { ...entry, count: entry.count + 1 });
+    return false;
+  }
+
+  private async drain(): Promise<void> {
+    while (!this.closed && this.active < this.opts.concurrency && this.queue.length > 0) {
+      const job = this.queue.shift();
+      if (!job) break;
+      this.active += 1;
+      await this.handle(job.data)
+        .catch((err) => job.reject(err))
+        .finally(() => {
+          this.active -= 1;
+          job.resolve();
+          void this.drain();
+        });
+    }
+  }
+
+  private async handle(data: ScanJobData): Promise<void> {
+    const started = Date.now();
+    const result = await scanUrl(data.url, { followRedirects: false });
+    const text = formatVerdictMessage(result.verdict.level, result.verdict.reasons, result.finalUrl);
+
+    const sendResult = await this.opts.adapter.sendMessage(
+      data.chatId,
+      { type: "text", text },
+      { quotedMessageId: data.messageId },
+    );
+
+    if (!sendResult.success) {
+      metrics.waVerdictFailures.inc();
+      throw new Error("Failed to send verdict message");
+    }
+
+    metrics.waVerdictsSent.inc();
+    metrics.waVerdictLatency.observe(Math.max(0, (Date.now() - started) / 1000));
+    this.opts.logger.info(
+      { chatId: data.chatId, url: data.url, verdict: result.verdict.level },
+      "MVP verdict dispatched",
+    );
+  }
+}
+
 /**
  * Graceful shutdown handler
  */
@@ -79,7 +204,7 @@ async function shutdown(signal: string): Promise<void> {
     if (adapter) {
       await adapter.disconnect();
     }
-    if (scanRequestQueue) {
+    if (scanRequestQueue?.close) {
       await scanRequestQueue.close();
     }
     if (scanVerdictWorker) {
@@ -98,7 +223,11 @@ async function shutdown(signal: string): Promise<void> {
  */
 async function main(): Promise<void> {
   // Validate configuration
-  assertEssentialConfig("wa-client");
+  if (!mvpMode) {
+    assertEssentialConfig("wa-client");
+  } else {
+    logger.info("MVP_MODE enabled: Redis/BullMQ paths are optional");
+  }
   assertControlPlaneToken();
 
   // Log library selection
@@ -109,98 +238,105 @@ async function main(): Promise<void> {
     "Starting WA Client with adapter",
   );
 
-  // Connect to Redis
-  const redis = createRedisConnection();
-  try {
-    await connectRedis(redis, "wa-client");
-  } catch (err) {
-    logger.error({ err }, "Failed to connect to Redis. Exiting...");
-    process.exit(1);
+  // Connect to Redis (or use in-memory substitute for MVP)
+  const redis: Redis = mvpMode
+    ? ((new InMemoryRedis() as unknown) as Redis)
+    : createRedisConnection();
+  if (!mvpMode) {
+    try {
+      await connectRedis(redis, "wa-client");
+    } catch (err) {
+      logger.error({ err }, "Failed to connect to Redis. Exiting...");
+      process.exit(1);
+    }
+  } else {
+    logger.info("Using in-memory Redis store for MVP mode");
   }
-
-  // Create scan request queue
-  scanRequestQueue = new Queue(config.queues.scanRequest, {
-    connection: redis,
-  });
-
-  scanVerdictWorker = new Worker(
-    config.queues.scanVerdict,
-    async (job) => {
-      if (!adapter) {
-        throw new Error("Adapter not initialized");
-      }
-
-      const started = Date.now();
-      const data = job.data as VerdictJobData;
-      const decidedAt = data.decidedAt ?? job.timestamp ?? started;
-
-      const verdictLatencySeconds = Math.max(
-        0,
-        (Date.now() - decidedAt) / 1000,
-      );
-      metrics.waVerdictLatency.observe(verdictLatencySeconds);
-
-      const tsKey = `wa:msg_ts:${hashChatId(data.chatId)}:${hashMessageId(
-        data.messageId,
-      )}`;
-      let originalTsRaw = await redis.get(tsKey);
-      if (!originalTsRaw) {
-        const legacyKey = `wa:msg_ts:${data.chatId}:${data.messageId}`;
-        originalTsRaw = await redis.get(legacyKey);
-        if (originalTsRaw) {
-          await redis.set(
-            tsKey,
-            originalTsRaw,
-            "EX",
-            config.wa.messageLineageTtlSeconds,
-          );
-          await redis.del(legacyKey);
-        }
-      }
-      const originalTs = originalTsRaw
-        ? Number.parseInt(originalTsRaw, 10)
-        : NaN;
-      if (Number.isFinite(originalTs)) {
-        const responseLatencySeconds = Math.max(
-          0,
-          (Date.now() - originalTs) / 1000,
-        );
-        metrics.waResponseLatency.observe(responseLatencySeconds);
-      }
-
-      const text = formatVerdictMessage(
-        data.verdict,
-        data.reasons ?? [],
-        data.url,
-      );
-
-      const result = await adapter.sendMessage(
-        data.chatId,
-        { type: "text", text },
-        { quotedMessageId: data.messageId },
-      );
-
-      if (!result.success) {
-        metrics.waVerdictFailures.inc();
-        throw new Error("Failed to send verdict message");
-      }
-
-      metrics.waVerdictsSent.inc();
-      logger.info(
-        {
-          chatId: data.chatId,
-          messageId: data.messageId,
-          verdict: data.verdict,
-          processingMs: Date.now() - started,
-        },
-        "Verdict sent",
-      );
-    },
-    { connection: redis },
-  );
 
   // Create WhatsApp adapter (async to support dynamic imports)
   adapter = await createAdapterFromEnv(redis, logger);
+
+  if (mvpMode) {
+    const concurrency = Number.parseInt(process.env.MVP_SCAN_CONCURRENCY ?? "4", 10) || 4;
+    const rateLimit = Number.parseInt(process.env.MVP_GROUP_RATE_LIMIT ?? "10", 10) || 10;
+    const rateWindowMs =
+      Number.parseInt(process.env.MVP_GROUP_RATE_WINDOW_MS ?? "60000", 10) || 60000;
+    scanRequestQueue = new InProcessScanQueue({
+      adapter,
+      concurrency,
+      rateLimit,
+      rateWindowMs,
+      logger,
+    });
+  } else {
+    // Create scan request queue
+    scanRequestQueue = new Queue(config.queues.scanRequest, {
+      connection: redis,
+    });
+
+    scanVerdictWorker = new Worker(
+      config.queues.scanVerdict,
+      async (job) => {
+        if (!adapter) {
+          throw new Error("Adapter not initialized");
+        }
+
+        const started = Date.now();
+        const data = job.data as VerdictJobData;
+        const decidedAt = data.decidedAt ?? job.timestamp ?? started;
+
+        const verdictLatencySeconds = Math.max(0, (Date.now() - decidedAt) / 1000);
+        metrics.waVerdictLatency.observe(verdictLatencySeconds);
+
+        const tsKey = `wa:msg_ts:${hashChatId(data.chatId)}:${hashMessageId(
+          data.messageId,
+        )}`;
+        let originalTsRaw = await redis.get(tsKey);
+        if (!originalTsRaw) {
+          const legacyKey = `wa:msg_ts:${data.chatId}:${data.messageId}`;
+          originalTsRaw = await redis.get(legacyKey);
+          if (originalTsRaw) {
+            await redis.set(tsKey, originalTsRaw, "EX", config.wa.messageLineageTtlSeconds);
+            await redis.del(legacyKey);
+          }
+        }
+        const originalTs = originalTsRaw ? Number.parseInt(originalTsRaw, 10) : NaN;
+        if (Number.isFinite(originalTs)) {
+          const responseLatencySeconds = Math.max(0, (Date.now() - originalTs) / 1000);
+          metrics.waResponseLatency.observe(responseLatencySeconds);
+        }
+
+        const text = formatVerdictMessage(
+          data.verdict,
+          data.reasons ?? [],
+          data.url,
+        );
+
+        const result = await adapter.sendMessage(
+          data.chatId,
+          { type: "text", text },
+          { quotedMessageId: data.messageId },
+        );
+
+        if (!result.success) {
+          metrics.waVerdictFailures.inc();
+          throw new Error("Failed to send verdict message");
+        }
+
+        metrics.waVerdictsSent.inc();
+        logger.info(
+          {
+            chatId: data.chatId,
+            messageId: data.messageId,
+            verdict: data.verdict,
+            processingMs: Date.now() - started,
+          },
+          "Verdict sent",
+        );
+      },
+      { connection: redis },
+    );
+  }
 
   // Set up connection handlers
   adapter.onConnectionChange((state) => {

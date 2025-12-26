@@ -18,6 +18,9 @@ export const TEST_QUEUE_FACTORY_KEY = "__WBSCANNER_TEST_QUEUE_FACTORY__";
  * to avoid ETIMEDOUT errors during module initialization.
  */
 export function createRedisConnection(): Redis {
+  if (!config.redisUrl) {
+    throw new Error("REDIS_URL is not configured; Redis is optional but required for this path");
+  }
   // Allow test injection
   if (
     typeof globalThis !== "undefined" &&

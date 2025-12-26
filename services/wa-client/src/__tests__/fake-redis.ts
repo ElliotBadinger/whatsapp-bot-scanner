@@ -166,6 +166,10 @@ export default class FakeRedis {
     return this.sets.get(key)?.size ?? 0;
   }
 
+  async smembers(key: string) {
+    return Array.from(this.sets.get(key) ?? []);
+  }
+
   async lpush(key: string, ...values: string[]) {
     const list = this.lists.get(key) ?? [];
     for (const value of values) {

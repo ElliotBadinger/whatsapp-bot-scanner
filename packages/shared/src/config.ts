@@ -3,6 +3,8 @@ import { logger } from "./log";
 
 import path from "path";
 
+const mvpMode = (process.env.MVP_MODE || "") === "1";
+
 // Load .env and .env.local from project root (skip in test environment to allow test control)
 if (process.env.NODE_ENV !== "test") {
   const rootDir = path.resolve(__dirname, "../../..");
@@ -10,7 +12,8 @@ if (process.env.NODE_ENV !== "test") {
   dotenv.config({ path: path.join(rootDir, ".env.local"), override: true });
 }
 
-const urlscanEnabledFlag = (process.env.URLSCAN_ENABLED || "true") === "true";
+const urlscanEnabledFlag =
+  (process.env.URLSCAN_ENABLED || (mvpMode ? "false" : "true")) === "true";
 const urlscanApiKey = (process.env.URLSCAN_API_KEY || "").trim();
 const urlscanCallbackUrl = (process.env.URLSCAN_CALLBACK_URL || "").trim();
 const urlscanCallbackSecret = (
@@ -106,7 +109,8 @@ const featureFlags = {
 
 export const config = {
   nodeEnv: process.env.NODE_ENV || "development",
-  redisUrl: process.env.REDIS_URL || "redis://redis:6379/0",
+  modes: { mvp: mvpMode },
+  redisUrl: process.env.REDIS_URL || "",
   database: {
     get controlPlane() {
       return {
@@ -160,7 +164,8 @@ export const config = {
   },
   vt: {
     enabled:
-      (process.env.VT_ENABLED || "true") === "true" && !!process.env.VT_API_KEY,
+      (process.env.VT_ENABLED || (mvpMode ? "false" : "true")) === "true" &&
+      !!process.env.VT_API_KEY,
     apiKey: process.env.VT_API_KEY || "",
     timeoutMs: parseInt(process.env.VT_REQUEST_TIMEOUT_MS || "8000", 10),
     requestsPerMinute: parsePositiveInt(process.env.VT_REQUESTS_PER_MINUTE, 4),
@@ -168,7 +173,7 @@ export const config = {
   },
   gsb: {
     enabled:
-      (process.env.GSB_ENABLED || "true") === "true" &&
+      (process.env.GSB_ENABLED || (mvpMode ? "false" : "true")) === "true" &&
       !!process.env.GSB_API_KEY,
     apiKey: process.env.GSB_API_KEY || "",
     timeoutMs: parseInt(process.env.GSB_REQUEST_TIMEOUT_MS || "5000", 10),
@@ -178,19 +183,19 @@ export const config = {
     ),
   },
   urlhaus: {
-    enabled: (process.env.URLHAUS_ENABLED || "true") === "true",
+    enabled: (process.env.URLHAUS_ENABLED || (mvpMode ? "false" : "true")) === "true",
     timeoutMs: parseInt(process.env.URLHAUS_TIMEOUT_MS || "5000", 10),
   },
   phishtank: {
     enabled:
-      (process.env.PHISHTANK_ENABLED || "true") === "true" &&
-      !!process.env.PHISHTANK_APP_KEY,
+      (process.env.PHISHTANK_ENABLED || (mvpMode ? "false" : "true")) ===
+        "true" && !!process.env.PHISHTANK_APP_KEY,
     appKey: process.env.PHISHTANK_APP_KEY || "",
     userAgent: process.env.PHISHTANK_USER_AGENT || "wbscanner-bot/1.0",
     timeoutMs: parseInt(process.env.PHISHTANK_TIMEOUT_MS || "5000", 10),
   },
   rdap: {
-    enabled: (process.env.RDAP_ENABLED || "true") === "true",
+    enabled: (process.env.RDAP_ENABLED || (mvpMode ? "false" : "true")) === "true",
     timeoutMs: parseInt(process.env.RDAP_TIMEOUT_MS || "5000", 10),
   },
   urlscan: {
@@ -374,7 +379,7 @@ export const config = {
       60,
     ),
     remoteAuth: {
-      store: (process.env.WA_REMOTE_AUTH_STORE || "redis").toLowerCase(),
+      store: (process.env.WA_REMOTE_AUTH_STORE || (mvpMode ? "memory" : "redis")).toLowerCase(),
       clientId: process.env.WA_AUTH_CLIENT_ID || "default",
       autoPair: (process.env.WA_REMOTE_AUTH_AUTO_PAIR || "false") === "true",
       pairingDelayMs: parsePositiveInt(
@@ -562,13 +567,17 @@ export const config = {
 };
 
 export function assertControlPlaneToken(): string {
+  if (config.modes.mvp && !(process.env.CONTROL_PLANE_API_TOKEN || "").trim()) {
+    logger.warn("CONTROL_PLANE_API_TOKEN not set (MVP_MODE enabled, skipping)");
+    return "";
+  }
   return getControlPlaneToken();
 }
 
 export function assertEssentialConfig(serviceName: string): void {
   const missing: string[] = [];
 
-  if (!config.redisUrl?.trim()) missing.push("REDIS_URL");
+  if (!config.modes.mvp && !config.redisUrl?.trim()) missing.push("REDIS_URL");
 
   if (missing.length > 0) {
     logger.error(
