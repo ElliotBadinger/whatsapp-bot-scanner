@@ -85,7 +85,9 @@ export function getControlPlaneTokenOptional(): string | null {
   if (!token) {
     if (mvpMode && !warnedMissingControlPlaneToken) {
       warnedMissingControlPlaneToken = true;
-      logger.warn("CONTROL_PLANE_API_TOKEN not set (MVP_MODE enabled, skipping)");
+      logger.warn(
+        "CONTROL_PLANE_API_TOKEN not set (MVP_MODE enabled, skipping)",
+      );
     }
     return null;
   }
