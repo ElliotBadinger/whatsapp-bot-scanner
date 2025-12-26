@@ -1759,7 +1759,9 @@ ${C.primary("  ╚════════════════════�
           process.platform === "linux" && hostConnectivity.ok
             ? "  - On Linux, try WA_NETWORK_MODE=host to use host networking"
             : null;
-        spinner.warn(C.warning("WhatsApp connectivity unavailable from container"));
+        spinner.warn(
+          C.warning("WhatsApp connectivity unavailable from container"),
+        );
         console.log(`
   ${ICON.warning}  ${C.warning("Cannot reach https://web.whatsapp.com from wa-client container")}
   
