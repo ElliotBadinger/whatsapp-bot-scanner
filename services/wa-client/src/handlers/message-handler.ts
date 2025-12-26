@@ -7,6 +7,7 @@
 
 import type { Logger } from "pino";
 import type { Redis } from "ioredis";
+import { getContentType } from "@whiskeysockets/baileys";
 import {
   type WhatsAppAdapter,
   type WAMessage,
@@ -160,6 +161,7 @@ export class SharedMessageHandler {
         "!scanner scan <url> - Manually scan a URL",
         "!scanner consent - Mark group consent as granted",
         "!scanner consentstatus - Show group consent status",
+        "@<bot> <command> - Mention the bot and use the same commands",
         "",
         "_Links shared in this chat are automatically scanned._",
       ].join("\n");
@@ -191,7 +193,7 @@ export class SharedMessageHandler {
       if (!ctx.args || ctx.args.length === 0) {
         await this.replyWithLatency(ctx.message, {
           type: "text",
-          text: "Usage: !scanner scan <url>",
+          text: "Usage: !scanner scan <url> or @<bot> scan <url>",
         });
         return;
       }
@@ -370,6 +372,17 @@ export class SharedMessageHandler {
       };
     }
 
+    const mentionCommand = this.parseMentionCommand(body, message);
+    if (mentionCommand) {
+      return {
+        message,
+        urls,
+        isCommand: true,
+        command: mentionCommand.command,
+        args: mentionCommand.args,
+      };
+    }
+
     return {
       message,
       urls,
@@ -394,7 +407,7 @@ export class SharedMessageHandler {
     } else {
       await this.replyWithLatency(ctx.message, {
         type: "text",
-        text: `Unknown command: ${ctx.command}. Use !scanner help for available commands.`,
+        text: `Unknown command: ${ctx.command}. Use !scanner help or @<bot> help for available commands.`,
       });
     }
   }
@@ -459,6 +472,69 @@ export class SharedMessageHandler {
         this.logger.warn({ err, url }, "Failed to process URL");
       }
     }
+  }
+
+  private parseMentionCommand(
+    body: string,
+    message: WAMessage,
+  ): { command: string; args: string[] } | null {
+    const botId = this.adapter.botId;
+    if (!botId) return null;
+
+    const mentionedJids = this.extractMentionedJids(message);
+    if (mentionedJids.length === 0) return null;
+
+    const botUser = this.normalizeJidUser(botId);
+    const isMentioned = mentionedJids.some(
+      (jid) => this.normalizeJidUser(jid) === botUser,
+    );
+    if (!isMentioned) return null;
+
+    const mentionToken = `@${botUser}`;
+    const trimmed = body.trim();
+    if (!trimmed.toLowerCase().startsWith(mentionToken.toLowerCase())) {
+      return null;
+    }
+
+    let remainder = trimmed.slice(mentionToken.length).trim();
+    remainder = remainder.replace(/^[,;:.-]+/, "").trim();
+    if (!remainder) return null;
+
+    const match = remainder.match(/^(\w+)(?:\s+(.*))?$/);
+    if (!match) return null;
+
+    const command = match[1].toLowerCase();
+    const argsStr = match[2]?.trim() ?? "";
+    const args = argsStr ? argsStr.split(/\s+/) : [];
+
+    return { command, args };
+  }
+
+  private extractMentionedJids(message: WAMessage): string[] {
+    const raw = message.raw as { message?: Record<string, unknown> } | null;
+    const rawMessage = raw?.message;
+    if (rawMessage && typeof rawMessage === "object") {
+      const messageType = getContentType(rawMessage as Record<string, unknown>);
+      const content = messageType
+        ? (rawMessage as Record<string, any>)[messageType]
+        : undefined;
+      const mentionedJids = content?.contextInfo?.mentionedJid;
+      if (Array.isArray(mentionedJids)) {
+        return mentionedJids;
+      }
+    }
+
+    const webMessage = message.raw as { mentionedIds?: string[] } | null;
+    if (Array.isArray(webMessage?.mentionedIds)) {
+      return webMessage.mentionedIds;
+    }
+
+    return [];
+  }
+
+  private normalizeJidUser(jid: string): string {
+    const atIndex = jid.indexOf("@");
+    return atIndex === -1 ? jid : jid.slice(0, atIndex);
   }
 
   /**

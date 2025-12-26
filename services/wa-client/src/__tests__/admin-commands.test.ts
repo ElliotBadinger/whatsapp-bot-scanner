@@ -102,6 +102,25 @@ describe("wa-client admin commands", () => {
     expect(chat.sendMessage).toHaveBeenCalled();
   });
 
+  it("accepts @bot mention commands", async () => {
+    const chat = makeChat([makeParticipant("admin-1", true)]);
+    const msg = {
+      ...makeMessage("@bot status", chat),
+      mentionedIds: ["bot@c.us"],
+    } as Message;
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ scans: 3, malicious: 0 }),
+    });
+
+    await handleAdminCommand({} as any, msg, chat, __testables.redis as any);
+
+    expect(chat.sendMessage).toHaveBeenCalledWith(
+      expect.stringContaining("Scanner status"),
+    );
+  });
+
   it("handles consent flows and governance listing", async () => {
     const chat = makeChat([makeParticipant("admin-1", true)]);
     const client = {} as any;
