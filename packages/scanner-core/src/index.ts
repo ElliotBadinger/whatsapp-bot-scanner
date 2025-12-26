@@ -30,6 +30,13 @@ export interface ScanOptions {
   timeoutMs?: number;
   maxContentLength?: number;
   enableExternalEnrichers?: boolean;
+  /**
+   * Optional hook invoked when an external enricher lookup fails.
+   * Only used when `enableExternalEnrichers` is enabled.
+   *
+   * Failures do not stop a scan; they only reduce the set of available signals.
+   * Callbacks should avoid throwing.
+   */
   onExternalEnricherError?: (
     provider: ExternalEnricherProvider,
     err: unknown,
@@ -67,7 +74,10 @@ function gsbThreatTypes(matches: GsbThreatMatch[]): string[] {
   return matches.map((match) => match.threatType);
 }
 
-const loggedExternalErrors = new Set<ExternalEnricherProvider>();
+// Rate-limit external enricher failure logs in long-lived MVP runtimes.
+// This state is process-wide across all scans.
+const externalErrorLogIntervalMs = 5 * 60_000;
+const lastExternalErrorLogAtMs = new Map<ExternalEnricherProvider, number>();
 
 function reportExternalEnricherError(
   provider: ExternalEnricherProvider,
@@ -75,15 +85,24 @@ function reportExternalEnricherError(
   onExternalEnricherError?: ScanOptions["onExternalEnricherError"],
 ): void {
   if (onExternalEnricherError) {
-    onExternalEnricherError(provider, err);
-    return;
+    try {
+      onExternalEnricherError(provider, err);
+      return;
+    } catch (callbackErr) {
+      logger.warn(
+        { err, provider, callbackErr },
+        "External enricher error handler threw; falling back to logging",
+      );
+    }
   }
 
-  if (loggedExternalErrors.has(provider)) {
+  const now = Date.now();
+  const lastLogged = lastExternalErrorLogAtMs.get(provider) ?? 0;
+  if (now - lastLogged < externalErrorLogIntervalMs) {
     return;
   }
+  lastExternalErrorLogAtMs.set(provider, now);
 
-  loggedExternalErrors.add(provider);
   logger.warn({ err, provider }, "External enricher lookup failed");
 }
 
