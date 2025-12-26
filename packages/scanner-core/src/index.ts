@@ -2,6 +2,7 @@ import {
   config,
   domainAgeDaysFromRdap,
   gsbLookup,
+  logger,
   phishtankLookup,
   normalizeUrl,
   extractUrls as sharedExtractUrls,
@@ -16,12 +17,23 @@ import {
   urlhausLookup,
 } from "@wbscanner/shared";
 
+export type ExternalEnricherProvider =
+  | "gsb"
+  | "vt"
+  | "urlhaus"
+  | "phishtank"
+  | "rdap";
+
 export interface ScanOptions {
   followRedirects?: boolean;
   maxRedirects?: number;
   timeoutMs?: number;
   maxContentLength?: number;
   enableExternalEnrichers?: boolean;
+  onExternalEnricherError?: (
+    provider: ExternalEnricherProvider,
+    err: unknown,
+  ) => void;
 }
 
 export interface ScanResult {
@@ -55,10 +67,31 @@ function gsbThreatTypes(matches: GsbThreatMatch[]): string[] {
   return matches.map((match) => match.threatType);
 }
 
+const loggedExternalErrors = new Set<ExternalEnricherProvider>();
+
+function reportExternalEnricherError(
+  provider: ExternalEnricherProvider,
+  err: unknown,
+  onExternalEnricherError?: ScanOptions["onExternalEnricherError"],
+): void {
+  if (onExternalEnricherError) {
+    onExternalEnricherError(provider, err);
+    return;
+  }
+
+  if (loggedExternalErrors.has(provider)) {
+    return;
+  }
+
+  loggedExternalErrors.add(provider);
+  logger.warn({ err, provider }, "External enricher lookup failed");
+}
+
 async function buildExternalSignals(
   finalUrl: string,
   parsed: URL,
   enableExternalEnrichers: boolean,
+  onExternalEnricherError?: ScanOptions["onExternalEnricherError"],
 ): Promise<{ signals: Partial<Signals>; usedExternalSignals: boolean }> {
   const signals: Partial<Signals> = {};
   let usedExternalSignals = false;
@@ -79,8 +112,8 @@ async function buildExternalSignals(
             signals.gsbThreatTypes = threatTypes;
           }
         })
-        .catch(() => {
-          // ignore provider failures; upstream can decide how to treat partial results
+        .catch((err) => {
+          reportExternalEnricherError("gsb", err, onExternalEnricherError);
         }),
     );
   }
@@ -98,8 +131,8 @@ async function buildExternalSignals(
           signals.vtSuspicious = stats.suspicious;
           signals.vtHarmless = stats.harmless;
         })
-        .catch(() => {
-          // ignore provider failures; upstream can decide how to treat partial results
+        .catch((err) => {
+          reportExternalEnricherError("vt", err, onExternalEnricherError);
         }),
     );
   }
@@ -113,8 +146,8 @@ async function buildExternalSignals(
             signals.urlhausListed = true;
           }
         })
-        .catch(() => {
-          // ignore provider failures; upstream can decide how to treat partial results
+        .catch((err) => {
+          reportExternalEnricherError("urlhaus", err, onExternalEnricherError);
         }),
     );
   }
@@ -128,8 +161,12 @@ async function buildExternalSignals(
             signals.phishtankVerified = true;
           }
         })
-        .catch(() => {
-          // ignore provider failures; upstream can decide how to treat partial results
+        .catch((err) => {
+          reportExternalEnricherError(
+            "phishtank",
+            err,
+            onExternalEnricherError,
+          );
         }),
     );
   }
@@ -143,8 +180,8 @@ async function buildExternalSignals(
             signals.domainAgeDays = ageDays;
           }
         })
-        .catch(() => {
-          // ignore provider failures; upstream can decide how to treat partial results
+        .catch((err) => {
+          reportExternalEnricherError("rdap", err, onExternalEnricherError);
         }),
     );
   }
@@ -184,6 +221,7 @@ export async function scanUrl(
     finalUrl,
     parsedFinal,
     enableExternalEnrichers,
+    options.onExternalEnricherError,
   );
 
   const heuristicsOnly =
