@@ -139,30 +139,27 @@ async function main(): Promise<void> {
   adapter = await createAdapterFromEnv(redis, logger);
 
   if (mvpMode) {
-    const concurrencyRaw = Number.parseInt(
-      process.env.MVP_SCAN_CONCURRENCY ?? "4",
-      10,
-    );
-    const concurrency =
-      Number.isFinite(concurrencyRaw) && concurrencyRaw >= 1
-        ? concurrencyRaw
-        : 4;
+    const parsePositiveIntEnv = (name: string, defaultValue: number): number => {
+      const raw = process.env[name];
+      if (raw == null) {
+        return defaultValue;
+      }
 
-    const rateLimitRaw = Number.parseInt(
-      process.env.MVP_GROUP_RATE_LIMIT ?? "10",
-      10,
-    );
-    const rateLimit =
-      Number.isFinite(rateLimitRaw) && rateLimitRaw >= 1 ? rateLimitRaw : 10;
+      const parsed = Number.parseInt(raw, 10);
+      if (!Number.isFinite(parsed) || parsed < 1) {
+        logger.warn(
+          { env: name, value: raw, defaultValue },
+          "Invalid MVP env override; using default",
+        );
+        return defaultValue;
+      }
 
-    const rateWindowMsRaw = Number.parseInt(
-      process.env.MVP_GROUP_RATE_WINDOW_MS ?? "60000",
-      10,
-    );
-    const rateWindowMs =
-      Number.isFinite(rateWindowMsRaw) && rateWindowMsRaw >= 1
-        ? rateWindowMsRaw
-        : 60_000;
+      return parsed;
+    };
+
+    const concurrency = parsePositiveIntEnv("MVP_SCAN_CONCURRENCY", 4);
+    const rateLimit = parsePositiveIntEnv("MVP_GROUP_RATE_LIMIT", 10);
+    const rateWindowMs = parsePositiveIntEnv("MVP_GROUP_RATE_WINDOW_MS", 60_000);
 
     const followRedirects =
       (process.env.MVP_SCAN_FOLLOW_REDIRECTS ?? "0") === "1";
