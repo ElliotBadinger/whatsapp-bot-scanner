@@ -80,8 +80,7 @@ export async function advancedHeuristics(url: string): Promise<AdvancedHeuristic
 
     // Suspicious TLD patterns
     const tld = hostname.split('.').pop()?.toLowerCase();
-    const suspiciousTlds = ['tk', 'ml', 'ga', 'cf', 'click', 'download'];
-    if (tld && suspiciousTlds.includes(tld)) {
+    if (tld && SUSPICIOUS_TLDS.has(tld)) {
       result.score += 0.4;
       result.reasons.push(`Suspicious TLD: .${tld}`);
     }
@@ -120,6 +119,8 @@ function calculateShannonEntropy(str: string): number {
   return entropy;
 }
 
+const NUMERIC_REGEX = /^\d+$/;
+
 function analyzeSubdomains(hostname: string): SubdomainAnalysis {
   const parts = hostname.split('.');
   const subdomains = parts.slice(0, -2); // Remove domain and TLD
@@ -132,7 +133,7 @@ function analyzeSubdomains(hostname: string): SubdomainAnalysis {
   };
 
   // Check for numeric subdomains
-  analysis.hasNumericSubdomains = subdomains.some(sub => /^\d+$/.test(sub));
+  analysis.hasNumericSubdomains = subdomains.some(sub => NUMERIC_REGEX.test(sub));
   if (analysis.hasNumericSubdomains) {
     analysis.suspicionScore += 0.3;
   }
@@ -151,15 +152,15 @@ function analyzeSubdomains(hostname: string): SubdomainAnalysis {
   return analysis;
 }
 
-function detectKeyboardWalk(str: string): boolean {
-  const keyboardRows = [
-    'qwertyuiop',
-    'asdfghjkl',
-    'zxcvbnm',
-    '1234567890',
-  ];
+const KEYBOARD_ROWS = [
+  'qwertyuiop',
+  'asdfghjkl',
+  'zxcvbnm',
+  '1234567890',
+];
 
-  for (const row of keyboardRows) {
+function detectKeyboardWalk(str: string): boolean {
+  for (const row of KEYBOARD_ROWS) {
     for (let i = 0; i <= row.length - 4; i++) {
       const pattern = row.slice(i, i + 4);
       if (str.toLowerCase().includes(pattern)) {
@@ -171,46 +172,51 @@ function detectKeyboardWalk(str: string): boolean {
   return false;
 }
 
+const CONSECUTIVE_HYPHENS = /-{2,}/;
+const CYRILLIC_CHARS = /[а-я]/;
+const LATIN_CHARS = /[a-z]/;
+const NON_ASCII = /[^\x00-\x7F]/;
+const DOT_GLOBAL = /\./g;
+
 function detectSuspiciousCharacters(url: string): string[] {
   const suspicious: string[] = [];
 
   // Multiple consecutive hyphens
-  if (/-{2,}/.test(url)) {
+  if (CONSECUTIVE_HYPHENS.test(url)) {
     suspicious.push('multiple_hyphens');
   }
 
   // Mixed scripts (basic check)
-  if (/[а-я]/.test(url) && /[a-z]/.test(url)) {
+  if (CYRILLIC_CHARS.test(url) && LATIN_CHARS.test(url)) {
     suspicious.push('mixed_scripts');
   }
 
   // Unusual Unicode characters
-  if (/[^\x00-\x7F]/.test(url)) {
+  if (NON_ASCII.test(url)) {
     suspicious.push('unicode_chars');
   }
 
   // Excessive dots
-  if ((url.match(/\./g) || []).length > 8) {
+  if ((url.match(DOT_GLOBAL) || []).length > 8) {
     suspicious.push('excessive_dots');
   }
 
   return suspicious;
 }
 
+const HOMOGRAPH_SUBSTITUTIONS = {
+  'a': ['а', 'à', 'á', 'â', 'ã', 'ä', 'å'],
+  'e': ['е', 'è', 'é', 'ê', 'ë'],
+  'o': ['о', 'ò', 'ó', 'ô', 'õ', 'ö'],
+  'p': ['р'],
+  'c': ['с'],
+  'x': ['х'],
+};
+
 function detectBasicHomographs(hostname: string): string[] {
   const homographs: string[] = [];
 
-  // Common homograph substitutions
-  const substitutions = {
-    'a': ['а', 'à', 'á', 'â', 'ã', 'ä', 'å'],
-    'e': ['е', 'è', 'é', 'ê', 'ë'],
-    'o': ['о', 'ò', 'ó', 'ô', 'õ', 'ö'],
-    'p': ['р'],
-    'c': ['с'],
-    'x': ['х'],
-  };
-
-  for (const [latin, variants] of Object.entries(substitutions)) {
+  for (const [latin, variants] of Object.entries(HOMOGRAPH_SUBSTITUTIONS)) {
     for (const variant of variants) {
       if (hostname.includes(variant)) {
         homographs.push(`${latin}->${variant}`);
@@ -220,3 +226,5 @@ function detectBasicHomographs(hostname: string): string[] {
 
   return homographs;
 }
+
+const SUSPICIOUS_TLDS = new Set(['tk', 'ml', 'ga', 'cf', 'click', 'download']);

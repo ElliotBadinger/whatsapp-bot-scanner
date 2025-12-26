@@ -14,7 +14,7 @@ const privateCidrs = [
   "fe80::/10", // NOSONAR - IPv6 link-local range
 ].map((c) => ipaddr.parseCIDR(c));
 
-const BLOCKED_HOSTNAMES = [
+const BLOCKED_HOSTNAMES = new Set([
   "localhost", // NOSONAR - local-only hostname
   "127.0.0.1", // NOSONAR - loopback
   "0.0.0.0", // NOSONAR - invalid/unspecified
@@ -22,13 +22,13 @@ const BLOCKED_HOSTNAMES = [
   "internal", // NOSONAR - internal keyword
   "metadata", // NOSONAR - metadata keyword
   "169.254.169.254", // NOSONAR - cloud metadata IP
-];
+]);
 
 export async function isPrivateHostname(hostname: string): Promise<boolean> {
   const lowerHostname = hostname.toLowerCase();
 
   // Check blocked hostnames first
-  if (BLOCKED_HOSTNAMES.includes(lowerHostname)) {
+  if (BLOCKED_HOSTNAMES.has(lowerHostname)) {
     return true;
   }
 
