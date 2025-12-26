@@ -7,6 +7,10 @@ const gauge = () => ({ set: noop, labels: () => ({ set: noop }) });
 const histogram = () => ({ observe: noop, labels: () => ({ observe: noop }) });
 
 export const config = {
+  modes: {
+    mvp: false,
+  },
+  redisUrl: "redis://localhost:6379/0",
   queues: {
     scanRequest: "scan-request",
     scanVerdict: "scan-verdict",
@@ -138,6 +142,8 @@ export const ScanRequestSchema = {
 export const assertEssentialConfig = () => undefined;
 export const assertControlPlaneToken = (): string =>
   (process.env.CONTROL_PLANE_API_TOKEN || "test-token").trim();
+export const getControlPlaneTokenOptional = (): string | null =>
+  (process.env.CONTROL_PLANE_API_TOKEN || "").trim() || null;
 export const createRedisConnection = () => new (FakeRedis as any)();
 export const connectRedis = async () => undefined;
 

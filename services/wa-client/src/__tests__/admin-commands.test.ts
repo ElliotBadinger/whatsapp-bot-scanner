@@ -121,6 +121,26 @@ describe("wa-client admin commands", () => {
     );
   });
 
+  it("skips control-plane calls in MVP mode when token is missing", async () => {
+    const chat = makeChat([makeParticipant("admin-1", true)]);
+    const msg = makeMessage("!scanner status", chat);
+
+    const originalMvp = config.modes.mvp;
+    const originalToken = process.env.CONTROL_PLANE_API_TOKEN;
+    config.modes.mvp = true;
+    process.env.CONTROL_PLANE_API_TOKEN = "";
+
+    await handleAdminCommand({} as any, msg, chat, __testables.redis as any);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(chat.sendMessage).toHaveBeenCalledWith(
+      "Control-plane disabled in MVP mode.",
+    );
+
+    config.modes.mvp = originalMvp;
+    process.env.CONTROL_PLANE_API_TOKEN = originalToken;
+  });
+
   it("handles consent flows and governance listing", async () => {
     const chat = makeChat([makeParticipant("admin-1", true)]);
     const client = {} as any;

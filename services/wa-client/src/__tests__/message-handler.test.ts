@@ -56,9 +56,8 @@ describe("SharedMessageHandler", () => {
       isGroup: true,
       timestamp: Date.now(),
       fromMe: false,
-      raw: {
-        mentionedIds: ["12345@c.us"],
-      },
+      mentionedIds: ["12345@c.us"],
+      raw: {},
     };
 
     await handler.createHandler()(message);
@@ -87,9 +86,8 @@ describe("SharedMessageHandler", () => {
       isGroup: true,
       timestamp: Date.now(),
       fromMe: false,
-      raw: {
-        mentionedIds: ["12345@c.us"],
-      },
+      mentionedIds: ["12345@c.us"],
+      raw: {},
     };
 
     await handler.createHandler()(message);

@@ -105,7 +105,12 @@ function checkNodeVersion() {
   }
 }
 
-function checkRedisConnection() {
+function checkRedisConnection(isMvp) {
+  if (isMvp) {
+    log(INFO, "Redis check skipped (MVP_MODE=1)");
+    return true;
+  }
+
   const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
   try {
     // Just check if we can parse the URL
@@ -248,10 +253,16 @@ async function main() {
   checkFile("package.json", "Root package.json");
   checkFile("services/wa-client/package.json", "wa-client package.json");
 
+  const isMvp = process.env.MVP_MODE === "1";
+
   section("Environment Variables");
   checkEnvVar("NODE_ENV", false, "development");
-  checkEnvVar("REDIS_URL", false, "redis://redis:6379/0");
-  checkEnvVar("CONTROL_PLANE_API_TOKEN", true);
+  if (!isMvp) {
+    checkEnvVar("REDIS_URL", false, "redis://redis:6379/0");
+  } else {
+    log(INFO, "REDIS_URL not required for MVP mode");
+  }
+  checkEnvVar("CONTROL_PLANE_API_TOKEN", !isMvp);
   checkEnvVar("WA_LIBRARY", false, "baileys");
   checkEnvVar("WA_AUTH_STRATEGY", false, "remote");
   checkEnvVar("WA_AUTH_CLIENT_ID", false, "default");
@@ -263,7 +274,7 @@ async function main() {
   checkPackages();
 
   section("Redis Connection");
-  checkRedisConnection();
+  checkRedisConnection(isMvp);
 
   section("Docker Networking");
   checkDockerNetworking();

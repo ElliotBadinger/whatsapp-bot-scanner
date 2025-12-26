@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
 
-.PHONY: build up up-full down logs test migrate seed fmt lint test-load check-docker
+.PHONY: build up up-full up-mvp up-minimal down down-mvp logs test migrate seed fmt lint test-load check-docker
 
 # Check if Docker is available and running
 check-docker:
@@ -35,10 +35,12 @@ up: check-docker
 	@docker compose up -d
 	@echo "✅ Services started. Check status with: docker compose ps"
 
-up-minimal: check-docker
-	@echo "🚀 Starting minimal services..."
-	@docker compose up -d
-	@echo "✅ Services started. Check status with: docker compose ps"
+up-mvp: check-docker
+	@echo "🚀 Starting MVP single-container service..."
+	@docker compose -f docker-compose.mvp.yml up -d
+	@echo "✅ MVP service started. Check status with: docker compose -f docker-compose.mvp.yml ps"
+
+up-minimal: up-mvp
 
 up-full: check-docker
 	@echo "🚀 Starting all services (including observability)..."
@@ -49,6 +51,11 @@ down:
 	@echo "🛑 Stopping services..."
 	@docker compose -f docker-compose.yml -f docker-compose.observability.yml down -v || true
 	@echo "✅ Services stopped"
+
+down-mvp:
+	@echo "🛑 Stopping MVP service..."
+	@docker compose -f docker-compose.mvp.yml down -v || true
+	@echo "✅ MVP service stopped"
 
 logs:
 	@docker compose -f docker-compose.yml -f docker-compose.observability.yml logs -f --tail=200
@@ -72,6 +79,7 @@ help:
 	@echo "Setup:"
 	@echo "  make build       - Build all Docker images"
 	@echo "  make up          - Start services"
+	@echo "  make up-mvp      - Start single-container MVP (wa-client only)"
 	@echo "  make up-full     - Start all services (with monitoring)"
 	@echo "  make down        - Stop and remove all services"
 	@echo ""

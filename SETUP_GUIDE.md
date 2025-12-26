@@ -18,6 +18,21 @@ cd whatsapp-bot-scanner
 ./bootstrap.sh
 ```
 
+## MVP Single-Container Setup (No Redis)
+
+Use this path if you only want the WhatsApp client + local scanner for a short MVP run.
+
+```bash
+cp .env.mvp.example .env
+make up-mvp
+```
+
+Or:
+
+```bash
+docker compose -f docker-compose.mvp.yml up -d
+```
+
 ## What Gets Installed Automatically
 
 The bootstrap script will automatically install:

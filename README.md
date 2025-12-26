@@ -91,13 +91,15 @@ Run the WhatsApp client and heuristic scanner in one process with external enric
 - **Bun/Node:**
 
   ```bash
-  MVP_MODE=1 WA_REMOTE_AUTH_STORE=memory bun run --filter @wbscanner/wa-client dev:adapter
+  cp .env.mvp.example .env
+  bun run --filter @wbscanner/wa-client dev
   ```
 
 - **Docker Compose:**
 
   ```bash
-  MVP_MODE=1 WA_REMOTE_AUTH_STORE=memory docker compose run --rm wa-client bun run dev:adapter
+  docker compose -f docker-compose.mvp.yml up -d
+  # or: make up-mvp
   ```
 
 Required runtime env vars in MVP mode:

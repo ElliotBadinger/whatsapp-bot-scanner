@@ -307,6 +307,7 @@ export class WWebJSAdapter implements WhatsAppAdapter {
         timestamp: msg.timestamp * 1000,
         fromMe: msg.fromMe,
         raw: msg,
+        mentionedIds: Array.isArray(msg.mentionedIds) ? msg.mentionedIds : [],
         quotedMessage,
       };
     } catch (err) {

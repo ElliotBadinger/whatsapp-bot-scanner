@@ -47,6 +47,8 @@ export interface WAMessage {
   fromMe: boolean;
   /** Original raw message object from the library */
   raw: unknown;
+  /** Mentioned JIDs extracted by the adapter (if available) */
+  mentionedIds?: string[];
   /** Quoted message if this is a reply */
   quotedMessage?: {
     id: string;

@@ -7,7 +7,6 @@
 
 import type { Logger } from "pino";
 import type { Redis } from "ioredis";
-import { getContentType } from "@whiskeysockets/baileys";
 import {
   type WhatsAppAdapter,
   type WAMessage,
@@ -481,7 +480,7 @@ export class SharedMessageHandler {
     const botId = this.adapter.botId;
     if (!botId) return null;
 
-    const mentionedJids = this.extractMentionedJids(message);
+    const mentionedJids = message.mentionedIds ?? [];
     if (mentionedJids.length === 0) return null;
 
     const botUser = this.normalizeJidUser(botId);
@@ -508,28 +507,6 @@ export class SharedMessageHandler {
     const args = argsStr ? argsStr.split(/\s+/) : [];
 
     return { command, args };
-  }
-
-  private extractMentionedJids(message: WAMessage): string[] {
-    const raw = message.raw as { message?: Record<string, unknown> } | null;
-    const rawMessage = raw?.message;
-    if (rawMessage && typeof rawMessage === "object") {
-      const messageType = getContentType(rawMessage as Record<string, unknown>);
-      const content = messageType
-        ? (rawMessage as Record<string, any>)[messageType]
-        : undefined;
-      const mentionedJids = content?.contextInfo?.mentionedJid;
-      if (Array.isArray(mentionedJids)) {
-        return mentionedJids;
-      }
-    }
-
-    const webMessage = message.raw as { mentionedIds?: string[] } | null;
-    if (Array.isArray(webMessage?.mentionedIds)) {
-      return webMessage.mentionedIds;
-    }
-
-    return [];
   }
 
   private normalizeJidUser(jid: string): string {

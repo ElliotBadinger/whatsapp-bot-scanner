@@ -273,6 +273,17 @@ export class BaileysAdapter implements WhatsAppAdapter {
       };
     }
 
+    const mentionCandidates = [
+      messageContent.extendedTextMessage?.contextInfo?.mentionedJid,
+      messageContent.imageMessage?.contextInfo?.mentionedJid,
+      messageContent.videoMessage?.contextInfo?.mentionedJid,
+      messageContent.documentMessage?.contextInfo?.mentionedJid,
+      (messageContent as { contextInfo?: { mentionedJid?: string[] } })
+        .contextInfo?.mentionedJid,
+    ];
+    const mentionedIds =
+      mentionCandidates.find((candidate) => Array.isArray(candidate)) ?? [];
+
     return {
       id: key.id,
       chatId: remoteJid,
@@ -282,6 +293,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
       timestamp: (msg.messageTimestamp as number) * 1000,
       fromMe: key.fromMe ?? false,
       raw: msg,
+      mentionedIds,
       quotedMessage,
     };
   }

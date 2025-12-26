@@ -25,18 +25,24 @@ if ! docker info >/dev/null 2>&1; then
 fi
 echo "OK: Docker is running."
 
-# Check for essential env vars
-if grep -q "VT_API_KEY=$" "$ROOT_DIR/.env"; then
-  echo "FAIL: VT_API_KEY is empty in .env"
-  exit 1
-fi
-echo "OK: VT_API_KEY is set."
+MVP_MODE=$(grep -E "^MVP_MODE=" "$ROOT_DIR/.env" | tail -n 1 | cut -d= -f2 | tr -d '"' || true)
 
-if grep -q "REDIS_URL=$" "$ROOT_DIR/.env"; then
-  echo "FAIL: REDIS_URL is empty in .env"
-  exit 1
+if [ "$MVP_MODE" = "1" ]; then
+  echo "MVP_MODE=1 detected; skipping external API key and Redis checks."
+else
+  # Check for essential env vars
+  if grep -q "VT_API_KEY=$" "$ROOT_DIR/.env"; then
+    echo "FAIL: VT_API_KEY is empty in .env"
+    exit 1
+  fi
+  echo "OK: VT_API_KEY is set."
+
+  if grep -q "REDIS_URL=$" "$ROOT_DIR/.env"; then
+    echo "FAIL: REDIS_URL is empty in .env"
+    exit 1
+  fi
+  echo "OK: REDIS_URL is set."
 fi
-echo "OK: REDIS_URL is set."
 
 echo "Setup validation passed!"
 exit 0
