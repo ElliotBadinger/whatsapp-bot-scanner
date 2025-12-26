@@ -57,6 +57,8 @@ export class BaileysAdapter implements WhatsAppAdapter {
   private readonly logger: Logger;
   private _state: ConnectionState = "disconnected";
   private _botId: string | null = null;
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private reconnectAttempts = 0;
 
   // Event handlers
   private readonly messageHandlers: MessageHandler[] = [];
@@ -140,11 +142,13 @@ export class BaileysAdapter implements WhatsAppAdapter {
           creds: authState.creds,
           keys: makeCacheableSignalKeyStore(authState.keys, this.logger),
         },
-        logger: this.logger,
+        logger: createBaileysLogger(this.logger),
         browser: [this.config.browserName ?? "WBScanner", "Chrome", "120.0.0"],
         generateHighQualityLinkPreview: false,
         syncFullHistory: false,
         markOnlineOnConnect: false,
+        fireInitQueries: false,
+        shouldSyncHistoryMessage: () => false,
       });
 
       // Set up event handlers
@@ -191,6 +195,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
 
         this.logger.info({ reason }, "Connection closed");
         this.setState("disconnected");
+        await this.cleanupSocket();
 
         // Clear auth state if logged out
         if (isLoggedOut && this.clearState) {
@@ -208,10 +213,14 @@ export class BaileysAdapter implements WhatsAppAdapter {
           { shouldReconnect, isLoggedOut },
           "Attempting to reconnect for fresh pairing...",
         );
-        setTimeout(() => this.connect(), isLoggedOut ? 2000 : 5000);
+        if (shouldReconnect) {
+          this.scheduleReconnect(isLoggedOut ? 2000 : 5000);
+        }
       } else if (connection === "open") {
         this._botId = this.socket?.user?.id ?? null;
         this.logger.info({ botId: this._botId }, "Connection opened");
+        this.clearReconnectTimer();
+        this.reconnectAttempts = 0;
         this.setState("ready");
       } else if (connection === "connecting") {
         this.setState("connecting");
@@ -338,13 +347,50 @@ export class BaileysAdapter implements WhatsAppAdapter {
    * Disconnect the Baileys socket
    */
   async disconnect(): Promise<void> {
-    if (this.socket) {
-      this.socket.end(undefined);
-      this.socket = null;
-    }
+    await this.cleanupSocket(true);
     this._botId = null;
     this.setState("disconnected");
     this.logger.info("Disconnected from WhatsApp");
+  }
+
+  private async cleanupSocket(logErrors = false): Promise<void> {
+    if (!this.socket) {
+      return;
+    }
+
+    try {
+      this.socket.end(undefined);
+    } catch (err) {
+      if (logErrors) {
+        this.logger.warn({ err }, "Failed to close Baileys socket");
+      }
+    } finally {
+      this.socket = null;
+    }
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  private scheduleReconnect(initialDelayMs: number): void {
+    if (this.reconnectTimer) {
+      return;
+    }
+
+    const cappedAttempts = Math.min(this.reconnectAttempts, 4);
+    const delay = Math.min(initialDelayMs * Math.pow(2, cappedAttempts), 60000);
+    this.reconnectAttempts += 1;
+
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      void this.connect().catch((err) => {
+        this.logger.error({ err }, "Reconnect attempt failed");
+      });
+    }, delay);
   }
 
   /**
@@ -908,6 +954,85 @@ export class BaileysAdapter implements WhatsAppAdapter {
     const blocklist = await this.socket.fetchBlocklist();
     return blocklist.filter((jid): jid is string => jid !== undefined);
   }
+}
+
+const TRANSIENT_ERROR_PATTERNS = [
+  /stream errored out/i,
+  /error in sending keep alive/i,
+];
+
+const DOWNLEVEL_INFO_PATTERNS = [
+  /failed to sync state from version/i,
+  /resyncing .* from v0/i,
+  /tried remove, but no previous op/i,
+];
+
+function createBaileysLogger(base: Logger): {
+  level: string;
+  child(obj: Record<string, unknown>): ReturnType<typeof createBaileysLogger>;
+  trace(obj: unknown, msg?: string): void;
+  debug(obj: unknown, msg?: string): void;
+  info(obj: unknown, msg?: string): void;
+  warn(obj: unknown, msg?: string): void;
+  error(obj: unknown, msg?: string): void;
+} {
+  const normalize = (
+    obj: unknown,
+    msg?: string,
+  ): { meta: unknown; message?: string } => {
+    if (typeof obj === "string" && msg === undefined) {
+      return { meta: undefined, message: obj };
+    }
+    return { meta: obj, message: msg };
+  };
+
+  const shouldDownlevelError = (message?: string): boolean =>
+    Boolean(message && TRANSIENT_ERROR_PATTERNS.some((p) => p.test(message)));
+
+  const shouldDownlevelInfo = (message?: string): boolean =>
+    Boolean(message && DOWNLEVEL_INFO_PATTERNS.some((p) => p.test(message)));
+
+  const emit = (
+    level: "trace" | "debug" | "info" | "warn" | "error",
+    obj: unknown,
+    msg?: string,
+  ): void => {
+    const { meta, message } = normalize(obj, msg);
+    if (level === "error" && shouldDownlevelError(message)) {
+      if (message) {
+        base.warn(meta as never, message);
+      } else {
+        base.warn(meta as never);
+      }
+      return;
+    }
+
+    if (level === "info" && shouldDownlevelInfo(message)) {
+      if (message) {
+        base.debug(meta as never, message);
+      } else {
+        base.debug(meta as never);
+      }
+      return;
+    }
+
+    if (message) {
+      base[level](meta as never, message);
+    } else {
+      base[level](meta as never);
+    }
+  };
+
+  return {
+    level: base.level,
+    child: (obj: Record<string, unknown>) =>
+      createBaileysLogger(base.child(obj)),
+    trace: (obj, msg) => emit("trace", obj, msg),
+    debug: (obj, msg) => emit("debug", obj, msg),
+    info: (obj, msg) => emit("info", obj, msg),
+    warn: (obj, msg) => emit("warn", obj, msg),
+    error: (obj, msg) => emit("error", obj, msg),
+  };
 }
 
 /**
