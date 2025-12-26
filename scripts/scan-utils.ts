@@ -47,7 +47,11 @@ export function normalizeLabel(label?: string): string | null {
   if (!label) return null;
   const normalized = label.trim().toLowerCase();
   if (!normalized) return null;
-  if (["phish", "phishing", "malware", "malicious", "bad", "evil"].includes(normalized)) {
+  if (
+    ["phish", "phishing", "malware", "malicious", "bad", "evil"].includes(
+      normalized,
+    )
+  ) {
     return "malicious";
   }
   if (["benign", "legit", "legitimate", "good", "clean"].includes(normalized)) {
@@ -125,8 +129,9 @@ function ensureBucket(buckets: Record<string, Bucket>, key: string): Bucket {
   return buckets[key];
 }
 
-let cachedScanUrl: ((url: string, options: ScanOptions) => Promise<ScanResult>) | null =
-  null;
+let cachedScanUrl:
+  | ((url: string, options: ScanOptions) => Promise<ScanResult>)
+  | null = null;
 
 async function defaultScanUrl(
   url: string,
