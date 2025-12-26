@@ -30,10 +30,7 @@ describe("link corpus helpers", () => {
       "2,2,example.org,org,10,20",
     ].join("\n");
 
-    expect(parseMajesticCsv(csv, 10)).toEqual([
-      "google.com",
-      "example.org",
-    ]);
+    expect(parseMajesticCsv(csv, 10)).toEqual(["google.com", "example.org"]);
   });
 
   test("parseSansDomainData accepts JSON array and score filter", () => {

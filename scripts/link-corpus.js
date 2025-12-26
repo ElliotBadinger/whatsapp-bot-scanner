@@ -5,15 +5,19 @@ const { request } = require("undici");
 const punycode = require("punycode/");
 
 const DEFAULT_SOURCES = {
-  benign: process.env.MAJESTIC_FEED_URL ||
+  benign:
+    process.env.MAJESTIC_FEED_URL ||
     "https://downloads.majestic.com/majestic_million.csv",
   malicious: {
-    openphish: process.env.OPENPHISH_FEED_URL ||
+    openphish:
+      process.env.OPENPHISH_FEED_URL ||
       "https://raw.githubusercontent.com/openphish/public_feed/refs/heads/main/feed.txt",
-    urlhaus: process.env.URLHAUS_FEED_URL ||
+    urlhaus:
+      process.env.URLHAUS_FEED_URL ||
       "https://urlhaus.abuse.ch/downloads/text_online/",
   },
-  suspicious: process.env.SANS_DOMAIN_FEED_URL ||
+  suspicious:
+    process.env.SANS_DOMAIN_FEED_URL ||
     "https://isc.sans.edu/feeds/domaindata.json.gz",
 };
 
@@ -96,8 +100,7 @@ async function fetchText(url) {
   const buffer = Buffer.from(await response.body.arrayBuffer());
   const encodingHeader = response.headers["content-encoding"];
   const isGzip =
-    (typeof encodingHeader === "string" &&
-      encodingHeader.includes("gzip")) ||
+    (typeof encodingHeader === "string" && encodingHeader.includes("gzip")) ||
     url.endsWith(".gz");
 
   const decoded = isGzip ? zlib.gunzipSync(buffer) : buffer;
@@ -215,8 +218,7 @@ function makeHomoglyphDomain(domain) {
   for (let i = 0; i < label.length; i += 1) {
     const char = label[i];
     if (HOMOGLYPH_MAP[char]) {
-      replaced =
-        label.slice(0, i) + HOMOGLYPH_MAP[char] + label.slice(i + 1);
+      replaced = label.slice(0, i) + HOMOGLYPH_MAP[char] + label.slice(i + 1);
       break;
     }
   }
@@ -251,7 +253,8 @@ function generateTrickyUrls(domains, maliciousUrls, limit) {
     const homoglyph = makeHomoglyphDomain(domain);
     if (homoglyph) add(`https://${homoglyph}${TRICKY_PATHS[3]}`);
 
-    const maliciousHost = maliciousHosts[results.length % maliciousHosts.length];
+    const maliciousHost =
+      maliciousHosts[results.length % maliciousHosts.length];
     if (maliciousHost) {
       add(`https://${domain}@${maliciousHost}${TRICKY_PATHS[4]}`);
     }
@@ -413,7 +416,10 @@ async function main() {
     out: args.out || "storage/link-corpus.jsonl",
     summary: args.summary || "storage/link-corpus.summary.json",
     benignLimit: parseIntOr(args["benign-limit"], DEFAULT_LIMITS.benign),
-    maliciousLimit: parseIntOr(args["malicious-limit"], DEFAULT_LIMITS.malicious),
+    maliciousLimit: parseIntOr(
+      args["malicious-limit"],
+      DEFAULT_LIMITS.malicious,
+    ),
     suspiciousLimit: parseIntOr(
       args["suspicious-limit"],
       DEFAULT_LIMITS.suspicious,

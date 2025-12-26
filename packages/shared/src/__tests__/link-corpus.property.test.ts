@@ -32,24 +32,27 @@ describe("link corpus properties", () => {
     } as const;
 
     fc.assert(
-      fc.property(fc.array(entryArb, { minLength: 1, maxLength: 30 }), (entries) => {
-        const deduped = dedupeEntries(entries);
-        const maxByUrl = new Map<string, number>();
-        for (const entry of entries) {
-          const current = maxByUrl.get(entry.url) ?? -1;
-          const score = priority[entry.label as keyof typeof priority] ?? -1;
-          if (score > current) {
-            maxByUrl.set(entry.url, score);
+      fc.property(
+        fc.array(entryArb, { minLength: 1, maxLength: 30 }),
+        (entries) => {
+          const deduped = dedupeEntries(entries);
+          const maxByUrl = new Map<string, number>();
+          for (const entry of entries) {
+            const current = maxByUrl.get(entry.url) ?? -1;
+            const score = priority[entry.label as keyof typeof priority] ?? -1;
+            if (score > current) {
+              maxByUrl.set(entry.url, score);
+            }
           }
-        }
 
-        expect(deduped).toHaveLength(maxByUrl.size);
-        for (const entry of deduped) {
-          expect(priority[entry.label as keyof typeof priority]).toBe(
-            maxByUrl.get(entry.url),
-          );
-        }
-      }),
+          expect(deduped).toHaveLength(maxByUrl.size);
+          for (const entry of deduped) {
+            expect(priority[entry.label as keyof typeof priority]).toBe(
+              maxByUrl.get(entry.url),
+            );
+          }
+        },
+      ),
     );
   });
 });
