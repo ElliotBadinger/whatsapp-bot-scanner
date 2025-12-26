@@ -1850,4 +1850,13 @@ program
     }).catch(() => process.exit(1));
   });
 
-program.parse(process.argv);
+const argv = process.argv.slice(2);
+const hasHelpFlag = argv.includes("-h") || argv.includes("--help");
+const hasVersionFlag = argv.includes("-V") || argv.includes("--version");
+const hasCommand = argv.some((arg) => !arg.startsWith("-"));
+const parseArgs =
+  !hasHelpFlag && !hasVersionFlag && !hasCommand
+    ? [...process.argv, "setup"]
+    : process.argv;
+
+program.parse(parseArgs);
