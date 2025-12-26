@@ -130,7 +130,12 @@ export function isSuspiciousTld(hostname: string): boolean {
     "club",
     "link",
   ]);
-  return !!t.publicSuffix && bad.has(t.publicSuffix);
+  if (!t.publicSuffix) {
+    return false;
+  }
+
+  const lastLabel = t.publicSuffix.split(".").at(-1);
+  return !!lastLabel && bad.has(lastLabel);
 }
 
 export function isShortener(hostname: string): boolean {
