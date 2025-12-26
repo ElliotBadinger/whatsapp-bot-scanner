@@ -548,7 +548,7 @@ describe("Queue Performance Tests", () => {
       // Throughput should not drop excessively at high depth in CI
       const maxThroughput = Math.max(...results.map((r) => r.throughput));
       const minThroughput = Math.min(...results.map((r) => r.throughput));
-      const threshold = process.env.MVP_MODE === "1" ? 0.1 : isCi ? 0.2 : 0.25;
+      const threshold = isCi ? 0.2 : 0.25;
 
       expect(minThroughput).toBeGreaterThan(maxThroughput * threshold);
     });
