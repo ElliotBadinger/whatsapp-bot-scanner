@@ -535,7 +535,9 @@ describe("Queue Performance Tests", () => {
           const start = performance.now();
 
           for (let i = 0; i < iterations; i++) {
-            await queue.add("scan", { url: `https://measure-${sample}-${i}.com/` });
+            await queue.add("scan", {
+              url: `https://measure-${sample}-${i}.com/`,
+            });
           }
 
           const elapsed = performance.now() - start;
