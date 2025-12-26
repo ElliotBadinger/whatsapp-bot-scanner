@@ -220,7 +220,8 @@ export class BaileysAdapter implements WhatsAppAdapter {
       } else if (connection === "open") {
         const user = this.socket?.user;
         this._botId = user?.id ?? null;
-        this._botLid = user?.lid ?? (user?.id?.endsWith("@lid") ? user.id : null);
+        this._botLid =
+          user?.lid ?? (user?.id?.endsWith("@lid") ? user.id : null);
         this.logger.info(
           { botId: this._botId, botLid: this._botLid },
           "Connection opened",
