@@ -75,14 +75,23 @@ test("openphish listing is malicious", () => {
 
 test("suspicious domain feed adds risk", () => {
   const result = scoreFromSignals({ suspiciousDomainListed: true });
-  expect(result.score).toBeGreaterThanOrEqual(3);
+  expect(result.score).toBeGreaterThanOrEqual(5);
   expect(result.reasons).toContain("Domain listed in suspicious activity feed");
 });
 
 test("userinfo in URL adds risk", () => {
   const result = scoreFromSignals({ hasUserInfo: true });
-  expect(result.score).toBeGreaterThanOrEqual(3);
+  expect(result.score).toBeGreaterThanOrEqual(6);
   expect(result.reasons).toContain("URL contains embedded credentials");
+});
+
+test("typosquat signals add risk", () => {
+  const result = scoreFromSignals({
+    typoSquatTarget: "google.com",
+    typoSquatMethod: "missing-char",
+  });
+  expect(result.level).toBe("suspicious");
+  expect(result.reasons.some((r) => r.includes("typosquat"))).toBe(true);
 });
 
 test("final url mismatch adds risk", () => {

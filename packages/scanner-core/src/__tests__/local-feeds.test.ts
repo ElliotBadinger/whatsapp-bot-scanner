@@ -37,6 +37,7 @@ describe("local feed lookup", () => {
       "utf8",
     );
     fs.writeFileSync(path.join(tempDir, "sans-domains.txt"), "", "utf8");
+    fs.writeFileSync(path.join(tempDir, "majestic-top-domains.txt"), "", "utf8");
 
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const {
@@ -60,6 +61,7 @@ describe("local feed lookup", () => {
       "suspicious.test\n",
       "utf8",
     );
+    fs.writeFileSync(path.join(tempDir, "majestic-top-domains.txt"), "", "utf8");
 
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const {
@@ -70,5 +72,24 @@ describe("local feed lookup", () => {
 
     const signals = lookupLocalFeedSignals("https://suspicious.test/path");
     expect(signals.suspiciousDomainListed).toBe(true);
+  });
+
+  test("detects typosquat domains against top list", () => {
+    fs.writeFileSync(path.join(tempDir, "openphish.txt"), "", "utf8");
+    fs.writeFileSync(path.join(tempDir, "urlhaus.txt"), "", "utf8");
+    fs.writeFileSync(path.join(tempDir, "sans-domains.txt"), "", "utf8");
+    fs.writeFileSync(
+      path.join(tempDir, "majestic-top-domains.txt"),
+      "google.com\nfacebook.com\n",
+      "utf8",
+    );
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { lookupLocalFeedSignals, resetLocalFeedCache } = require("../local-feeds");
+    resetLocalFeedCache();
+
+    const signals = lookupLocalFeedSignals("https://gogle.com/login");
+    expect(signals.typoSquatTarget).toBe("google.com");
+    expect(signals.typoSquatMethod).toBe("missing-char");
   });
 });

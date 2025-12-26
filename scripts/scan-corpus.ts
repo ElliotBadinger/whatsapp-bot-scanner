@@ -8,6 +8,7 @@ type Bucket = {
   suspicious: number;
   malicious: number;
   scoreSum: number;
+  correct: number;
 };
 
 const filePath = process.env.CORPUS_PATH || "storage/link-corpus.jsonl";
@@ -22,6 +23,7 @@ function ensure(label: string): Bucket {
       suspicious: 0,
       malicious: 0,
       scoreSum: 0,
+      correct: 0,
     };
   }
   return buckets[label];
@@ -46,6 +48,11 @@ const run = async () => {
     if (result.verdict.level === "benign") bucket.benign += 1;
     if (result.verdict.level === "suspicious") bucket.suspicious += 1;
     if (result.verdict.level === "malicious") bucket.malicious += 1;
+    const expected =
+      entry.label === "tricky" ? "suspicious" : entry.label || "unknown";
+    if (result.verdict.level === expected) {
+      bucket.correct += 1;
+    }
   }
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);
@@ -62,6 +69,9 @@ const run = async () => {
         : 0,
       avgScore: bucket.total
         ? Number((bucket.scoreSum / bucket.total).toFixed(2))
+        : 0,
+      accuracy: bucket.total
+        ? Number((bucket.correct / bucket.total).toFixed(3))
         : 0,
     };
   });

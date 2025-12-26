@@ -19,6 +19,9 @@ const TRACKING_PARAMS = new Set([
 ]);
 
 const DEFAULT_URLS = {
+  majestic:
+    process.env.MAJESTIC_FEED_URL ||
+    "https://downloads.majestic.com/majestic_million.csv",
   openphish:
     process.env.OPENPHISH_FEED_URL ||
     "https://raw.githubusercontent.com/openphish/public_feed/refs/heads/main/feed.txt",
@@ -33,6 +36,10 @@ const DEFAULT_URLS = {
 const FEED_DIR =
   process.env.LOCAL_FEED_DIR || path.join(process.cwd(), "storage", "feeds");
 const SANS_SCORE_MIN = Number.parseInt(process.env.SANS_SCORE_MIN || "3", 10);
+const MAJESTIC_TOP_LIMIT = Number.parseInt(
+  process.env.MAJESTIC_TOP_LIMIT || "10000",
+  10,
+);
 
 function parseArgs(argv) {
   const args = {};
@@ -159,23 +166,39 @@ function parseSansDomains(data) {
   return Array.from(domains);
 }
 
+function parseMajesticCsv(data, limit) {
+  const lines = data.split(/\r?\n/).filter(Boolean);
+  const domains = [];
+  const startIndex = lines[0]?.toLowerCase().includes("globalrank") ? 1 : 0;
+  for (let i = startIndex; i < lines.length; i += 1) {
+    if (domains.length >= limit) break;
+    const parts = lines[i].split(",");
+    const domain = parts[2] ? normalizeDomain(parts[2]) : null;
+    if (domain) domains.push(domain);
+  }
+  return domains;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const outDir = args["out-dir"] || FEED_DIR;
   const dryRun = Boolean(args["dry-run"]);
 
-  const [openphishRaw, urlhausRaw, sansRaw] = await Promise.all([
+  const [majesticRaw, openphishRaw, urlhausRaw, sansRaw] = await Promise.all([
+    fetchText(DEFAULT_URLS.majestic),
     fetchText(DEFAULT_URLS.openphish),
     fetchText(DEFAULT_URLS.urlhaus),
     fetchText(DEFAULT_URLS.sans),
   ]);
 
+  const majesticDomains = parseMajesticCsv(majesticRaw, MAJESTIC_TOP_LIMIT);
   const openphishUrls = parseUrlList(openphishRaw);
   const urlhausUrls = parseUrlList(urlhausRaw);
   const sansDomains = parseSansDomains(sansRaw);
 
   const summary = {
     fetchedAt: new Date().toISOString(),
+    majestic: { count: majesticDomains.length, source: DEFAULT_URLS.majestic },
     openphish: { count: openphishUrls.length, source: DEFAULT_URLS.openphish },
     urlhaus: { count: urlhausUrls.length, source: DEFAULT_URLS.urlhaus },
     sans: { count: sansDomains.length, source: DEFAULT_URLS.sans },
@@ -187,6 +210,11 @@ async function main() {
     fs.writeFileSync(
       path.join(outDir, "openphish.txt"),
       `${openphishUrls.join("\n")}\n`,
+      "utf8",
+    );
+    fs.writeFileSync(
+      path.join(outDir, "majestic-top-domains.txt"),
+      `${majesticDomains.join("\n")}\n`,
       "utf8",
     );
     fs.writeFileSync(

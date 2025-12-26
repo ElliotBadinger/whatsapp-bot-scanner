@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { toASCII } from "punycode/";
+import { registrableDomain } from "@wbscanner/shared";
 
 const LOCAL_FEEDS_ENABLED =
   (process.env.LOCAL_FEEDS_ENABLED || "true") === "true";
@@ -13,6 +14,9 @@ const URLHAUS_PATH =
   process.env.URLHAUS_LOCAL_PATH || path.join(FEED_DIR, "urlhaus.txt");
 const SANS_PATH =
   process.env.SANS_LOCAL_PATH || path.join(FEED_DIR, "sans-domains.txt");
+const TOP_DOMAINS_PATH =
+  process.env.MAJESTIC_TOP_LOCAL_PATH ||
+  path.join(FEED_DIR, "majestic-top-domains.txt");
 
 const SANS_SCORE_MIN = Number.parseInt(process.env.SANS_SCORE_MIN || "3", 10);
 
@@ -36,15 +40,25 @@ type FeedCache = {
   entries: Set<string>;
 };
 
+type TopDomainsCache = {
+  path: string;
+  mtimeMs: number;
+  exact: Set<string>;
+  missingCharVariants: Map<string, string>;
+};
+
 export type LocalFeedSignals = {
   openphishListed?: boolean;
   urlhausListed?: boolean;
   suspiciousDomainListed?: boolean;
+  typoSquatTarget?: string;
+  typoSquatMethod?: string;
 };
 
 let openphishCache: FeedCache | null = null;
 let urlhausCache: FeedCache | null = null;
 let sansCache: FeedCache | null = null;
+let topDomainsCache: TopDomainsCache | null = null;
 
 function normalizeDomain(input: unknown): string | null {
   if (!input || typeof input !== "string") return null;
@@ -163,6 +177,41 @@ function parseSansDomains(raw: string): Set<string> {
   return set;
 }
 
+function parseTopDomains(raw: string): {
+  exact: Set<string>;
+  missingCharVariants: Map<string, string>;
+} {
+  const exact = new Set<string>();
+  const missingCharVariants = new Map<string, string>();
+
+  raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .forEach((line) => {
+      const normalized = normalizeDomain(line);
+      if (!normalized) return;
+      const ascii = toASCII(normalized);
+      exact.add(ascii);
+
+      const labels = ascii.split(".");
+      if (labels.length < 2) return;
+      const sld = labels[0];
+      const suffix = labels.slice(1).join(".");
+      if (sld.length < 4) return;
+      for (let i = 0; i < sld.length; i += 1) {
+        const variant = sld.slice(0, i) + sld.slice(i + 1);
+        if (variant.length < 3) continue;
+        const variantDomain = `${variant}.${suffix}`;
+        if (!missingCharVariants.has(variantDomain)) {
+          missingCharVariants.set(variantDomain, ascii);
+        }
+      }
+    });
+
+  return { exact, missingCharVariants };
+}
+
 function loadFeed(
   cache: FeedCache | null,
   filePath: string,
@@ -176,6 +225,28 @@ function loadFeed(
     }
     const raw = fs.readFileSync(filePath, "utf8");
     return { path: filePath, mtimeMs: stats.mtimeMs, entries: parser(raw) };
+  } catch {
+    return cache;
+  }
+}
+
+function loadTopDomains(
+  cache: TopDomainsCache | null,
+): TopDomainsCache | null {
+  try {
+    if (!fs.existsSync(TOP_DOMAINS_PATH)) return cache;
+    const stats = fs.statSync(TOP_DOMAINS_PATH);
+    if (cache && cache.mtimeMs === stats.mtimeMs) {
+      return cache;
+    }
+    const raw = fs.readFileSync(TOP_DOMAINS_PATH, "utf8");
+    const parsed = parseTopDomains(raw);
+    return {
+      path: TOP_DOMAINS_PATH,
+      mtimeMs: stats.mtimeMs,
+      exact: parsed.exact,
+      missingCharVariants: parsed.missingCharVariants,
+    };
   } catch {
     return cache;
   }
@@ -196,10 +267,16 @@ function getSans(): FeedCache | null {
   return sansCache;
 }
 
+function getTopDomains(): TopDomainsCache | null {
+  topDomainsCache = loadTopDomains(topDomainsCache);
+  return topDomainsCache;
+}
+
 export function resetLocalFeedCache(): void {
   openphishCache = null;
   urlhausCache = null;
   sansCache = null;
+  topDomainsCache = null;
 }
 
 export function lookupLocalFeedSignals(finalUrl: string): LocalFeedSignals {
@@ -213,6 +290,7 @@ export function lookupLocalFeedSignals(finalUrl: string): LocalFeedSignals {
       return "";
     }
   })();
+  const registrable = registrableDomain(hostname) || hostname;
 
   const signals: LocalFeedSignals = {};
 
@@ -231,5 +309,67 @@ export function lookupLocalFeedSignals(finalUrl: string): LocalFeedSignals {
     signals.suspiciousDomainListed = true;
   }
 
+  const topDomains = getTopDomains();
+  if (topDomains) {
+    const typo =
+      (hostname && detectTyposquat(hostname, topDomains)) ||
+      (registrable && detectTyposquat(registrable, topDomains));
+    if (typo) {
+      signals.typoSquatTarget = typo.target;
+      signals.typoSquatMethod = typo.method;
+    }
+  }
+
   return signals;
+}
+
+type TyposquatMatch = { target: string; method: string };
+
+function detectTyposquat(
+  domain: string,
+  topDomains: TopDomainsCache,
+): TyposquatMatch | null {
+  if (!domain || topDomains.exact.has(domain)) return null;
+
+  const missingTarget = topDomains.missingCharVariants.get(domain);
+  if (missingTarget) {
+    return { target: missingTarget, method: "missing-char" };
+  }
+
+  const labels = domain.split(".");
+  if (labels.length < 2) return null;
+  const sld = labels[0];
+  const suffix = labels.slice(1).join(".");
+  if (!sld || !suffix) return null;
+
+  if (sld.includes("-")) {
+    const collapsed = sld.replace(/-/g, "");
+    if (collapsed !== sld) {
+      const candidate = `${collapsed}.${suffix}`;
+      if (topDomains.exact.has(candidate)) {
+        return { target: candidate, method: "hyphen" };
+      }
+    }
+  }
+
+  for (let i = 0; i < sld.length; i += 1) {
+    const removed = sld.slice(0, i) + sld.slice(i + 1);
+    if (removed.length < 3) continue;
+    const candidate = `${removed}.${suffix}`;
+    if (topDomains.exact.has(candidate)) {
+      return { target: candidate, method: "extra-char" };
+    }
+  }
+
+  for (let i = 0; i < sld.length - 1; i += 1) {
+    if (sld[i] === sld[i + 1]) continue;
+    const swapped =
+      sld.slice(0, i) + sld[i + 1] + sld[i] + sld.slice(i + 2);
+    const candidate = `${swapped}.${suffix}`;
+    if (topDomains.exact.has(candidate)) {
+      return { target: candidate, method: "swap" };
+    }
+  }
+
+  return null;
 }

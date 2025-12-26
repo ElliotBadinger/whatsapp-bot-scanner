@@ -20,6 +20,8 @@ export interface Signals {
   hasExecutableExtension?: boolean;
   wasShortened?: boolean;
   hasUserInfo?: boolean;
+  typoSquatTarget?: string;
+  typoSquatMethod?: string;
   manualOverride?: "allow" | "deny" | null;
   finalUrlMismatch?: boolean;
   homoglyph?: HomoglyphResult;
@@ -194,12 +196,22 @@ function evaluateHeuristicSignals(
     pushReason(reasons, "Shortened URL expanded");
   }
   if (signals.hasUserInfo) {
-    score += 3;
+    score += 6;
     pushReason(reasons, "URL contains embedded credentials");
   }
   if (signals.suspiciousDomainListed) {
-    score += 3;
+    score += 5;
     pushReason(reasons, "Domain listed in suspicious activity feed");
+  }
+  if (signals.typoSquatTarget) {
+    score += 5;
+    const method = signals.typoSquatMethod
+      ? ` (${signals.typoSquatMethod})`
+      : "";
+    pushReason(
+      reasons,
+      `Possible typosquat of ${signals.typoSquatTarget}${method}`,
+    );
   }
   if (signals.finalUrlMismatch) {
     score += 2;
@@ -255,7 +267,16 @@ export function scoreFromSignals(signals: Signals): RiskVerdict {
     );
   }
 
-  const finalScore = Math.max(0, Math.min(score, 15));
+  let finalScore = Math.max(0, Math.min(score, 15));
+  const hasHardBlocklist =
+    Boolean(signals.openphishListed) ||
+    Boolean(signals.urlhausListed) ||
+    Boolean(signals.phishtankVerified) ||
+    Boolean(signals.gsbThreatTypes && signals.gsbThreatTypes.length > 0) ||
+    Boolean((signals.vtMalicious ?? 0) >= 1);
+  if (signals.suspiciousDomainListed && !hasHardBlocklist) {
+    finalScore = Math.min(finalScore, 7);
+  }
   const { level, cacheTtl } = determineRiskLevel(finalScore);
 
   return { score: finalScore, level, reasons, cacheTtl };

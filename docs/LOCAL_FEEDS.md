@@ -10,6 +10,7 @@ npm run update-local-feeds
 
 This writes to `storage/feeds/`:
 
+- `majestic-top-domains.txt`
 - `openphish.txt`
 - `urlhaus.txt`
 - `sans-domains.txt`
@@ -20,6 +21,9 @@ This writes to `storage/feeds/`:
 Environment variables:
 
 - `LOCAL_FEED_DIR` (default: `storage/feeds`)
+- `MAJESTIC_FEED_URL`
+- `MAJESTIC_TOP_LIMIT` (default: `10000`)
+- `MAJESTIC_TOP_LOCAL_PATH`
 - `OPENPHISH_FEED_URL`
 - `URLHAUS_FEED_URL`
 - `SANS_DOMAIN_FEED_URL`
