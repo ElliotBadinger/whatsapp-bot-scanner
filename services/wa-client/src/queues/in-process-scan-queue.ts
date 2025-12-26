@@ -96,11 +96,8 @@ export class InProcessScanQueue implements ScanRequestQueue {
     const key = `${data.chatId}:${data.urlHash}`;
     const expiry = this.seenUrls.get(key) ?? 0;
     if (expiry > now) {
-      this.seenUrls.delete(key);
-      this.seenUrls.set(key, expiry);
       return true;
     }
-    this.seenUrls.delete(key);
     this.seenUrls.set(key, now + this.ttlMs);
     return false;
   }
@@ -110,18 +107,13 @@ export class InProcessScanQueue implements ScanRequestQueue {
 
     const existing = this.rateLimits.get(data.chatId);
     if (!existing || now - existing.windowStart > this.opts.rateWindowMs) {
-      this.rateLimits.delete(data.chatId);
       this.rateLimits.set(data.chatId, { windowStart: now, count: 1 });
       return false;
     }
 
     if (existing.count >= this.opts.rateLimit) {
-      this.rateLimits.delete(data.chatId);
-      this.rateLimits.set(data.chatId, existing);
       return true;
     }
-
-    this.rateLimits.delete(data.chatId);
     this.rateLimits.set(data.chatId, {
       windowStart: existing.windowStart,
       count: existing.count + 1,
