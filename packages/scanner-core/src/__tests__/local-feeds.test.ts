@@ -14,6 +14,9 @@ describe("local feed lookup", () => {
     delete process.env.OPENPHISH_LOCAL_PATH;
     delete process.env.URLHAUS_LOCAL_PATH;
     delete process.env.SANS_LOCAL_PATH;
+    delete process.env.PHISHTANK_LOCAL_PATH;
+    delete process.env.CERTPL_LOCAL_PATH;
+    delete process.env.MAJESTIC_TOP_LOCAL_PATH;
     jest.resetModules();
   });
 
@@ -36,6 +39,16 @@ describe("local feed lookup", () => {
       `${urlhausUrl}\n`,
       "utf8",
     );
+    fs.writeFileSync(
+      path.join(tempDir, "phishtank.txt"),
+      `${openphishUrl}\n`,
+      "utf8",
+    );
+    fs.writeFileSync(
+      path.join(tempDir, "certpl-domains.txt"),
+      "bad.example\n",
+      "utf8",
+    );
     fs.writeFileSync(path.join(tempDir, "sans-domains.txt"), "", "utf8");
     fs.writeFileSync(
       path.join(tempDir, "majestic-top-domains.txt"),
@@ -52,9 +65,11 @@ describe("local feed lookup", () => {
 
     const openphishSignals = lookupLocalFeedSignals(openphishUrl);
     const urlhausSignals = lookupLocalFeedSignals(urlhausUrl);
+    const phishtankSignals = lookupLocalFeedSignals(openphishUrl);
 
     expect(openphishSignals.openphishListed).toBe(true);
     expect(urlhausSignals.urlhausListed).toBe(true);
+    expect(phishtankSignals.phishtankVerified).toBe(true);
   });
 
   test("detects suspicious domains from SANS feed", () => {
@@ -65,6 +80,8 @@ describe("local feed lookup", () => {
       "suspicious.test\n",
       "utf8",
     );
+    fs.writeFileSync(path.join(tempDir, "phishtank.txt"), "", "utf8");
+    fs.writeFileSync(path.join(tempDir, "certpl-domains.txt"), "", "utf8");
     fs.writeFileSync(
       path.join(tempDir, "majestic-top-domains.txt"),
       "",
@@ -82,10 +99,39 @@ describe("local feed lookup", () => {
     expect(signals.suspiciousDomainListed).toBe(true);
   });
 
+  test("detects cert pl domain matches", () => {
+    fs.writeFileSync(path.join(tempDir, "openphish.txt"), "", "utf8");
+    fs.writeFileSync(path.join(tempDir, "urlhaus.txt"), "", "utf8");
+    fs.writeFileSync(path.join(tempDir, "sans-domains.txt"), "", "utf8");
+    fs.writeFileSync(path.join(tempDir, "phishtank.txt"), "", "utf8");
+    fs.writeFileSync(
+      path.join(tempDir, "certpl-domains.txt"),
+      "evil.example\n",
+      "utf8",
+    );
+    fs.writeFileSync(
+      path.join(tempDir, "majestic-top-domains.txt"),
+      "",
+      "utf8",
+    );
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const {
+      lookupLocalFeedSignals,
+      resetLocalFeedCache,
+    } = require("../local-feeds");
+    resetLocalFeedCache();
+
+    const signals = lookupLocalFeedSignals("https://sub.evil.example/path");
+    expect(signals.certPlListed).toBe(true);
+  });
+
   test("detects typosquat domains against top list", () => {
     fs.writeFileSync(path.join(tempDir, "openphish.txt"), "", "utf8");
     fs.writeFileSync(path.join(tempDir, "urlhaus.txt"), "", "utf8");
     fs.writeFileSync(path.join(tempDir, "sans-domains.txt"), "", "utf8");
+    fs.writeFileSync(path.join(tempDir, "phishtank.txt"), "", "utf8");
+    fs.writeFileSync(path.join(tempDir, "certpl-domains.txt"), "", "utf8");
     fs.writeFileSync(
       path.join(tempDir, "majestic-top-domains.txt"),
       "google.com\nfacebook.com\n",

@@ -15,6 +15,14 @@ const DEFAULT_SOURCES = {
     urlhaus:
       process.env.URLHAUS_FEED_URL ||
       "https://urlhaus.abuse.ch/downloads/text_online/",
+    certpl:
+      process.env.CERTPL_FEED_URL ||
+      "https://hole.cert.pl/domains/v2/domains.txt",
+    phishtank:
+      process.env.PHISHTANK_FEED_URL ||
+      (process.env.PHISHTANK_API_KEY
+        ? `http://data.phishtank.com/data/${process.env.PHISHTANK_API_KEY}/online-valid.json`
+        : ""),
   },
   suspicious:
     process.env.SANS_DOMAIN_FEED_URL ||
@@ -108,6 +116,15 @@ async function fetchText(url) {
   return decoded.toString("utf8");
 }
 
+async function fetchOptional(url) {
+  if (!url) return "";
+  try {
+    return await fetchText(url);
+  } catch {
+    return "";
+  }
+}
+
 function parseUrlList(data, limit) {
   const urls = [];
   const lines = data.split(/\r?\n/);
@@ -121,6 +138,19 @@ function parseUrlList(data, limit) {
   return urls;
 }
 
+function parseDomainList(data, limit) {
+  const domains = [];
+  const lines = data.split(/\r?\n/);
+  for (const line of lines) {
+    if (domains.length >= limit) break;
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const domain = normalizeDomain(trimmed);
+    if (domain) domains.push(domain);
+  }
+  return domains;
+}
+
 function parseMajesticCsv(data, limit) {
   const lines = data.split(/\r?\n/).filter(Boolean);
   const domains = [];
@@ -132,6 +162,40 @@ function parseMajesticCsv(data, limit) {
     if (domain) domains.push(domain);
   }
   return domains;
+}
+
+function parsePhishtank(data, limit) {
+  const trimmed = data.trim();
+  if (!trimmed) return [];
+
+  const urls = [];
+
+  if (trimmed.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        for (const entry of parsed) {
+          if (urls.length >= limit) break;
+          const url = entry?.url || entry?.phish_url;
+          const normalized = url ? normalizeUrl(String(url)) : null;
+          if (normalized) urls.push(normalized);
+        }
+        return urls;
+      }
+    } catch {
+      return [];
+    }
+  }
+
+  for (const line of trimmed.split(/\r?\n/)) {
+    if (urls.length >= limit) break;
+    const match = line.match(/https?:\/\/[^,\s]+/i);
+    if (!match) continue;
+    const normalized = normalizeUrl(match[0].replace(/^\"|\"$/g, ""));
+    if (normalized) urls.push(normalized);
+  }
+
+  return urls;
 }
 
 function parseSansDomainData(data, scoreMin, limit) {
@@ -267,6 +331,46 @@ function generateTrickyUrls(domains, maliciousUrls, limit) {
   return results.slice(0, limit);
 }
 
+function interleaveSources(sources, limit) {
+  const cursors = sources.map(() => 0);
+  const results = [];
+  while (results.length < limit) {
+    let added = false;
+    for (let i = 0; i < sources.length; i += 1) {
+      const source = sources[i];
+      const cursor = cursors[i] ?? 0;
+      if (cursor < source.length) {
+        results.push(source[cursor]);
+        cursors[i] = cursor + 1;
+        added = true;
+        if (results.length >= limit) break;
+      }
+    }
+    if (!added) break;
+  }
+  return results;
+}
+
+function interleaveEntries(groups, limit) {
+  const cursors = groups.map(() => 0);
+  const results = [];
+  while (results.length < limit) {
+    let added = false;
+    for (let i = 0; i < groups.length; i += 1) {
+      const group = groups[i];
+      const cursor = cursors[i] ?? 0;
+      if (cursor < group.length) {
+        results.push(group[cursor]);
+        cursors[i] = cursor + 1;
+        added = true;
+        if (results.length >= limit) break;
+      }
+    }
+    if (!added) break;
+  }
+  return results;
+}
+
 function dedupeEntries(entries) {
   const priority = {
     malicious: 3,
@@ -295,11 +399,20 @@ async function buildCorpus(options) {
   const openphishLimit = Math.ceil(maliciousLimit * 0.5);
   const urlhausLimit = maliciousLimit - openphishLimit;
 
-  const [majesticRaw, openphishRaw, urlhausRaw, sansRaw] = await Promise.all([
+  const [
+    majesticRaw,
+    openphishRaw,
+    urlhausRaw,
+    sansRaw,
+    certplRaw,
+    phishtankRaw,
+  ] = await Promise.all([
     fetchText(options.sources.benign),
     fetchText(options.sources.malicious.openphish),
     fetchText(options.sources.malicious.urlhaus),
     fetchText(options.sources.suspicious),
+    fetchText(options.sources.malicious.certpl),
+    fetchOptional(options.sources.malicious.phishtank),
   ]);
 
   const benignDomains = parseMajesticCsv(majesticRaw, options.benignLimit);
@@ -307,6 +420,9 @@ async function buildCorpus(options) {
 
   const openphishUrls = parseUrlList(openphishRaw, openphishLimit);
   const urlhausUrls = parseUrlList(urlhausRaw, urlhausLimit);
+  const certplDomains = parseDomainList(certplRaw, maliciousLimit);
+  const certplUrls = domainsToUrls(certplDomains);
+  const phishtankUrls = parsePhishtank(phishtankRaw, maliciousLimit);
 
   const suspiciousDomains = parseSansDomainData(
     sansRaw,
@@ -315,26 +431,50 @@ async function buildCorpus(options) {
   );
   const suspiciousUrls = domainsToUrls(suspiciousDomains);
 
-  const maliciousUrls = [...openphishUrls, ...urlhausUrls];
+  const maliciousSources = [
+    openphishUrls,
+    urlhausUrls,
+    phishtankUrls,
+    certplUrls,
+  ];
+  const maliciousUrls = interleaveSources(maliciousSources, maliciousLimit);
+  const trickySeeds = [...openphishUrls, ...urlhausUrls, ...phishtankUrls];
   const trickyUrls = generateTrickyUrls(
     benignDomains,
-    maliciousUrls,
+    trickySeeds,
     options.trickyLimit,
   );
 
   const entries = [
-    ...openphishUrls.map((url) => ({
-      url,
-      label: "malicious",
-      source: "openphish",
-      fetchedAt,
-    })),
-    ...urlhausUrls.map((url) => ({
-      url,
-      label: "malicious",
-      source: "urlhaus",
-      fetchedAt,
-    })),
+    ...interleaveEntries(
+      [
+        openphishUrls.map((url) => ({
+          url,
+          label: "malicious",
+          source: "openphish",
+          fetchedAt,
+        })),
+        urlhausUrls.map((url) => ({
+          url,
+          label: "malicious",
+          source: "urlhaus",
+          fetchedAt,
+        })),
+        phishtankUrls.map((url) => ({
+          url,
+          label: "malicious",
+          source: "phishtank",
+          fetchedAt,
+        })),
+        certplUrls.map((url) => ({
+          url,
+          label: "malicious",
+          source: "certpl",
+          fetchedAt,
+        })),
+      ],
+      maliciousLimit,
+    ),
     ...suspiciousUrls.map((url) => ({
       url,
       label: "suspicious",

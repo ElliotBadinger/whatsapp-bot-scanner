@@ -47,9 +47,11 @@ This pushes scan jobs at ~5 URLs per second.
 Set these env vars to point at mirrors or internal feeds:
 
 - `MAJESTIC_FEED_URL`
+- `CERTPL_FEED_URL`
 - `OPENPHISH_FEED_URL`
 - `URLHAUS_FEED_URL`
 - `SANS_DOMAIN_FEED_URL`
+- `PHISHTANK_FEED_URL` (or set `PHISHTANK_API_KEY`)
 
 ## Safety notes
 

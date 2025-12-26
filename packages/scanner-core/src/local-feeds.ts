@@ -14,6 +14,10 @@ const URLHAUS_PATH =
   process.env.URLHAUS_LOCAL_PATH || path.join(FEED_DIR, "urlhaus.txt");
 const SANS_PATH =
   process.env.SANS_LOCAL_PATH || path.join(FEED_DIR, "sans-domains.txt");
+const PHISHTANK_PATH =
+  process.env.PHISHTANK_LOCAL_PATH || path.join(FEED_DIR, "phishtank.txt");
+const CERTPL_PATH =
+  process.env.CERTPL_LOCAL_PATH || path.join(FEED_DIR, "certpl-domains.txt");
 const TOP_DOMAINS_PATH =
   process.env.MAJESTIC_TOP_LOCAL_PATH ||
   path.join(FEED_DIR, "majestic-top-domains.txt");
@@ -50,6 +54,8 @@ type TopDomainsCache = {
 export type LocalFeedSignals = {
   openphishListed?: boolean;
   urlhausListed?: boolean;
+  phishtankVerified?: boolean;
+  certPlListed?: boolean;
   suspiciousDomainListed?: boolean;
   typoSquatTarget?: string;
   typoSquatMethod?: string;
@@ -58,6 +64,8 @@ export type LocalFeedSignals = {
 let openphishCache: FeedCache | null = null;
 let urlhausCache: FeedCache | null = null;
 let sansCache: FeedCache | null = null;
+let phishtankCache: FeedCache | null = null;
+let certplCache: FeedCache | null = null;
 let topDomainsCache: TopDomainsCache | null = null;
 
 function normalizeDomain(input: unknown): string | null {
@@ -177,6 +185,19 @@ function parseSansDomains(raw: string): Set<string> {
   return set;
 }
 
+function parseDomainList(raw: string): Set<string> {
+  const set = new Set<string>();
+  raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .forEach((line) => {
+      const domain = normalizeDomain(line);
+      if (domain) set.add(domain);
+    });
+  return set;
+}
+
 function parseTopDomains(raw: string): {
   exact: Set<string>;
   missingCharVariants: Map<string, string>;
@@ -265,6 +286,16 @@ function getSans(): FeedCache | null {
   return sansCache;
 }
 
+function getPhishtank(): FeedCache | null {
+  phishtankCache = loadFeed(phishtankCache, PHISHTANK_PATH, parseUrlFeed);
+  return phishtankCache;
+}
+
+function getCertPl(): FeedCache | null {
+  certplCache = loadFeed(certplCache, CERTPL_PATH, parseDomainList);
+  return certplCache;
+}
+
 function getTopDomains(): TopDomainsCache | null {
   topDomainsCache = loadTopDomains(topDomainsCache);
   return topDomainsCache;
@@ -274,6 +305,8 @@ export function resetLocalFeedCache(): void {
   openphishCache = null;
   urlhausCache = null;
   sansCache = null;
+  phishtankCache = null;
+  certplCache = null;
   topDomainsCache = null;
 }
 
@@ -302,9 +335,19 @@ export function lookupLocalFeedSignals(finalUrl: string): LocalFeedSignals {
     signals.urlhausListed = true;
   }
 
+  const phishtank = getPhishtank();
+  if (phishtank?.entries.has(normalized)) {
+    signals.phishtankVerified = true;
+  }
+
   const sans = getSans();
   if (hostname && sans?.entries.has(hostname)) {
     signals.suspiciousDomainListed = true;
+  }
+
+  const certpl = getCertPl();
+  if (hostname && certpl && hasDomainSuffix(hostname, certpl.entries)) {
+    signals.certPlListed = true;
   }
 
   const topDomains = getTopDomains();
@@ -319,6 +362,16 @@ export function lookupLocalFeedSignals(finalUrl: string): LocalFeedSignals {
   }
 
   return signals;
+}
+
+function hasDomainSuffix(hostname: string, domains: Set<string>): boolean {
+  if (!hostname) return false;
+  const parts = hostname.split(".");
+  for (let i = 0; i < parts.length; i += 1) {
+    const candidate = parts.slice(i).join(".");
+    if (domains.has(candidate)) return true;
+  }
+  return false;
 }
 
 type TyposquatMatch = { target: string; method: string };

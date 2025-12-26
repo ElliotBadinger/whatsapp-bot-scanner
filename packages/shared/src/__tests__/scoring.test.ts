@@ -73,6 +73,12 @@ test("openphish listing is malicious", () => {
   expect(result.reasons).toContain("Known phishing (OpenPhish)");
 });
 
+test("cert pl listing is malicious", () => {
+  const result = scoreFromSignals({ certPlListed: true });
+  expect(result.level).toBe("malicious");
+  expect(result.reasons).toContain("Listed as dangerous (CERT Polska)");
+});
+
 test("suspicious domain feed adds risk", () => {
   const result = scoreFromSignals({ suspiciousDomainListed: true });
   expect(result.score).toBeGreaterThanOrEqual(5);

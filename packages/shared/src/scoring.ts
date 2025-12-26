@@ -9,6 +9,7 @@ export interface Signals {
   vtHarmless?: number;
   urlhausListed?: boolean;
   phishtankVerified?: boolean;
+  certPlListed?: boolean;
   openphishListed?: boolean;
   suspiciousDomainListed?: boolean;
   domainAgeDays?: number;
@@ -62,6 +63,10 @@ function evaluateBlocklistSignals(
   if (signals.phishtankVerified) {
     score += 10;
     pushReason(reasons, "Verified phishing (Phishtank)");
+  }
+  if (signals.certPlListed) {
+    score += 10;
+    pushReason(reasons, "Listed as dangerous (CERT Polska)");
   }
   if (signals.openphishListed) {
     score += 10;
@@ -272,6 +277,7 @@ export function scoreFromSignals(signals: Signals): RiskVerdict {
     Boolean(signals.openphishListed) ||
     Boolean(signals.urlhausListed) ||
     Boolean(signals.phishtankVerified) ||
+    Boolean(signals.certPlListed) ||
     Boolean(signals.gsbThreatTypes && signals.gsbThreatTypes.length > 0) ||
     Boolean((signals.vtMalicious ?? 0) >= 1);
   if (signals.suspiciousDomainListed && !hasHardBlocklist) {

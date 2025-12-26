@@ -9,9 +9,15 @@ type Bucket = {
   malicious: number;
   scoreSum: number;
   correct: number;
+  missed: number;
 };
 
 const filePath = process.env.CORPUS_PATH || "storage/link-corpus.jsonl";
+const reportPath = process.env.SCAN_CORPUS_REPORT_PATH || "";
+const reportLimit = Number.parseInt(
+  process.env.SCAN_CORPUS_REPORT_LIMIT || "250",
+  10,
+);
 
 const buckets: Record<string, Bucket> = {};
 
@@ -24,6 +30,7 @@ function ensure(label: string): Bucket {
       malicious: 0,
       scoreSum: 0,
       correct: 0,
+      missed: 0,
     };
   }
   return buckets[label];
@@ -33,6 +40,10 @@ const run = async () => {
   const start = Date.now();
   const stream = fs.createReadStream(filePath, "utf8");
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+  const reportStream = reportPath
+    ? fs.createWriteStream(reportPath, { flags: "w" })
+    : null;
+  let reportCount = 0;
 
   for await (const line of rl) {
     const trimmed = line.trim();
@@ -52,6 +63,20 @@ const run = async () => {
       entry.label === "tricky" ? "suspicious" : entry.label || "unknown";
     if (result.verdict.level === expected) {
       bucket.correct += 1;
+    } else {
+      bucket.missed += 1;
+      if (reportStream && reportCount < reportLimit) {
+        reportStream.write(
+          `${JSON.stringify({
+            url: entry.url,
+            expected,
+            actual: result.verdict.level,
+            score: result.verdict.score,
+            reasons: result.verdict.reasons,
+          })}\n`,
+        );
+        reportCount += 1;
+      }
     }
   }
 
@@ -73,8 +98,13 @@ const run = async () => {
       accuracy: bucket.total
         ? Number((bucket.correct / bucket.total).toFixed(3))
         : 0,
+      missed: bucket.missed,
     };
   });
+
+  if (reportStream) {
+    reportStream.end();
+  }
 
   console.log(JSON.stringify({ elapsedSeconds: elapsed, totals }, null, 2));
 };

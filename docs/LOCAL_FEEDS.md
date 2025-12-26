@@ -11,6 +11,8 @@ npm run update-local-feeds
 This writes to `storage/feeds/`:
 
 - `majestic-top-domains.txt`
+- `certpl-domains.txt`
+- `phishtank.txt` (only when PHISHTANK_API_KEY or PHISHTANK_FEED_URL is set)
 - `openphish.txt`
 - `urlhaus.txt`
 - `sans-domains.txt`
@@ -24,6 +26,11 @@ Environment variables:
 - `MAJESTIC_FEED_URL`
 - `MAJESTIC_TOP_LIMIT` (default: `10000`)
 - `MAJESTIC_TOP_LOCAL_PATH`
+- `CERTPL_FEED_URL`
+- `CERTPL_LOCAL_PATH`
+- `PHISHTANK_API_KEY` (optional)
+- `PHISHTANK_FEED_URL` (optional)
+- `PHISHTANK_LOCAL_PATH`
 - `OPENPHISH_FEED_URL`
 - `URLHAUS_FEED_URL`
 - `SANS_DOMAIN_FEED_URL`
