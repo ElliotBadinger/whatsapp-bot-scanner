@@ -36,10 +36,14 @@ describe("link corpus helpers", () => {
   test("parseSansDomainData accepts JSON array and score filter", () => {
     const payload = JSON.stringify([
       { domain: "bad.test", score: 9 },
+      { domainname: "domainname.test", score: 8 },
       { domain: "low.test", score: 2 },
     ]);
 
-    expect(parseSansDomainData(payload, 5, 10)).toEqual(["bad.test"]);
+    expect(parseSansDomainData(payload, 5, 10)).toEqual([
+      "bad.test",
+      "domainname.test",
+    ]);
   });
 
   test("parseSansDomainData accepts JSON lines", () => {

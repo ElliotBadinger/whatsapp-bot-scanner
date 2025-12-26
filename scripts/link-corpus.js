@@ -81,6 +81,7 @@ function normalizeUrl(input) {
 }
 
 function normalizeDomain(input) {
+  if (!input || typeof input !== "string") return null;
   const trimmed = input.trim().toLowerCase();
   if (!trimmed || !trimmed.includes(".")) return null;
   return trimmed.replace(/\.+$/, "");
@@ -137,11 +138,13 @@ function parseSansDomainData(data, scoreMin, limit) {
   const trimmed = data.trim();
   if (!trimmed) return [];
 
-  const records = [];
+  let records = [];
   if (trimmed.startsWith("[")) {
     try {
       const parsed = JSON.parse(trimmed);
-      if (Array.isArray(parsed)) records.push(...parsed);
+      if (Array.isArray(parsed)) {
+        records = parsed;
+      }
     } catch {
       return [];
     }
@@ -165,6 +168,7 @@ function parseSansDomainData(data, scoreMin, limit) {
     const score = Number.isFinite(Number(rawScore)) ? Number(rawScore) : 0;
     if (score < scoreMin) continue;
     const domain =
+      normalizeDomain(record?.domainname) ||
       normalizeDomain(record?.domain) ||
       normalizeDomain(record?.name) ||
       normalizeDomain(record?.fqdn) ||
