@@ -226,12 +226,12 @@ This index provides a complete overview of all unified CLI documentation, organi
 ```bash
 # Setup
 npx whatsapp-bot-scanner setup
-npx whatsapp-bot-scanner setup --hobby-mode
+npx whatsapp-bot-scanner setup --mvp-mode
 npx whatsapp-bot-scanner setup --noninteractive
 
 # Service Management
-npx whatsapp-bot-scanner status
-npx whatsapp-bot-scanner status --monitor
+npx whatsapp-bot-scanner health
+npx whatsapp-bot-scanner health --monitor
 npx whatsapp-bot-scanner logs
 npx whatsapp-bot-scanner logs wa-client
 

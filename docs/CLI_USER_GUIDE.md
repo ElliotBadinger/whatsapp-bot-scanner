@@ -1,4 +1,4 @@
-# WhatsApp Bot Scanner - Unified CLI User Guide
+# WhatsApp Bot Scanner - Unified CLI (MVP-first)
 
 ## 📖 Table of Contents
 
@@ -17,27 +17,24 @@
 
 ## 🚀 Getting Started
 
-The WhatsApp Bot Scanner Unified CLI provides a comprehensive interface for setting up, managing, and monitoring your WhatsApp link scanning bot. This guide will help you get started with the new unified command-line interface.
+The CLI supports two paths:
+
+- **MVP (single container)**: no Redis, no external enrichers by default.
+- **Advanced (legacy)**: Redis/BullMQ + control-plane + monitoring.
 
 ### Prerequisites
 
-Before using the unified CLI, ensure you have:
-
 - Node.js 20.x or later
-- Docker and Docker Compose v2
-- Basic familiarity with command-line interfaces
+- Docker and Docker Compose v2 (for Docker-based runs)
 
-### Quick Start
+### Quick Start (MVP)
 
 ```bash
-# Install the CLI
-npm install -g whatsapp-bot-scanner
+# Run the MVP setup wizard (single-container)
+npx whatsapp-bot-scanner setup --mvp-mode
 
-# Run the interactive setup wizard
-npx whatsapp-bot-scanner setup
-
-# Or use the unified command
-./scripts/unified-cli.mjs
+# Or run the CLI directly from the repo
+./scripts/unified-cli.mjs setup --mvp-mode
 ```
 
 ## 📦 Installation
@@ -67,8 +64,8 @@ npm install
 The unified CLI provides several main commands:
 
 ```bash
-# Run complete setup wizard
-npx whatsapp-bot-scanner setup
+# Run MVP setup wizard
+npx whatsapp-bot-scanner setup --mvp-mode
 
 # Stream service logs
 npx whatsapp-bot-scanner logs
@@ -77,7 +74,7 @@ npx whatsapp-bot-scanner logs
 npx whatsapp-bot-scanner pair
 
 # Check service health
-npx whatsapp-bot-scanner status
+npx whatsapp-bot-scanner health
 ```
 
 ## 💬 Interactive Mode
@@ -92,35 +89,31 @@ npx whatsapp-bot-scanner setup
 
 ### Interactive Setup Steps
 
-1. **Prerequisites Check**: Automatically detects Docker, Node.js, and system capabilities
-2. **API Key Collection**: Interactive prompts for required API keys
-3. **Configuration Setup**: Environment configuration and validation
-4. **Service Deployment**: Docker container build and startup
-5. **WhatsApp Pairing**: QR code or phone number pairing process
+1. **Prerequisites Check**: Docker and Node.js checks
+2. **Configuration Setup**: Writes `.env` from template
+3. **API Keys (Advanced only)**: Skipped in MVP mode
+4. **Service Deployment**: Starts containers
+5. **WhatsApp Pairing**: QR code or phone number pairing
 
 ### Interactive Features
 
-- **Progress Indicators**: Visual spinners showing operation status
-- **Validation Feedback**: Real-time input validation
-- **Help System**: Context-sensitive help (press `?` for assistance)
-- **Error Recovery**: Automatic error detection and recovery options
+- Progress indicators
+- Basic validation
+- Error hints for common failures
 
 ## ⚙️ Non-Interactive Mode
 
 For automated deployments and CI/CD pipelines:
 
 ```bash
-npx whatsapp-bot-scanner setup --noninteractive
+npx whatsapp-bot-scanner setup --noninteractive --mvp-mode
 ```
 
 ### Non-Interactive Options
 
 ```bash
-# Skip dependency checks (use with caution)
-npx whatsapp-bot-scanner setup --noninteractive --skip-dependencies
-
-# Hobby mode configuration
-npx whatsapp-bot-scanner setup --noninteractive --hobby-mode
+# Advanced (legacy) setup
+npx whatsapp-bot-scanner setup --noninteractive --advanced
 ```
 
 ## 📚 Command Reference
@@ -129,27 +122,19 @@ npx whatsapp-bot-scanner setup --noninteractive --hobby-mode
 
 | Command | Description | Options |
 |---------|-------------|---------|
-| `setup` | Run complete setup wizard | `--noninteractive`, `--hobby-mode`, `--skip-dependencies` |
-| `logs` | Stream service logs | `--tail <lines>`, `--timestamps`, `--no-follow` |
-| `pair` | Manual pairing request | None |
-| `status` | Check service health | `--monitor`, `--interval <ms>` |
-| `compatibility` | Show migration info | None |
+| `setup` | Run setup wizard | `--noninteractive`, `--mvp-mode`, `--advanced`, `--skip-pairing` |
+| `logs` | Stream service logs | `[service]` |
+| `pair` | Manual pairing request | `--qr`, `--code` |
+| `health` | Check service health | None |
 
 ### Setup Command Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--noninteractive` | Run without prompts | false |
-| `--hobby-mode` | Configure for personal use | false |
-| `--skip-dependencies` | Skip dependency checks | false |
-
-### Logs Command Options
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--tail <lines>` | Number of lines to show | 'all' |
-| `--timestamps` | Show timestamps | false |
-| `--no-follow` | Don't follow logs | false |
+| `--mvp-mode` | Single-container MVP setup | false |
+| `--advanced` | Advanced (Redis/BullMQ) setup | false |
+| `--skip-pairing` | Skip pairing step | false |
 
 ## ⚙️ Configuration Management
 
@@ -209,14 +194,11 @@ npx whatsapp-bot-scanner logs wa-client
 ### Service Commands
 
 ```bash
-# Check all service health
-npx whatsapp-bot-scanner status
-
-# Monitor service health continuously
-npx whatsapp-bot-scanner status --monitor --interval 3000
+# Check service health
+npx whatsapp-bot-scanner health
 
 # View specific service logs
-npx whatsapp-bot-scanner logs scan-orchestrator
+npx whatsapp-bot-scanner logs wa-client
 ```
 
 ### Service Health Indicators
@@ -289,7 +271,7 @@ docker stats
 - name: Deploy WhatsApp Bot Scanner
   run: |
     npm install -g whatsapp-bot-scanner
-    npx whatsapp-bot-scanner setup --noninteractive --hobby-mode
+    npx whatsapp-bot-scanner setup --noninteractive --mvp-mode
 ```
 
 ## 🔄 Migration Guide
@@ -299,7 +281,7 @@ docker stats
 | Legacy Script | Unified CLI Equivalent |
 |---------------|-----------------------|
 | `setup.sh` | `npx whatsapp-bot-scanner setup` |
-| `setup-hobby-express.sh` | `npx whatsapp-bot-scanner setup --hobby-mode` |
+| `setup-hobby-express.sh` | `npx whatsapp-bot-scanner setup --mvp-mode` |
 | `watch-pairing-code.js` | `npx whatsapp-bot-scanner logs wa-client` |
 | `pair.sh` | `npx whatsapp-bot-scanner pair` |
 
@@ -308,7 +290,7 @@ docker stats
 1. **Backup existing configuration**: `cp .env .env.backup`
 2. **Install unified CLI**: `npm install -g whatsapp-bot-scanner`
 3. **Run migration**: `npx whatsapp-bot-scanner setup`
-4. **Verify services**: `npx whatsapp-bot-scanner status`
+4. **Verify services**: `npx whatsapp-bot-scanner health`
 5. **Clean up old scripts**: Remove deprecated scripts after successful migration
 
 ### Deprecation Timeline
@@ -320,6 +302,4 @@ docker stats
 ## 📚 Additional Resources
 
 - [Technical Documentation](CLI_TECHNICAL_DOCUMENTATION.md)
-- [API Reference](CLI_API_DOCUMENTATION.md)
-- [Migration Checklist](CLI_MIGRATION_CHECKLIST.md)
 - [Troubleshooting Guide](CLI_TROUBLESHOOTING.md)

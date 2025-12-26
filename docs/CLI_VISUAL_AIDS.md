@@ -108,7 +108,7 @@
 │  Setup Options:                                                                  │
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
 │  │  • --noninteractive      - Run without prompts                             │  │
-│  │  • --hobby-mode          - Configure for personal use                      │  │
+│  │  • --mvp-mode          - Configure for personal use                      │  │
 │  │  • --skip-dependencies   - Skip dependency checks                           │  │
 │  │  • --config <file>       - Use custom configuration file                   │  │
 │  └───────────────────────────────────────────────────────────────────────┘  │
@@ -211,7 +211,7 @@ npx whatsapp-bot-scanner setup --noninteractive
 
 ```bash
 # Check service health with monitoring
-npx whatsapp-bot-scanner status --monitor --interval 3000
+npx whatsapp-bot-scanner health --monitor --interval 3000
 
 # Expected output:
 # ┌─────────────────────────────────────────────────────────────────┐
@@ -342,10 +342,10 @@ npx whatsapp-bot-scanner logs wa-client --tail 50 --timestamps
 
 | Command | Description | Options | Example |
 |---------|-------------|---------|---------|
-| `setup` | Complete setup wizard | `--noninteractive`, `--hobby-mode`, `--skip-dependencies` | `npx whatsapp-bot-scanner setup` |
+| `setup` | Complete setup wizard | `--noninteractive`, `--mvp-mode`, `--skip-dependencies` | `npx whatsapp-bot-scanner setup` |
 | `logs` | Stream service logs | `--tail <lines>`, `--timestamps`, `--no-follow`, `[service]` | `npx whatsapp-bot-scanner logs wa-client --tail 50` |
 | `pair` | Manual pairing | None | `npx whatsapp-bot-scanner pair` |
-| `status` | Service health | `--monitor`, `--interval <ms>` | `npx whatsapp-bot-scanner status --monitor` |
+| `status` | Service health | `--monitor`, `--interval <ms>` | `npx whatsapp-bot-scanner health --monitor` |
 | `compatibility` | Migration info | None | `npx whatsapp-bot-scanner compatibility` |
 
 ### Service Reference Table
@@ -385,11 +385,11 @@ npx whatsapp-bot-scanner logs wa-client --tail 50 --timestamps
 # Setup
 npx whatsapp-bot-scanner setup
 npx whatsapp-bot-scanner setup --noninteractive
-npx whatsapp-bot-scanner setup --hobby-mode
+npx whatsapp-bot-scanner setup --mvp-mode
 
 # Service Management
-npx whatsapp-bot-scanner status
-npx whatsapp-bot-scanner status --monitor
+npx whatsapp-bot-scanner health
+npx whatsapp-bot-scanner health --monitor
 npx whatsapp-bot-scanner logs
 npx whatsapp-bot-scanner logs wa-client --tail 100
 
@@ -406,7 +406,7 @@ npx whatsapp-bot-scanner setup --validate
 docker compose restart
 docker compose logs
 docker stats
-npx whatsapp-bot-scanner status --monitor
+npx whatsapp-bot-scanner health --monitor
 ```
 
 ### Common Workflows
@@ -422,7 +422,7 @@ npx whatsapp-bot-scanner setup
 ```bash
 git clone https://github.com/your-repo/whatsapp-bot-scanner.git
 cd whatsapp-bot-scanner
-npx whatsapp-bot-scanner setup --hobby-mode
+npx whatsapp-bot-scanner setup --mvp-mode
 ```
 
 **CI/CD Deployment:**
@@ -434,7 +434,7 @@ npx whatsapp-bot-scanner setup --noninteractive
 
 **Service Monitoring:**
 ```bash
-npx whatsapp-bot-scanner status --monitor --interval 5000
+npx whatsapp-bot-scanner health --monitor --interval 5000
 ```
 
 ## 📝 Configuration Templates

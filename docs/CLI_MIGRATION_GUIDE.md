@@ -28,7 +28,7 @@ The unified CLI consolidates all onboarding functionality into a single, cohesiv
 | Legacy Script | Unified CLI Equivalent | Status |
 |---------------|-----------------------|--------|
 | `setup.sh` | `npx whatsapp-bot-scanner setup` | Deprecated |
-| `setup-hobby-express.sh` | `npx whatsapp-bot-scanner setup --hobby-mode` | Deprecated |
+| `setup-hobby-express.sh` | `npx whatsapp-bot-scanner setup --mvp-mode` | Deprecated |
 | `watch-pairing-code.js` | `npx whatsapp-bot-scanner logs wa-client` | Deprecated |
 | `pair.sh` | `npx whatsapp-bot-scanner pair` | Deprecated |
 
@@ -108,7 +108,7 @@ npx whatsapp-bot-scanner setup
 
 ```bash
 # Check service health
-npx whatsapp-bot-scanner status
+npx whatsapp-bot-scanner health
 
 # View logs to confirm proper operation
 npx whatsapp-bot-scanner logs
@@ -133,7 +133,7 @@ rm setup.sh setup-hobby-express.sh watch-pairing-code.js pair.sh
 | Backup configuration | `cp .env .env.backup` |
 | Install unified CLI | `npm install -g whatsapp-bot-scanner` |
 | Run migration wizard | `npx whatsapp-bot-scanner setup` |
-| Check service health | `npx whatsapp-bot-scanner status` |
+| Check service health | `npx whatsapp-bot-scanner health` |
 | View service logs | `npx whatsapp-bot-scanner logs` |
 | Test pairing | `npx whatsapp-bot-scanner pair` |
 
@@ -182,7 +182,7 @@ npm install -g whatsapp-bot-scanner
 npx whatsapp-bot-scanner setup
 
 # 4. Verify migration
-npx whatsapp-bot-scanner status
+npx whatsapp-bot-scanner health
 ```
 
 ### Example 2: Hobby Mode Migration
@@ -192,10 +192,10 @@ npx whatsapp-bot-scanner status
 cp .env .env.hobby.backup
 
 # 2. Run hobby mode migration
-npx whatsapp-bot-scanner setup --hobby-mode
+npx whatsapp-bot-scanner setup --mvp-mode
 
 # 3. Verify hobby configuration
-npx whatsapp-bot-scanner status
+npx whatsapp-bot-scanner health
 ```
 
 ### Example 3: Non-Interactive Migration
@@ -209,7 +209,7 @@ export GSB_API_KEY="your_google_key"
 npx whatsapp-bot-scanner setup --noninteractive
 
 # 3. Verify automated migration
-npx whatsapp-bot-scanner status
+npx whatsapp-bot-scanner health
 ```
 
 ### Example 4: Custom Configuration Migration
@@ -223,7 +223,7 @@ nano custom-config.env  # Edit as needed
 npx whatsapp-bot-scanner setup --config custom-config.env
 
 # 3. Verify custom setup
-npx whatsapp-bot-scanner status
+npx whatsapp-bot-scanner health
 ```
 
 ## 🔄 Backward Compatibility
@@ -239,7 +239,7 @@ npx whatsapp-bot-scanner status
 
 | Legacy Argument | Unified CLI Equivalent |
 |------------------|------------------------|
-| `--hobby-mode` | `--hobby-mode` |
+| `--mvp-mode` | `--mvp-mode` |
 | `--noninteractive` | `--noninteractive` |
 | `--skip-dependencies` | `--skip-dependencies` |
 

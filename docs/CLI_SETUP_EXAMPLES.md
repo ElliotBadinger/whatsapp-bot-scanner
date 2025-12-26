@@ -41,7 +41,7 @@ cd whatsapp-bot-scanner
 npm install
 
 # Run hobby mode setup
-npx whatsapp-bot-scanner setup --hobby-mode
+npx whatsapp-bot-scanner setup --mvp-mode
 
 # This will:
 # - Use simplified configuration
@@ -98,7 +98,7 @@ export WHOISXML_API_KEY="your_whoisxml_key"
 npx whatsapp-bot-scanner setup --noninteractive
 
 # Verify production configuration
-npx whatsapp-bot-scanner status --monitor
+npx whatsapp-bot-scanner health --monitor
 ```
 
 ### Example 3: Multi-Service Configuration
@@ -156,7 +156,7 @@ jobs:
       run: npx whatsapp-bot-scanner setup --noninteractive
 
     - name: Verify deployment
-      run: npx whatsapp-bot-scanner status
+      run: npx whatsapp-bot-scanner health
 ```
 
 ### Example 2: GitLab CI Pipeline
@@ -172,7 +172,7 @@ deploy:
   script:
     - npm install
     - npx whatsapp-bot-scanner setup --noninteractive
-    - npx whatsapp-bot-scanner status
+    - npx whatsapp-bot-scanner health
   only:
     - main
 ```
@@ -193,7 +193,7 @@ pipeline {
                 withEnv(['VT_API_KEY=your_key', 'GSB_API_KEY=your_key']) {
                     sh 'npx whatsapp-bot-scanner setup --noninteractive'
                 }
-                sh 'npx whatsapp-bot-scanner status'
+                sh 'npx whatsapp-bot-scanner health'
             }
         }
     }
@@ -240,7 +240,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml build
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 # Verify production services
-npx whatsapp-bot-scanner status --monitor --interval 5000
+npx whatsapp-bot-scanner health --monitor --interval 5000
 ```
 
 ### Example 3: Resource Monitoring Setup
@@ -257,7 +257,7 @@ while true; do
   echo "WhatsApp Bot Scanner - Service Monitor"
   echo "========================================"
   docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}"
-  npx whatsapp-bot-scanner status
+  npx whatsapp-bot-scanner health
   sleep 10
 done
 EOF
@@ -321,7 +321,7 @@ docker compose build --no-cache wa-client
 docker compose up -d wa-client
 
 # Verify recovery
-npx whatsapp-bot-scanner status
+npx whatsapp-bot-scanner health
 ```
 
 ## 🔄 Migration Setup Examples
@@ -340,7 +340,7 @@ npm install -g whatsapp-bot-scanner
 npx whatsapp-bot-scanner setup
 
 # Verify migration
-npx whatsapp-bot-scanner status
+npx whatsapp-bot-scanner health
 
 # Compare configurations
 diff .env.backup .env
@@ -350,12 +350,12 @@ diff .env.backup .env
 
 ```bash
 # Test unified CLI alongside legacy scripts
-npx whatsapp-bot-scanner status
+npx whatsapp-bot-scanner health
 ./setup.sh --check-status
 
 # Gradual migration approach
 # 1. Start with status checking
-npx whatsapp-bot-scanner status --monitor
+npx whatsapp-bot-scanner health --monitor
 
 # 2. Migrate logging
 npx whatsapp-bot-scanner logs wa-client

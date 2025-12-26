@@ -60,10 +60,10 @@
 
 ```bash
 # Check service health
-npx whatsapp-bot-scanner status
+npx whatsapp-bot-scanner health
 
 # Check specific service
-npx whatsapp-bot-scanner status --monitor --interval 2000
+npx whatsapp-bot-scanner health --monitor --interval 2000
 ```
 
 ### Service Recovery
@@ -186,7 +186,7 @@ docker system prune -a
 
 ```bash
 # Monitor service performance
-npx whatsapp-bot-scanner status --monitor
+npx whatsapp-bot-scanner health --monitor
 
 # Check resource usage
 top
@@ -425,7 +425,7 @@ node -e "require('dotenv').config(); console.log(process.env.VT_API_KEY ? 'OK' :
 - [ ] Check Docker is running: `docker info`
 - [ ] Verify Node.js version: `node -v`
 - [ ] Validate API keys in `.env` file
-- [ ] Check service health: `npx whatsapp-bot-scanner status`
+- [ ] Check service health: `npx whatsapp-bot-scanner health`
 - [ ] Review logs for errors: `npx whatsapp-bot-scanner logs`
 - [ ] Test network connectivity: `ping 8.8.8.8`
 - [ ] Verify system resources: `free -m`, `df -h`

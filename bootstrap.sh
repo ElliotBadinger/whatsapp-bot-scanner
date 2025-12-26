@@ -6,9 +6,10 @@
 # It ensures prerequisites are installed, then delegates to npx setup.
 #
 # Usage:
-#   ./bootstrap.sh              # Interactive setup
-#   ./bootstrap.sh --hobby-mode # Hobby/personal mode
-#   ./bootstrap.sh --help       # Show help
+#   ./bootstrap.sh            # Interactive setup (MVP by default)
+#   ./bootstrap.sh --mvp-mode # Force MVP single-container setup
+#   ./bootstrap.sh --advanced # Full multi-service setup
+#   ./bootstrap.sh --help     # Show help
 #
 # Flow:
 #   1. Install system packages (curl, git, make)

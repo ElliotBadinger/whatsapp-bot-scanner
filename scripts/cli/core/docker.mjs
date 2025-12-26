@@ -5,9 +5,10 @@ import { Readable } from 'node:stream';
 import { DockerError, DockerComposeError, DockerContainerError, DockerLogStreamError, DockerHealthCheckError, GlobalErrorHandler, ERROR_SEVERITY, TimeoutError } from './errors.mjs';
 
 export class DockerOrchestrator {
-  constructor(rootDir, ui) {
+  constructor(rootDir, ui, options = {}) {
     this.rootDir = rootDir;
     this.ui = ui;
+    this.composeFile = options.composeFile || null;
     this.activeLogStreams = new Map();
     this.healthCheckIntervals = new Map();
   }
@@ -15,8 +16,12 @@ export class DockerOrchestrator {
   async detectDockerCompose() {
     try {
       await execa('docker', ['compose', 'version'], { stdio: 'ignore' });
+      const composeArgs = ['compose'];
+      if (this.composeFile) {
+        composeArgs.push('-f', this.composeFile);
+      }
       return {
-        command: ['docker', 'compose'],
+        command: ['docker', ...composeArgs],
         version: 'v2',
         supportsComposeV2: true
       };
@@ -24,8 +29,12 @@ export class DockerOrchestrator {
       try {
         await execa('docker-compose', ['version'], { stdio: 'ignore' });
         this.ui.warn('Using legacy docker-compose. Consider upgrading to Docker Compose v2.');
+        const composeArgs = [];
+        if (this.composeFile) {
+          composeArgs.push('-f', this.composeFile);
+        }
         return {
-          command: ['docker-compose'],
+          command: ['docker-compose', ...composeArgs],
           version: 'v1',
           supportsComposeV2: false
         };
