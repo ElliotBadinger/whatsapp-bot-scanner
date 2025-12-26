@@ -31,6 +31,8 @@ export interface FactoryConfig {
   logger: Logger;
   /** Session/client ID */
   clientId: string;
+  /** Auth store strategy (Baileys only). */
+  authStore?: "redis" | "file";
   /** Phone number for pairing (optional) */
   phoneNumber?: string;
   /** Whether to print QR code to terminal */
@@ -79,6 +81,7 @@ export async function createWhatsAppAdapter(
         redis: config.redis,
         logger: config.logger,
         clientId: config.clientId,
+        authStore: config.authStore,
         phoneNumber: config.phoneNumber,
         printQRInTerminal: false,
         dataPath: config.dataPath,
@@ -126,6 +129,7 @@ export async function createWhatsAppAdapter(
 export async function createAdapterFromEnv(
   redis: Redis,
   logger: Logger,
+  overrides?: Pick<FactoryConfig, "authStore">,
 ): Promise<WhatsAppAdapter> {
   const library = getConfiguredLibrary();
 
@@ -134,6 +138,7 @@ export async function createAdapterFromEnv(
     redis,
     logger,
     clientId: appConfig.wa.remoteAuth.clientId || "default",
+    authStore: overrides?.authStore,
     phoneNumber: appConfig.wa.remoteAuth.phoneNumbers?.[0],
     printQRInTerminal: !appConfig.wa.remoteAuth.disableQrFallback,
     dataPath: appConfig.wa.remoteAuth.dataPath,

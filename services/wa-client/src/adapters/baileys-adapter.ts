@@ -10,16 +10,20 @@ import makeWASocket, {
   DisconnectReason as BaileysDisconnectReason,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
+  useMultiFileAuthState,
   isJidGroup,
   jidNormalizedUser,
   downloadMediaMessage,
   generateForwardMessageContent,
+  type AuthenticationState,
   type WASocket,
   type proto as BaileysProto,
   type WAMessage as BaileysWAMessage,
   type WAPresence,
 } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import type { Logger } from "pino";
 
 import {
@@ -90,17 +94,37 @@ export class BaileysAdapter implements WhatsAppAdapter {
     this.setState("connecting");
 
     try {
-      // Initialize Redis auth state
-      const {
-        state: authState,
-        saveCreds,
-        clearState,
-      } = await useRedisAuthState({
-        redis: this.config.redis,
-        logger: this.logger,
-        prefix: "baileys:auth",
-        clientId: this.config.clientId,
-      });
+      const useFileStore = this.config.authStore === "file";
+      let authState: AuthenticationState;
+      let saveCreds: () => Promise<void>;
+      let clearState: () => Promise<void>;
+
+      if (useFileStore) {
+        const authPath = path.resolve(
+          this.config.dataPath ?? "./data",
+          "baileys-auth",
+          this.config.clientId,
+        );
+        await fs.mkdir(authPath, { recursive: true });
+        const fileState = await useMultiFileAuthState(authPath);
+        authState = fileState.state;
+        saveCreds = fileState.saveCreds;
+        clearState = async () => {
+          await fs.rm(authPath, { recursive: true, force: true });
+        };
+        this.logger.info({ authPath }, "Using file-backed Baileys auth state");
+      } else {
+        // Initialize Redis auth state
+        const redisState = await useRedisAuthState({
+          redis: this.config.redis,
+          logger: this.logger,
+          prefix: "baileys:auth",
+          clientId: this.config.clientId,
+        });
+        authState = redisState.state;
+        saveCreds = redisState.saveCreds;
+        clearState = redisState.clearState;
+      }
 
       this.saveCreds = saveCreds;
       this.clearState = clearState;

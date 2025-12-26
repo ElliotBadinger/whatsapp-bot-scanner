@@ -147,7 +147,11 @@ async function main(): Promise<void> {
   }
 
   // Create WhatsApp adapter (async to support dynamic imports)
-  adapter = await createAdapterFromEnv(redis, logger);
+  adapter = await createAdapterFromEnv(
+    redis,
+    logger,
+    mvpMode ? { authStore: "file" } : undefined,
+  );
 
   if (mvpMode) {
     const parsePositiveIntEnv = (

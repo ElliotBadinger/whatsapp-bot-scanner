@@ -152,6 +152,8 @@ export interface AdapterConfig {
   logger: Logger;
   /** Session/client ID for multi-device support */
   clientId: string;
+  /** Auth store strategy (Baileys only). */
+  authStore?: "redis" | "file";
   /** Phone number for pairing (optional, for phone number pairing mode) */
   phoneNumber?: string;
   /** Whether to print QR code to terminal */
