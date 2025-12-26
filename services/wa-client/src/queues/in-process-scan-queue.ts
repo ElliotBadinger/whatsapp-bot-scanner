@@ -1,4 +1,5 @@
 import { config, logger, metrics } from "@wbscanner/shared";
+import { randomBytes } from "node:crypto";
 
 import type { WhatsAppAdapter } from "../adapters/index.js";
 import type { ScanJobData, ScanRequestQueue } from "../types/scanQueue.js";
@@ -10,6 +11,21 @@ type ScanUrlResult = {
     reasons: string[];
   };
 };
+
+const localJobIdSalt = randomBytes(8).toString("hex");
+let lastLocalJobIdMs = 0;
+let localJobIdSeq = 0;
+
+function createLocalJobId(now: number): string {
+  if (now === lastLocalJobIdMs) {
+    localJobIdSeq += 1;
+  } else {
+    lastLocalJobIdMs = now;
+    localJobIdSeq = 0;
+  }
+
+  return `local:${now}:${localJobIdSalt}:${localJobIdSeq.toString(36)}`;
+}
 
 export class InProcessScanQueue implements ScanRequestQueue {
   private readonly queue: { id: string; data: ScanJobData }[] = [];
@@ -66,7 +82,7 @@ export class InProcessScanQueue implements ScanRequestQueue {
         { url: data.url, chatId: data.chatId },
         "Skipping duplicate scan request",
       );
-      return { id: `local:${now}`, data };
+      return { id: createLocalJobId(now), data };
     }
 
     if (this.isRateLimited(now, data)) {
@@ -74,10 +90,10 @@ export class InProcessScanQueue implements ScanRequestQueue {
         { chatId: data.chatId },
         "Rate limit reached for chat; dropping scan request",
       );
-      return { id: `local:${now}`, data };
+      return { id: createLocalJobId(now), data };
     }
 
-    const id = `local:${now}`;
+    const id = createLocalJobId(now);
     this.queue.push({ id, data });
     this.drain();
     return { id, data };
