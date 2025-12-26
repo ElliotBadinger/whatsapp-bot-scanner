@@ -1001,7 +1001,11 @@ function createBaileysLogger(base: Logger): {
     const isMetaObject =
       meta !== null && typeof meta === "object" && !Array.isArray(meta);
 
-    const emitWith = (fn: Logger["info"], metaValue: unknown, msgValue?: string) => {
+    const emitWith = (
+      fn: Logger["info"],
+      metaValue: unknown,
+      msgValue?: string,
+    ) => {
       const withMeta = fn as unknown as (
         obj: Record<string, unknown>,
         msg?: string,
