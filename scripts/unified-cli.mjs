@@ -1416,13 +1416,19 @@ ${C.primary("  ╚════════════════════�
       return;
     }
 
-    // Read env to check if phone number is configured
+    // Read env to check if phone number is configured (ignore commented lines)
     const envContent = await fs
       .readFile(path.join(ROOT_DIR, ".env"), "utf-8")
       .catch(() => "");
-    const hasPhoneNumber =
-      envContent.includes("WA_REMOTE_AUTH_PHONE_NUMBERS=") &&
-      !envContent.match(/WA_REMOTE_AUTH_PHONE_NUMBERS=\s*$/m);
+    const getEnvValue = (key) => {
+      const line = envContent
+        .split(/\r?\n/)
+        .find((raw) => raw.trim().startsWith(`${key}=`));
+      if (!line) return "";
+      const value = line.slice(line.indexOf("=") + 1).trim();
+      return value.replace(/^['"]|['"]$/g, "");
+    };
+    const hasPhoneNumber = Boolean(getEnvValue("WA_REMOTE_AUTH_PHONE_NUMBERS"));
 
     // Let user choose pairing method
     // Default to pairing code for non-interactive (more reliable than QR in Docker)
