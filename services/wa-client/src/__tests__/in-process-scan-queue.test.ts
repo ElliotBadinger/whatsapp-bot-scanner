@@ -109,6 +109,50 @@ describe("InProcessScanQueue", () => {
     await queue.close();
   });
 
+  it("processes the same URL when it appears in a new message", async () => {
+    const adapter = {
+      sendMessage: jest.fn().mockResolvedValue({ success: true }),
+    } as any;
+
+    const scanUrl = jest.fn().mockResolvedValue({
+      finalUrl: "https://example.com",
+      verdict: { level: "benign", reasons: ["ok"] },
+    });
+
+    const formatVerdictMessage = jest.fn().mockReturnValue("ok");
+
+    const queue = new InProcessScanQueue({
+      adapter,
+      concurrency: 1,
+      rateLimit: 10,
+      rateWindowMs: 60_000,
+      logger,
+      scanUrl,
+      scanOptions: { followRedirects: false },
+      formatVerdictMessage,
+    });
+
+    await queue.add("scan", {
+      url: "https://example.com",
+      urlHash: "h1",
+      chatId: "chat-1",
+      messageId: "msg-1",
+    });
+    await queue.add("scan", {
+      url: "https://example.com",
+      urlHash: "h1",
+      chatId: "chat-1",
+      messageId: "msg-2",
+    });
+
+    await nextTick();
+    await nextTick();
+
+    expect(scanUrl).toHaveBeenCalledTimes(2);
+
+    await queue.close();
+  });
+
   it("expires failure reply suppression after 30 minutes", async () => {
     let now = 0;
     const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);

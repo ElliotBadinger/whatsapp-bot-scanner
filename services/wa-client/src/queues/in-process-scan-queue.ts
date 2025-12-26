@@ -130,7 +130,7 @@ export class InProcessScanQueue implements ScanRequestQueue {
   }
 
   private isDuplicate(now: number, data: ScanJobData): boolean {
-    const key = `${data.chatId}:${data.urlHash}`;
+    const key = `${data.chatId}:${data.messageId}:${data.urlHash}`;
     const expiry = this.seenUrls.get(key) ?? 0;
     if (expiry > now) {
       return true;
