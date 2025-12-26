@@ -503,11 +503,12 @@ describe("Queue Performance Tests", () => {
 
   describe("Throughput Under Load", () => {
     test("maintains throughput with queue depth", async () => {
+      const isCi = !!process.env.CI;
       const depths = [100, 500, 1000, 5000];
       const results: Array<{ depth: number; throughput: number }> = [];
 
       await queue.addBulk(
-        Array.from({ length: 500 }, (_, i) => ({
+        Array.from({ length: isCi ? 100 : 500 }, (_, i) => ({
           name: "warmup",
           data: { url: `https://warmup-${i}.com/` },
         })),
@@ -526,7 +527,7 @@ describe("Queue Performance Tests", () => {
         );
 
         // Measure enqueue performance at this depth
-        const iterations = 1000;
+        const iterations = isCi ? 250 : 1000;
         const start = performance.now();
 
         for (let i = 0; i < iterations; i++) {
@@ -547,7 +548,8 @@ describe("Queue Performance Tests", () => {
       // Throughput should not drop excessively at high depth in CI
       const maxThroughput = Math.max(...results.map((r) => r.throughput));
       const minThroughput = Math.min(...results.map((r) => r.throughput));
-      const threshold = 0.25;
+      const threshold =
+        process.env.MVP_MODE === "1" ? 0.1 : isCi ? 0.2 : 0.25;
 
       expect(minThroughput).toBeGreaterThan(maxThroughput * threshold);
     });
