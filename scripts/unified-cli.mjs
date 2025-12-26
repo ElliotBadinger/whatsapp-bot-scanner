@@ -266,6 +266,99 @@ ${C.primary("  ╚════════════════════�
     return `docker ${composeArgs.join(" ")}`;
   }
 
+  async getEnvValue(key) {
+    const direct = process.env[key];
+    if (direct && direct.trim() !== "") {
+      return direct.trim();
+    }
+    return this.getEnvValueFromFile(key);
+  }
+
+  async getEnvValueFromFile(key) {
+    const envContent = await fs
+      .readFile(path.join(ROOT_DIR, ".env"), "utf-8")
+      .catch(() => "");
+    const line = envContent
+      .split(/\r?\n/)
+      .find((raw) => raw.trim().startsWith(`${key}=`));
+    if (!line) return "";
+    const value = line.slice(line.indexOf("=") + 1).trim();
+    return value.replace(/^['"]|['"]$/g, "");
+  }
+
+  async setEnvValue(key, value) {
+    const envFile = path.join(ROOT_DIR, ".env");
+    let envContent = await fs.readFile(envFile, "utf-8").catch(() => "");
+    const lines = envContent.split(/\r?\n/);
+    let replaced = false;
+    const next = lines.map((line) => {
+      if (line.trim().startsWith(`${key}=`)) {
+        replaced = true;
+        return `${key}=${value}`;
+      }
+      return line;
+    });
+    if (!replaced) {
+      next.push(`${key}=${value}`);
+    }
+    envContent = next.join("\n");
+    await fs.writeFile(envFile, envContent);
+  }
+
+  async tryHostNetworkRepair(hostConnectivity) {
+    if (process.platform !== "linux") return false;
+    if (!hostConnectivity.ok) return false;
+    const current = await this.getEnvValue("WA_NETWORK_MODE");
+    if (current === "host") return false;
+
+    if (!this.nonInteractive) {
+      const response = await enquirer.prompt({
+        type: "confirm",
+        name: "confirm",
+        message: C.text(
+          "Container cannot reach WhatsApp. Switch to host networking and restart now?",
+        ),
+        initial: true,
+      });
+      if (!response.confirm) return false;
+    } else {
+      console.log(
+        `\n  ${ICON.info}  ${C.text("Switching to host networking for WhatsApp connectivity...")}`,
+      );
+    }
+
+    await this.setEnvValue("WA_NETWORK_MODE", "host");
+    const composeArgs = await this.getComposeArgs();
+    const restartSpinner = ora({
+      text: C.text("Restarting containers with host networking..."),
+      color: "cyan",
+      spinner: "dots12",
+    }).start();
+    try {
+      await execa("docker", [...composeArgs, "down"], { cwd: ROOT_DIR });
+      await execa("docker", [...composeArgs, "up", "-d"], { cwd: ROOT_DIR });
+      restartSpinner.succeed(C.text("Containers restarted"));
+    } catch (error) {
+      restartSpinner.fail(C.error("Failed to restart containers"));
+      throw error;
+    }
+
+    const healthSpinner = ora({
+      text: C.text("Waiting for wa-client HTTP server..."),
+      color: "cyan",
+      spinner: "dots12",
+    }).start();
+    const waClientReady = await this.waitForWaClientHttp(healthSpinner, 90000);
+    if (!waClientReady.ready) {
+      healthSpinner.warn(
+        C.warning("WA Client starting slowly, proceeding to pairing..."),
+      );
+    } else {
+      healthSpinner.succeed(C.text("Services ready for pairing"));
+    }
+    return true;
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Step 1: Prerequisites
   // ─────────────────────────────────────────────────────────────────────────────
@@ -388,20 +481,8 @@ ${C.primary("  ╚════════════════════�
     }
 
     const ensureMvpDefaults = async () => {
-      let envContent = await fs.readFile(envFile, "utf-8").catch(() => "");
-      const setValue = (key, value) => {
-        if (envContent.includes(`${key}=`)) {
-          envContent = envContent.replace(
-            new RegExp(`${key}=.*`),
-            `${key}=${value}`,
-          );
-        } else {
-          envContent += `\n${key}=${value}`;
-        }
-      };
-      setValue("MVP_MODE", "1");
-      setValue("WA_REMOTE_AUTH_STORE", "memory");
-      await fs.writeFile(envFile, envContent);
+      await this.setEnvValue("MVP_MODE", "1");
+      await this.setEnvValue("WA_REMOTE_AUTH_STORE", "memory");
     };
 
     if (reuseExistingConfiguration) {
@@ -871,13 +952,11 @@ ${C.primary("  ╚════════════════════�
   async checkWhatsAppConnectivity() {
     const composeArgs = await this.getComposeArgs();
     const nodeScript = [
-      "(async()=>{",
-      "try{",
-      "const ctrl=AbortSignal.timeout(7000);",
-      "await fetch('https://web.whatsapp.com',{signal:ctrl,method:'HEAD'});",
-      "process.exit(0);",
-      "}catch(e){process.exit(1);}",
-      "})();",
+      "const WebSocket=require('ws');",
+      "const ws=new WebSocket('wss://web.whatsapp.com/ws/chat');",
+      "const timer=setTimeout(()=>{process.exit(1);},7000);",
+      "ws.on('open',()=>{clearTimeout(timer);ws.close();process.exit(0);});",
+      "ws.on('error',()=>{clearTimeout(timer);process.exit(1);});",
     ].join("");
 
     try {
@@ -1417,18 +1496,9 @@ ${C.primary("  ╚════════════════════�
     }
 
     // Read env to check if phone number is configured (ignore commented lines)
-    const envContent = await fs
-      .readFile(path.join(ROOT_DIR, ".env"), "utf-8")
-      .catch(() => "");
-    const getEnvValue = (key) => {
-      const line = envContent
-        .split(/\r?\n/)
-        .find((raw) => raw.trim().startsWith(`${key}=`));
-      if (!line) return "";
-      const value = line.slice(line.indexOf("=") + 1).trim();
-      return value.replace(/^['"]|['"]$/g, "");
-    };
-    const hasPhoneNumber = Boolean(getEnvValue("WA_REMOTE_AUTH_PHONE_NUMBERS"));
+    const hasPhoneNumber = Boolean(
+      await this.getEnvValueFromFile("WA_REMOTE_AUTH_PHONE_NUMBERS"),
+    );
 
     // Let user choose pairing method
     // Default to pairing code for non-interactive (more reliable than QR in Docker)
@@ -1758,9 +1828,18 @@ ${C.primary("  ╚════════════════════�
 
     try {
       const composeArgs = await this.getComposeArgs();
-      const connectivity = await this.checkWhatsAppConnectivity();
-      if (!connectivity.ok) {
-        const hostConnectivity = await this.checkHostWhatsAppConnectivity();
+      let connectivityOk = (await this.checkWhatsAppConnectivity()).ok;
+      let hostConnectivity = null;
+      if (!connectivityOk) {
+        hostConnectivity = await this.checkHostWhatsAppConnectivity();
+        const repaired = await this.tryHostNetworkRepair(hostConnectivity);
+        if (repaired) {
+          connectivityOk = (await this.checkWhatsAppConnectivity()).ok;
+        }
+      }
+      if (!connectivityOk) {
+        hostConnectivity =
+          hostConnectivity || (await this.checkHostWhatsAppConnectivity());
         const hostNetworkHint =
           process.platform === "linux" && hostConnectivity.ok
             ? "  - On Linux, try WA_NETWORK_MODE=host to use host networking"
