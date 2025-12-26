@@ -33,6 +33,7 @@ export class InProcessScanQueue implements ScanRequestQueue {
   private active = 0;
   private closed = false;
   private readonly ttlMs = config.wa.messageLineageTtlSeconds * 1000;
+  private readonly failureReplyTtlMs = 30 * 60_000;
   private readonly seenUrls = new Map<string, number>();
   private readonly failureReplies = new Map<string, number>();
   private readonly rateLimits = new Map<
@@ -237,7 +238,7 @@ export class InProcessScanQueue implements ScanRequestQueue {
     if (expiry > now) {
       return false;
     }
-    this.failureReplies.set(key, now + this.ttlMs);
+    this.failureReplies.set(key, now + this.failureReplyTtlMs);
     return true;
   }
 
