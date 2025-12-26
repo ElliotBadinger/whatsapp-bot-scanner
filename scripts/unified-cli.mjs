@@ -1408,7 +1408,7 @@ ${C.primary("  ╚════════════════════�
     const nodeScript = [
       "(async()=>{",
       "try{",
-      "const p=process.env.WA_HTTP_PORT||'3005';",
+      "const p=process.env.WA_HTTP_PORT||'3001';",
       `const u='http://127.0.0.1:'+p+'${endpointSafe}';`,
       "const ctrl=AbortSignal.timeout(" + Number(timeoutMs) + ");",
       "const payload=" + bodyLiteral + ";",
