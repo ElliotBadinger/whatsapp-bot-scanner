@@ -145,8 +145,6 @@ export class BaileysAdapter implements WhatsAppAdapter {
         logger: createBaileysLogger(this.logger),
         browser: [this.config.browserName ?? "WBScanner", "Chrome", "120.0.0"],
         generateHighQualityLinkPreview: false,
-        syncFullHistory: false,
-        markOnlineOnConnect: false,
       });
 
       // Set up event handlers
