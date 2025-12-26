@@ -126,9 +126,26 @@ export default class FakeRedis {
     throw new Error("ERR no such key");
   }
 
-  async hset(key: string, field: string, value: string) {
+  async hset(
+    key: string,
+    fieldOrData: string | Record<string, string>,
+    value?: string,
+  ) {
     const map = this.hashes.get(key) ?? new Map<string, string>();
-    map.set(field, value);
+
+    if (typeof fieldOrData === "object") {
+      for (const [field, val] of Object.entries(fieldOrData)) {
+        map.set(field, val);
+      }
+      this.hashes.set(key, map);
+      return;
+    }
+
+    if (typeof value !== "string") {
+      throw new Error("ERR wrong number of arguments for 'hset' command");
+    }
+
+    map.set(fieldOrData, value);
     this.hashes.set(key, map);
   }
 
@@ -164,6 +181,10 @@ export default class FakeRedis {
 
   async scard(key: string) {
     return this.sets.get(key)?.size ?? 0;
+  }
+
+  async smembers(key: string) {
+    return Array.from(this.sets.get(key) ?? []);
   }
 
   async lpush(key: string, ...values: string[]) {

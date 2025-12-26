@@ -84,6 +84,30 @@ These scripts automatically:
 - After setup completes, open Uptime Kuma at `http://localhost:3001` for GUI monitoring and alerting.
 - (Optional) `make test-load` to exercise `/healthz` endpoints; tune with `LOAD_TARGET_URL`, `LOAD_CONCURRENCY`, and `LOAD_DURATION_SECONDS`.
 
+### MVP Quickstart (single-process, no Redis)
+
+Run the WhatsApp client and heuristic scanner in one process with external enrichers disabled by default.
+
+- **Bun/Node:**
+
+  ```bash
+  MVP_MODE=1 WA_REMOTE_AUTH_STORE=memory bun run --filter @wbscanner/wa-client dev:adapter
+  ```
+
+- **Docker Compose:**
+
+  ```bash
+  MVP_MODE=1 WA_REMOTE_AUTH_STORE=memory docker compose run --rm wa-client bun run dev:adapter
+  ```
+
+Required runtime env vars in MVP mode:
+
+- `MVP_MODE=1` – enables the in-process worker pool and disables external enrichers/control-plane calls by default.
+- `WA_REMOTE_AUTH_STORE=memory` – keep sessions local instead of Redis (this is the default when `MVP_MODE=1`).
+- `WA_LIBRARY` – optional; defaults to `baileys`.
+
+To re-enable the advanced Redis/BullMQ path, unset `MVP_MODE`, set `REDIS_URL` and `WA_REMOTE_AUTH_STORE=redis`, and start Redis alongside the `wa-client` service.
+
 ## Services:
 
 - `wa-client`: WhatsApp automation client (whatsapp-web.js) with session persistence.

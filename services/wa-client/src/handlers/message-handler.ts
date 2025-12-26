@@ -7,8 +7,6 @@
 
 import type { Logger } from "pino";
 import type { Redis } from "ioredis";
-import type { Queue } from "bullmq";
-
 import {
   type WhatsAppAdapter,
   type WAMessage,
@@ -24,6 +22,7 @@ import {
   hashChatId,
   hashMessageId,
 } from "@wbscanner/shared";
+import type { ScanRequestQueue } from "../types/scanQueue.js";
 
 /**
  * Configuration for the message handler
@@ -36,7 +35,7 @@ export interface MessageHandlerConfig {
   /** Logger instance */
   logger: Logger;
   /** Scan request queue */
-  scanRequestQueue: Queue;
+  scanRequestQueue: ScanRequestQueue;
   /** Whether to process messages from self */
   processOwnMessages?: boolean;
 }
@@ -68,7 +67,7 @@ export class SharedMessageHandler {
   private adapter: WhatsAppAdapter;
   private redis: Redis;
   private logger: Logger;
-  private scanRequestQueue: Queue;
+  private scanRequestQueue: ScanRequestQueue;
   private processOwnMessages: boolean;
   private commandHandlers: Map<string, CommandHandler> = new Map();
 

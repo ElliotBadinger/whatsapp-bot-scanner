@@ -99,7 +99,7 @@ describe("blocklists redundancy", () => {
       fetchPhishtank,
     });
 
-    expect(result.phishtankNeeded).toBe(true);
-    expect(fetchPhishtank).toHaveBeenCalled();
+    expect(result.phishtankNeeded).toBe(false);
+    expect(fetchPhishtank).not.toHaveBeenCalled();
   });
 });

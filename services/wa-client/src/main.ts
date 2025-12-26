@@ -13,6 +13,7 @@
 
 import Fastify from "fastify";
 import { Queue, Worker } from "bullmq";
+import type { Redis } from "ioredis";
 
 import {
   config,
@@ -27,6 +28,8 @@ import {
   createRedisConnection,
   connectRedis,
 } from "@wbscanner/shared";
+import { InMemoryRedis } from "@wbscanner/shared";
+import { scanUrl, type ScanOptions } from "@wbscanner/scanner-core";
 
 import {
   createAdapterFromEnv,
@@ -37,10 +40,14 @@ import {
 import { createMessageHandler } from "./handlers/index.js";
 import { computeWaHealthStatus } from "./healthStatus.js";
 import type { DisconnectReason } from "./adapters/types.js";
+import { InProcessScanQueue } from "./queues/in-process-scan-queue.js";
+import type { ScanRequestQueue } from "./types/scanQueue.js";
 
 // Global state
+const mvpMode = config.modes.mvp;
+
 let adapter: WhatsAppAdapter | null = null;
-let scanRequestQueue: Queue | null = null;
+let scanRequestQueue: ScanRequestQueue | null = null;
 let scanVerdictWorker: Worker | null = null;
 let cachedQr: string | null = null;
 let lastDisconnectReason: DisconnectReason | null = null;
@@ -79,7 +86,7 @@ async function shutdown(signal: string): Promise<void> {
     if (adapter) {
       await adapter.disconnect();
     }
-    if (scanRequestQueue) {
+    if (scanRequestQueue?.close) {
       await scanRequestQueue.close();
     }
     if (scanVerdictWorker) {
@@ -98,7 +105,11 @@ async function shutdown(signal: string): Promise<void> {
  */
 async function main(): Promise<void> {
   // Validate configuration
-  assertEssentialConfig("wa-client");
+  if (!mvpMode) {
+    assertEssentialConfig("wa-client");
+  } else {
+    logger.info("MVP_MODE enabled: Redis/BullMQ paths are optional");
+  }
   assertControlPlaneToken();
 
   // Log library selection
@@ -109,98 +120,180 @@ async function main(): Promise<void> {
     "Starting WA Client with adapter",
   );
 
-  // Connect to Redis
-  const redis = createRedisConnection();
-  try {
-    await connectRedis(redis, "wa-client");
-  } catch (err) {
-    logger.error({ err }, "Failed to connect to Redis. Exiting...");
-    process.exit(1);
+  // Connect to Redis (or use in-memory substitute for MVP)
+  const redis: Redis = mvpMode
+    ? (new InMemoryRedis() as unknown as Redis)
+    : createRedisConnection();
+  if (!mvpMode) {
+    try {
+      await connectRedis(redis, "wa-client");
+    } catch (err) {
+      logger.error({ err }, "Failed to connect to Redis. Exiting...");
+      process.exit(1);
+    }
+  } else {
+    logger.info("Using in-memory Redis store for MVP mode");
   }
-
-  // Create scan request queue
-  scanRequestQueue = new Queue(config.queues.scanRequest, {
-    connection: redis,
-  });
-
-  scanVerdictWorker = new Worker(
-    config.queues.scanVerdict,
-    async (job) => {
-      if (!adapter) {
-        throw new Error("Adapter not initialized");
-      }
-
-      const started = Date.now();
-      const data = job.data as VerdictJobData;
-      const decidedAt = data.decidedAt ?? job.timestamp ?? started;
-
-      const verdictLatencySeconds = Math.max(
-        0,
-        (Date.now() - decidedAt) / 1000,
-      );
-      metrics.waVerdictLatency.observe(verdictLatencySeconds);
-
-      const tsKey = `wa:msg_ts:${hashChatId(data.chatId)}:${hashMessageId(
-        data.messageId,
-      )}`;
-      let originalTsRaw = await redis.get(tsKey);
-      if (!originalTsRaw) {
-        const legacyKey = `wa:msg_ts:${data.chatId}:${data.messageId}`;
-        originalTsRaw = await redis.get(legacyKey);
-        if (originalTsRaw) {
-          await redis.set(
-            tsKey,
-            originalTsRaw,
-            "EX",
-            config.wa.messageLineageTtlSeconds,
-          );
-          await redis.del(legacyKey);
-        }
-      }
-      const originalTs = originalTsRaw
-        ? Number.parseInt(originalTsRaw, 10)
-        : NaN;
-      if (Number.isFinite(originalTs)) {
-        const responseLatencySeconds = Math.max(
-          0,
-          (Date.now() - originalTs) / 1000,
-        );
-        metrics.waResponseLatency.observe(responseLatencySeconds);
-      }
-
-      const text = formatVerdictMessage(
-        data.verdict,
-        data.reasons ?? [],
-        data.url,
-      );
-
-      const result = await adapter.sendMessage(
-        data.chatId,
-        { type: "text", text },
-        { quotedMessageId: data.messageId },
-      );
-
-      if (!result.success) {
-        metrics.waVerdictFailures.inc();
-        throw new Error("Failed to send verdict message");
-      }
-
-      metrics.waVerdictsSent.inc();
-      logger.info(
-        {
-          chatId: data.chatId,
-          messageId: data.messageId,
-          verdict: data.verdict,
-          processingMs: Date.now() - started,
-        },
-        "Verdict sent",
-      );
-    },
-    { connection: redis },
-  );
 
   // Create WhatsApp adapter (async to support dynamic imports)
   adapter = await createAdapterFromEnv(redis, logger);
+
+  if (mvpMode) {
+    const parsePositiveIntEnv = (
+      name: string,
+      defaultValue: number,
+    ): number => {
+      const raw = process.env[name];
+      if (raw == null) {
+        return defaultValue;
+      }
+
+      const parsed = Number.parseInt(raw, 10);
+      if (!Number.isFinite(parsed) || parsed < 1) {
+        logger.warn(
+          { env: name, value: raw, defaultValue },
+          "Invalid MVP env override; using default",
+        );
+        return defaultValue;
+      }
+
+      return parsed;
+    };
+
+    const concurrency = parsePositiveIntEnv("MVP_SCAN_CONCURRENCY", 4);
+    const rateLimit = parsePositiveIntEnv("MVP_GROUP_RATE_LIMIT", 10);
+    const rateWindowMs = parsePositiveIntEnv(
+      "MVP_GROUP_RATE_WINDOW_MS",
+      60_000,
+    );
+
+    const followRedirects =
+      (process.env.MVP_SCAN_FOLLOW_REDIRECTS ?? "0") === "1";
+
+    const timeoutMsRaw = Number.parseInt(
+      process.env.MVP_SCAN_TIMEOUT_MS ?? "4000",
+      10,
+    );
+    const timeoutMs =
+      Number.isFinite(timeoutMsRaw) && timeoutMsRaw > 0 ? timeoutMsRaw : 4000;
+
+    const maxRedirectsRaw = Number.parseInt(
+      process.env.MVP_SCAN_MAX_REDIRECTS ?? "3",
+      10,
+    );
+    const maxRedirects =
+      Number.isFinite(maxRedirectsRaw) && maxRedirectsRaw >= 0
+        ? maxRedirectsRaw
+        : 3;
+
+    const maxContentLengthRaw = Number.parseInt(
+      process.env.MVP_SCAN_MAX_CONTENT_LENGTH ?? "0",
+      10,
+    );
+    // 0 means no limit in `scanner-core`.
+    const maxContentLength =
+      Number.isFinite(maxContentLengthRaw) && maxContentLengthRaw >= 0
+        ? maxContentLengthRaw
+        : 0;
+
+    const scanOptions: ScanOptions = {
+      followRedirects,
+      timeoutMs: Math.max(500, timeoutMs),
+      maxRedirects: followRedirects ? Math.max(1, maxRedirects) : 0,
+      maxContentLength,
+    };
+    scanRequestQueue = new InProcessScanQueue({
+      adapter,
+      concurrency,
+      rateLimit,
+      rateWindowMs,
+      logger,
+      scanUrl,
+      scanOptions,
+      formatVerdictMessage,
+    });
+  } else {
+    // Create scan request queue
+    scanRequestQueue = new Queue(config.queues.scanRequest, {
+      connection: redis,
+    });
+
+    scanVerdictWorker = new Worker(
+      config.queues.scanVerdict,
+      async (job) => {
+        if (!adapter) {
+          throw new Error("Adapter not initialized");
+        }
+
+        const started = Date.now();
+        const data = job.data as VerdictJobData;
+        const decidedAt = data.decidedAt ?? job.timestamp ?? started;
+
+        const verdictLatencySeconds = Math.max(
+          0,
+          (Date.now() - decidedAt) / 1000,
+        );
+        metrics.waVerdictLatency.observe(verdictLatencySeconds);
+
+        const tsKey = `wa:msg_ts:${hashChatId(data.chatId)}:${hashMessageId(
+          data.messageId,
+        )}`;
+        let originalTsRaw = await redis.get(tsKey);
+        if (!originalTsRaw) {
+          const legacyKey = `wa:msg_ts:${data.chatId}:${data.messageId}`;
+          originalTsRaw = await redis.get(legacyKey);
+          if (originalTsRaw) {
+            await redis.set(
+              tsKey,
+              originalTsRaw,
+              "EX",
+              config.wa.messageLineageTtlSeconds,
+            );
+            await redis.del(legacyKey);
+          }
+        }
+        const originalTs = originalTsRaw
+          ? Number.parseInt(originalTsRaw, 10)
+          : NaN;
+        if (Number.isFinite(originalTs)) {
+          const responseLatencySeconds = Math.max(
+            0,
+            (Date.now() - originalTs) / 1000,
+          );
+          metrics.waResponseLatency.observe(responseLatencySeconds);
+        }
+
+        const text = formatVerdictMessage(
+          data.verdict,
+          data.reasons ?? [],
+          data.url,
+        );
+
+        const result = await adapter.sendMessage(
+          data.chatId,
+          { type: "text", text },
+          { quotedMessageId: data.messageId },
+        );
+
+        if (!result.success) {
+          metrics.waVerdictFailures.inc();
+          throw new Error("Failed to send verdict message");
+        }
+
+        metrics.waVerdictsSent.inc();
+        logger.info(
+          {
+            chatId: data.chatId,
+            messageId: data.messageId,
+            verdict: data.verdict,
+            processingMs: Date.now() - started,
+          },
+          "Verdict sent",
+        );
+      },
+      { connection: redis },
+    );
+  }
 
   // Set up connection handlers
   adapter.onConnectionChange((state) => {
@@ -272,6 +365,10 @@ async function main(): Promise<void> {
       "Pairing code received - enter in WhatsApp > Linked Devices",
     );
   });
+
+  if (!scanRequestQueue) {
+    throw new Error("Scan request queue not initialized");
+  }
 
   // Create and start message handler
   const messageHandler = createMessageHandler({

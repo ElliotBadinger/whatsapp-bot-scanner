@@ -486,6 +486,12 @@ async function getConsentStatus(
 ): Promise<"pending" | "granted" | null> {
   let status = await redis.get(consentStatusKey(chatId));
   if (!status) {
+    const pendingMembers = await redis.smembers(consentPendingSetKey);
+    if (pendingMembers.includes(hashChatId(chatId))) {
+      status = "pending";
+    }
+  }
+  if (!status) {
     status = await redis.get(legacyConsentStatusKey(chatId));
     if (status) {
       await redis.set(
