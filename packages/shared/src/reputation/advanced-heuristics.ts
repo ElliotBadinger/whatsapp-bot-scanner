@@ -1,4 +1,4 @@
-import { logger } from '../log';
+import { logger } from "../log";
 
 export interface SubdomainAnalysis {
   count: number;
@@ -15,7 +15,9 @@ export interface AdvancedHeuristicsResult {
   suspiciousPatterns: string[];
 }
 
-export async function advancedHeuristics(url: string): Promise<AdvancedHeuristicsResult> {
+export async function advancedHeuristics(
+  url: string,
+): Promise<AdvancedHeuristicsResult> {
   const result: AdvancedHeuristicsResult = {
     score: 0,
     reasons: [],
@@ -39,47 +41,49 @@ export async function advancedHeuristics(url: string): Promise<AdvancedHeuristic
     result.entropy = calculateShannonEntropy(hostname);
     if (result.entropy > 4.5) {
       result.score += 0.6;
-      result.reasons.push('High entropy in hostname (possible DGA)');
+      result.reasons.push("High entropy in hostname (possible DGA)");
     }
 
     // Subdomain analysis
     result.subdomainAnalysis = analyzeSubdomains(hostname);
     result.score += result.subdomainAnalysis.suspicionScore;
     if (result.subdomainAnalysis.suspicionScore > 0) {
-      result.reasons.push('Suspicious subdomain structure');
+      result.reasons.push("Suspicious subdomain structure");
     }
 
     // Keyboard walk detection
     const keyboardWalk = detectKeyboardWalk(hostname);
     if (keyboardWalk) {
       result.score += 0.4;
-      result.reasons.push('Keyboard walk pattern detected');
-      result.suspiciousPatterns.push('keyboard_walk');
+      result.reasons.push("Keyboard walk pattern detected");
+      result.suspiciousPatterns.push("keyboard_walk");
     }
 
     // Suspicious character patterns
     const suspiciousChars = detectSuspiciousCharacters(fullUrl);
     if (suspiciousChars.length > 0) {
       result.score += 0.3 * suspiciousChars.length;
-      result.reasons.push(`Suspicious characters: ${suspiciousChars.join(', ')}`);
+      result.reasons.push(
+        `Suspicious characters: ${suspiciousChars.join(", ")}`,
+      );
       result.suspiciousPatterns.push(...suspiciousChars);
     }
 
     // URL length analysis
     if (fullUrl.length > 200) {
       result.score += 0.3;
-      result.reasons.push('Unusually long URL');
+      result.reasons.push("Unusually long URL");
     }
 
     // Path depth analysis
-    const pathDepth = pathname.split('/').filter(Boolean).length;
+    const pathDepth = pathname.split("/").filter(Boolean).length;
     if (pathDepth > 8) {
       result.score += 0.2;
-      result.reasons.push('Deep path structure');
+      result.reasons.push("Deep path structure");
     }
 
     // Suspicious TLD patterns
-    const tld = hostname.split('.').pop()?.toLowerCase();
+    const tld = hostname.split(".").pop()?.toLowerCase();
     if (tld && SUSPICIOUS_TLDS.has(tld)) {
       result.score += 0.4;
       result.reasons.push(`Suspicious TLD: .${tld}`);
@@ -89,20 +93,20 @@ export async function advancedHeuristics(url: string): Promise<AdvancedHeuristic
     const homographs = detectBasicHomographs(hostname);
     if (homographs.length > 0) {
       result.score += 0.5;
-      result.reasons.push('Potential homograph attack');
-      result.suspiciousPatterns.push('homograph');
+      result.reasons.push("Potential homograph attack");
+      result.suspiciousPatterns.push("homograph");
     }
 
     return result;
   } catch (err) {
-    logger.warn({ url, err }, 'Advanced heuristics analysis failed');
+    logger.warn({ url, err }, "Advanced heuristics analysis failed");
     return result;
   }
 }
 
 function calculateShannonEntropy(str: string): number {
   const freq: { [key: string]: number } = {};
-  
+
   // Count character frequencies
   for (const char of str) {
     freq[char] = (freq[char] || 0) + 1;
@@ -122,9 +126,9 @@ function calculateShannonEntropy(str: string): number {
 const NUMERIC_REGEX = /^\d+$/;
 
 function analyzeSubdomains(hostname: string): SubdomainAnalysis {
-  const parts = hostname.split('.');
+  const parts = hostname.split(".");
   const subdomains = parts.slice(0, -2); // Remove domain and TLD
-  
+
   const analysis: SubdomainAnalysis = {
     count: subdomains.length,
     maxDepth: subdomains.length,
@@ -133,7 +137,9 @@ function analyzeSubdomains(hostname: string): SubdomainAnalysis {
   };
 
   // Check for numeric subdomains
-  analysis.hasNumericSubdomains = subdomains.some(sub => NUMERIC_REGEX.test(sub));
+  analysis.hasNumericSubdomains = subdomains.some((sub) =>
+    NUMERIC_REGEX.test(sub),
+  );
   if (analysis.hasNumericSubdomains) {
     analysis.suspicionScore += 0.3;
   }
@@ -144,7 +150,7 @@ function analyzeSubdomains(hostname: string): SubdomainAnalysis {
   }
 
   // Very long subdomains
-  const longSubdomains = subdomains.filter(sub => sub.length > 20);
+  const longSubdomains = subdomains.filter((sub) => sub.length > 20);
   if (longSubdomains.length > 0) {
     analysis.suspicionScore += 0.3;
   }
@@ -152,12 +158,7 @@ function analyzeSubdomains(hostname: string): SubdomainAnalysis {
   return analysis;
 }
 
-const KEYBOARD_ROWS = [
-  'qwertyuiop',
-  'asdfghjkl',
-  'zxcvbnm',
-  '1234567890',
-];
+const KEYBOARD_ROWS = ["qwertyuiop", "asdfghjkl", "zxcvbnm", "1234567890"];
 
 function detectKeyboardWalk(str: string): boolean {
   for (const row of KEYBOARD_ROWS) {
@@ -183,34 +184,34 @@ function detectSuspiciousCharacters(url: string): string[] {
 
   // Multiple consecutive hyphens
   if (CONSECUTIVE_HYPHENS.test(url)) {
-    suspicious.push('multiple_hyphens');
+    suspicious.push("multiple_hyphens");
   }
 
   // Mixed scripts (basic check)
   if (CYRILLIC_CHARS.test(url) && LATIN_CHARS.test(url)) {
-    suspicious.push('mixed_scripts');
+    suspicious.push("mixed_scripts");
   }
 
   // Unusual Unicode characters
   if (NON_ASCII.test(url)) {
-    suspicious.push('unicode_chars');
+    suspicious.push("unicode_chars");
   }
 
   // Excessive dots
   if ((url.match(DOT_GLOBAL) || []).length > 8) {
-    suspicious.push('excessive_dots');
+    suspicious.push("excessive_dots");
   }
 
   return suspicious;
 }
 
 const HOMOGRAPH_SUBSTITUTIONS = {
-  'a': ['а', 'à', 'á', 'â', 'ã', 'ä', 'å'],
-  'e': ['е', 'è', 'é', 'ê', 'ë'],
-  'o': ['о', 'ò', 'ó', 'ô', 'õ', 'ö'],
-  'p': ['р'],
-  'c': ['с'],
-  'x': ['х'],
+  a: ["а", "à", "á", "â", "ã", "ä", "å"],
+  e: ["е", "è", "é", "ê", "ë"],
+  o: ["о", "ò", "ó", "ô", "õ", "ö"],
+  p: ["р"],
+  c: ["с"],
+  x: ["х"],
 };
 
 function detectBasicHomographs(hostname: string): string[] {
@@ -227,4 +228,4 @@ function detectBasicHomographs(hostname: string): string[] {
   return homographs;
 }
 
-const SUSPICIOUS_TLDS = new Set(['tk', 'ml', 'ga', 'cf', 'click', 'download']);
+const SUSPICIOUS_TLDS = new Set(["tk", "ml", "ga", "cf", "click", "download"]);
