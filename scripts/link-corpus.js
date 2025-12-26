@@ -86,6 +86,13 @@ function parseIntOr(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function resolveLimit(limit) {
+  if (limit === null || limit === undefined) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return limit;
+}
+
 function normalizeUrl(input) {
   try {
     const url = new URL(input.trim());
@@ -138,10 +145,11 @@ async function fetchOptional(url) {
 }
 
 function parseUrlList(data, limit) {
+  const max = resolveLimit(limit);
   const urls = [];
   const lines = data.split(/\r?\n/);
   for (const line of lines) {
-    if (urls.length >= limit) break;
+    if (urls.length >= max) break;
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
     const normalized = normalizeUrl(trimmed);
@@ -151,10 +159,11 @@ function parseUrlList(data, limit) {
 }
 
 function parseDomainList(data, limit) {
+  const max = resolveLimit(limit);
   const domains = [];
   const lines = data.split(/\r?\n/);
   for (const line of lines) {
-    if (domains.length >= limit) break;
+    if (domains.length >= max) break;
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
     const domain = normalizeDomain(trimmed);
@@ -164,11 +173,12 @@ function parseDomainList(data, limit) {
 }
 
 function parseMajesticCsv(data, limit) {
+  const max = resolveLimit(limit);
   const lines = data.split(/\r?\n/).filter(Boolean);
   const domains = [];
   const startIndex = lines[0]?.toLowerCase().includes("globalrank") ? 1 : 0;
   for (let i = startIndex; i < lines.length; i += 1) {
-    if (domains.length >= limit) break;
+    if (domains.length >= max) break;
     const parts = lines[i].split(",");
     const domain = parts[2] ? normalizeDomain(parts[2]) : null;
     if (domain) domains.push(domain);
@@ -177,6 +187,7 @@ function parseMajesticCsv(data, limit) {
 }
 
 function parsePhishtank(data, limit) {
+  const max = resolveLimit(limit);
   const trimmed = data.trim();
   if (!trimmed) return [];
 
@@ -187,7 +198,7 @@ function parsePhishtank(data, limit) {
       const parsed = JSON.parse(trimmed);
       if (Array.isArray(parsed)) {
         for (const entry of parsed) {
-          if (urls.length >= limit) break;
+          if (urls.length >= max) break;
           const url = entry?.url || entry?.phish_url;
           const normalized = url ? normalizeUrl(String(url)) : null;
           if (normalized) urls.push(normalized);
@@ -200,7 +211,7 @@ function parsePhishtank(data, limit) {
   }
 
   for (const line of trimmed.split(/\r?\n/)) {
-    if (urls.length >= limit) break;
+    if (urls.length >= max) break;
     const match = line.match(/https?:\/\/[^,\s]+/i);
     if (!match) continue;
     const normalized = normalizeUrl(match[0].replace(/^\"|\"$/g, ""));
@@ -211,6 +222,7 @@ function parsePhishtank(data, limit) {
 }
 
 function parseSansDomainData(data, scoreMin, limit) {
+  const max = resolveLimit(limit);
   const trimmed = data.trim();
   if (!trimmed) return [];
 
@@ -238,7 +250,7 @@ function parseSansDomainData(data, scoreMin, limit) {
 
   const domains = [];
   for (const record of records) {
-    if (domains.length >= limit) break;
+    if (domains.length >= max) break;
     const rawScore =
       record?.score ?? record?.risk ?? record?.risk_score ?? record?.r;
     const score = Number.isFinite(Number(rawScore)) ? Number(rawScore) : 0;
@@ -308,13 +320,14 @@ function makeHomoglyphDomain(domain) {
 }
 
 function generateTrickyUrls(domains, maliciousUrls, limit) {
+  const max = resolveLimit(limit);
   const results = [];
   const maliciousHosts = maliciousUrls
     .map(extractHostname)
     .filter((host) => host);
 
   const add = (url) => {
-    if (!url || results.length >= limit) return;
+    if (!url || results.length >= max) return;
     results.push(url);
   };
 
@@ -324,7 +337,7 @@ function generateTrickyUrls(domains, maliciousUrls, limit) {
       : null;
 
   for (const domain of domains) {
-    if (results.length >= limit) break;
+    if (results.length >= max) break;
 
     const typo = makeTypoDomain(domain);
     if (typo) add(`https://${typo}${TRICKY_PATHS[0]}`);
@@ -359,13 +372,14 @@ function generateTrickyUrls(domains, maliciousUrls, limit) {
     add(`http://${ip}/${domain}${TRICKY_PATHS[0]}`);
   }
 
-  return results.slice(0, limit);
+  return results.slice(0, max);
 }
 
 function interleaveSources(sources, limit) {
+  const max = resolveLimit(limit);
   const cursors = sources.map(() => 0);
   const results = [];
-  while (results.length < limit) {
+  while (results.length < max) {
     let added = false;
     for (let i = 0; i < sources.length; i += 1) {
       const source = sources[i];
@@ -383,9 +397,10 @@ function interleaveSources(sources, limit) {
 }
 
 function interleaveEntries(groups, limit) {
+  const max = resolveLimit(limit);
   const cursors = groups.map(() => 0);
   const results = [];
-  while (results.length < limit) {
+  while (results.length < max) {
     let added = false;
     for (let i = 0; i < groups.length; i += 1) {
       const group = groups[i];
@@ -427,8 +442,13 @@ function dedupeEntries(entries) {
 async function buildCorpus(options) {
   const fetchedAt = new Date().toISOString();
   const maliciousLimit = options.maliciousLimit;
-  const openphishLimit = Math.ceil(maliciousLimit * 0.5);
-  const urlhausLimit = maliciousLimit - openphishLimit;
+  const hasMaliciousLimit = Number.isFinite(maliciousLimit);
+  const openphishLimit = hasMaliciousLimit
+    ? Math.ceil(maliciousLimit * 0.5)
+    : undefined;
+  const urlhausLimit = hasMaliciousLimit
+    ? maliciousLimit - openphishLimit
+    : undefined;
 
   const [
     majesticRaw,
@@ -586,19 +606,20 @@ async function enqueueEntries(entries, options) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  const full = Boolean(args.full || args["no-limit"]);
   const options = {
     sources: DEFAULT_SOURCES,
     out: args.out || "storage/link-corpus.jsonl",
     summary: args.summary || "storage/link-corpus.summary.json",
-    benignLimit: parseIntOr(args["benign-limit"], DEFAULT_LIMITS.benign),
-    maliciousLimit: parseIntOr(
-      args["malicious-limit"],
-      DEFAULT_LIMITS.malicious,
-    ),
-    suspiciousLimit: parseIntOr(
-      args["suspicious-limit"],
-      DEFAULT_LIMITS.suspicious,
-    ),
+    benignLimit: full
+      ? undefined
+      : parseIntOr(args["benign-limit"], DEFAULT_LIMITS.benign),
+    maliciousLimit: full
+      ? undefined
+      : parseIntOr(args["malicious-limit"], DEFAULT_LIMITS.malicious),
+    suspiciousLimit: full
+      ? undefined
+      : parseIntOr(args["suspicious-limit"], DEFAULT_LIMITS.suspicious),
     trickyLimit: parseIntOr(args["tricky-limit"], DEFAULT_LIMITS.tricky),
     suspiciousScoreMin: parseIntOr(args["suspicious-score-min"], 7),
     enqueue: Boolean(args.enqueue),
@@ -608,6 +629,7 @@ async function main() {
     chatId: args["chat-id"] || "corpus",
     messagePrefix: args["message-prefix"] || "corpus",
     dryRun: Boolean(args["dry-run"]),
+    full,
   };
 
   const { entries, stats } = await buildCorpus(options);
