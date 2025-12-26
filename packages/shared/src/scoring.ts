@@ -22,6 +22,7 @@ export interface Signals {
   wasShortened?: boolean;
   hasUserInfo?: boolean;
   hasRedirectParam?: boolean;
+  hasBinaryPathToken?: boolean;
   typoSquatTarget?: string;
   typoSquatMethod?: string;
   manualOverride?: "allow" | "deny" | null;
@@ -213,6 +214,10 @@ function evaluateHeuristicSignals(
     score += 3;
     pushReason(reasons, "Executable hosted on IP address");
   }
+  if (signals.isIpLiteral && signals.hasBinaryPathToken) {
+    score += 6;
+    pushReason(reasons, "Suspicious binary path on IP address");
+  }
   if (signals.suspiciousDomainListed) {
     score += 5;
     pushReason(reasons, "Domain listed in suspicious activity feed");
@@ -297,6 +302,30 @@ export function scoreFromSignals(signals: Signals): RiskVerdict {
   return { score: finalScore, level, reasons, cacheTtl };
 }
 
+const BINARY_PATH_TOKENS = new Set([
+  "aarch64",
+  "amd64",
+  "arm",
+  "arm4",
+  "arm5",
+  "arm6",
+  "arm7",
+  "arm8",
+  "armv7",
+  "armv7l",
+  "i686",
+  "m68k",
+  "mips",
+  "mips64",
+  "mipsel",
+  "mpsl",
+  "ppc",
+  "sh4",
+  "sparc",
+  "x86",
+  "x86_64",
+]);
+
 export function extraHeuristics(u: URL): Partial<Signals> {
   const port = u.port
     ? parseInt(u.port, 10)
@@ -331,6 +360,10 @@ export function extraHeuristics(u: URL): Partial<Signals> {
       return trimmed.startsWith("http://") || trimmed.startsWith("https://");
     },
   );
+  const hasBinaryPathToken = u.pathname
+    .split(/[./_-]+/)
+    .map((segment) => segment.toLowerCase())
+    .some((segment) => BINARY_PATH_TOKENS.has(segment));
   return {
     hasUncommonPort,
     isIpLiteral,
@@ -340,5 +373,6 @@ export function extraHeuristics(u: URL): Partial<Signals> {
     homoglyph,
     hasUserInfo,
     hasRedirectParam,
+    hasBinaryPathToken,
   };
 }

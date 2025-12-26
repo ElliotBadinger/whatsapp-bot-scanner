@@ -37,6 +37,15 @@ describe("Scoring Algorithm - Edge Cases", () => {
     );
   });
 
+  test("IP literal with binary path token is escalated to malicious", () => {
+    const result = scoreFromSignals({
+      isIpLiteral: true,
+      hasBinaryPathToken: true,
+    });
+    expect(result.score).toBeGreaterThanOrEqual(8);
+    expect(result.level).toBe("malicious");
+  });
+
   test("manual allow override ignores heuristics-only flag", () => {
     const result = scoreFromSignals({
       heuristicsOnly: true,
@@ -138,5 +147,10 @@ describe("extraHeuristics", () => {
       new URL("https://example.com/login?next=https%3A%2F%2Fevil.test%2F"),
     );
     expect(signals.hasRedirectParam).toBe(true);
+  });
+
+  test("flags binary architecture tokens in paths", () => {
+    const signals = extraHeuristics(new URL("http://8.8.8.8/x86_64"));
+    expect(signals.hasBinaryPathToken).toBe(true);
   });
 });
