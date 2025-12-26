@@ -998,28 +998,60 @@ function createBaileysLogger(base: Logger): {
     msg?: string,
   ): void => {
     const { meta, message } = normalize(obj, msg);
-    if (level === "error" && shouldDownlevelError(message)) {
-      if (message) {
-        base.warn(meta as never, message);
-      } else {
-        base.warn(meta as never);
+    const isMetaObject =
+      meta !== null && typeof meta === "object" && !Array.isArray(meta);
+
+    const emitWith = (fn: Logger["info"], metaValue: unknown, msgValue?: string) => {
+      const withMeta = fn as unknown as (
+        obj: Record<string, unknown>,
+        msg?: string,
+      ) => void;
+      const msgOnly = fn as unknown as (msg: string) => void;
+
+      if (msgValue) {
+        if (isMetaObject) {
+          withMeta(metaValue as Record<string, unknown>, msgValue);
+        } else {
+          msgOnly(msgValue);
+        }
+        return;
       }
+
+      if (isMetaObject) {
+        withMeta(metaValue as Record<string, unknown>);
+      } else if (typeof metaValue === "string") {
+        msgOnly(metaValue);
+      }
+    };
+
+    if (level === "error" && shouldDownlevelError(message)) {
+      emitWith(base.warn, meta, message);
       return;
     }
 
     if (level === "info" && shouldDownlevelInfo(message)) {
-      if (message) {
-        base.debug(meta as never, message);
-      } else {
-        base.debug(meta as never);
-      }
+      emitWith(base.debug, meta, message);
       return;
     }
 
-    if (message) {
-      base[level](meta as never, message);
-    } else {
-      base[level](meta as never);
+    switch (level) {
+      case "trace":
+        emitWith(base.trace, meta, message);
+        break;
+      case "debug":
+        emitWith(base.debug, meta, message);
+        break;
+      case "info":
+        emitWith(base.info, meta, message);
+        break;
+      case "warn":
+        emitWith(base.warn, meta, message);
+        break;
+      case "error":
+        emitWith(base.error, meta, message);
+        break;
+      default:
+        emitWith(base.info, meta, message);
     }
   };
 
