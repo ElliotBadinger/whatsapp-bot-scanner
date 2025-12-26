@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const rootDir = dirname(fileURLToPath(import.meta.url));
+const enableUi = process.env.VITEST_UI === '1';
 
 export default defineConfig({
   test: {
@@ -56,7 +57,7 @@ export default defineConfig({
     // Test watch mode configuration
     watch: false,
     // Test UI configuration
-    ui: true,
+    ui: enableUi,
     // Test snapshot configuration
     snapshotFormat: {
       escapeString: true,
