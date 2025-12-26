@@ -141,10 +141,12 @@ export default class FakeRedis {
       return;
     }
 
-    if (typeof value === "string") {
-      map.set(fieldOrData, value);
-      this.hashes.set(key, map);
+    if (typeof value !== "string") {
+      throw new Error("ERR wrong number of arguments for 'hset' command");
     }
+
+    map.set(fieldOrData, value);
+    this.hashes.set(key, map);
   }
 
   async hget(key: string, field: string) {
