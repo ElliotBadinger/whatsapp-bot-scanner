@@ -567,7 +567,9 @@ export class SharedMessageHandler {
     const atIndex = jid.indexOf("@");
     const withoutDomain = atIndex === -1 ? jid : jid.slice(0, atIndex);
     const deviceIndex = withoutDomain.indexOf(":");
-    return deviceIndex === -1 ? withoutDomain : withoutDomain.slice(0, deviceIndex);
+    return deviceIndex === -1
+      ? withoutDomain
+      : withoutDomain.slice(0, deviceIndex);
   }
 
   /**
