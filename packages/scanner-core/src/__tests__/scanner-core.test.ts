@@ -14,14 +14,18 @@ describe("scanner-core", () => {
   });
 
   it("scans a single url with heuristic-only defaults", async () => {
-    const result = await scanUrl("https://example.com/test?utm_source=news#frag");
+    const result = await scanUrl(
+      "https://example.com/test?utm_source=news#frag",
+    );
     expect(result.finalUrl).toBe("https://example.com/test");
     expect(result.verdict.level).toBeDefined();
     expect(result.signals.heuristicsOnly).toBe(true);
   });
 
   it("scans text messages with de-duplication", async () => {
-    const results = await scanTextMessage({ text: "Visit https://a.test and https://a.test" });
+    const results = await scanTextMessage({
+      text: "Visit https://a.test and https://a.test",
+    });
     expect(results).toHaveLength(1);
     expect(results[0].normalizedUrl).toBe("https://a.test/");
   });

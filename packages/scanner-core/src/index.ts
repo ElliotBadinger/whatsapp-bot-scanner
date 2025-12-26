@@ -1,4 +1,12 @@
-import { normalizeUrl, extractUrls as sharedExtractUrls, expandUrl, extraHeuristics, scoreFromSignals, type RiskVerdict, type Signals } from "@wbscanner/shared";
+import {
+  normalizeUrl,
+  extractUrls as sharedExtractUrls,
+  expandUrl,
+  extraHeuristics,
+  scoreFromSignals,
+  type RiskVerdict,
+  type Signals,
+} from "@wbscanner/shared";
 
 export interface ScanOptions {
   followRedirects?: boolean;
@@ -21,7 +29,11 @@ export function extractUrls(text: string): string[] {
   return sharedExtractUrls(text);
 }
 
-function buildHeuristicSignals(targetUrl: string, redirectCount: number, heuristicsOnly: boolean): Partial<Signals> {
+function buildHeuristicSignals(
+  targetUrl: string,
+  redirectCount: number,
+  heuristicsOnly: boolean,
+): Partial<Signals> {
   const parsed = new URL(targetUrl);
   const heuristicSignals = extraHeuristics(parsed);
   return {
@@ -31,7 +43,10 @@ function buildHeuristicSignals(targetUrl: string, redirectCount: number, heurist
   };
 }
 
-export async function scanUrl(rawUrl: string, options: ScanOptions = {}): Promise<ScanResult> {
+export async function scanUrl(
+  rawUrl: string,
+  options: ScanOptions = {},
+): Promise<ScanResult> {
   const normalized = normalizeUrl(rawUrl);
   if (!normalized) {
     throw new Error("Invalid URL provided to scanUrl");
@@ -52,7 +67,11 @@ export async function scanUrl(rawUrl: string, options: ScanOptions = {}): Promis
     redirectChain = expanded.chain;
   }
 
-  const signals = buildHeuristicSignals(finalUrl, redirectChain.length, heuristicsOnly);
+  const signals = buildHeuristicSignals(
+    finalUrl,
+    redirectChain.length,
+    heuristicsOnly,
+  );
   const verdict = scoreFromSignals(signals as Signals);
 
   return {

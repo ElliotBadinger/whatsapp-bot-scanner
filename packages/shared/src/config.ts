@@ -183,7 +183,8 @@ export const config = {
     ),
   },
   urlhaus: {
-    enabled: (process.env.URLHAUS_ENABLED || (mvpMode ? "false" : "true")) === "true",
+    enabled:
+      (process.env.URLHAUS_ENABLED || (mvpMode ? "false" : "true")) === "true",
     timeoutMs: parseInt(process.env.URLHAUS_TIMEOUT_MS || "5000", 10),
   },
   phishtank: {
@@ -195,7 +196,8 @@ export const config = {
     timeoutMs: parseInt(process.env.PHISHTANK_TIMEOUT_MS || "5000", 10),
   },
   rdap: {
-    enabled: (process.env.RDAP_ENABLED || (mvpMode ? "false" : "true")) === "true",
+    enabled:
+      (process.env.RDAP_ENABLED || (mvpMode ? "false" : "true")) === "true",
     timeoutMs: parseInt(process.env.RDAP_TIMEOUT_MS || "5000", 10),
   },
   urlscan: {
@@ -379,7 +381,9 @@ export const config = {
       60,
     ),
     remoteAuth: {
-      store: (process.env.WA_REMOTE_AUTH_STORE || (mvpMode ? "memory" : "redis")).toLowerCase(),
+      store: (
+        process.env.WA_REMOTE_AUTH_STORE || (mvpMode ? "memory" : "redis")
+      ).toLowerCase(),
       clientId: process.env.WA_AUTH_CLIENT_ID || "default",
       autoPair: (process.env.WA_REMOTE_AUTH_AUTO_PAIR || "false") === "true",
       pairingDelayMs: parsePositiveInt(

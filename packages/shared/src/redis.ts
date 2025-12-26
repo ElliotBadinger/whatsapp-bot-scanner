@@ -19,7 +19,9 @@ export const TEST_QUEUE_FACTORY_KEY = "__WBSCANNER_TEST_QUEUE_FACTORY__";
  */
 export function createRedisConnection(): Redis {
   if (!config.redisUrl) {
-    throw new Error("REDIS_URL is not configured; Redis is optional but required for this path");
+    throw new Error(
+      "REDIS_URL is not configured; Redis is optional but required for this path",
+    );
   }
   // Allow test injection
   if (

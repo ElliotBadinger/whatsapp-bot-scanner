@@ -86,12 +86,19 @@ interface ScanJobData {
 }
 
 class InProcessScanQueue implements ScanRequestQueue {
-  private readonly queue: { data: ScanJobData; resolve: () => void; reject: (err: unknown) => void }[] = [];
+  private readonly queue: {
+    data: ScanJobData;
+    resolve: () => void;
+    reject: (err: unknown) => void;
+  }[] = [];
   private active = 0;
   private closed = false;
   private readonly ttlMs = config.wa.messageLineageTtlSeconds * 1000;
   private readonly seenUrls = new Map<string, number>();
-  private readonly rateLimits = new Map<string, { windowStart: number; count: number }>();
+  private readonly rateLimits = new Map<
+    string,
+    { windowStart: number; count: number }
+  >();
 
   constructor(
     private readonly opts: {
@@ -103,23 +110,36 @@ class InProcessScanQueue implements ScanRequestQueue {
     },
   ) {}
 
-  async add(_name: string, data: ScanJobData): Promise<{ id: string; data: ScanJobData }> {
+  async add(
+    _name: string,
+    data: ScanJobData,
+  ): Promise<{ id: string; data: ScanJobData }> {
     if (this.closed) {
       throw new Error("Queue closed");
     }
 
     if (this.isDuplicate(data)) {
-      this.opts.logger.debug({ url: data.url, chatId: data.chatId }, "Skipping duplicate scan request");
+      this.opts.logger.debug(
+        { url: data.url, chatId: data.chatId },
+        "Skipping duplicate scan request",
+      );
       return { id: `local:${Date.now()}`, data };
     }
 
     if (this.isRateLimited(data)) {
-      this.opts.logger.warn({ chatId: data.chatId }, "Rate limit reached for chat; dropping scan request");
+      this.opts.logger.warn(
+        { chatId: data.chatId },
+        "Rate limit reached for chat; dropping scan request",
+      );
       return { id: `local:${Date.now()}`, data };
     }
 
     return await new Promise((resolve, reject) => {
-      this.queue.push({ data, resolve: () => resolve({ id: `local:${Date.now()}`, data }), reject });
+      this.queue.push({
+        data,
+        resolve: () => resolve({ id: `local:${Date.now()}`, data }),
+        reject,
+      });
       void this.drain();
     });
   }
@@ -141,7 +161,10 @@ class InProcessScanQueue implements ScanRequestQueue {
   private isRateLimited(data: ScanJobData): boolean {
     if (!data.isGroup) return false;
     const now = Date.now();
-    const entry = this.rateLimits.get(data.chatId) ?? { windowStart: now, count: 0 };
+    const entry = this.rateLimits.get(data.chatId) ?? {
+      windowStart: now,
+      count: 0,
+    };
     if (now - entry.windowStart > this.opts.rateWindowMs) {
       this.rateLimits.set(data.chatId, { windowStart: now, count: 1 });
       return false;
@@ -155,7 +178,11 @@ class InProcessScanQueue implements ScanRequestQueue {
   }
 
   private async drain(): Promise<void> {
-    while (!this.closed && this.active < this.opts.concurrency && this.queue.length > 0) {
+    while (
+      !this.closed &&
+      this.active < this.opts.concurrency &&
+      this.queue.length > 0
+    ) {
       const job = this.queue.shift();
       if (!job) break;
       this.active += 1;
@@ -172,7 +199,11 @@ class InProcessScanQueue implements ScanRequestQueue {
   private async handle(data: ScanJobData): Promise<void> {
     const started = Date.now();
     const result = await scanUrl(data.url, { followRedirects: false });
-    const text = formatVerdictMessage(result.verdict.level, result.verdict.reasons, result.finalUrl);
+    const text = formatVerdictMessage(
+      result.verdict.level,
+      result.verdict.reasons,
+      result.finalUrl,
+    );
 
     const sendResult = await this.opts.adapter.sendMessage(
       data.chatId,
@@ -186,7 +217,9 @@ class InProcessScanQueue implements ScanRequestQueue {
     }
 
     metrics.waVerdictsSent.inc();
-    metrics.waVerdictLatency.observe(Math.max(0, (Date.now() - started) / 1000));
+    metrics.waVerdictLatency.observe(
+      Math.max(0, (Date.now() - started) / 1000),
+    );
     this.opts.logger.info(
       { chatId: data.chatId, url: data.url, verdict: result.verdict.level },
       "MVP verdict dispatched",
@@ -240,7 +273,7 @@ async function main(): Promise<void> {
 
   // Connect to Redis (or use in-memory substitute for MVP)
   const redis: Redis = mvpMode
-    ? ((new InMemoryRedis() as unknown) as Redis)
+    ? (new InMemoryRedis() as unknown as Redis)
     : createRedisConnection();
   if (!mvpMode) {
     try {
@@ -257,10 +290,13 @@ async function main(): Promise<void> {
   adapter = await createAdapterFromEnv(redis, logger);
 
   if (mvpMode) {
-    const concurrency = Number.parseInt(process.env.MVP_SCAN_CONCURRENCY ?? "4", 10) || 4;
-    const rateLimit = Number.parseInt(process.env.MVP_GROUP_RATE_LIMIT ?? "10", 10) || 10;
+    const concurrency =
+      Number.parseInt(process.env.MVP_SCAN_CONCURRENCY ?? "4", 10) || 4;
+    const rateLimit =
+      Number.parseInt(process.env.MVP_GROUP_RATE_LIMIT ?? "10", 10) || 10;
     const rateWindowMs =
-      Number.parseInt(process.env.MVP_GROUP_RATE_WINDOW_MS ?? "60000", 10) || 60000;
+      Number.parseInt(process.env.MVP_GROUP_RATE_WINDOW_MS ?? "60000", 10) ||
+      60000;
     scanRequestQueue = new InProcessScanQueue({
       adapter,
       concurrency,
@@ -285,7 +321,10 @@ async function main(): Promise<void> {
         const data = job.data as VerdictJobData;
         const decidedAt = data.decidedAt ?? job.timestamp ?? started;
 
-        const verdictLatencySeconds = Math.max(0, (Date.now() - decidedAt) / 1000);
+        const verdictLatencySeconds = Math.max(
+          0,
+          (Date.now() - decidedAt) / 1000,
+        );
         metrics.waVerdictLatency.observe(verdictLatencySeconds);
 
         const tsKey = `wa:msg_ts:${hashChatId(data.chatId)}:${hashMessageId(
@@ -296,13 +335,23 @@ async function main(): Promise<void> {
           const legacyKey = `wa:msg_ts:${data.chatId}:${data.messageId}`;
           originalTsRaw = await redis.get(legacyKey);
           if (originalTsRaw) {
-            await redis.set(tsKey, originalTsRaw, "EX", config.wa.messageLineageTtlSeconds);
+            await redis.set(
+              tsKey,
+              originalTsRaw,
+              "EX",
+              config.wa.messageLineageTtlSeconds,
+            );
             await redis.del(legacyKey);
           }
         }
-        const originalTs = originalTsRaw ? Number.parseInt(originalTsRaw, 10) : NaN;
+        const originalTs = originalTsRaw
+          ? Number.parseInt(originalTsRaw, 10)
+          : NaN;
         if (Number.isFinite(originalTs)) {
-          const responseLatencySeconds = Math.max(0, (Date.now() - originalTs) / 1000);
+          const responseLatencySeconds = Math.max(
+            0,
+            (Date.now() - originalTs) / 1000,
+          );
           metrics.waResponseLatency.observe(responseLatencySeconds);
         }
 
