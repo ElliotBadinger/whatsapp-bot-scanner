@@ -505,14 +505,8 @@ export class SharedMessageHandler {
 
     const tokenUser = firstToken.slice(1);
     const tokenIsNumeric = /^\d+$/.test(tokenUser);
-    const singleMention =
-      (message.mentionedIds ?? []).filter(Boolean).length === 1;
 
     if (tokenIsNumeric && tokenUser !== botUser) {
-      return null;
-    }
-
-    if (!tokenIsNumeric && !singleMention) {
       return null;
     }
 
@@ -571,7 +565,9 @@ export class SharedMessageHandler {
 
   private normalizeJidUser(jid: string): string {
     const atIndex = jid.indexOf("@");
-    return atIndex === -1 ? jid : jid.slice(0, atIndex);
+    const withoutDomain = atIndex === -1 ? jid : jid.slice(0, atIndex);
+    const deviceIndex = withoutDomain.indexOf(":");
+    return deviceIndex === -1 ? withoutDomain : withoutDomain.slice(0, deviceIndex);
   }
 
   /**

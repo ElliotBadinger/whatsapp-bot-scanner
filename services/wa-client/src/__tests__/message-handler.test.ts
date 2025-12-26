@@ -102,6 +102,36 @@ describe("SharedMessageHandler", () => {
     );
   });
 
+  it("handles @bot commands when multiple mentions include the bot LID", async () => {
+    const handler = new SharedMessageHandler({
+      adapter,
+      redis,
+      logger,
+      scanRequestQueue,
+    });
+    const message: WAMessage = {
+      id: "msg-1c",
+      chatId: "chat-1",
+      senderId: "user-1",
+      body: "@scanner status",
+      isGroup: true,
+      timestamp: Date.now(),
+      fromMe: false,
+      mentionedIds: ["11111@c.us", "999:18@lid"],
+      raw: {},
+    };
+
+    await handler.createHandler()(message);
+
+    expect(adapter.reply).toHaveBeenCalledWith(
+      message,
+      expect.objectContaining({
+        type: "text",
+        text: expect.stringContaining("WBScanner Status"),
+      }),
+    );
+  });
+
   it("ignores mention commands when the bot mention is not the prefix", async () => {
     const handler = new SharedMessageHandler({
       adapter,
