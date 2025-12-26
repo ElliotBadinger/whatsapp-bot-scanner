@@ -16,6 +16,7 @@ import {
   vtVerdictStats,
   urlhausLookup,
 } from "@wbscanner/shared";
+import { lookupLocalFeedSignals } from "./local-feeds";
 
 export type ExternalEnricherProvider =
   | "gsb"
@@ -243,12 +244,15 @@ export async function scanUrl(
     options.onExternalEnricherError,
   );
 
+  const localSignals = lookupLocalFeedSignals(finalUrl);
+
   const heuristicsOnly =
     !enableExternalEnrichers || !external.usedExternalSignals;
 
   const signals: Signals = {
     ...buildHeuristicSignals(finalUrl, redirectChain.length, heuristicsOnly),
     ...external.signals,
+    ...localSignals,
   };
   const verdict = scoreFromSignals(signals);
 

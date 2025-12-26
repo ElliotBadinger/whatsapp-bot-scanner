@@ -15,7 +15,6 @@ By default, all scans rely only on local heuristics from `@wbscanner/shared`
 Enable external enrichers explicitly with `options.enableExternalEnrichers = true`.
 External enrichment is best-effort and depends on the shared provider config and
 API keys (e.g. `VT_API_KEY`, `GSB_API_KEY`).
-Scanner-core wires these checks through the same `@wbscanner/shared` primitives
-used by `@wbscanner/scan-orchestrator`.
+Scanner-core wires these checks through `@wbscanner/shared` primitives.
 When external providers are unavailable or disabled, scans fall back to
 heuristics-only and set `signals.heuristicsOnly = true`.

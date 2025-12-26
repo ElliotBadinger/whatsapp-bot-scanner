@@ -56,9 +56,11 @@ run_check "TypeScript check (shared)" "packages/shared" "$PKG_X tsc --noEmit --s
 # 3. Run shared tests
 run_check "Unit tests (shared)" "packages/shared" "$PKG_RUN test -- --passWithNoTests"
 
-# 4. Build and type-check scan-orchestrator
-run_check "Build scan-orchestrator" "services/scan-orchestrator" "$PKG_RUN build"
-run_check "TypeScript check (scan-orchestrator)" "services/scan-orchestrator" "$PKG_X tsc --noEmit"
+# 4. Build and type-check scanner-core
+if [ -d "$PROJECT_ROOT/packages/scanner-core" ]; then
+    run_check "Build scanner-core" "packages/scanner-core" "$PKG_RUN build"
+    run_check "TypeScript check (scanner-core)" "packages/scanner-core" "$PKG_X tsc --noEmit"
+fi
 
 # 5. Build and type-check wa-client
 if [ -d "$PROJECT_ROOT/services/wa-client" ]; then
@@ -66,21 +68,9 @@ if [ -d "$PROJECT_ROOT/services/wa-client" ]; then
     run_check "TypeScript check (wa-client)" "services/wa-client" "$PKG_X tsc --noEmit"
 fi
 
-# 6. Build and type-check verdict-publisher
-if [ -d "$PROJECT_ROOT/services/verdict-publisher" ]; then
-    run_check "Build verdict-publisher" "services/verdict-publisher" "$PKG_RUN build"
-    run_check "TypeScript check (verdict-publisher)" "services/verdict-publisher" "$PKG_X tsc --noEmit"
-fi
-
-# 7. Build and type-check control-plane
-if [ -d "$PROJECT_ROOT/services/control-plane" ]; then
-    run_check "Build control-plane" "services/control-plane" "$PKG_RUN build"
-    run_check "TypeScript check (control-plane)" "services/control-plane" "$PKG_X tsc --noEmit"
-fi
-
-# 8. ESLint checks
+# 6. ESLint checks
 run_check "ESLint (shared)" "packages/shared" "$PKG_X eslint src --ext .ts --max-warnings 0 || true"
-run_check "ESLint (scan-orchestrator)" "services/scan-orchestrator" "$PKG_X eslint src --ext .ts --max-warnings 0 || true"
+run_check "ESLint (wa-client)" "services/wa-client" "$PKG_X eslint src --ext .ts --max-warnings 0 || true"
 
 # Summary
 echo -e "\n${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

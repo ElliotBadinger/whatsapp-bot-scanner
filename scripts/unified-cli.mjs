@@ -20,12 +20,48 @@ import { DockerOrchestrator } from "./cli/core/docker.mjs";
 import { UserInterface } from "./cli/ui/prompts.mjs";
 import { NotificationManager } from "./cli/ui/notifications.mjs";
 import { ProgressManager } from "./cli/ui/progress.mjs";
+import {
+  BuildByteTracker,
+  createByteProgressBar,
+  formatBytes,
+} from "./cli/core/build-progress.mjs";
 import enquirer from "enquirer";
 import net from "net";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, "..");
+const MVP_COMPOSE_FILE = "docker-compose.mvp.yml";
+
+const readEnvFile = async () =>
+  fs.readFile(path.join(ROOT_DIR, ".env"), "utf-8").catch(() => "");
+
+const resolveComposeArgsFromEnv = async () => [
+  "compose",
+  "-f",
+  MVP_COMPOSE_FILE,
+];
+
+const resolveComposeFileFromEnv = async () => MVP_COMPOSE_FILE;
+
+const createLineBuffer = (onLine) => {
+  let buffer = "";
+  const writer = (chunk) => {
+    buffer += chunk.toString();
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() || "";
+    for (const line of lines) {
+      onLine(line);
+    }
+  };
+  writer.flush = () => {
+    if (buffer.trim().length > 0) {
+      onLine(buffer);
+    }
+    buffer = "";
+  };
+  return writer;
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Color Palette (Cohesive Design System)
@@ -83,8 +119,8 @@ const SETUP_STEPS = [
   { id: "config", name: "Environment Setup", estimate: "~5s", icon: ICON.gear },
   {
     id: "apikeys",
-    name: "API Keys & Configuration",
-    estimate: "~1min",
+    name: "MVP Defaults",
+    estimate: "~1s",
     icon: ICON.key,
   },
   {
@@ -217,6 +253,112 @@ ${C.primary("  ╚════════════════════�
     console.log(`\n  ${C.muted("○")}  ${C.muted(message)}`);
   }
 
+  async isMvpMode() {
+    return true;
+  }
+
+  async getComposeArgs() {
+    return ["compose", "-f", MVP_COMPOSE_FILE];
+  }
+
+  async getComposeCommand() {
+    const composeArgs = await this.getComposeArgs();
+    return `docker ${composeArgs.join(" ")}`;
+  }
+
+  async getEnvValue(key) {
+    const direct = process.env[key];
+    if (direct && direct.trim() !== "") {
+      return direct.trim();
+    }
+    return this.getEnvValueFromFile(key);
+  }
+
+  async getEnvValueFromFile(key) {
+    const envContent = await fs
+      .readFile(path.join(ROOT_DIR, ".env"), "utf-8")
+      .catch(() => "");
+    const line = envContent
+      .split(/\r?\n/)
+      .find((raw) => raw.trim().startsWith(`${key}=`));
+    if (!line) return "";
+    const value = line.slice(line.indexOf("=") + 1).trim();
+    return value.replace(/^['"]|['"]$/g, "");
+  }
+
+  async setEnvValue(key, value) {
+    const envFile = path.join(ROOT_DIR, ".env");
+    let envContent = await fs.readFile(envFile, "utf-8").catch(() => "");
+    const lines = envContent.split(/\r?\n/);
+    let replaced = false;
+    const next = lines.map((line) => {
+      if (line.trim().startsWith(`${key}=`)) {
+        replaced = true;
+        return `${key}=${value}`;
+      }
+      return line;
+    });
+    if (!replaced) {
+      next.push(`${key}=${value}`);
+    }
+    envContent = next.join("\n");
+    await fs.writeFile(envFile, envContent);
+  }
+
+  async tryHostNetworkRepair(hostConnectivity) {
+    if (process.platform !== "linux") return false;
+    if (!hostConnectivity.ok) return false;
+    const current = await this.getEnvValue("WA_NETWORK_MODE");
+    if (current === "host") return false;
+
+    if (!this.nonInteractive) {
+      const response = await enquirer.prompt({
+        type: "confirm",
+        name: "confirm",
+        message: C.text(
+          "Container cannot reach WhatsApp. Switch to host networking and restart now?",
+        ),
+        initial: true,
+      });
+      if (!response.confirm) return false;
+    } else {
+      console.log(
+        `\n  ${ICON.info}  ${C.text("Switching to host networking for WhatsApp connectivity...")}`,
+      );
+    }
+
+    await this.setEnvValue("WA_NETWORK_MODE", "host");
+    const composeArgs = await this.getComposeArgs();
+    const restartSpinner = ora({
+      text: C.text("Restarting containers with host networking..."),
+      color: "cyan",
+      spinner: "dots12",
+    }).start();
+    try {
+      await execa("docker", [...composeArgs, "down"], { cwd: ROOT_DIR });
+      await execa("docker", [...composeArgs, "up", "-d"], { cwd: ROOT_DIR });
+      restartSpinner.succeed(C.text("Containers restarted"));
+    } catch (error) {
+      restartSpinner.fail(C.error("Failed to restart containers"));
+      throw error;
+    }
+
+    const healthSpinner = ora({
+      text: C.text("Waiting for wa-client HTTP server..."),
+      color: "cyan",
+      spinner: "dots12",
+    }).start();
+    const waClientReady = await this.waitForWaClientHttp(healthSpinner, 90000);
+    if (!waClientReady.ready) {
+      healthSpinner.warn(
+        C.warning("WA Client starting slowly, proceeding to pairing..."),
+      );
+    } else {
+      healthSpinner.succeed(C.text("Services ready for pairing"));
+    }
+    return true;
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Step 1: Prerequisites
   // ─────────────────────────────────────────────────────────────────────────────
@@ -285,17 +427,30 @@ ${C.primary("  ╚════════════════════�
   async step2Configuration() {
     this.displayStepHeader(2, "Configuration", ICON.gear);
 
-    let selectedMode = "hobby";
+    const selectedMode = "mvp";
     let selectedLibrary = "baileys";
     const envFile = path.join(ROOT_DIR, ".env");
     let existingEnvContent = "";
     let reuseExistingConfiguration = false;
+    let shouldOverwrite = false;
 
     try {
       existingEnvContent = await fs.readFile(envFile, "utf-8");
       const existingLibrary =
         existingEnvContent.match(/WA_LIBRARY=(.*)/)?.[1]?.trim() || "";
       if (!this.nonInteractive && existingLibrary) {
+        const isMvpExisting = /MVP_MODE=1/.test(existingEnvContent);
+        if (!isMvpExisting) {
+          const response = await enquirer.prompt({
+            type: "confirm",
+            name: "overwrite",
+            message: C.text(
+              "Existing .env is not MVP. Overwrite with MVP defaults?",
+            ),
+            initial: true,
+          });
+          shouldOverwrite = !!response.overwrite;
+        }
         const response = await enquirer.prompt({
           type: "confirm",
           name: "reuse",
@@ -313,33 +468,38 @@ ${C.primary("  ╚════════════════════�
       // .env not present yet
     }
 
+    if (
+      this.nonInteractive &&
+      existingEnvContent &&
+      !/MVP_MODE=1/.test(existingEnvContent)
+    ) {
+      shouldOverwrite = true;
+    }
+
+    if (shouldOverwrite) {
+      reuseExistingConfiguration = false;
+    }
+
+    const ensureMvpDefaults = async () => {
+      await this.setEnvValue("MVP_MODE", "1");
+      await this.setEnvValue("WA_REMOTE_AUTH_STORE", "memory");
+    };
+
     if (reuseExistingConfiguration) {
-      this.state.mode = "existing";
+      this.state.mode = "mvp";
       this.state.library = selectedLibrary;
-      this.markStepComplete(2, "Using existing .env configuration");
+      await ensureMvpDefaults();
+      this.markStepComplete(2, "Using existing MVP configuration");
       return;
     }
 
-    if (!this.nonInteractive) {
-      // Setup mode selection
-      const modeResponse = await enquirer.prompt({
-        type: "select",
-        name: "mode",
-        message: C.text("Choose setup mode:"),
-        choices: [
-          {
-            name: "hobby",
-            message: `${C.success("●")} Hobby Mode ${C.muted("(Recommended for personal use)")}`,
-          },
-          {
-            name: "production",
-            message: `${C.muted("○")} Production Mode ${C.muted("(Full features, more setup)")}`,
-          },
-        ],
-        pointer: C.accent("›"),
-      });
-      selectedMode = modeResponse.mode;
+    if (this.nonInteractive) {
+      console.log(
+        `  ${ICON.info}  ${C.text("Non-interactive mode: using MVP configuration with Baileys")}`,
+      );
+    }
 
+    if (!this.nonInteractive) {
       // WhatsApp library selection
       console.log("");
       const libResponse = await enquirer.prompt({
@@ -369,19 +529,12 @@ ${C.primary("  ╚════════════════════�
           `  ${ICON.warning}  ${C.warning("Using whatsapp-web.js - consider Baileys for better performance")}`,
         );
       }
-    } else {
-      console.log(
-        `  ${ICON.info}  ${C.text("Non-interactive mode: using hobby configuration with Baileys")}`,
-      );
     }
 
     this.state.mode = selectedMode;
     this.state.library = selectedLibrary;
 
-    const templateFile = path.join(
-      ROOT_DIR,
-      selectedMode === "hobby" ? ".env.hobby" : ".env.example",
-    );
+    const templateFile = path.join(ROOT_DIR, ".env.mvp.example");
 
     const envSpinner = ora({
       text: C.text("Setting up environment..."),
@@ -389,12 +542,16 @@ ${C.primary("  ╚════════════════════�
       spinner: "dots12",
     }).start();
 
-    try {
-      await fs.access(envFile);
+    const envExists = await fs
+      .access(envFile)
+      .then(() => true)
+      .catch(() => false);
+
+    if (envExists && !shouldOverwrite) {
       envSpinner.succeed(
         C.text(".env file found, using existing configuration"),
       );
-    } catch {
+    } else {
       try {
         await fs.copyFile(templateFile, envFile);
         envSpinner.succeed(
@@ -441,6 +598,7 @@ ${C.primary("  ╚════════════════════�
       console.log(
         `  ${ICON.success}  ${C.success(`Docker target set to ${buildTarget}`)}`,
       );
+      await ensureMvpDefaults();
     } catch (err) {
       console.log(
         `  ${ICON.warning}  ${C.warning("Could not update WA_LIBRARY in .env")}`,
@@ -458,7 +616,12 @@ ${C.primary("  ╚════════════════════�
   // ─────────────────────────────────────────────────────────────────────────────
 
   async step3ApiKeys() {
-    this.displayStepHeader(3, "API Keys & Configuration", ICON.key);
+    this.displayStepHeader(3, "MVP Defaults", ICON.key);
+
+    if (await this.isMvpMode()) {
+      this.markStepSkipped(3, "MVP defaults applied");
+      return;
+    }
 
     const envFile = path.join(ROOT_DIR, ".env");
     let envContent = await fs.readFile(envFile, "utf-8");
@@ -770,9 +933,10 @@ ${C.primary("  ╚════════════════════�
    */
   async checkExistingContainers() {
     try {
+      const composeArgs = await this.getComposeArgs();
       const { stdout } = await execa(
         "docker",
-        ["compose", "ps", "--format", "{{.Name}} {{.State}}"],
+        [...composeArgs, "ps", "--format", "{{.Name}} {{.State}}"],
         { cwd: ROOT_DIR },
       );
       const running = stdout
@@ -785,12 +949,94 @@ ${C.primary("  ╚════════════════════�
     }
   }
 
+  async checkWhatsAppConnectivity() {
+    const composeArgs = await this.getComposeArgs();
+    const nodeScript = [
+      "const WebSocket=require('ws');",
+      "const ws=new WebSocket('wss://web.whatsapp.com/ws/chat');",
+      "const timer=setTimeout(()=>{process.exit(1);},7000);",
+      "ws.on('open',()=>{clearTimeout(timer);ws.close();process.exit(0);});",
+      "ws.on('error',()=>{clearTimeout(timer);process.exit(1);});",
+    ].join("");
+
+    try {
+      await execa(
+        "docker",
+        [...composeArgs, "exec", "-T", "wa-client", "node", "-e", nodeScript],
+        { cwd: ROOT_DIR },
+      );
+      return { ok: true };
+    } catch {
+      return { ok: false };
+    }
+  }
+
+  async checkHostWhatsAppConnectivity() {
+    try {
+      const ctrl = AbortSignal.timeout(7000);
+      const res = await fetch("https://web.whatsapp.com", {
+        signal: ctrl,
+        method: "HEAD",
+      });
+      return { ok: true, status: res.status };
+    } catch {
+      return { ok: false };
+    }
+  }
+
+  async getContainerStatus() {
+    const composeArgs = await this.getComposeArgs();
+    try {
+      const { stdout } = await execa(
+        "docker",
+        [...composeArgs, "ps", "--format", "json"],
+        { cwd: ROOT_DIR },
+      );
+      if (!stdout.trim()) return [];
+      const parsed = JSON.parse(stdout.trim());
+      const entries = Array.isArray(parsed) ? parsed : [parsed];
+      return entries.map((entry) => ({
+        service: entry.Service || entry.Name || "unknown",
+        state: String(entry.State || "").toLowerCase(),
+        health: String(entry.Health || "").toLowerCase(),
+      }));
+    } catch {
+      try {
+        const { stdout } = await execa(
+          "docker",
+          [
+            ...composeArgs,
+            "ps",
+            "--format",
+            "{{.Service}}|{{.State}}|{{.Health}}",
+          ],
+          { cwd: ROOT_DIR },
+        );
+        if (!stdout.trim()) return [];
+        return stdout
+          .trim()
+          .split("\n")
+          .map((line) => {
+            const [service, state, health] = line.split("|");
+            return {
+              service: service || "unknown",
+              state: String(state || "").toLowerCase(),
+              health: String(health || "").toLowerCase(),
+            };
+          });
+      } catch {
+        return [];
+      }
+    }
+  }
+
   /**
    * Stop existing Docker containers
    */
   async stopExistingContainers() {
     try {
-      await execa("docker", ["compose", "down"], { cwd: ROOT_DIR });
+      const composeArgs = await this.getComposeArgs();
+      await execa("docker", [...composeArgs, "down"], { cwd: ROOT_DIR });
       return true;
     } catch {
       return false;
@@ -831,43 +1077,11 @@ ${C.primary("  ╚════════════════════�
       return Number.parseInt(match?.[1] ?? defaultPort, 10);
     };
 
-    // Define all ports used by Docker services
-    // Include hardcoded ports (Redis, Prometheus) and configurable ones
     const ports = [
-      {
-        name: "Redis",
-        port: 6379,
-        env: null, // Hardcoded in docker-compose.yml
-      },
-      {
-        name: "Prometheus",
-        port: 9091,
-        env: null, // Hardcoded in docker-compose.yml
-      },
       {
         name: "WA Client",
         port: getPort("WA_CLIENT_PORT", "3005"),
         env: "WA_CLIENT_PORT",
-      },
-      {
-        name: "Scan Orchestrator",
-        port: getPort("SCAN_ORCHESTRATOR_PORT", "3003"),
-        env: "SCAN_ORCHESTRATOR_PORT",
-      },
-      {
-        name: "Grafana",
-        port: getPort("GRAFANA_PORT", "3002"),
-        env: "GRAFANA_PORT",
-      },
-      {
-        name: "Uptime Kuma",
-        port: getPort("UPTIME_KUMA_PORT", "3001"),
-        env: "UPTIME_KUMA_PORT",
-      },
-      {
-        name: "Reverse Proxy",
-        port: getPort("REVERSE_PROXY_PORT", "8088"),
-        env: "REVERSE_PROXY_PORT",
       },
     ];
 
@@ -976,10 +1190,122 @@ ${C.primary("  ╚════════════════════�
     return allResolved;
   }
 
+  async buildImagesWithByteProgress(composeArgs) {
+    const showBar = process.stdout.isTTY && !this.nonInteractive;
+    const tracker = new BuildByteTracker();
+    const env = {
+      ...process.env,
+      DOCKER_BUILDKIT: "1",
+      BUILDKIT_PROGRESS: "rawjson",
+    };
+    const barLabel = "Downloading layers";
+    const barFormat = `${C.primary(barLabel)} |{bar}| {percentage}% | {transferred}/{total}`;
+    let bar = null;
+    let barTotal = 0;
+    let lastUpdate = 0;
+    const updateBar = (totals) => {
+      const now = Date.now();
+      if (now - lastUpdate < 80) return;
+      lastUpdate = now;
+      const totalBytes = Math.max(0, totals.totalBytes);
+      const currentBytes = Math.max(0, totals.currentBytes);
+      if (totalBytes <= 0) return;
+      if (!bar) {
+        bar = createByteProgressBar(barFormat);
+        bar.start(totalBytes, currentBytes, {
+          transferred: formatBytes(currentBytes),
+          total: formatBytes(totalBytes),
+        });
+        barTotal = totalBytes;
+      } else {
+        if (totalBytes !== barTotal) {
+          bar.setTotal(totalBytes);
+          barTotal = totalBytes;
+        }
+        bar.update(currentBytes, {
+          transferred: formatBytes(currentBytes),
+          total: formatBytes(totalBytes),
+        });
+      }
+    };
+
+    const buildSpinner = ora({
+      text: C.text("Building Docker image..."),
+      color: "cyan",
+      spinner: "dots12",
+    }).start();
+    let spinnerActive = true;
+    let spinnerTimer = null;
+    const spinnerStart = Date.now();
+    const stopSpinnerForBar = () => {
+      if (buildSpinner && spinnerActive) {
+        buildSpinner.stop();
+        spinnerActive = false;
+      }
+    };
+
+    const onLine = (line) => {
+      const totals = tracker.updateFromLine(line);
+      if (totals && showBar) {
+        stopSpinnerForBar();
+        updateBar(totals);
+      }
+    };
+    const onChunk = createLineBuffer(onLine);
+
+    try {
+      spinnerTimer = setInterval(() => {
+        if (!spinnerActive) return;
+        const elapsed = Math.round((Date.now() - spinnerStart) / 1000);
+        buildSpinner.text = C.text(`Building Docker image... (${elapsed}s)`);
+      }, 2000);
+
+      const child = execa("docker", [...composeArgs, "build"], {
+        cwd: ROOT_DIR,
+        env,
+      });
+      child.stdout?.on("data", onChunk);
+      child.stderr?.on("data", onChunk);
+      await child;
+      onChunk.flush();
+      if (bar) {
+        bar.update(barTotal, {
+          transferred: formatBytes(barTotal),
+          total: formatBytes(barTotal),
+        });
+        bar.stop();
+        bar = null;
+      }
+      if (buildSpinner && spinnerActive) {
+        buildSpinner.succeed(C.text("Image build complete"));
+      } else if (buildSpinner) {
+        buildSpinner.stop();
+      }
+    } catch (error) {
+      onChunk.flush();
+      if (bar) {
+        bar.stop();
+      }
+      if (buildSpinner && spinnerActive) {
+        buildSpinner.fail(C.error("Image build failed"));
+      } else if (buildSpinner) {
+        buildSpinner.stop();
+      }
+      throw error;
+    } finally {
+      if (spinnerTimer) {
+        clearInterval(spinnerTimer);
+      }
+    }
+  }
+
   async step4StartServices() {
     this.displayStepHeader(4, "Starting Services", ICON.docker);
 
-    // First, check if existing containers are running and stop them
+    const isMvp = await this.isMvpMode();
+    const composeArgs = await this.getComposeArgs();
+
+    // First, check if existing containers are running and decide whether to restart
     const existingSpinner = ora({
       text: C.text("Checking for existing containers..."),
       color: "cyan",
@@ -987,7 +1313,20 @@ ${C.primary("  ╚════════════════════�
     }).start();
 
     const hasExisting = await this.checkExistingContainers();
-    if (hasExisting) {
+    const existingStatus = hasExisting ? await this.getContainerStatus() : [];
+    const hasIssues = existingStatus.some((entry) => {
+      const state = entry.state || "";
+      const health = entry.health || "";
+      return (state && state !== "running") || health === "unhealthy";
+    });
+    let reusedRunning = false;
+
+    if (hasExisting && !hasIssues) {
+      existingSpinner.succeed(
+        C.text("Existing containers healthy; reusing without restart"),
+      );
+      reusedRunning = true;
+    } else if (hasExisting) {
       existingSpinner.text = C.text("Stopping existing containers...");
       await this.stopExistingContainers();
       existingSpinner.succeed(C.text("Stopped existing containers"));
@@ -997,63 +1336,66 @@ ${C.primary("  ╚════════════════════�
       existingSpinner.succeed(C.text("No existing containers running"));
     }
 
-    // Check for port conflicts
-    const portSpinner = ora({
-      text: C.text("Checking for port conflicts..."),
-      color: "cyan",
-      spinner: "dots12",
-    }).start();
+    if (!reusedRunning) {
+      // Check for port conflicts
+      const portSpinner = ora({
+        text: C.text("Checking for port conflicts..."),
+        color: "cyan",
+        spinner: "dots12",
+      }).start();
 
-    const conflicts = await this.checkRequiredPorts();
+      const conflicts = await this.checkRequiredPorts();
 
-    if (conflicts.length > 0) {
-      portSpinner.warn(C.warning(`Found ${conflicts.length} port conflict(s)`));
-      const resolved = await this.resolvePortConflicts(conflicts);
-      if (!resolved) {
-        throw new Error(
-          "Cannot start services due to unresolved port conflicts. " +
-            "Stop conflicting processes or modify port settings.",
+      if (conflicts.length > 0) {
+        portSpinner.warn(
+          C.warning(`Found ${conflicts.length} port conflict(s)`),
         );
+        const resolved = await this.resolvePortConflicts(conflicts);
+        if (!resolved) {
+          throw new Error(
+            "Cannot start services due to unresolved port conflicts. " +
+              "Stop conflicting processes or modify port settings.",
+          );
+        }
+      } else {
+        portSpinner.succeed(C.text("All ports available"));
       }
-    } else {
-      portSpinner.succeed(C.text("All ports available"));
-    }
 
-    console.log(
-      `\n  ${C.muted("This may take 2-5 minutes on first run...")}\n`,
-    );
+      await this.buildImagesWithByteProgress(composeArgs);
 
-    const spinner = ora({
-      text: C.text("Starting Docker containers..."),
-      color: "cyan",
-      spinner: "dots12",
-    }).start();
-
-    try {
-      // Ensure images are rebuilt so freshly pulled source changes are reflected
-      // (Codespaces frequently has stale images even after `git pull`).
-      await execa("docker", ["compose", "up", "-d", "--build"], {
-        cwd: ROOT_DIR,
-      });
-      spinner.succeed(C.text("Containers started"));
-    } catch (error) {
-      spinner.fail(C.error("Failed to start containers"));
       console.log(
-        `\n  ${ICON.info}  ${C.text("Try running:")} ${C.code("docker compose logs")}`,
+        `\n  ${C.muted(isMvp ? "This may take a minute on first run..." : "This may take 2-5 minutes on first run...")}\n`,
       );
-      throw error;
+
+      const spinner = ora({
+        text: C.text("Starting Docker containers..."),
+        color: "cyan",
+        spinner: "dots12",
+      }).start();
+
+      try {
+        // Ensure images are rebuilt so freshly pulled source changes are reflected
+        // (Codespaces frequently has stale images even after `git pull`).
+        await execa("docker", [...composeArgs, "up", "-d"], {
+          cwd: ROOT_DIR,
+        });
+        spinner.succeed(C.text("Containers started"));
+      } catch (error) {
+        spinner.fail(C.error("Failed to start containers"));
+        console.log(
+          `\n  ${ICON.info}  ${C.text("Try running:")} ${C.code(`docker ${composeArgs.join(" ")} logs`)}`,
+        );
+        throw error;
+      }
     }
 
     // Wait for core services (Redis) to be healthy, but not wa-client
     // wa-client needs WhatsApp pairing (Step 5) before it can be fully healthy
     const healthSpinner = ora({
-      text: C.text("Waiting for core services..."),
+      text: C.text("Waiting for wa-client HTTP server..."),
       color: "cyan",
       spinner: "dots12",
     }).start();
-
-    await this.waitForService("redis", healthSpinner, 60000);
-    healthSpinner.text = C.text("Waiting for wa-client HTTP server...");
 
     // For wa-client, just wait for HTTP server to be accessible (not full health)
     const waClientReady = await this.waitForWaClientHttp(healthSpinner, 90000);
@@ -1077,6 +1419,7 @@ ${C.primary("  ╚════════════════════�
     const startTime = Date.now();
     let rateLimited = false;
     let crashLoop = false;
+    const composeArgs = await this.getComposeArgs();
 
     while (Date.now() - startTime < timeoutMs) {
       try {
@@ -1085,7 +1428,7 @@ ${C.primary("  ╚════════════════════�
         await execa(
           "docker",
           [
-            "compose",
+            ...composeArgs,
             "exec",
             "-T",
             "wa-client",
@@ -1101,7 +1444,7 @@ ${C.primary("  ╚════════════════════�
         try {
           const { stdout: logs } = await execa(
             "docker",
-            ["compose", "logs", "--tail=80", "wa-client"],
+            [...composeArgs, "logs", "--tail=80", "wa-client"],
             { cwd: ROOT_DIR },
           );
 
@@ -1135,46 +1478,6 @@ ${C.primary("  ╚════════════════════�
     return { ready: false, rateLimited, crashLoop };
   }
 
-  async waitForService(serviceName, spinner, timeoutMs = 120000) {
-    const startTime = Date.now();
-
-    // Get container name
-    let containerName = null;
-    try {
-      const { stdout } = await execa(
-        "docker",
-        ["compose", "ps", "--format", "{{.Name}}"],
-        { cwd: ROOT_DIR },
-      );
-      const containers = stdout.trim().split("\n");
-      containerName = containers.find((c) => c.includes(serviceName));
-    } catch {
-      containerName = `whatsapp-bot-scanner-${serviceName}-1`;
-    }
-
-    while (Date.now() - startTime < timeoutMs) {
-      try {
-        const { stdout } = await execa("docker", [
-          "inspect",
-          `--format={{.State.Health.Status}}`,
-          containerName,
-        ]);
-        const health = stdout.trim();
-
-        if (health === "healthy") {
-          return true;
-        }
-      } catch {}
-
-      spinner.text = C.text(
-        `Waiting for ${serviceName}... (${Math.round((Date.now() - startTime) / 1000)}s)`,
-      );
-      await new Promise((r) => setTimeout(r, 2000));
-    }
-
-    throw new Error(`Service ${serviceName} did not become healthy in time`);
-  }
-
   // ─────────────────────────────────────────────────────────────────────────────
   // Step 5: WhatsApp Pairing
   // ─────────────────────────────────────────────────────────────────────────────
@@ -1192,13 +1495,10 @@ ${C.primary("  ╚════════════════════�
       return;
     }
 
-    // Read env to check if phone number is configured
-    const envContent = await fs
-      .readFile(path.join(ROOT_DIR, ".env"), "utf-8")
-      .catch(() => "");
-    const hasPhoneNumber =
-      envContent.includes("WA_REMOTE_AUTH_PHONE_NUMBERS=") &&
-      !envContent.match(/WA_REMOTE_AUTH_PHONE_NUMBERS=\s*$/m);
+    // Read env to check if phone number is configured (ignore commented lines)
+    const hasPhoneNumber = Boolean(
+      await this.getEnvValueFromFile("WA_REMOTE_AUTH_PHONE_NUMBERS"),
+    );
 
     // Let user choose pairing method
     // Default to pairing code for non-interactive (more reliable than QR in Docker)
@@ -1267,13 +1567,15 @@ ${C.primary("  ╚════════════════════�
       .catch(() => "");
     const localMatch = envLocalContent.match(/WA_CLIENT_PORT=["']?(\d+)["']?/);
     const match = envContent.match(/WA_CLIENT_PORT=(\d+)/);
-    return localMatch?.[1] || match?.[1] || "3005";
+    const httpMatch = envContent.match(/WA_HTTP_PORT=(\d+)/);
+    return localMatch?.[1] || match?.[1] || httpMatch?.[1] || "3005";
   }
 
   async waClientHttpJson(endpoint, options = {}) {
     const method = options.method || "GET";
     const body = options.body ?? null;
     const timeoutMs = options.timeoutMs || 5000;
+    const composeArgs = await this.getComposeArgs();
 
     const endpointSafe = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
 
@@ -1281,7 +1583,7 @@ ${C.primary("  ╚════════════════════�
     const nodeScript = [
       "(async()=>{",
       "try{",
-      "const p=process.env.WA_HTTP_PORT||'3005';",
+      "const p=process.env.WA_HTTP_PORT||'3001';",
       `const u='http://127.0.0.1:'+p+'${endpointSafe}';`,
       "const ctrl=AbortSignal.timeout(" + Number(timeoutMs) + ");",
       "const payload=" + bodyLiteral + ";",
@@ -1297,7 +1599,7 @@ ${C.primary("  ╚════════════════════�
     try {
       const { stdout } = await execa(
         "docker",
-        ["compose", "exec", "-T", "wa-client", "node", "-e", nodeScript],
+        [...composeArgs, "exec", "-T", "wa-client", "node", "-e", nodeScript],
         { cwd: ROOT_DIR },
       );
       return JSON.parse(stdout.trim());
@@ -1344,6 +1646,7 @@ ${C.primary("  ╚════════════════════�
     }).start();
 
     try {
+      const composeCmd = await this.getComposeCommand();
       const stateResult = await this.waitForConnectingState(null, spinner);
 
       if (stateResult.alreadyConnected) {
@@ -1354,7 +1657,7 @@ ${C.primary("  ╚════════════════════�
       if (!stateResult.ready) {
         spinner.fail(C.error("wa-client not ready for pairing"));
         console.log(
-          `  ${ICON.info}  ${C.text("Restart services and try again:")} ${C.code("docker compose restart wa-client")}`,
+          `  ${ICON.info}  ${C.text("Restart services and try again:")} ${C.code(`${composeCmd} restart wa-client`)}`,
         );
         return false;
       }
@@ -1410,7 +1713,7 @@ ${C.primary("  ╚════════════════════�
               `  ${ICON.warning}  ${C.warning("Wait 15 minutes before trying again.")}`,
             );
             console.log(
-              `  ${ICON.info}  ${C.text("Try QR code instead:")} ${C.code("docker compose logs -f wa-client")}`,
+              `  ${ICON.info}  ${C.text("Try QR code instead:")} ${C.code(`${composeCmd} logs -f wa-client`)}`,
             );
             return false;
           }
@@ -1524,6 +1827,46 @@ ${C.primary("  ╚════════════════════�
     }).start();
 
     try {
+      const composeArgs = await this.getComposeArgs();
+      let connectivityOk = (await this.checkWhatsAppConnectivity()).ok;
+      let hostConnectivity = null;
+      if (!connectivityOk) {
+        hostConnectivity = await this.checkHostWhatsAppConnectivity();
+        const repaired = await this.tryHostNetworkRepair(hostConnectivity);
+        if (repaired) {
+          connectivityOk = (await this.checkWhatsAppConnectivity()).ok;
+        }
+      }
+      if (!connectivityOk) {
+        hostConnectivity =
+          hostConnectivity || (await this.checkHostWhatsAppConnectivity());
+        const hostNetworkHint =
+          process.platform === "linux" && hostConnectivity.ok
+            ? "  - On Linux, try WA_NETWORK_MODE=host to use host networking"
+            : null;
+        spinner.warn(
+          C.warning("WhatsApp connectivity unavailable from container"),
+        );
+        console.log(`
+  ${ICON.warning}  ${C.warning("Cannot reach https://web.whatsapp.com from wa-client container")}
+  
+  ${C.text("Fix suggestions:")}
+  ${C.muted(
+    hostConnectivity.ok
+      ? "  - Host can reach WhatsApp; container network/DNS likely blocked"
+      : "  - Host cannot reach WhatsApp; outbound access likely blocked",
+  )}
+  ${C.muted("  - Ensure outbound HTTPS (443) is allowed to WhatsApp endpoints")}
+  ${C.muted("  - Set custom DNS: WA_DNS1=1.1.1.1 WA_DNS2=8.8.8.8")}
+  ${hostNetworkHint ? C.muted(hostNetworkHint) : ""}
+  ${C.muted("  - Restart containers after changing DNS")}
+
+  ${C.text("Try:")}
+  ${C.code("  docker compose -f docker-compose.mvp.yml down")}
+  ${C.code("  WA_DNS1=1.1.1.1 WA_DNS2=8.8.8.8 docker compose -f docker-compose.mvp.yml up -d")}
+`);
+        return false;
+      }
       const startTime = Date.now();
       const timeoutMs = 120000; // 2 minutes
       let qrDisplayed = false;
@@ -1543,7 +1886,7 @@ ${C.primary("  ╚════════════════════�
 
         const { stdout } = await execa(
           "docker",
-          ["compose", "exec", "-T", "wa-client", "node", "-e", nodeScript],
+          [...composeArgs, "exec", "-T", "wa-client", "node", "-e", nodeScript],
           { cwd: ROOT_DIR },
         );
         if (stdout) {
@@ -1612,7 +1955,7 @@ ${C.primary("  ╚════════════════════�
 
   ${C.text("Try these alternatives:")}
   ${C.code("  npx whatsapp-bot-scanner pair")}     ${C.muted("# Request pairing code")}
-  ${C.code("  docker compose restart wa-client")}  ${C.muted("# Restart and try again")}
+  ${C.code(`  ${composeCmd} restart wa-client`)}  ${C.muted("# Restart and try again")}
 `);
         return false;
       } else {
@@ -1627,7 +1970,7 @@ ${C.primary("  ╚════════════════════�
     } catch (error) {
       spinner.fail(C.error("Failed to fetch QR code"));
       console.log(
-        `  ${ICON.info}  ${C.text("Check manually:")} ${C.code("docker compose logs -f wa-client")}`,
+        `  ${ICON.info}  ${C.text("Check manually:")} ${C.code(`${composeCmd} logs -f wa-client`)}`,
       );
       return false;
     }
@@ -1652,7 +1995,7 @@ ${C.primary("  ║")}   2. Settings → Linked Devices → Link a Device     ${C
 ${C.primary("  ║")}   3. Select "Link with phone number"               ${C.primary("║")}
 ${C.primary("  ║")}   4. Enter the code above                          ${C.primary("║")}
 ${C.primary("  ║")}                                                    ${C.primary("║")}
-${C.primary("  ║")}   ${C.muted("For advanced helper with countdown, run:")}        ${C.primary("║")}
+${C.primary("  ║")}   ${C.muted("For the pairing helper, run:")}                   ${C.primary("║")}
 ${C.primary("  ║")}   ${C.code("npx whatsapp-bot-scanner pair").padEnd(52)}${C.primary("║")}
 ${C.primary("  ╚════════════════════════════════════════════════════╝")}
 `);
@@ -1670,28 +2013,18 @@ ${C.primary("  ╚════════════════════�
     const getPort = (key, def) =>
       envContent.match(new RegExp(`${key}=(\\d+)`))?.[1] || def;
 
-    const ports = {
-      dashboard: getPort("REVERSE_PROXY_PORT", "8088"),
-      grafana: getPort("GRAFANA_PORT", "3002"),
-      uptime: getPort("UPTIME_KUMA_PORT", "3001"),
-      orchestrator: getPort("SCAN_ORCHESTRATOR_PORT", "3003"),
-    };
-
+    const waPort = getPort("WA_CLIENT_PORT", getPort("WA_HTTP_PORT", "3005"));
     console.log(`
 ${C.success("  ╔════════════════════════════════════════════════════════════════╗")}
 ${C.success("  ║")}                                                                ${C.success("║")}
-${C.success("  ║")}         ${ICON.sparkle} ${C.successBold("SETUP COMPLETE!")} ${ICON.sparkle}                              ${C.success("║")}
-${C.success("  ║")}                                                                ${C.success("║")}
-${C.success("  ║")}   Your WhatsApp Bot Scanner is now protecting your groups.    ${C.success("║")}
+${C.success("  ║")}         ${ICON.sparkle} ${C.successBold("SETUP COMPLETE")} ${ICON.sparkle}                               ${C.success("║")}
 ${C.success("  ║")}                                                                ${C.success("║")}
 ${C.success("  ╠════════════════════════════════════════════════════════════════╣")}
 ${C.success("  ║")}                                                                ${C.success("║")}
 ${C.success("  ║")}   ${C.textBold("Access Points:")}                                             ${C.success("║")}
 ${C.success("  ║")}                                                                ${C.success("║")}
-${C.success("  ║")}   ${ICON.arrow}  Dashboard:       ${C.link(`http://localhost:${ports.dashboard}`)}                 ${C.success("║")}
-${C.success("  ║")}   ${ICON.arrow}  Uptime Monitor:  ${C.link(`http://localhost:${ports.uptime}`)}                 ${C.success("║")}
-${C.success("  ║")}   ${ICON.arrow}  Grafana:         ${C.link(`http://localhost:${ports.grafana}`)} ${C.muted("(admin/admin)")}    ${C.success("║")}
-${C.success("  ║")}   ${ICON.arrow}  Orchestrator:    ${C.link(`http://localhost:${ports.orchestrator}/healthz`)}          ${C.success("║")}
+${C.success("  ║")}   ${ICON.arrow}  WA Client:      ${C.link(`http://localhost:${waPort}/healthz`)}            ${C.success("║")}
+${C.success("  ║")}   ${ICON.arrow}  Metrics:        ${C.link(`http://localhost:${waPort}/metrics`)}           ${C.success("║")}
 ${C.success("  ║")}                                                                ${C.success("║")}
 ${C.success("  ╠════════════════════════════════════════════════════════════════╣")}
 ${C.success("  ║")}                                                                ${C.success("║")}
@@ -1722,6 +2055,7 @@ program
   .description("Run the interactive setup wizard")
   .option("--skip-pairing", "Skip WhatsApp pairing step")
   .option("--noninteractive", "Run in non-interactive mode")
+  .option("--mvp-mode", "Use MVP single-container setup (default)")
   .option("--debug", "Enable debug logging")
   .action(async (options) => {
     const globalOpts = program.opts();
@@ -1745,8 +2079,9 @@ program
   .command("logs")
   .description("View service logs")
   .argument("[service]", "Specific service to view logs for")
-  .action((service) => {
-    const args = ["compose", "logs", "-f"];
+  .action(async (service) => {
+    const composeArgs = await resolveComposeArgsFromEnv();
+    const args = [...composeArgs, "logs", "-f"];
     if (service) args.push(service);
     console.log(
       C.primary(
@@ -1768,9 +2103,10 @@ program
     }).start();
 
     try {
+      const composeArgs = await resolveComposeArgsFromEnv();
       const { stdout } = await execa(
         "docker",
-        ["compose", "ps", "--format", "json"],
+        [...composeArgs, "ps", "--format", "json"],
         { cwd: ROOT_DIR },
       );
       const containers = stdout
@@ -1805,7 +2141,12 @@ program
   .action(async (options) => {
     const ui = new UserInterface(true);
     const notifications = new NotificationManager(ui);
-    const dockerOrchestrator = new DockerOrchestrator(ROOT_DIR, ui);
+    const composeFile = await resolveComposeFileFromEnv();
+    const dockerOrchestrator = new DockerOrchestrator(ROOT_DIR, ui, {
+      composeFile,
+    });
+    const composeArgs = await resolveComposeArgsFromEnv();
+    const composeCmd = `docker ${composeArgs.join(" ")}`;
     const pairingManager = new PairingManager(
       dockerOrchestrator,
       ui,
@@ -1842,7 +2183,7 @@ program
     } catch (error) {
       console.error(C.error(`\nPairing failed: ${error.message}`));
       console.log(
-        C.muted("Ensure wa-client is running: docker compose up -d wa-client"),
+        C.muted(`Ensure wa-client is running: ${composeCmd} up -d wa-client`),
       );
       process.exit(1);
     }
@@ -1859,4 +2200,13 @@ program
     }).catch(() => process.exit(1));
   });
 
-program.parse(process.argv);
+const argv = process.argv.slice(2);
+const hasHelpFlag = argv.includes("-h") || argv.includes("--help");
+const hasVersionFlag = argv.includes("-V") || argv.includes("--version");
+const hasCommand = argv.some((arg) => !arg.startsWith("-"));
+const parseArgs =
+  !hasHelpFlag && !hasVersionFlag && !hasCommand
+    ? [process.argv[0], process.argv[1], "setup", ...argv]
+    : process.argv;
+
+program.parse(parseArgs);

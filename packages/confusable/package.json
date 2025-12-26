@@ -9,7 +9,5 @@
     "type-check": "echo 'No type check needed'",
     "test": "echo 'No tests for confusable package'"
   },
-  "dependencies": {
-    "confusables.js": "^0.4.1"
-  }
+  "dependencies": {}
 }

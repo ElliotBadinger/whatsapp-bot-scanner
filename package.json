@@ -22,13 +22,14 @@
     "build:prod": "NODE_ENV=production bun run --filter '*' build:prod",
     "clean": "bun run --filter '*' clean && rm -rf node_modules .tsbuildinfo",
     "precommit": "./scripts/validate-types.sh",
-    "unified-cli": "bun scripts/unified-cli.mjs"
+    "unified-cli": "bun scripts/unified-cli.mjs",
+    "link-corpus": "node scripts/link-corpus.js",
+    "update-local-feeds": "node scripts/update-local-feeds.js",
+    "scan-corpus": "bun scripts/scan-corpus.ts"
   },
   "workspaces": [
     "packages/*",
-    "services/*",
-    "apps/*",
-    "SafeMode-web-app"
+    "services/*"
   ],
   "dependencies": {
     "next": "16.0.7"

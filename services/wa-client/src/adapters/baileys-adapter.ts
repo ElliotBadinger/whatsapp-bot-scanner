@@ -10,16 +10,20 @@ import makeWASocket, {
   DisconnectReason as BaileysDisconnectReason,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
+  useMultiFileAuthState,
   isJidGroup,
   jidNormalizedUser,
   downloadMediaMessage,
   generateForwardMessageContent,
+  type AuthenticationState,
   type WASocket,
   type proto as BaileysProto,
   type WAMessage as BaileysWAMessage,
   type WAPresence,
 } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import type { Logger } from "pino";
 
 import {
@@ -53,6 +57,10 @@ export class BaileysAdapter implements WhatsAppAdapter {
   private readonly logger: Logger;
   private _state: ConnectionState = "disconnected";
   private _botId: string | null = null;
+  private _botLid: string | null = null;
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private reconnectAttempts = 0;
+  private authCreds: AuthenticationState["creds"] | null = null;
 
   // Event handlers
   private readonly messageHandlers: MessageHandler[] = [];
@@ -78,6 +86,10 @@ export class BaileysAdapter implements WhatsAppAdapter {
     return this._botId;
   }
 
+  get botLid(): string | null {
+    return this._botLid;
+  }
+
   /**
    * Initialize and connect the Baileys socket
    */
@@ -90,17 +102,39 @@ export class BaileysAdapter implements WhatsAppAdapter {
     this.setState("connecting");
 
     try {
-      // Initialize Redis auth state
-      const {
-        state: authState,
-        saveCreds,
-        clearState,
-      } = await useRedisAuthState({
-        redis: this.config.redis,
-        logger: this.logger,
-        prefix: "baileys:auth",
-        clientId: this.config.clientId,
-      });
+      const useFileStore = this.config.authStore === "file";
+      let authState: AuthenticationState;
+      let saveCreds: () => Promise<void>;
+      let clearState: () => Promise<void>;
+
+      if (useFileStore) {
+        const authPath = path.resolve(
+          this.config.dataPath ?? "./data",
+          "baileys-auth",
+          this.config.clientId,
+        );
+        await fs.mkdir(authPath, { recursive: true });
+        const fileState = await useMultiFileAuthState(authPath);
+        authState = fileState.state;
+        saveCreds = fileState.saveCreds;
+        this.authCreds = authState.creds;
+        clearState = async () => {
+          await fs.rm(authPath, { recursive: true, force: true });
+        };
+        this.logger.info({ authPath }, "Using file-backed Baileys auth state");
+      } else {
+        // Initialize Redis auth state
+        const redisState = await useRedisAuthState({
+          redis: this.config.redis,
+          logger: this.logger,
+          prefix: "baileys:auth",
+          clientId: this.config.clientId,
+        });
+        authState = redisState.state;
+        saveCreds = redisState.saveCreds;
+        this.authCreds = authState.creds;
+        clearState = redisState.clearState;
+      }
 
       this.saveCreds = saveCreds;
       this.clearState = clearState;
@@ -116,11 +150,9 @@ export class BaileysAdapter implements WhatsAppAdapter {
           creds: authState.creds,
           keys: makeCacheableSignalKeyStore(authState.keys, this.logger),
         },
-        logger: this.logger,
+        logger: createBaileysLogger(this.logger),
         browser: [this.config.browserName ?? "WBScanner", "Chrome", "120.0.0"],
         generateHighQualityLinkPreview: false,
-        syncFullHistory: false,
-        markOnlineOnConnect: false,
       });
 
       // Set up event handlers
@@ -167,6 +199,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
 
         this.logger.info({ reason }, "Connection closed");
         this.setState("disconnected");
+        await this.cleanupSocket();
 
         // Clear auth state if logged out
         if (isLoggedOut && this.clearState) {
@@ -184,10 +217,22 @@ export class BaileysAdapter implements WhatsAppAdapter {
           { shouldReconnect, isLoggedOut },
           "Attempting to reconnect for fresh pairing...",
         );
-        setTimeout(() => this.connect(), isLoggedOut ? 2000 : 5000);
+        if (shouldReconnect) {
+          this.scheduleReconnect(isLoggedOut ? 2000 : 5000);
+        }
       } else if (connection === "open") {
-        this._botId = this.socket?.user?.id ?? null;
-        this.logger.info({ botId: this._botId }, "Connection opened");
+        const user = this.socket?.user;
+        this._botId = user?.id ?? null;
+        this._botLid =
+          user?.lid ??
+          this.authCreds?.me?.lid ??
+          (user?.id?.endsWith("@lid") ? user.id : null);
+        this.logger.info(
+          { botId: this._botId, botLid: this._botLid },
+          "Connection opened",
+        );
+        this.clearReconnectTimer();
+        this.reconnectAttempts = 0;
         this.setState("ready");
       } else if (connection === "connecting") {
         this.setState("connecting");
@@ -273,6 +318,17 @@ export class BaileysAdapter implements WhatsAppAdapter {
       };
     }
 
+    const mentionCandidates = [
+      messageContent.extendedTextMessage?.contextInfo?.mentionedJid,
+      messageContent.imageMessage?.contextInfo?.mentionedJid,
+      messageContent.videoMessage?.contextInfo?.mentionedJid,
+      messageContent.documentMessage?.contextInfo?.mentionedJid,
+      (messageContent as { contextInfo?: { mentionedJid?: string[] } })
+        .contextInfo?.mentionedJid,
+    ];
+    const mentionedIds =
+      mentionCandidates.find((candidate) => Array.isArray(candidate)) ?? [];
+
     return {
       id: key.id,
       chatId: remoteJid,
@@ -282,6 +338,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
       timestamp: (msg.messageTimestamp as number) * 1000,
       fromMe: key.fromMe ?? false,
       raw: msg,
+      mentionedIds,
       quotedMessage,
     };
   }
@@ -302,13 +359,51 @@ export class BaileysAdapter implements WhatsAppAdapter {
    * Disconnect the Baileys socket
    */
   async disconnect(): Promise<void> {
-    if (this.socket) {
-      this.socket.end(undefined);
-      this.socket = null;
-    }
+    await this.cleanupSocket(true);
     this._botId = null;
+    this._botLid = null;
     this.setState("disconnected");
     this.logger.info("Disconnected from WhatsApp");
+  }
+
+  private async cleanupSocket(logErrors = false): Promise<void> {
+    if (!this.socket) {
+      return;
+    }
+
+    try {
+      this.socket.end(undefined);
+    } catch (err) {
+      if (logErrors) {
+        this.logger.warn({ err }, "Failed to close Baileys socket");
+      }
+    } finally {
+      this.socket = null;
+    }
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  private scheduleReconnect(initialDelayMs: number): void {
+    if (this.reconnectTimer) {
+      return;
+    }
+
+    const cappedAttempts = Math.min(this.reconnectAttempts, 4);
+    const delay = Math.min(initialDelayMs * Math.pow(2, cappedAttempts), 60000);
+    this.reconnectAttempts += 1;
+
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      void this.connect().catch((err) => {
+        this.logger.error({ err }, "Reconnect attempt failed");
+      });
+    }, delay);
   }
 
   /**
@@ -872,6 +967,121 @@ export class BaileysAdapter implements WhatsAppAdapter {
     const blocklist = await this.socket.fetchBlocklist();
     return blocklist.filter((jid): jid is string => jid !== undefined);
   }
+}
+
+const TRANSIENT_ERROR_PATTERNS = [
+  /stream errored out/i,
+  /error in sending keep alive/i,
+];
+
+const DOWNLEVEL_INFO_PATTERNS = [
+  /failed to sync state from version/i,
+  /resyncing .* from v0/i,
+  /tried remove, but no previous op/i,
+];
+
+function createBaileysLogger(base: Logger): {
+  level: string;
+  child(obj: Record<string, unknown>): ReturnType<typeof createBaileysLogger>;
+  trace(obj: unknown, msg?: string): void;
+  debug(obj: unknown, msg?: string): void;
+  info(obj: unknown, msg?: string): void;
+  warn(obj: unknown, msg?: string): void;
+  error(obj: unknown, msg?: string): void;
+} {
+  const normalize = (
+    obj: unknown,
+    msg?: string,
+  ): { meta: unknown; message?: string } => {
+    if (typeof obj === "string" && msg === undefined) {
+      return { meta: undefined, message: obj };
+    }
+    return { meta: obj, message: msg };
+  };
+
+  const shouldDownlevelError = (message?: string): boolean =>
+    Boolean(message && TRANSIENT_ERROR_PATTERNS.some((p) => p.test(message)));
+
+  const shouldDownlevelInfo = (message?: string): boolean =>
+    Boolean(message && DOWNLEVEL_INFO_PATTERNS.some((p) => p.test(message)));
+
+  const emit = (
+    level: "trace" | "debug" | "info" | "warn" | "error",
+    obj: unknown,
+    msg?: string,
+  ): void => {
+    const { meta, message } = normalize(obj, msg);
+    const isMetaObject =
+      meta !== null && typeof meta === "object" && !Array.isArray(meta);
+
+    const emitWith = (
+      levelName: "trace" | "debug" | "info" | "warn" | "error",
+      metaValue: unknown,
+      msgValue?: string,
+    ) => {
+      const fn = base[levelName] as unknown as (
+        this: Logger,
+        objOrMsg?: Record<string, unknown> | string,
+        msg?: string,
+      ) => void;
+
+      if (msgValue) {
+        if (isMetaObject) {
+          fn.call(base, metaValue as Record<string, unknown>, msgValue);
+        } else {
+          fn.call(base, msgValue);
+        }
+        return;
+      }
+
+      if (isMetaObject) {
+        fn.call(base, metaValue as Record<string, unknown>);
+      } else if (typeof metaValue === "string") {
+        fn.call(base, metaValue);
+      }
+    };
+
+    if (level === "error" && shouldDownlevelError(message)) {
+      emitWith("warn", meta, message);
+      return;
+    }
+
+    if (level === "info" && shouldDownlevelInfo(message)) {
+      emitWith("debug", meta, message);
+      return;
+    }
+
+    switch (level) {
+      case "trace":
+        emitWith("trace", meta, message);
+        break;
+      case "debug":
+        emitWith("debug", meta, message);
+        break;
+      case "info":
+        emitWith("info", meta, message);
+        break;
+      case "warn":
+        emitWith("warn", meta, message);
+        break;
+      case "error":
+        emitWith("error", meta, message);
+        break;
+      default:
+        emitWith("info", meta, message);
+    }
+  };
+
+  return {
+    level: base.level,
+    child: (obj: Record<string, unknown>) =>
+      createBaileysLogger(base.child(obj)),
+    trace: (obj, msg) => emit("trace", obj, msg),
+    debug: (obj, msg) => emit("debug", obj, msg),
+    info: (obj, msg) => emit("info", obj, msg),
+    warn: (obj, msg) => emit("warn", obj, msg),
+    error: (obj, msg) => emit("error", obj, msg),
+  };
 }
 
 /**

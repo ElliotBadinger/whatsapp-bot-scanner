@@ -65,6 +65,7 @@ export class WWebJSAdapter implements WhatsAppAdapter {
   private readonly logger: Logger;
   private _state: ConnectionState = "disconnected";
   private _botId: string | null = null;
+  private _botLid: string | null = null;
 
   // Event handlers
   private readonly messageHandlers: MessageHandler[] = [];
@@ -87,6 +88,10 @@ export class WWebJSAdapter implements WhatsAppAdapter {
 
   get botId(): string | null {
     return this._botId;
+  }
+
+  get botLid(): string | null {
+    return this._botLid;
   }
 
   /**
@@ -197,6 +202,7 @@ export class WWebJSAdapter implements WhatsAppAdapter {
     // Ready event
     this.client.on("ready", () => {
       this._botId = this.client?.info?.wid?._serialized ?? null;
+      this._botLid = null;
       this.logger.info({ botId: this._botId }, "Client ready");
       this.setState("ready");
     });
@@ -229,6 +235,7 @@ export class WWebJSAdapter implements WhatsAppAdapter {
         handler(disconnectReason);
       }
       this._botId = null;
+      this._botLid = null;
       this.setState("disconnected");
     });
 
@@ -307,6 +314,7 @@ export class WWebJSAdapter implements WhatsAppAdapter {
         timestamp: msg.timestamp * 1000,
         fromMe: msg.fromMe,
         raw: msg,
+        mentionedIds: Array.isArray(msg.mentionedIds) ? msg.mentionedIds : [],
         quotedMessage,
       };
     } catch (err) {
@@ -343,6 +351,7 @@ export class WWebJSAdapter implements WhatsAppAdapter {
       this.client = null;
     }
     this._botId = null;
+    this._botLid = null;
     this.setState("disconnected");
     this.logger.info("Disconnected from WhatsApp");
   }

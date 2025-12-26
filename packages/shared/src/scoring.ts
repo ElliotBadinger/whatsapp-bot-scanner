@@ -9,6 +9,9 @@ export interface Signals {
   vtHarmless?: number;
   urlhausListed?: boolean;
   phishtankVerified?: boolean;
+  certPlListed?: boolean;
+  openphishListed?: boolean;
+  suspiciousDomainListed?: boolean;
   domainAgeDays?: number;
   isIpLiteral?: boolean;
   hasSuspiciousTld?: boolean;
@@ -17,6 +20,11 @@ export interface Signals {
   urlLength?: number;
   hasExecutableExtension?: boolean;
   wasShortened?: boolean;
+  hasUserInfo?: boolean;
+  hasRedirectParam?: boolean;
+  hasBinaryPathToken?: boolean;
+  typoSquatTarget?: string;
+  typoSquatMethod?: string;
   manualOverride?: "allow" | "deny" | null;
   finalUrlMismatch?: boolean;
   homoglyph?: HomoglyphResult;
@@ -57,6 +65,14 @@ function evaluateBlocklistSignals(
   if (signals.phishtankVerified) {
     score += 10;
     pushReason(reasons, "Verified phishing (Phishtank)");
+  }
+  if (signals.certPlListed) {
+    score += 10;
+    pushReason(reasons, "Listed as dangerous (CERT Polska)");
+  }
+  if (signals.openphishListed) {
+    score += 10;
+    pushReason(reasons, "Known phishing (OpenPhish)");
   }
   if (signals.urlhausListed) {
     score += 10;
@@ -159,7 +175,7 @@ function evaluateHeuristicSignals(
   reasons: string[],
 ): number {
   if (signals.isIpLiteral) {
-    score += 3;
+    score += 4;
     pushReason(reasons, "URL uses IP address");
   }
   if (signals.hasSuspiciousTld) {
@@ -171,7 +187,7 @@ function evaluateHeuristicSignals(
     pushReason(reasons, `Multiple redirects (${signals.redirectCount})`);
   }
   if (signals.hasUncommonPort) {
-    score += 2;
+    score += 4;
     pushReason(reasons, "Uncommon port");
   }
   if ((signals.urlLength ?? 0) > 200) {
@@ -185,6 +201,36 @@ function evaluateHeuristicSignals(
   if (signals.wasShortened) {
     score += 1;
     pushReason(reasons, "Shortened URL expanded");
+  }
+  if (signals.hasUserInfo) {
+    score += 6;
+    pushReason(reasons, "URL contains embedded credentials");
+  }
+  if (signals.hasRedirectParam) {
+    score += 4;
+    pushReason(reasons, "Open redirect parameter detected");
+  }
+  if (signals.isIpLiteral && signals.hasExecutableExtension) {
+    score += 3;
+    pushReason(reasons, "Executable hosted on IP address");
+  }
+  if (signals.isIpLiteral && signals.hasBinaryPathToken) {
+    score += 6;
+    pushReason(reasons, "Suspicious binary path on IP address");
+  }
+  if (signals.suspiciousDomainListed) {
+    score += 5;
+    pushReason(reasons, "Domain listed in suspicious activity feed");
+  }
+  if (signals.typoSquatTarget) {
+    score += 5;
+    const method = signals.typoSquatMethod
+      ? ` (${signals.typoSquatMethod})`
+      : "";
+    pushReason(
+      reasons,
+      `Possible typosquat of ${signals.typoSquatTarget}${method}`,
+    );
   }
   if (signals.finalUrlMismatch) {
     score += 2;
@@ -240,11 +286,45 @@ export function scoreFromSignals(signals: Signals): RiskVerdict {
     );
   }
 
-  const finalScore = Math.max(0, Math.min(score, 15));
+  let finalScore = Math.max(0, Math.min(score, 15));
+  const hasHardBlocklist =
+    Boolean(signals.openphishListed) ||
+    Boolean(signals.urlhausListed) ||
+    Boolean(signals.phishtankVerified) ||
+    Boolean(signals.certPlListed) ||
+    Boolean(signals.gsbThreatTypes && signals.gsbThreatTypes.length > 0) ||
+    Boolean((signals.vtMalicious ?? 0) >= 1);
+  if (signals.suspiciousDomainListed && !hasHardBlocklist) {
+    finalScore = Math.min(finalScore, 7);
+  }
   const { level, cacheTtl } = determineRiskLevel(finalScore);
 
   return { score: finalScore, level, reasons, cacheTtl };
 }
+
+const BINARY_PATH_TOKENS = new Set([
+  "aarch64",
+  "amd64",
+  "arm",
+  "arm4",
+  "arm5",
+  "arm6",
+  "arm7",
+  "arm8",
+  "armv7",
+  "armv7l",
+  "i686",
+  "m68k",
+  "mips",
+  "mips64",
+  "mipsel",
+  "mpsl",
+  "ppc",
+  "sh4",
+  "sparc",
+  "x86",
+  "x86_64",
+]);
 
 export function extraHeuristics(u: URL): Partial<Signals> {
   const port = u.port
@@ -260,6 +340,30 @@ export function extraHeuristics(u: URL): Partial<Signals> {
     /\.(exe|msi|apk|bat|cmd|ps1|scr|jar|pkg|dmg|iso)$/i.test(u.pathname);
   const hasSuspiciousTld = isSuspiciousTld(u.hostname);
   const homoglyph = detectHomoglyphs(u.hostname);
+  const hasUserInfo = Boolean(u.username || u.password);
+  const redirectParamKeys = new Set([
+    "redirect",
+    "redirect_uri",
+    "redirect_url",
+    "url",
+    "next",
+    "continue",
+    "return",
+    "dest",
+    "destination",
+    "target",
+  ]);
+  const hasRedirectParam = Array.from(u.searchParams.entries()).some(
+    ([key, value]) => {
+      if (!redirectParamKeys.has(key.toLowerCase())) return false;
+      const trimmed = value.trim().toLowerCase();
+      return trimmed.startsWith("http://") || trimmed.startsWith("https://");
+    },
+  );
+  const hasBinaryPathToken = u.pathname
+    .split(/[./_-]+/)
+    .map((segment) => segment.toLowerCase())
+    .some((segment) => BINARY_PATH_TOKENS.has(segment));
   return {
     hasUncommonPort,
     isIpLiteral,
@@ -267,5 +371,8 @@ export function extraHeuristics(u: URL): Partial<Signals> {
     hasSuspiciousTld,
     urlLength: u.toString().length,
     homoglyph,
+    hasUserInfo,
+    hasRedirectParam,
+    hasBinaryPathToken,
   };
 }

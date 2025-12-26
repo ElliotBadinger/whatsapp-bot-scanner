@@ -37,6 +37,15 @@ describe("Scoring Algorithm - Edge Cases", () => {
     );
   });
 
+  test("IP literal with binary path token is escalated to malicious", () => {
+    const result = scoreFromSignals({
+      isIpLiteral: true,
+      hasBinaryPathToken: true,
+    });
+    expect(result.score).toBeGreaterThanOrEqual(8);
+    expect(result.level).toBe("malicious");
+  });
+
   test("manual allow override ignores heuristics-only flag", () => {
     const result = scoreFromSignals({
       heuristicsOnly: true,
@@ -71,23 +80,21 @@ describe("Scoring Algorithm - Edge Cases", () => {
 describe("Verdict Threshold Boundaries", () => {
   test("score exactly 3 maps to benign verdict", () => {
     // This test catches mutations that change the benign threshold (<=3)
-    const result = scoreFromSignals({ vtMalicious: 0, isIpLiteral: true });
-    // isIpLiteral adds +3, so score should be exactly 3
+    const result = scoreFromSignals({
+      hasSuspiciousTld: true,
+      hasExecutableExtension: true,
+    });
+    // suspicious TLD +2 and executable extension +1 = 3
     expect(result.score).toBe(3);
     expect(result.level).toBe("benign");
   });
 
   test("score exactly 4 maps to suspicious verdict", () => {
     // Score of 4 should be suspicious, not benign
-    const result = scoreFromSignals({ domainAgeDays: 13, isIpLiteral: true });
-    // domainAgeDays 13 adds +4, isIpLiteral adds +3 = 7, but capped behavior
-    // Let's use a simpler combination: 4 total
-    const result2 = scoreFromSignals({ 
-      domainAgeDays: 29, // +2
-      hasSuspiciousTld: true // +2
-    });
-    expect(result2.score).toBe(4);
-    expect(result2.level).toBe("suspicious");
+    const result = scoreFromSignals({ hasUncommonPort: true });
+    // hasUncommonPort adds +4
+    expect(result.score).toBe(4);
+    expect(result.level).toBe("suspicious");
   });
 
   test("score exactly 7 maps to suspicious verdict", () => {
@@ -126,5 +133,24 @@ describe("extraHeuristics", () => {
   test("detects suspicious TLDs in heuristic extraction", () => {
     const signals = extraHeuristics(new URL("http://example.zip"));
     expect(signals.hasSuspiciousTld).toBe(true);
+  });
+
+  test("flags embedded credentials in URL", () => {
+    const signals = extraHeuristics(
+      new URL("https://user:pass@example.com/login"),
+    );
+    expect(signals.hasUserInfo).toBe(true);
+  });
+
+  test("flags open redirect query parameters", () => {
+    const signals = extraHeuristics(
+      new URL("https://example.com/login?next=https%3A%2F%2Fevil.test%2F"),
+    );
+    expect(signals.hasRedirectParam).toBe(true);
+  });
+
+  test("flags binary architecture tokens in paths", () => {
+    const signals = extraHeuristics(new URL("http://8.8.8.8/x86_64"));
+    expect(signals.hasBinaryPathToken).toBe(true);
   });
 });

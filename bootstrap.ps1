@@ -4,14 +4,14 @@
 # Ensures prerequisites are installed, then runs: npx whatsapp-bot-scanner setup
 #
 # Usage:
-#   .\bootstrap.ps1              # Interactive setup
-#   .\bootstrap.ps1 --hobby-mode # Hobby/personal mode
+#   .\bootstrap.ps1             # Interactive setup (MVP by default)
+#   .\bootstrap.ps1 --mvp-mode  # Explicit MVP single-container setup
 # =============================================================================
 
 param(
     [switch]$SkipDocker,
     [switch]$SkipNode,
-    [Alias('hobby-mode')][switch]$HobbyMode
+    [Alias('mvp-mode','hobby-mode')][switch]$MvpMode
 )
 
 $ErrorActionPreference = "Stop"
@@ -194,8 +194,8 @@ Write-Step "Step 4/4: Running npx whatsapp-bot-scanner setup..."
 Set-Location $ROOT_DIR
 
 $setupArgs = @()
-if ($HobbyMode) {
-    $setupArgs += "--hobby-mode"
+if ($MvpMode) {
+    $setupArgs += "--mvp-mode"
 }
 
 if (Get-Command npx -ErrorAction SilentlyContinue) {
@@ -205,4 +205,3 @@ if (Get-Command npx -ErrorAction SilentlyContinue) {
 } else {
     Write-ErrorMsg "Could not find setup wizard."
 }
-

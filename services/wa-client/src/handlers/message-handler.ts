@@ -160,6 +160,7 @@ export class SharedMessageHandler {
         "!scanner scan <url> - Manually scan a URL",
         "!scanner consent - Mark group consent as granted",
         "!scanner consentstatus - Show group consent status",
+        "@<bot> <command> - Mention the bot and use the same commands",
         "",
         "_Links shared in this chat are automatically scanned._",
       ].join("\n");
@@ -191,7 +192,7 @@ export class SharedMessageHandler {
       if (!ctx.args || ctx.args.length === 0) {
         await this.replyWithLatency(ctx.message, {
           type: "text",
-          text: "Usage: !scanner scan <url>",
+          text: "Usage: !scanner scan <url> or @<bot> scan <url>",
         });
         return;
       }
@@ -370,6 +371,31 @@ export class SharedMessageHandler {
       };
     }
 
+    const mentionCommand = this.parseMentionCommand(body, message);
+    if (mentionCommand) {
+      return {
+        message,
+        urls,
+        isCommand: true,
+        command: mentionCommand.command,
+        args: mentionCommand.args,
+      };
+    }
+
+    const mentionScannerCommand = this.parseMentionedScannerCommand(
+      body,
+      message,
+    );
+    if (mentionScannerCommand) {
+      return {
+        message,
+        urls,
+        isCommand: true,
+        command: mentionScannerCommand.command,
+        args: mentionScannerCommand.args,
+      };
+    }
+
     return {
       message,
       urls,
@@ -394,7 +420,7 @@ export class SharedMessageHandler {
     } else {
       await this.replyWithLatency(ctx.message, {
         type: "text",
-        text: `Unknown command: ${ctx.command}. Use !scanner help for available commands.`,
+        text: `Unknown command: ${ctx.command}. Use !scanner help or @<bot> help for available commands.`,
       });
     }
   }
@@ -416,7 +442,10 @@ export class SharedMessageHandler {
         // Check if URL is private/internal
         const parsed = new URL(normalized);
         if (await isPrivateHostname(parsed.hostname)) {
-          this.logger.debug({ url: normalized }, "Skipping private URL");
+          this.logger.warn(
+            { url: normalized, host: parsed.hostname },
+            "Skipping private or unresolved hostname",
+          );
           continue;
         }
 
@@ -459,6 +488,88 @@ export class SharedMessageHandler {
         this.logger.warn({ err, url }, "Failed to process URL");
       }
     }
+  }
+
+  private parseMentionCommand(
+    body: string,
+    message: WAMessage,
+  ): { command: string; args: string[] } | null {
+    const botUser = this.getMentionedBotUser(message);
+    if (!botUser) return null;
+
+    const trimmed = body.trim();
+    if (!trimmed.startsWith("@")) return null;
+
+    const [firstToken] = trimmed.split(/\s+/, 1);
+    if (!firstToken || !firstToken.startsWith("@")) return null;
+
+    const tokenUser = firstToken.slice(1);
+    const tokenIsNumeric = /^\d+$/.test(tokenUser);
+
+    if (tokenIsNumeric && tokenUser !== botUser) {
+      return null;
+    }
+
+    let remainder = trimmed.slice(firstToken.length).trim();
+    remainder = remainder.replace(/^[,;:.-]+/, "").trim();
+    if (!remainder) return null;
+
+    const match = remainder.match(/^(\w+)(?:\s+(.*))?$/);
+    if (!match) return null;
+
+    const command = match[1].toLowerCase();
+    const argsStr = match[2]?.trim() ?? "";
+    const args = argsStr ? argsStr.split(/\s+/) : [];
+
+    return { command, args };
+  }
+
+  private parseMentionedScannerCommand(
+    body: string,
+    message: WAMessage,
+  ): { command: string; args: string[] } | null {
+    const botUser = this.getMentionedBotUser(message);
+    if (!botUser) return null;
+
+    const scannerMatch = body.match(/!scanner\s+(\w+)(?:\s+(.*))?/i);
+    if (!scannerMatch) return null;
+
+    const command = scannerMatch[1].toLowerCase();
+    const argsStr = scannerMatch[2]?.trim() ?? "";
+    const args = argsStr ? argsStr.split(/\s+/) : [];
+
+    return { command, args };
+  }
+
+  private getMentionedBotUser(message: WAMessage): string | null {
+    const botIds = [this.adapter.botId, this.adapter.botLid].filter(
+      (jid): jid is string => typeof jid === "string" && jid.length > 0,
+    );
+    if (botIds.length === 0) return null;
+
+    const mentionedJids = message.mentionedIds ?? [];
+    if (mentionedJids.length === 0) return null;
+
+    const mentionedUsers = new Set(
+      mentionedJids.map((jid) => this.normalizeJidUser(jid)),
+    );
+    for (const botId of botIds) {
+      const botUser = this.normalizeJidUser(botId);
+      if (mentionedUsers.has(botUser)) {
+        return botUser;
+      }
+    }
+
+    return null;
+  }
+
+  private normalizeJidUser(jid: string): string {
+    const atIndex = jid.indexOf("@");
+    const withoutDomain = atIndex === -1 ? jid : jid.slice(0, atIndex);
+    const deviceIndex = withoutDomain.indexOf(":");
+    return deviceIndex === -1
+      ? withoutDomain
+      : withoutDomain.slice(0, deviceIndex);
   }
 
   /**

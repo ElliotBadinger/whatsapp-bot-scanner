@@ -23,6 +23,7 @@ import {
   waSessionStatusGauge,
   assertEssentialConfig,
   assertControlPlaneToken,
+  getControlPlaneTokenOptional,
   hashChatId,
   hashMessageId,
   createRedisConnection,
@@ -44,7 +45,9 @@ import { InProcessScanQueue } from "./queues/in-process-scan-queue.js";
 import type { ScanRequestQueue } from "./types/scanQueue.js";
 
 // Global state
-const mvpMode = config.modes.mvp;
+const inferredMvpMode =
+  !config.modes.mvp && !(config.redisUrl ?? "").trim().length;
+const mvpMode = config.modes.mvp || inferredMvpMode;
 
 let adapter: WhatsAppAdapter | null = null;
 let scanRequestQueue: ScanRequestQueue | null = null;
@@ -108,9 +111,17 @@ async function main(): Promise<void> {
   if (!mvpMode) {
     assertEssentialConfig("wa-client");
   } else {
-    logger.info("MVP_MODE enabled: Redis/BullMQ paths are optional");
+    logger.info(
+      inferredMvpMode
+        ? "Redis not configured; defaulting to MVP single-process mode"
+        : "MVP_MODE enabled: Redis/BullMQ paths are optional",
+    );
   }
-  assertControlPlaneToken();
+  if (!mvpMode) {
+    assertControlPlaneToken();
+  } else {
+    getControlPlaneTokenOptional();
+  }
 
   // Log library selection
   const library = getConfiguredLibrary();
@@ -136,7 +147,11 @@ async function main(): Promise<void> {
   }
 
   // Create WhatsApp adapter (async to support dynamic imports)
-  adapter = await createAdapterFromEnv(redis, logger);
+  adapter = await createAdapterFromEnv(
+    redis,
+    logger,
+    mvpMode ? { authStore: "file" } : undefined,
+  );
 
   if (mvpMode) {
     const parsePositiveIntEnv = (

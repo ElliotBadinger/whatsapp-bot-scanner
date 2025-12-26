@@ -71,6 +71,14 @@ export function normalizeUrl(raw: string): string | null {
   }
 }
 
+export function registrableDomain(hostname: string): string | null {
+  const parsed = parse(hostname);
+  if (!parsed.domain || !parsed.publicSuffix) {
+    return null;
+  }
+  return parsed.domain;
+}
+
 export function urlHash(norm: string): string {
   return createHash("sha256").update(norm).digest("hex");
 }

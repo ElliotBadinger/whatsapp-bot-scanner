@@ -62,6 +62,13 @@ const mockFetchLatestBaileysVersion = jest
     version: [2, 3000, 123],
     isLatest: true,
   });
+const mockUseMultiFileAuthState = jest.fn().mockResolvedValue({
+  state: {
+    creds: { me: null },
+    keys: {},
+  },
+  saveCreds: jest.fn(),
+});
 const mockGenerateForwardMessageContent = jest
   .fn()
   .mockReturnValue({ text: "forward" });
@@ -75,6 +82,7 @@ jest.unstable_mockModule("@whiskeysockets/baileys", () => ({
   makeWASocket: mockMakeWASocket,
   makeCacheableSignalKeyStore: mockMakeCacheableSignalKeyStore,
   fetchLatestBaileysVersion: mockFetchLatestBaileysVersion,
+  useMultiFileAuthState: mockUseMultiFileAuthState,
   generateForwardMessageContent: mockGenerateForwardMessageContent,
   downloadMediaMessage: mockDownloadMediaMessage,
   DisconnectReason: {
@@ -119,6 +127,7 @@ describe("BaileysAdapter coverage", () => {
       redis: mockRedis,
       logger: mockLogger,
       clientId: "test-client",
+      authStore: "redis",
     });
   });
 

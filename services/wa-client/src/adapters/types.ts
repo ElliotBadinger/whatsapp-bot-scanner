@@ -47,6 +47,8 @@ export interface WAMessage {
   fromMe: boolean;
   /** Original raw message object from the library */
   raw: unknown;
+  /** Mentioned JIDs extracted by the adapter (if available) */
+  mentionedIds?: string[];
   /** Quoted message if this is a reply */
   quotedMessage?: {
     id: string;
@@ -150,6 +152,8 @@ export interface AdapterConfig {
   logger: Logger;
   /** Session/client ID for multi-device support */
   clientId: string;
+  /** Auth store strategy (Baileys only). */
+  authStore?: "redis" | "file";
   /** Phone number for pairing (optional, for phone number pairing mode) */
   phoneNumber?: string;
   /** Whether to print QR code to terminal */
@@ -253,6 +257,8 @@ export interface WhatsAppAdapter {
 
   /** Bot's own JID (available after ready) */
   readonly botId: string | null;
+  /** Bot's own LID JID (available after ready, if supported) */
+  readonly botLid?: string | null;
 
   /**
    * Initialize and connect the WhatsApp client

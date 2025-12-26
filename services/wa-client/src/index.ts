@@ -32,6 +32,7 @@ import {
   metrics,
   register,
   assertControlPlaneToken,
+  getControlPlaneTokenOptional,
   assertEssentialConfig,
   waSessionStatusGauge,
   isPrivateHostname,
@@ -590,7 +591,13 @@ async function collectScreenshotAttachment(
   job: VerdictJobData,
 ): Promise<{ media: MessageMedia; type: "screenshot" } | null> {
   const base = resolveControlPlaneBase();
-  const token = assertControlPlaneToken();
+  const token = config.modes.mvp
+    ? getControlPlaneTokenOptional()
+    : assertControlPlaneToken();
+
+  if (!token) {
+    return null;
+  }
 
   try {
     const resp = await fetch(
@@ -1184,7 +1191,11 @@ function getRemotePhoneNumbers(): string[] {
 
 async function main() {
   assertEssentialConfig("wa-client");
-  assertControlPlaneToken();
+  if (config.modes.mvp) {
+    getControlPlaneTokenOptional();
+  } else {
+    assertControlPlaneToken();
+  }
 
   // Connect to Redis using the lazy connection pattern
   // This defers connection until main() is called, avoiding ETIMEDOUT at module load
@@ -2970,8 +2981,15 @@ async function main() {
       const chatType = (chat as GroupChat).isGroup ? "group" : "direct";
       metrics.waMessagesReceived.labels(chatType).inc();
       // Admin commands
-      if ((msg.body || "").startsWith("!scanner")) {
-        await handleAdminCommand(client, msg, chat as GroupChat, redis);
+      const adminCommandParts = parseAdminCommandParts(msg, botWid);
+      if (adminCommandParts) {
+        await handleAdminCommand(
+          client,
+          msg,
+          chat as GroupChat,
+          redis,
+          adminCommandParts,
+        );
         return;
       }
       const chatId = chat.id._serialized;
@@ -3812,7 +3830,8 @@ interface AdminCommandContext {
   redis: Redis;
   senderId: string | undefined;
   parts: string[];
-  authHeaders: { authorization: string; "x-csrf-token": string };
+  authHeaders?: { authorization: string; "x-csrf-token": string };
+  controlPlaneEnabled: boolean;
   base: string;
   pairingOrchestrator: PairingOrchestrator | null;
   remotePhone: string | undefined;
@@ -3824,7 +3843,11 @@ const adminCommandHandlers: Record<
   string,
   (ctx: AdminCommandContext) => Promise<void>
 > = {
-  mute: async ({ chat, base, authHeaders }) => {
+  mute: async ({ chat, base, authHeaders, controlPlaneEnabled }) => {
+    if (!controlPlaneEnabled || !authHeaders) {
+      await chat.sendMessage("Control-plane disabled in MVP mode.");
+      return;
+    }
     const resp = await fetch(
       `${base}/groups/${encodeURIComponent(chat.id._serialized)}/mute`,
       { method: "POST", headers: authHeaders },
@@ -3833,7 +3856,11 @@ const adminCommandHandlers: Record<
       resp && resp.ok ? "Scanner muted for 60 minutes." : "Mute failed.",
     );
   },
-  unmute: async ({ chat, base, authHeaders }) => {
+  unmute: async ({ chat, base, authHeaders, controlPlaneEnabled }) => {
+    if (!controlPlaneEnabled || !authHeaders) {
+      await chat.sendMessage("Control-plane disabled in MVP mode.");
+      return;
+    }
     const resp = await fetch(
       `${base}/groups/${encodeURIComponent(chat.id._serialized)}/unmute`,
       { method: "POST", headers: authHeaders },
@@ -3842,7 +3869,11 @@ const adminCommandHandlers: Record<
       resp && resp.ok ? "Scanner unmuted." : "Unmute failed.",
     );
   },
-  status: async ({ chat, base, authHeaders }) => {
+  status: async ({ chat, base, authHeaders, controlPlaneEnabled }) => {
+    if (!controlPlaneEnabled || !authHeaders) {
+      await chat.sendMessage("Control-plane disabled in MVP mode.");
+      return;
+    }
     try {
       const resp = await fetch(`${base}/status`, {
         headers: { authorization: authHeaders.authorization },
@@ -3870,7 +3901,11 @@ const adminCommandHandlers: Record<
       await chat.sendMessage("Scanner status temporarily unavailable.");
     }
   },
-  rescan: async ({ chat, parts, base, authHeaders }) => {
+  rescan: async ({ chat, parts, base, authHeaders, controlPlaneEnabled }) => {
+    if (!controlPlaneEnabled || !authHeaders) {
+      await chat.sendMessage("Control-plane disabled in MVP mode.");
+      return;
+    }
     if (!parts[2]) return;
     const rescanUrl = parts[2];
     const resp = await fetch(`${base}/rescan`, {
@@ -4065,11 +4100,52 @@ const adminCommandHandlers: Record<
   },
 };
 
+function parseAdminCommandParts(
+  msg: Message,
+  botId: string | null,
+): string[] | null {
+  const body = (msg.body || "").trim();
+  if (!body) return null;
+
+  const directMatch = body.match(/^!scanner\s+(\w+)(?:\s+(.*))?$/i);
+  if (directMatch) {
+    return body.split(/\s+/);
+  }
+
+  if (!botId) return null;
+  const mentionedIds = Array.isArray(msg.mentionedIds) ? msg.mentionedIds : [];
+  if (mentionedIds.length === 0) return null;
+
+  const botUser = normalizeJidUser(botId);
+  const isMentioned = mentionedIds.some(
+    (jid) => normalizeJidUser(jid) === botUser,
+  );
+  if (!isMentioned) return null;
+
+  const mentionToken = `@${botUser}`;
+  const trimmed = body.trim();
+  if (!trimmed.toLowerCase().startsWith(mentionToken.toLowerCase())) {
+    return null;
+  }
+
+  let remainder = trimmed.slice(mentionToken.length).trim();
+  remainder = remainder.replace(/^[,;:.-]+/, "").trim();
+  if (!remainder) return null;
+
+  return ["!scanner", ...remainder.split(/\s+/)];
+}
+
+function normalizeJidUser(jid: string): string {
+  const atIndex = jid.indexOf("@");
+  return atIndex === -1 ? jid : jid.slice(0, atIndex);
+}
+
 export async function handleAdminCommand(
   client: Client,
   msg: Message,
   existingChat: GroupChat | undefined,
   redis: Redis,
+  parsedParts?: string[] | null,
 ) {
   const chat = existingChat ?? (await msg.getChat());
   if (!(chat as GroupChat).isGroup) return;
@@ -4079,7 +4155,8 @@ export async function handleAdminCommand(
   const senderVariants = expandWidVariants(senderId);
   const isSelfCommand =
     msg.fromMe || (botWid !== null && senderVariants.includes(botWid));
-  const parts = (msg.body || "").trim().split(/\s+/);
+  const parts = parsedParts ?? parseAdminCommandParts(msg, botWid);
+  if (!parts) return;
   logger.info(
     {
       chatId: gc.id._serialized,
@@ -4118,12 +4195,17 @@ export async function handleAdminCommand(
   const handler = adminCommandHandlers[cmd];
   if (handler) {
     const base = resolveControlPlaneBase();
-    const token = assertControlPlaneToken();
-    const csrfToken = config.controlPlane.csrfToken;
-    const authHeaders = {
-      authorization: `Bearer ${token}`,
-      "x-csrf-token": csrfToken,
-    };
+    const token = config.modes.mvp
+      ? getControlPlaneTokenOptional()
+      : assertControlPlaneToken();
+    const authHeaders = token
+      ? {
+          authorization: `Bearer ${token}`,
+          "x-csrf-token": (
+            process.env.CONTROL_PLANE_CSRF_TOKEN || token
+          ).trim(),
+        }
+      : undefined;
 
     await handler({
       client,
@@ -4133,6 +4215,7 @@ export async function handleAdminCommand(
       senderId,
       parts,
       authHeaders,
+      controlPlaneEnabled: !!authHeaders,
       base,
       pairingOrchestrator,
       remotePhone,
@@ -4141,7 +4224,7 @@ export async function handleAdminCommand(
     });
   } else {
     await chat.sendMessage(
-      "Commands: !scanner mute|unmute|status|rescan <url>|consent|consentstatus|approve [memberId]|governance [limit]|pair|pair-status|pair-reset",
+      "Commands: !scanner mute|unmute|status|rescan <url>|consent|consentstatus|approve [memberId]|governance [limit]|pair|pair-status|pair-reset (or @<bot> <command>)",
     );
   }
 }

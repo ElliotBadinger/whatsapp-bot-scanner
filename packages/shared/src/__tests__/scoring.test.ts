@@ -15,12 +15,12 @@ test("GSB score is exactly 10 (mutation boundary)", () => {
 test("redirect count exactly 3 triggers suspicious", () => {
   const result = scoreFromSignals({ redirectCount: 3 });
   expect(result.score).toBeGreaterThanOrEqual(2);
-  expect(result.reasons.some(r => r.includes("redirect"))).toBe(true);
+  expect(result.reasons.some((r) => r.includes("redirect"))).toBe(true);
 });
 
 test("redirect count exactly 2 does not trigger redirect warning", () => {
   const result = scoreFromSignals({ redirectCount: 2 });
-  expect(result.reasons.some(r => r.includes("redirect"))).toBe(false);
+  expect(result.reasons.some((r) => r.includes("redirect"))).toBe(false);
 });
 
 test("gsb additional threat types are malicious", () => {
@@ -65,6 +65,45 @@ test("multiple blocklists escalate to malicious", () => {
   });
   expect(result.level).toBe("malicious");
   expect(result.score).toBeGreaterThanOrEqual(10);
+});
+
+test("openphish listing is malicious", () => {
+  const result = scoreFromSignals({ openphishListed: true });
+  expect(result.level).toBe("malicious");
+  expect(result.reasons).toContain("Known phishing (OpenPhish)");
+});
+
+test("cert pl listing is malicious", () => {
+  const result = scoreFromSignals({ certPlListed: true });
+  expect(result.level).toBe("malicious");
+  expect(result.reasons).toContain("Listed as dangerous (CERT Polska)");
+});
+
+test("suspicious domain feed adds risk", () => {
+  const result = scoreFromSignals({ suspiciousDomainListed: true });
+  expect(result.score).toBeGreaterThanOrEqual(5);
+  expect(result.reasons).toContain("Domain listed in suspicious activity feed");
+});
+
+test("userinfo in URL adds risk", () => {
+  const result = scoreFromSignals({ hasUserInfo: true });
+  expect(result.score).toBeGreaterThanOrEqual(6);
+  expect(result.reasons).toContain("URL contains embedded credentials");
+});
+
+test("open redirect parameter adds risk", () => {
+  const result = scoreFromSignals({ hasRedirectParam: true });
+  expect(result.score).toBeGreaterThanOrEqual(2);
+  expect(result.reasons).toContain("Open redirect parameter detected");
+});
+
+test("typosquat signals add risk", () => {
+  const result = scoreFromSignals({
+    typoSquatTarget: "google.com",
+    typoSquatMethod: "missing-char",
+  });
+  expect(result.level).toBe("suspicious");
+  expect(result.reasons.some((r) => r.includes("typosquat"))).toBe(true);
 });
 
 test("final url mismatch adds risk", () => {

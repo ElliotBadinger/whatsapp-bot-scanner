@@ -19,10 +19,13 @@ const { resolve4, resolve6 } = jest.requireMock("node:dns/promises") as {
 };
 
 describe("SSRF guards", () => {
+  const allowlistEnvBackup = process.env.WA_SCAN_ALLOWLIST_HOSTNAMES;
+
   beforeEach(() => {
     lookup.mockReset();
     resolve4.mockReset();
     resolve6.mockReset();
+    delete process.env.WA_SCAN_ALLOWLIST_HOSTNAMES;
   });
 
   it("detects private ipv4 ranges", () => {
@@ -66,5 +69,21 @@ describe("SSRF guards", () => {
     lookup.mockRejectedValueOnce(new Error("dns failure"));
 
     await expect(isPrivateHostname("[example.com]")).resolves.toBe(true);
+  });
+
+  it("bypasses private check when hostname is allowlisted", async () => {
+    process.env.WA_SCAN_ALLOWLIST_HOSTNAMES = "internal.test";
+    resolve4.mockResolvedValueOnce(["192.168.1.5"]); // NOSONAR - test vector
+    resolve6.mockResolvedValueOnce([]);
+
+    await expect(isPrivateHostname("internal.test")).resolves.toBe(false);
+  });
+
+  afterAll(() => {
+    if (allowlistEnvBackup === undefined) {
+      delete process.env.WA_SCAN_ALLOWLIST_HOSTNAMES;
+    } else {
+      process.env.WA_SCAN_ALLOWLIST_HOSTNAMES = allowlistEnvBackup;
+    }
   });
 });

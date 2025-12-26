@@ -1,0 +1,37 @@
+services:
+  wa-client:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: ${WA_BUILD_TARGET:-wa-client-baileys}
+      network: ${DOCKER_BUILD_NETWORK:-host}
+    env_file: [.env]
+    environment:
+      - MVP_MODE=1
+      - WA_REMOTE_AUTH_STORE=memory
+      - WA_LIBRARY=${WA_LIBRARY:-baileys}
+      - WA_HTTP_PORT=${WA_CLIENT_PORT:-3005}
+      - NODE_OPTIONS=--max-old-space-size=512 --dns-result-order=ipv4first
+    network_mode: ${WA_NETWORK_MODE:-bridge}
+    dns:
+      - ${WA_DNS1:-1.1.1.1}
+      - ${WA_DNS2:-8.8.8.8}
+    ports:
+      - "${WA_CLIENT_PORT:-3005}:3005"
+    volumes:
+      - wa_session:/app/services/wa-client/data:rw
+      - ./storage:/app/storage:rw
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "const p=process.env.WA_HTTP_PORT||\"3005\"; fetch(\"http://localhost:\"+p+\"/healthz\").then(async r => { if(!r.ok) process.exit(1); const j = await r.json().catch(() => null); process.exit(j && j.status === \"healthy\" ? 0 : 1); }).catch(() => process.exit(1))"',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  wa_session:

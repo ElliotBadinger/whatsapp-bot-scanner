@@ -36,5 +36,5 @@
 
 ## Security & Configuration Tips
 
-- Clone `.env.example` when provisioning environments, never commit secrets, and rotate WhatsApp sessions stored by `wa-client` when sharing stacks.
+- Clone `.env.mvp.example` when provisioning environments, never commit secrets, and rotate WhatsApp sessions stored by `wa-client` when sharing stacks.
 - Revisit `docs/SECURITY_PRIVACY.md` and `docs/THREAT_MODEL.md` when adding external calls or persistence, and keep the control-plane bearer token guard on new routes.

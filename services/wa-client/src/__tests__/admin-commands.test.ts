@@ -102,6 +102,45 @@ describe("wa-client admin commands", () => {
     expect(chat.sendMessage).toHaveBeenCalled();
   });
 
+  it("accepts @bot mention commands", async () => {
+    const chat = makeChat([makeParticipant("admin-1", true)]);
+    const msg = {
+      ...makeMessage("@bot status", chat),
+      mentionedIds: ["bot@c.us"],
+    } as Message;
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ scans: 3, malicious: 0 }),
+    });
+
+    await handleAdminCommand({} as any, msg, chat, __testables.redis as any);
+
+    expect(chat.sendMessage).toHaveBeenCalledWith(
+      expect.stringContaining("Scanner status"),
+    );
+  });
+
+  it("skips control-plane calls in MVP mode when token is missing", async () => {
+    const chat = makeChat([makeParticipant("admin-1", true)]);
+    const msg = makeMessage("!scanner status", chat);
+
+    const originalMvp = config.modes.mvp;
+    const originalToken = process.env.CONTROL_PLANE_API_TOKEN;
+    config.modes.mvp = true;
+    process.env.CONTROL_PLANE_API_TOKEN = "";
+
+    await handleAdminCommand({} as any, msg, chat, __testables.redis as any);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(chat.sendMessage).toHaveBeenCalledWith(
+      "Control-plane disabled in MVP mode.",
+    );
+
+    config.modes.mvp = originalMvp;
+    process.env.CONTROL_PLANE_API_TOKEN = originalToken;
+  });
+
   it("handles consent flows and governance listing", async () => {
     const chat = makeChat([makeParticipant("admin-1", true)]);
     const client = {} as any;

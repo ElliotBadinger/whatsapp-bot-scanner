@@ -24,8 +24,31 @@ const BLOCKED_HOSTNAMES = [
   "169.254.169.254", // NOSONAR - cloud metadata IP
 ];
 
+function parseAllowlist(): string[] {
+  const raw =
+    process.env.WA_SCAN_ALLOWLIST_HOSTNAMES ||
+    process.env.WA_SSRF_ALLOWLIST_HOSTNAMES ||
+    "";
+  return raw
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter((entry) => entry.length > 0);
+}
+
+function isAllowlistedHostname(hostname: string): boolean {
+  const allowlist = parseAllowlist();
+  if (allowlist.length === 0) return false;
+  return allowlist.some(
+    (entry) => hostname === entry || hostname.endsWith(`.${entry}`),
+  );
+}
+
 export async function isPrivateHostname(hostname: string): Promise<boolean> {
   const lowerHostname = hostname.toLowerCase();
+
+  if (isAllowlistedHostname(lowerHostname)) {
+    return false;
+  }
 
   // Check blocked hostnames first
   if (BLOCKED_HOSTNAMES.includes(lowerHostname)) {

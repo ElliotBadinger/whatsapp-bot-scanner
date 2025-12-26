@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /* global jest */
 process.env.NODE_ENV = process.env.NODE_ENV || "test";
+process.env.MVP_MODE = process.env.MVP_MODE || "1";
+process.env.WA_REMOTE_AUTH_STORE = process.env.WA_REMOTE_AUTH_STORE || "memory";
 process.env.URLSCAN_CALLBACK_SECRET =
   process.env.URLSCAN_CALLBACK_SECRET || "test-secret";
 process.env.CONTROL_PLANE_API_TOKEN =
