@@ -115,7 +115,7 @@ describe("InProcessScanQueue", () => {
 
     const queue = new InProcessScanQueue({
       adapter: { sendMessage: async () => ({ success: true }) } as any,
-      concurrency: 0,
+      concurrency: 1,
       rateLimit: 10,
       rateWindowMs: 1000,
       logger,
@@ -154,7 +154,7 @@ describe("InProcessScanQueue", () => {
 
     const queue = new InProcessScanQueue({
       adapter: { sendMessage: async () => ({ success: true }) } as any,
-      concurrency: 0,
+      concurrency: 1,
       rateLimit: 10,
       rateWindowMs: 1000,
       logger,

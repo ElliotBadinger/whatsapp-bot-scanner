@@ -139,13 +139,30 @@ async function main(): Promise<void> {
   adapter = await createAdapterFromEnv(redis, logger);
 
   if (mvpMode) {
+    const concurrencyRaw = Number.parseInt(
+      process.env.MVP_SCAN_CONCURRENCY ?? "4",
+      10,
+    );
     const concurrency =
-      Number.parseInt(process.env.MVP_SCAN_CONCURRENCY ?? "4", 10) || 4;
+      Number.isFinite(concurrencyRaw) && concurrencyRaw >= 1
+        ? concurrencyRaw
+        : 4;
+
+    const rateLimitRaw = Number.parseInt(
+      process.env.MVP_GROUP_RATE_LIMIT ?? "10",
+      10,
+    );
     const rateLimit =
-      Number.parseInt(process.env.MVP_GROUP_RATE_LIMIT ?? "10", 10) || 10;
+      Number.isFinite(rateLimitRaw) && rateLimitRaw >= 1 ? rateLimitRaw : 10;
+
+    const rateWindowMsRaw = Number.parseInt(
+      process.env.MVP_GROUP_RATE_WINDOW_MS ?? "60000",
+      10,
+    );
     const rateWindowMs =
-      Number.parseInt(process.env.MVP_GROUP_RATE_WINDOW_MS ?? "60000", 10) ||
-      60000;
+      Number.isFinite(rateWindowMsRaw) && rateWindowMsRaw >= 1
+        ? rateWindowMsRaw
+        : 60_000;
 
     const followRedirects =
       (process.env.MVP_SCAN_FOLLOW_REDIRECTS ?? "0") === "1";
