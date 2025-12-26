@@ -68,6 +68,7 @@ function resolveConnectionString(
 }
 
 let cachedControlPlaneToken: string | undefined;
+let warnedMissingControlPlaneToken = false;
 
 function getControlPlaneToken(): string {
   if (!cachedControlPlaneToken) {
@@ -77,6 +78,20 @@ function getControlPlaneToken(): string {
     );
   }
   return cachedControlPlaneToken;
+}
+
+export function getControlPlaneTokenOptional(): string | null {
+  const token = (process.env.CONTROL_PLANE_API_TOKEN || "").trim();
+  if (!token) {
+    if (mvpMode && !warnedMissingControlPlaneToken) {
+      warnedMissingControlPlaneToken = true;
+      logger.warn("CONTROL_PLANE_API_TOKEN not set (MVP_MODE enabled, skipping)");
+    }
+    return null;
+  }
+
+  cachedControlPlaneToken = token;
+  return token;
 }
 
 function parsePositiveInt(
@@ -571,10 +586,6 @@ export const config = {
 };
 
 export function assertControlPlaneToken(): string {
-  if (config.modes.mvp && !(process.env.CONTROL_PLANE_API_TOKEN || "").trim()) {
-    logger.warn("CONTROL_PLANE_API_TOKEN not set (MVP_MODE enabled, skipping)");
-    return "";
-  }
   return getControlPlaneToken();
 }
 
