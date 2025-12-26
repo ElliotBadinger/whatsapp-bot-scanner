@@ -16,7 +16,13 @@ const buckets: Record<string, Bucket> = {};
 
 function ensure(label: string): Bucket {
   if (!buckets[label]) {
-    buckets[label] = { total: 0, benign: 0, suspicious: 0, malicious: 0, scoreSum: 0 };
+    buckets[label] = {
+      total: 0,
+      benign: 0,
+      suspicious: 0,
+      malicious: 0,
+      scoreSum: 0,
+    };
   }
   return buckets[label];
 }
@@ -51,8 +57,12 @@ const run = async () => {
       benign: bucket.benign,
       suspicious: bucket.suspicious,
       malicious: bucket.malicious,
-      flaggedRate: bucket.total ? Number((flagged / bucket.total).toFixed(3)) : 0,
-      avgScore: bucket.total ? Number((bucket.scoreSum / bucket.total).toFixed(2)) : 0,
+      flaggedRate: bucket.total
+        ? Number((flagged / bucket.total).toFixed(3))
+        : 0,
+      avgScore: bucket.total
+        ? Number((bucket.scoreSum / bucket.total).toFixed(2))
+        : 0,
     };
   });
 

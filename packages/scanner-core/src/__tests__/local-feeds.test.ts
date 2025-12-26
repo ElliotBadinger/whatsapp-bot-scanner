@@ -39,7 +39,10 @@ describe("local feed lookup", () => {
     fs.writeFileSync(path.join(tempDir, "sans-domains.txt"), "", "utf8");
 
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { lookupLocalFeedSignals, resetLocalFeedCache } = require("../local-feeds");
+    const {
+      lookupLocalFeedSignals,
+      resetLocalFeedCache,
+    } = require("../local-feeds");
     resetLocalFeedCache();
 
     const openphishSignals = lookupLocalFeedSignals(openphishUrl);
@@ -50,11 +53,7 @@ describe("local feed lookup", () => {
   });
 
   test("detects suspicious domains from SANS feed", () => {
-    fs.writeFileSync(
-      path.join(tempDir, "openphish.txt"),
-      "",
-      "utf8",
-    );
+    fs.writeFileSync(path.join(tempDir, "openphish.txt"), "", "utf8");
     fs.writeFileSync(path.join(tempDir, "urlhaus.txt"), "", "utf8");
     fs.writeFileSync(
       path.join(tempDir, "sans-domains.txt"),
@@ -63,7 +62,10 @@ describe("local feed lookup", () => {
     );
 
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { lookupLocalFeedSignals, resetLocalFeedCache } = require("../local-feeds");
+    const {
+      lookupLocalFeedSignals,
+      resetLocalFeedCache,
+    } = require("../local-feeds");
     resetLocalFeedCache();
 
     const signals = lookupLocalFeedSignals("https://suspicious.test/path");

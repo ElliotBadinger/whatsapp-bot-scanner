@@ -32,10 +32,7 @@ const DEFAULT_URLS = {
 
 const FEED_DIR =
   process.env.LOCAL_FEED_DIR || path.join(process.cwd(), "storage", "feeds");
-const SANS_SCORE_MIN = Number.parseInt(
-  process.env.SANS_SCORE_MIN || "3",
-  10,
-);
+const SANS_SCORE_MIN = Number.parseInt(process.env.SANS_SCORE_MIN || "3", 10);
 
 function parseArgs(argv) {
   const args = {};
@@ -57,20 +54,20 @@ function parseArgs(argv) {
 function normalizeUrl(raw) {
   try {
     const u = new URL(raw);
-    if (!['http:', 'https:'].includes(u.protocol)) return null;
+    if (!["http:", "https:"].includes(u.protocol)) return null;
     u.hostname = u.hostname.toLowerCase();
     u.hostname = toASCII(u.hostname);
     if (
-      (u.protocol === 'http:' && u.port === '80') ||
-      (u.protocol === 'https:' && u.port === '443')
+      (u.protocol === "http:" && u.port === "80") ||
+      (u.protocol === "https:" && u.port === "443")
     ) {
-      u.port = '';
+      u.port = "";
     }
-    u.hash = '';
+    u.hash = "";
     for (const p of Array.from(u.searchParams.keys())) {
       if (TRACKING_PARAMS.has(p)) u.searchParams.delete(p);
     }
-    u.pathname = u.pathname.replace(/\/+/g, '/');
+    u.pathname = u.pathname.replace(/\/+/g, "/");
     return u.toString();
   } catch {
     return null;
@@ -98,8 +95,7 @@ async function fetchText(url) {
   const buffer = Buffer.from(await res.body.arrayBuffer());
   const encodingHeader = res.headers["content-encoding"];
   const isGzip =
-    (typeof encodingHeader === "string" &&
-      encodingHeader.includes("gzip")) ||
+    (typeof encodingHeader === "string" && encodingHeader.includes("gzip")) ||
     url.endsWith(".gz");
 
   const decoded = isGzip ? zlib.gunzipSync(buffer) : buffer;

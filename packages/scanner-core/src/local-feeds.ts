@@ -14,10 +14,7 @@ const URLHAUS_PATH =
 const SANS_PATH =
   process.env.SANS_LOCAL_PATH || path.join(FEED_DIR, "sans-domains.txt");
 
-const SANS_SCORE_MIN = Number.parseInt(
-  process.env.SANS_SCORE_MIN || "3",
-  10,
-);
+const SANS_SCORE_MIN = Number.parseInt(process.env.SANS_SCORE_MIN || "3", 10);
 
 const TRACKING_PARAMS = new Set([
   "utm_source",
@@ -140,8 +137,14 @@ function parseSansDomains(raw: string): Set<string> {
   const set = new Set<string>();
   for (const record of records) {
     const rawScore =
-      (record as { score?: unknown; risk?: unknown; risk_score?: unknown; r?: unknown })
-        ?.score ??
+      (
+        record as {
+          score?: unknown;
+          risk?: unknown;
+          risk_score?: unknown;
+          r?: unknown;
+        }
+      )?.score ??
       (record as { risk?: unknown })?.risk ??
       (record as { risk_score?: unknown })?.risk_score ??
       (record as { r?: unknown })?.r;
@@ -199,9 +202,7 @@ export function resetLocalFeedCache(): void {
   sansCache = null;
 }
 
-export function lookupLocalFeedSignals(
-  finalUrl: string,
-): LocalFeedSignals {
+export function lookupLocalFeedSignals(finalUrl: string): LocalFeedSignals {
   if (!LOCAL_FEEDS_ENABLED) return {};
 
   const normalized = normalizeUrl(finalUrl) || finalUrl;
