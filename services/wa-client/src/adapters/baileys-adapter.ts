@@ -147,8 +147,6 @@ export class BaileysAdapter implements WhatsAppAdapter {
         generateHighQualityLinkPreview: false,
         syncFullHistory: false,
         markOnlineOnConnect: false,
-        fireInitQueries: false,
-        shouldSyncHistoryMessage: () => false,
       });
 
       // Set up event handlers
