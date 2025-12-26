@@ -14,9 +14,9 @@ describe("Container wiring contracts", () => {
     const compose = readFileSync(composePath, "utf-8");
 
     expect(compose).toContain("wa-client:");
-    expect(compose).toContain("fetch(''http://localhost:");
+    expect(compose).toContain('fetch(\\"http://localhost:');
     expect(compose).toContain("/healthz");
-    expect(compose).toContain("j && j.status === ''healthy''");
+    expect(compose).toContain('j && j.status === \\"healthy\\"');
   });
 
   it("wa-client-baileys Dockerfile stage must install nodejs", () => {
@@ -24,7 +24,9 @@ describe("Container wiring contracts", () => {
     const dockerfile = readFileSync(dockerfilePath, "utf-8");
 
     expect(dockerfile).toMatch(/\nFROM\s+base\s+AS\s+wa-client-baileys\b/);
-    expect(dockerfile).toContain("apt-get install -y nodejs");
+    expect(dockerfile).toContain(
+      "apt-get install -y --no-install-recommends nodejs",
+    );
   });
 
   it("wa-client entrypoint must prefer /usr/bin/node and exec via NODE_BIN", () => {

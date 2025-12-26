@@ -4,6 +4,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile
       target: ${WA_BUILD_TARGET:-wa-client-baileys}
+      network: ${DOCKER_BUILD_NETWORK:-host}
     env_file: [.env]
     environment:
       - MVP_MODE=1

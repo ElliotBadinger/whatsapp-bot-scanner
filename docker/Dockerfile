@@ -33,6 +33,33 @@ RUN --mount=type=cache,target=/root/.bun/install/cache \
   cd /app/packages/shared && \
   sed -i 's|"confusable": "file:../confusable"|"confusable": "file:/app/packages/confusable/confusable-0.1.0.tgz"|g' package.json && \
   bun install --ignore-scripts && \
+  rm -rf /app/node_modules && ln -s /app/packages/shared/node_modules /app/node_modules && \
+  bun run build && bun pm pack
+
+# =============================================================================
+# Scanner Core Builder Stage - Builds packages/scanner-core once
+# =============================================================================
+FROM base AS scanner-core-builder
+WORKDIR /app
+
+# Copy root config
+COPY tsconfig.base.json /app/
+COPY types /app/types
+
+# Copy scanner-core package source
+COPY packages/scanner-core/package.json packages/scanner-core/tsconfig.json /app/packages/scanner-core/
+COPY packages/scanner-core/src /app/packages/scanner-core/src
+
+# Copy shared package tarball from builder
+COPY --from=shared-builder /app/packages/shared/*.tgz /app/packages/shared/
+COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusable/
+
+# Install dependencies and build scanner-core
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+  cd /app/packages/scanner-core && \
+  sed -i 's|"@wbscanner/shared": "file:../shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
+  bun install --ignore-scripts && \
+  rm -rf /app/node_modules && ln -s /app/packages/scanner-core/node_modules /app/node_modules && \
   bun run build && bun pm pack
 
 # =============================================================================
@@ -47,6 +74,7 @@ RUN apt-get update && apt-get install -y python3 make g++ wget && rm -rf /var/li
 # Copy shared package tarball from builder
 COPY --from=shared-builder /app/packages/shared/*.tgz /app/packages/shared/
 COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusable/
+COPY --from=scanner-core-builder /app/packages/scanner-core/*.tgz /app/packages/scanner-core/
 
 # Install ALL dependencies (including dev) to build
 COPY services/control-plane/package.json services/control-plane/tsconfig.json /app/services/control-plane/
@@ -54,6 +82,7 @@ RUN --mount=type=cache,target=/root/.bun/install/cache \
   cd /app/services/control-plane && \
   sed -i 's|"@wbscanner/shared": "file:../../packages/shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
   bun install && \
+  rm -rf /app/node_modules && ln -s /app/services/control-plane/node_modules /app/node_modules && \
   python3 -c "import json; p='package.json'; data=json.load(open(p)); open(p,'w').write(json.dumps(data, indent=2, sort_keys=False) + '\n')"
 
 # Copy source and build
@@ -74,6 +103,7 @@ RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt
 # Copy shared package tarball from builder
 COPY --from=shared-builder /app/packages/shared/*.tgz /app/packages/shared/
 COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusable/
+COPY --from=scanner-core-builder /app/packages/scanner-core/*.tgz /app/packages/scanner-core/
 
 # Install PRODUCTION dependencies only
 COPY services/control-plane/package.json /app/services/control-plane/
@@ -116,6 +146,7 @@ RUN apt-get update && apt-get install -y python3 make g++ wget && rm -rf /var/li
 # Copy shared package tarball from builder
 COPY --from=shared-builder /app/packages/shared/*.tgz /app/packages/shared/
 COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusable/
+COPY --from=scanner-core-builder /app/packages/scanner-core/*.tgz /app/packages/scanner-core/
 
 # Install ALL dependencies (including dev) to build
 COPY services/scan-orchestrator/package.json services/scan-orchestrator/tsconfig.json /app/services/scan-orchestrator/
@@ -123,6 +154,7 @@ RUN --mount=type=cache,target=/root/.bun/install/cache \
   cd /app/services/scan-orchestrator && \
   sed -i 's|"@wbscanner/shared": "file:../../packages/shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
   bun install && \
+  rm -rf /app/node_modules && ln -s /app/services/scan-orchestrator/node_modules /app/node_modules && \
   python3 -c "import json; p='package.json'; data=json.load(open(p)); open(p,'w').write(json.dumps(data, indent=2, sort_keys=False) + '\n')"
 
 # Copy source and build
@@ -143,6 +175,7 @@ RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt
 # Copy shared package tarball from builder
 COPY --from=shared-builder /app/packages/shared/*.tgz /app/packages/shared/
 COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusable/
+COPY --from=scanner-core-builder /app/packages/scanner-core/*.tgz /app/packages/scanner-core/
 
 # Install PRODUCTION dependencies only
 COPY services/scan-orchestrator/package.json /app/services/scan-orchestrator/
@@ -180,13 +213,15 @@ FROM base AS wa-client-builder
 WORKDIR /app
 
 # Install build tools for better-sqlite3 native compilation (need node-gyp)
-RUN apt-get update && apt-get install -y python3 make g++ nodejs npm && \
+RUN apt-get update -o Acquire::Retries=3 -o Acquire::ForceIPv4=true && \
+  apt-get install -y --no-install-recommends python3 make g++ nodejs npm && \
   npm install -g node-gyp && \
   rm -rf /var/lib/apt/lists/*
 
 # Copy shared package tarball from builder
 COPY --from=shared-builder /app/packages/shared/*.tgz /app/packages/shared/
 COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusable/
+COPY --from=scanner-core-builder /app/packages/scanner-core/*.tgz /app/packages/scanner-core/
 
 # Install ALL dependencies (including dev) to build
 # Copy scripts first for postinstall hook (patches whatsapp-web.js)
@@ -196,8 +231,10 @@ COPY services/wa-client/scripts /app/services/wa-client/scripts
 RUN --mount=type=cache,target=/root/.bun/install/cache \
   cd /app/services/wa-client && \
   sed -i 's|"@wbscanner/shared": "file:../../packages/shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
+  sed -i 's|"@wbscanner/scanner-core": "file:../../packages/scanner-core"|"@wbscanner/scanner-core": "file:/app/packages/scanner-core/wbscanner-scanner-core-0.1.0.tgz"|g' package.json && \
   sed -i 's|"confusable": "file:../../packages/confusable"|"confusable": "file:/app/packages/confusable/confusable-0.1.0.tgz"|g' package.json && \
-  bun install
+  bun install && \
+  rm -rf /app/node_modules && ln -s /app/services/wa-client/node_modules /app/node_modules
 
 # Copy source and build
 COPY tsconfig.base.json /app/
@@ -212,13 +249,15 @@ FROM base AS wa-client-prod-deps
 WORKDIR /app
 
 # Install build tools for better-sqlite3 native compilation (need node-gyp)
-RUN apt-get update && apt-get install -y python3 make g++ nodejs npm && \
+RUN apt-get update -o Acquire::Retries=3 -o Acquire::ForceIPv4=true && \
+  apt-get install -y --no-install-recommends python3 make g++ nodejs npm && \
   npm install -g node-gyp && \
   rm -rf /var/lib/apt/lists/*
 
 # Copy shared package tarball from builder
 COPY --from=shared-builder /app/packages/shared/*.tgz /app/packages/shared/
 COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusable/
+COPY --from=scanner-core-builder /app/packages/scanner-core/*.tgz /app/packages/scanner-core/
 
 # Install PRODUCTION dependencies only
 # Copy scripts first for postinstall hook (patches whatsapp-web.js)
@@ -228,6 +267,7 @@ COPY services/wa-client/scripts /app/services/wa-client/scripts
 RUN --mount=type=cache,target=/root/.bun/install/cache \
   cd /app/services/wa-client && \
   sed -i 's|"@wbscanner/shared": "file:../../packages/shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
+  sed -i 's|"@wbscanner/scanner-core": "file:../../packages/scanner-core"|"@wbscanner/scanner-core": "file:/app/packages/scanner-core/wbscanner-scanner-core-0.1.0.tgz"|g' package.json && \
   sed -i 's|"confusable": "file:../../packages/confusable"|"confusable": "file:/app/packages/confusable/confusable-0.1.0.tgz"|g' package.json && \
   bun install --production
 
@@ -239,13 +279,15 @@ FROM base AS wa-client-baileys-prod-deps
 WORKDIR /app
 
 # Install build tools for better-sqlite3 native compilation (need node-gyp)
-RUN apt-get update && apt-get install -y python3 make g++ nodejs npm && \
+RUN apt-get update -o Acquire::Retries=3 -o Acquire::ForceIPv4=true && \
+  apt-get install -y --no-install-recommends python3 make g++ nodejs npm && \
   npm install -g node-gyp && \
   rm -rf /var/lib/apt/lists/*
 
 # Copy shared package tarball from builder
 COPY --from=shared-builder /app/packages/shared/*.tgz /app/packages/shared/
 COPY --from=shared-builder /app/packages/confusable/*.tgz /app/packages/confusable/
+COPY --from=scanner-core-builder /app/packages/scanner-core/*.tgz /app/packages/scanner-core/
 
 # Copy package.json and filter out whatsapp-web.js (not needed for Baileys)
 COPY services/wa-client/package.json /app/services/wa-client/
@@ -253,6 +295,7 @@ COPY services/wa-client/scripts /app/services/wa-client/scripts
 RUN --mount=type=cache,target=/root/.bun/install/cache \
   cd /app/services/wa-client && \
   sed -i 's|"@wbscanner/shared": "file:../../packages/shared"|"@wbscanner/shared": "file:/app/packages/shared/wbscanner-shared-0.1.0.tgz"|g' package.json && \
+  sed -i 's|"@wbscanner/scanner-core": "file:../../packages/scanner-core"|"@wbscanner/scanner-core": "file:/app/packages/scanner-core/wbscanner-scanner-core-0.1.0.tgz"|g' package.json && \
   sed -i 's|"confusable": "file:../../packages/confusable"|"confusable": "file:/app/packages/confusable/confusable-0.1.0.tgz"|g' package.json && \
   sed -i '/"whatsapp-web.js":/d' package.json && \
   bun install --production
@@ -266,7 +309,9 @@ WORKDIR /app
 ENV NODE_ENV=production \
   WA_LIBRARY=baileys
 
-RUN apt-get update && apt-get install -y nodejs && rm -rf /var/lib/apt/lists/*
+RUN apt-get update -o Acquire::Retries=3 -o Acquire::ForceIPv4=true && \
+  apt-get install -y --no-install-recommends nodejs && \
+  rm -rf /var/lib/apt/lists/*
 
 # Copy production node_modules from baileys-specific prod-deps stage
 COPY --from=wa-client-baileys-prod-deps /app/services/wa-client/node_modules /app/services/wa-client/node_modules
