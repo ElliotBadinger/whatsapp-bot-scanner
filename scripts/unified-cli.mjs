@@ -1068,23 +1068,37 @@ ${C.primary("  ╚════════════════════�
       }
     };
 
-    const buildSpinner = showBar
-      ? null
-      : ora({
-          text: C.text("Building Docker image..."),
-          color: "cyan",
-          spinner: "dots12",
-        }).start();
+    const buildSpinner = ora({
+      text: C.text("Building Docker image..."),
+      color: "cyan",
+      spinner: "dots12",
+    }).start();
+    let spinnerActive = true;
+    let spinnerTimer = null;
+    const spinnerStart = Date.now();
+    const stopSpinnerForBar = () => {
+      if (buildSpinner && spinnerActive) {
+        buildSpinner.stop();
+        spinnerActive = false;
+      }
+    };
 
     const onLine = (line) => {
       const totals = tracker.updateFromLine(line);
       if (totals && showBar) {
+        stopSpinnerForBar();
         updateBar(totals);
       }
     };
     const onChunk = createLineBuffer(onLine);
 
     try {
+      spinnerTimer = setInterval(() => {
+        if (!spinnerActive) return;
+        const elapsed = Math.round((Date.now() - spinnerStart) / 1000);
+        buildSpinner.text = C.text(`Building Docker image... (${elapsed}s)`);
+      }, 2000);
+
       const child = execa("docker", [...composeArgs, "build"], {
         cwd: ROOT_DIR,
         env,
@@ -1101,18 +1115,26 @@ ${C.primary("  ╚════════════════════�
         bar.stop();
         bar = null;
       }
-      if (buildSpinner) {
+      if (buildSpinner && spinnerActive) {
         buildSpinner.succeed(C.text("Image build complete"));
+      } else if (buildSpinner) {
+        buildSpinner.stop();
       }
     } catch (error) {
       onChunk.flush();
       if (bar) {
         bar.stop();
       }
-      if (buildSpinner) {
+      if (buildSpinner && spinnerActive) {
         buildSpinner.fail(C.error("Image build failed"));
+      } else if (buildSpinner) {
+        buildSpinner.stop();
       }
       throw error;
+    } finally {
+      if (spinnerTimer) {
+        clearInterval(spinnerTimer);
+      }
     }
   }
 
