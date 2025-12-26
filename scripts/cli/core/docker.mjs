@@ -147,12 +147,8 @@ export class DockerOrchestrator {
 
     // Service-specific coloring
     let serviceColor = 'gray';
-    if (serviceName) {
-      if (serviceName.includes('wa-client')) serviceColor = 'blue';
-      else if (serviceName.includes('control-plane')) serviceColor = 'green';
-      else if (serviceName.includes('scan-orchestrator')) serviceColor = 'magenta';
-      else if (serviceName.includes('redis')) serviceColor = 'red';
-      else if (serviceName.includes('postgres')) serviceColor = 'cyan';
+    if (serviceName && serviceName.includes('wa-client')) {
+      serviceColor = 'blue';
     }
 
     // Log level detection and coloring
@@ -250,7 +246,7 @@ export class DockerOrchestrator {
   }
 
   async checkAllServicesHealth() {
-    const services = ['wa-client', 'control-plane', 'scan-orchestrator', 'redis', 'postgres'];
+    const services = ['wa-client'];
     const results = [];
 
     for (const service of services) {

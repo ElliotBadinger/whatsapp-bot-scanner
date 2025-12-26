@@ -10,7 +10,7 @@ const repoRoot = resolve(__dirname, "..", "..", "..");
 
 describe("Container wiring contracts", () => {
   it("docker-compose wa-client healthcheck must gate on /healthz JSON status", () => {
-    const composePath = join(repoRoot, "docker-compose.yml");
+    const composePath = join(repoRoot, "docker-compose.mvp.yml");
     const compose = readFileSync(composePath, "utf-8");
 
     expect(compose).toContain("wa-client:");

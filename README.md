@@ -1,11 +1,11 @@
 # WhatsApp Bot Scanner (MVP)
 
-Single-process WhatsApp link scanner for short MVP deployments. It watches group messages, extracts URLs, runs local heuristics, and posts verdicts back to the group. The advanced Redis/BullMQ stack is still available but optional and treated as legacy for now.
+Single-process WhatsApp link scanner for short MVP deployments. It watches group messages, extracts URLs, runs local heuristics, and posts verdicts back to the group.
 
 ## Status
 
 - MVP-first: single container, no Redis, no external enrichers by default.
-- Advanced stack (Redis, scan-orchestrator, control-plane, monitoring) is optional and may lag behind MVP docs.
+- Advanced stack has been archived into `archive/` to keep the main branch focused.
 
 ## MVP Quickstart (single container, no Redis)
 
@@ -29,24 +29,9 @@ bun run --filter @wbscanner/wa-client dev
 - `WA_LIBRARY` (optional; defaults to `baileys`)
 - `WA_REMOTE_AUTH_STORE=memory` (local session storage)
 
-## Advanced (optional) stack
+## Archived advanced stack
 
-If you want queues, orchestration, or control-plane features:
-
-```bash
-# unset MVP_MODE, set Redis, and enable Redis auth store
-MVP_MODE=
-REDIS_URL=redis://<host>:<port>/<db>
-WA_REMOTE_AUTH_STORE=redis
-```
-
-Then use the full compose file:
-
-```bash
-docker compose up -d --build
-```
-
-This path requires additional API keys and services (Redis/Postgres/etc). See `docs/SECURITY_SETUP.md` for key management.
+The Redis/BullMQ pipeline, control-plane, and observability stack are preserved under `archive/` for reference, but the main branch supports MVP only.
 
 ## Deploying the MVP (Render/Railway/etc.)
 

@@ -7,8 +7,7 @@
 #
 # Usage:
 #   ./bootstrap.sh            # Interactive setup (MVP by default)
-#   ./bootstrap.sh --mvp-mode # Force MVP single-container setup
-#   ./bootstrap.sh --advanced # Full multi-service setup
+#   ./bootstrap.sh --mvp-mode # Explicit MVP single-container setup
 #   ./bootstrap.sh --help     # Show help
 #
 # Flow:

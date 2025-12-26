@@ -3,7 +3,8 @@ import { logger } from "./log";
 
 import path from "path";
 
-const mvpMode = (process.env.MVP_MODE || "") === "1";
+const rawMvpMode = process.env.MVP_MODE;
+const mvpMode = rawMvpMode ? rawMvpMode === "1" : true;
 
 // Load .env and .env.local from project root (skip in test environment to allow test control)
 if (process.env.NODE_ENV !== "test") {

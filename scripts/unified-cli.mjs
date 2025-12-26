@@ -31,20 +31,13 @@ const MVP_COMPOSE_FILE = "docker-compose.mvp.yml";
 const readEnvFile = async () =>
   fs.readFile(path.join(ROOT_DIR, ".env"), "utf-8").catch(() => "");
 
-const isMvpEnv = (envContent) =>
-  /^\s*MVP_MODE=1\s*$/m.test(envContent || "");
+const resolveComposeArgsFromEnv = async () => [
+  "compose",
+  "-f",
+  MVP_COMPOSE_FILE,
+];
 
-const resolveComposeArgsFromEnv = async () => {
-  const envContent = await readEnvFile();
-  return isMvpEnv(envContent)
-    ? ["compose", "-f", MVP_COMPOSE_FILE]
-    : ["compose"];
-};
-
-const resolveComposeFileFromEnv = async () => {
-  const envContent = await readEnvFile();
-  return isMvpEnv(envContent) ? MVP_COMPOSE_FILE : null;
-};
+const resolveComposeFileFromEnv = async () => MVP_COMPOSE_FILE;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Color Palette (Cohesive Design System)
@@ -102,8 +95,8 @@ const SETUP_STEPS = [
   { id: "config", name: "Environment Setup", estimate: "~5s", icon: ICON.gear },
   {
     id: "apikeys",
-    name: "API Keys & Configuration",
-    estimate: "~1min",
+    name: "MVP Defaults",
+    estimate: "~1s",
     icon: ICON.key,
   },
   {
@@ -145,7 +138,6 @@ class SetupWizard {
     this.nonInteractive = !!options.nonInteractive;
     this.debug = options.debug;
     this.skipPairing = options.skipPairing;
-    this.forcedMode = options.mode;
     this.currentStep = 0;
     this.progress = new ProgressManager();
     this.state = {
@@ -238,15 +230,11 @@ ${C.primary("  ╚════════════════════�
   }
 
   async isMvpMode() {
-    if (this.state.mode === "mvp") return true;
-    if (this.state.mode && this.state.mode !== "existing") return false;
-    const envContent = await readEnvFile();
-    return isMvpEnv(envContent);
+    return true;
   }
 
   async getComposeArgs() {
-    const isMvp = await this.isMvpMode();
-    return isMvp ? ["compose", "-f", MVP_COMPOSE_FILE] : ["compose"];
+    return ["compose", "-f", MVP_COMPOSE_FILE];
   }
 
   async getComposeCommand() {
@@ -322,17 +310,30 @@ ${C.primary("  ╚════════════════════�
   async step2Configuration() {
     this.displayStepHeader(2, "Configuration", ICON.gear);
 
-    let selectedMode = "mvp";
+    const selectedMode = "mvp";
     let selectedLibrary = "baileys";
     const envFile = path.join(ROOT_DIR, ".env");
     let existingEnvContent = "";
     let reuseExistingConfiguration = false;
+    let shouldOverwrite = false;
 
     try {
       existingEnvContent = await fs.readFile(envFile, "utf-8");
       const existingLibrary =
         existingEnvContent.match(/WA_LIBRARY=(.*)/)?.[1]?.trim() || "";
       if (!this.nonInteractive && existingLibrary) {
+        const isMvpExisting = /MVP_MODE=1/.test(existingEnvContent);
+        if (!isMvpExisting) {
+          const response = await enquirer.prompt({
+            type: "confirm",
+            name: "overwrite",
+            message: C.text(
+              "Existing .env is not MVP. Overwrite with MVP defaults?",
+            ),
+            initial: true,
+          });
+          shouldOverwrite = !!response.overwrite;
+        }
         const response = await enquirer.prompt({
           type: "confirm",
           name: "reuse",
@@ -350,38 +351,44 @@ ${C.primary("  ╚════════════════════�
       // .env not present yet
     }
 
+    if (
+      this.nonInteractive &&
+      existingEnvContent &&
+      !/MVP_MODE=1/.test(existingEnvContent)
+    ) {
+      shouldOverwrite = true;
+    }
+
+    if (shouldOverwrite) {
+      reuseExistingConfiguration = false;
+    }
+
+    const ensureMvpDefaults = async () => {
+      let envContent = await fs.readFile(envFile, "utf-8").catch(() => "");
+      const setValue = (key, value) => {
+        if (envContent.includes(`${key}=`)) {
+          envContent = envContent.replace(
+            new RegExp(`${key}=.*`),
+            `${key}=${value}`,
+          );
+        } else {
+          envContent += `\n${key}=${value}`;
+        }
+      };
+      setValue("MVP_MODE", "1");
+      setValue("WA_REMOTE_AUTH_STORE", "memory");
+      await fs.writeFile(envFile, envContent);
+    };
+
     if (reuseExistingConfiguration) {
-      this.state.mode = "existing";
+      this.state.mode = "mvp";
       this.state.library = selectedLibrary;
-      this.markStepComplete(2, "Using existing .env configuration");
+      await ensureMvpDefaults();
+      this.markStepComplete(2, "Using existing MVP configuration");
       return;
     }
 
-    if (this.forcedMode) {
-      selectedMode = this.forcedMode;
-      console.log(
-        `  ${ICON.info}  ${C.text(`Using ${selectedMode} mode (forced by CLI flag)`)}`,
-      );
-    } else if (!this.nonInteractive) {
-      // Setup mode selection
-      const modeResponse = await enquirer.prompt({
-        type: "select",
-        name: "mode",
-        message: C.text("Choose setup mode:"),
-        choices: [
-          {
-            name: "mvp",
-            message: `${C.success("●")} MVP ${C.muted("(single container, no Redis)")}`,
-          },
-          {
-            name: "advanced",
-            message: `${C.muted("○")} Advanced ${C.muted("(Redis/BullMQ + control-plane)")}`,
-          },
-        ],
-        pointer: C.accent("›"),
-      });
-      selectedMode = modeResponse.mode;
-    } else {
+    if (this.nonInteractive) {
       console.log(
         `  ${ICON.info}  ${C.text("Non-interactive mode: using MVP configuration with Baileys")}`,
       );
@@ -422,10 +429,7 @@ ${C.primary("  ╚════════════════════�
     this.state.mode = selectedMode;
     this.state.library = selectedLibrary;
 
-    const templateFile = path.join(
-      ROOT_DIR,
-      selectedMode === "mvp" ? ".env.mvp.example" : ".env.example",
-    );
+    const templateFile = path.join(ROOT_DIR, ".env.mvp.example");
 
     const envSpinner = ora({
       text: C.text("Setting up environment..."),
@@ -433,12 +437,16 @@ ${C.primary("  ╚════════════════════�
       spinner: "dots12",
     }).start();
 
-    try {
-      await fs.access(envFile);
+    const envExists = await fs
+      .access(envFile)
+      .then(() => true)
+      .catch(() => false);
+
+    if (envExists && !shouldOverwrite) {
       envSpinner.succeed(
         C.text(".env file found, using existing configuration"),
       );
-    } catch {
+    } else {
       try {
         await fs.copyFile(templateFile, envFile);
         envSpinner.succeed(
@@ -485,6 +493,7 @@ ${C.primary("  ╚════════════════════�
       console.log(
         `  ${ICON.success}  ${C.success(`Docker target set to ${buildTarget}`)}`,
       );
+      await ensureMvpDefaults();
     } catch (err) {
       console.log(
         `  ${ICON.warning}  ${C.warning("Could not update WA_LIBRARY in .env")}`,
@@ -502,10 +511,10 @@ ${C.primary("  ╚════════════════════�
   // ─────────────────────────────────────────────────────────────────────────────
 
   async step3ApiKeys() {
-    this.displayStepHeader(3, "API Keys & Configuration", ICON.key);
+    this.displayStepHeader(3, "MVP Defaults", ICON.key);
 
     if (await this.isMvpMode()) {
-      this.markStepSkipped(3, "API keys skipped (MVP mode)");
+      this.markStepSkipped(3, "MVP defaults applied");
       return;
     }
 
@@ -883,55 +892,13 @@ ${C.primary("  ╚════════════════════�
       return Number.parseInt(match?.[1] ?? defaultPort, 10);
     };
 
-    const isMvp = await this.isMvpMode();
-
-    // Define all ports used by Docker services
-    // Include hardcoded ports (Redis, Prometheus) and configurable ones
-    const ports = isMvp
-      ? [
-          {
-            name: "WA Client",
-            port: getPort("WA_CLIENT_PORT", "3005"),
-            env: "WA_CLIENT_PORT",
-          },
-        ]
-      : [
-          {
-            name: "Redis",
-            port: 6379,
-            env: null, // Hardcoded in docker-compose.yml
-          },
-          {
-            name: "Prometheus",
-            port: 9091,
-            env: null, // Hardcoded in docker-compose.yml
-          },
-          {
-            name: "WA Client",
-            port: getPort("WA_CLIENT_PORT", "3005"),
-            env: "WA_CLIENT_PORT",
-          },
-          {
-            name: "Scan Orchestrator",
-            port: getPort("SCAN_ORCHESTRATOR_PORT", "3003"),
-            env: "SCAN_ORCHESTRATOR_PORT",
-          },
-          {
-            name: "Grafana",
-            port: getPort("GRAFANA_PORT", "3002"),
-            env: "GRAFANA_PORT",
-          },
-          {
-            name: "Uptime Kuma",
-            port: getPort("UPTIME_KUMA_PORT", "3001"),
-            env: "UPTIME_KUMA_PORT",
-          },
-          {
-            name: "Reverse Proxy",
-            port: getPort("REVERSE_PROXY_PORT", "8088"),
-            env: "REVERSE_PROXY_PORT",
-          },
-        ];
+    const ports = [
+      {
+        name: "WA Client",
+        port: getPort("WA_CLIENT_PORT", "3005"),
+        env: "WA_CLIENT_PORT",
+      },
+    ];
 
     // Store all configured ports to avoid conflicts during reassignment
     this._allConfiguredPorts = new Set(ports.map((p) => p.port));
@@ -1041,7 +1008,6 @@ ${C.primary("  ╚════════════════════�
   async step4StartServices() {
     this.displayStepHeader(4, "Starting Services", ICON.docker);
 
-    const isMvp = await this.isMvpMode();
     const composeArgs = await this.getComposeArgs();
 
     // First, check if existing containers are running and stop them
@@ -1112,15 +1078,10 @@ ${C.primary("  ╚════════════════════�
     // Wait for core services (Redis) to be healthy, but not wa-client
     // wa-client needs WhatsApp pairing (Step 5) before it can be fully healthy
     const healthSpinner = ora({
-      text: C.text(isMvp ? "Waiting for wa-client HTTP server..." : "Waiting for core services..."),
+      text: C.text("Waiting for wa-client HTTP server..."),
       color: "cyan",
       spinner: "dots12",
     }).start();
-
-    if (!isMvp) {
-      await this.waitForService("redis", healthSpinner, 60000);
-      healthSpinner.text = C.text("Waiting for wa-client HTTP server...");
-    }
 
     // For wa-client, just wait for HTTP server to be accessible (not full health)
     const waClientReady = await this.waitForWaClientHttp(healthSpinner, 90000);
@@ -1201,47 +1162,6 @@ ${C.primary("  ╚════════════════════�
     }
 
     return { ready: false, rateLimited, crashLoop };
-  }
-
-  async waitForService(serviceName, spinner, timeoutMs = 120000) {
-    const startTime = Date.now();
-    const composeArgs = await this.getComposeArgs();
-
-    // Get container name
-    let containerName = null;
-    try {
-      const { stdout } = await execa(
-        "docker",
-        [...composeArgs, "ps", "--format", "{{.Name}}"],
-        { cwd: ROOT_DIR },
-      );
-      const containers = stdout.trim().split("\n");
-      containerName = containers.find((c) => c.includes(serviceName));
-    } catch {
-      containerName = `whatsapp-bot-scanner-${serviceName}-1`;
-    }
-
-    while (Date.now() - startTime < timeoutMs) {
-      try {
-        const { stdout } = await execa("docker", [
-          "inspect",
-          `--format={{.State.Health.Status}}`,
-          containerName,
-        ]);
-        const health = stdout.trim();
-
-        if (health === "healthy") {
-          return true;
-        }
-      } catch {}
-
-      spinner.text = C.text(
-        `Waiting for ${serviceName}... (${Math.round((Date.now() - startTime) / 1000)}s)`,
-      );
-      await new Promise((r) => setTimeout(r, 2000));
-    }
-
-    throw new Error(`Service ${serviceName} did not become healthy in time`);
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -1725,7 +1645,7 @@ ${C.primary("  ║")}   2. Settings → Linked Devices → Link a Device     ${C
 ${C.primary("  ║")}   3. Select "Link with phone number"               ${C.primary("║")}
 ${C.primary("  ║")}   4. Enter the code above                          ${C.primary("║")}
 ${C.primary("  ║")}                                                    ${C.primary("║")}
-${C.primary("  ║")}   ${C.muted("For advanced helper with countdown, run:")}        ${C.primary("║")}
+${C.primary("  ║")}   ${C.muted("For the pairing helper, run:")}                   ${C.primary("║")}
 ${C.primary("  ║")}   ${C.code("npx whatsapp-bot-scanner pair").padEnd(52)}${C.primary("║")}
 ${C.primary("  ╚════════════════════════════════════════════════════╝")}
 `);
@@ -1740,14 +1660,11 @@ ${C.primary("  ╚════════════════════�
     const envContent = await fs
       .readFile(path.join(ROOT_DIR, ".env"), "utf-8")
       .catch(() => "");
-    const isMvp = await this.isMvpMode();
     const getPort = (key, def) =>
       envContent.match(new RegExp(`${key}=(\\d+)`))?.[1] || def;
 
     const waPort = getPort("WA_CLIENT_PORT", getPort("WA_HTTP_PORT", "3005"));
-
-    if (isMvp) {
-      console.log(`
+    console.log(`
 ${C.success("  ╔════════════════════════════════════════════════════════════════╗")}
 ${C.success("  ║")}                                                                ${C.success("║")}
 ${C.success("  ║")}         ${ICON.sparkle} ${C.successBold("SETUP COMPLETE")} ${ICON.sparkle}                               ${C.success("║")}
@@ -1758,42 +1675,6 @@ ${C.success("  ║")}   ${C.textBold("Access Points:")}                         
 ${C.success("  ║")}                                                                ${C.success("║")}
 ${C.success("  ║")}   ${ICON.arrow}  WA Client:      ${C.link(`http://localhost:${waPort}/healthz`)}            ${C.success("║")}
 ${C.success("  ║")}   ${ICON.arrow}  Metrics:        ${C.link(`http://localhost:${waPort}/metrics`)}           ${C.success("║")}
-${C.success("  ║")}                                                                ${C.success("║")}
-${C.success("  ╠════════════════════════════════════════════════════════════════╣")}
-${C.success("  ║")}                                                                ${C.success("║")}
-${C.success("  ║")}   ${C.textBold("Quick Commands:")}                                            ${C.success("║")}
-${C.success("  ║")}                                                                ${C.success("║")}
-${C.success("  ║")}   ${C.code("npx whatsapp-bot-scanner logs")}      ${C.muted("View service logs")}    ${C.success("║")}
-${C.success("  ║")}   ${C.code("npx whatsapp-bot-scanner health")}    ${C.muted("Check status")}        ${C.success("║")}
-${C.success("  ║")}   ${C.code("npx whatsapp-bot-scanner pair")}      ${C.muted("Re-pair WhatsApp")}    ${C.success("║")}
-${C.success("  ║")}                                                                ${C.success("║")}
-${C.success("  ╚════════════════════════════════════════════════════════════════╝")}
-`);
-      return;
-    }
-
-    const ports = {
-      dashboard: getPort("REVERSE_PROXY_PORT", "8088"),
-      grafana: getPort("GRAFANA_PORT", "3002"),
-      uptime: getPort("UPTIME_KUMA_PORT", "3001"),
-      orchestrator: getPort("SCAN_ORCHESTRATOR_PORT", "3003"),
-    };
-
-    console.log(`
-${C.success("  ╔════════════════════════════════════════════════════════════════╗")}
-${C.success("  ║")}                                                                ${C.success("║")}
-${C.success("  ║")}         ${ICON.sparkle} ${C.successBold("SETUP COMPLETE!")} ${ICON.sparkle}                              ${C.success("║")}
-${C.success("  ║")}                                                                ${C.success("║")}
-${C.success("  ║")}   Setup complete. Services are running.                      ${C.success("║")}
-${C.success("  ║")}                                                                ${C.success("║")}
-${C.success("  ╠════════════════════════════════════════════════════════════════╣")}
-${C.success("  ║")}                                                                ${C.success("║")}
-${C.success("  ║")}   ${C.textBold("Access Points:")}                                             ${C.success("║")}
-${C.success("  ║")}                                                                ${C.success("║")}
-${C.success("  ║")}   ${ICON.arrow}  Dashboard:       ${C.link(`http://localhost:${ports.dashboard}`)}                 ${C.success("║")}
-${C.success("  ║")}   ${ICON.arrow}  Uptime Monitor:  ${C.link(`http://localhost:${ports.uptime}`)}                 ${C.success("║")}
-${C.success("  ║")}   ${ICON.arrow}  Grafana:         ${C.link(`http://localhost:${ports.grafana}`)} ${C.muted("(admin/admin)")}    ${C.success("║")}
-${C.success("  ║")}   ${ICON.arrow}  Orchestrator:    ${C.link(`http://localhost:${ports.orchestrator}/healthz`)}          ${C.success("║")}
 ${C.success("  ║")}                                                                ${C.success("║")}
 ${C.success("  ╠════════════════════════════════════════════════════════════════╣")}
 ${C.success("  ║")}                                                                ${C.success("║")}
@@ -1824,25 +1705,15 @@ program
   .description("Run the interactive setup wizard")
   .option("--skip-pairing", "Skip WhatsApp pairing step")
   .option("--noninteractive", "Run in non-interactive mode")
-  .option("--mvp-mode", "Use MVP single-container setup")
-  .option("--advanced", "Use advanced multi-service setup")
+  .option("--mvp-mode", "Use MVP single-container setup (default)")
   .option("--debug", "Enable debug logging")
   .action(async (options) => {
     const globalOpts = program.opts();
     try {
-      if (options.mvpMode && options.advanced) {
-        throw new Error("Choose either --mvp-mode or --advanced (not both).");
-      }
-      const forcedMode = options.mvpMode
-        ? "mvp"
-        : options.advanced
-          ? "advanced"
-          : undefined;
       const wizard = new SetupWizard({
         nonInteractive: options.noninteractive || globalOpts.noninteractive,
         debug: options.debug || globalOpts.debug,
         skipPairing: options.skipPairing,
-        mode: forcedMode,
       });
       await wizard.run();
     } catch (error) {

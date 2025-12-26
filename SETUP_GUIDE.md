@@ -1,6 +1,6 @@
 # WhatsApp Bot Scanner - Setup Guide (MVP-first)
 
-This project is in MVP mode by default: single container, no Redis, no external enrichers. Use the advanced stack only if you explicitly want queues, control-plane, and monitoring.
+This project is MVP-only: single container, no Redis, no external enrichers. The advanced stack is archived under `archive/`.
 
 ## MVP Single-Container Setup (Recommended)
 
@@ -17,19 +17,9 @@ cp .env.mvp.example .env
 bun run --filter @wbscanner/wa-client dev
 ```
 
-## Advanced Stack (Optional)
+## Archived Advanced Stack
 
-Use this only if you need the full multi-service setup (Redis/BullMQ, control-plane, monitoring):
-
-```bash
-npx whatsapp-bot-scanner setup
-```
-
-Or run the full compose file directly:
-
-```bash
-docker compose up -d --build
-```
+The Redis/BullMQ + control-plane stack is archived under `archive/` to keep the main branch MVP-only.
 
 ## Troubleshooting (MVP)
 

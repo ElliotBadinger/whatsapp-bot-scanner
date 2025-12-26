@@ -5,8 +5,7 @@
 #
 # Usage:
 #   .\bootstrap.ps1             # Interactive setup (MVP by default)
-#   .\bootstrap.ps1 --mvp-mode  # Force MVP single-container setup
-#   .\bootstrap.ps1 --advanced  # Full multi-service setup
+#   .\bootstrap.ps1 --mvp-mode  # Explicit MVP single-container setup
 # =============================================================================
 
 param(

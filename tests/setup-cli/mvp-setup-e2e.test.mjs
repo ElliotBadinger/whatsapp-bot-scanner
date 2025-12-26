@@ -124,7 +124,7 @@ describe.sequential('MVP setup onboarding (end-to-end)', () => {
     );
 
     const output = stripAnsi(`${result.stdout}\n${result.stderr}`);
-    expect(output).toContain('API keys skipped (MVP mode)');
+    expect(output).toContain('MVP defaults applied');
     expect(output).toContain('Configuration set to mvp mode');
 
     const envContent = await fs.readFile(ENV_PATH, 'utf-8');
