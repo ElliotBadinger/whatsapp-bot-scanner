@@ -57,6 +57,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
   private readonly logger: Logger;
   private _state: ConnectionState = "disconnected";
   private _botId: string | null = null;
+  private _botLid: string | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private reconnectAttempts = 0;
 
@@ -82,6 +83,10 @@ export class BaileysAdapter implements WhatsAppAdapter {
 
   get botId(): string | null {
     return this._botId;
+  }
+
+  get botLid(): string | null {
+    return this._botLid;
   }
 
   /**
@@ -213,8 +218,13 @@ export class BaileysAdapter implements WhatsAppAdapter {
           this.scheduleReconnect(isLoggedOut ? 2000 : 5000);
         }
       } else if (connection === "open") {
-        this._botId = this.socket?.user?.id ?? null;
-        this.logger.info({ botId: this._botId }, "Connection opened");
+        const user = this.socket?.user;
+        this._botId = user?.id ?? null;
+        this._botLid = user?.lid ?? (user?.id?.endsWith("@lid") ? user.id : null);
+        this.logger.info(
+          { botId: this._botId, botLid: this._botLid },
+          "Connection opened",
+        );
         this.clearReconnectTimer();
         this.reconnectAttempts = 0;
         this.setState("ready");
@@ -345,6 +355,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
   async disconnect(): Promise<void> {
     await this.cleanupSocket(true);
     this._botId = null;
+    this._botLid = null;
     this.setState("disconnected");
     this.logger.info("Disconnected from WhatsApp");
   }

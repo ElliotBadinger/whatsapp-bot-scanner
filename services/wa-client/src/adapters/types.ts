@@ -257,6 +257,8 @@ export interface WhatsAppAdapter {
 
   /** Bot's own JID (available after ready) */
   readonly botId: string | null;
+  /** Bot's own LID JID (available after ready, if supported) */
+  readonly botLid?: string | null;
 
   /**
    * Initialize and connect the WhatsApp client

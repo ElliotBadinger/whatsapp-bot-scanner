@@ -548,19 +548,25 @@ export class SharedMessageHandler {
   }
 
   private getMentionedBotUser(message: WAMessage): string | null {
-    const botId = this.adapter.botId;
-    if (!botId) return null;
+    const botIds = [this.adapter.botId, this.adapter.botLid].filter(
+      (jid): jid is string => typeof jid === "string" && jid.length > 0,
+    );
+    if (botIds.length === 0) return null;
 
     const mentionedJids = message.mentionedIds ?? [];
     if (mentionedJids.length === 0) return null;
 
-    const botUser = this.normalizeJidUser(botId);
-    const isMentioned = mentionedJids.some(
-      (jid) => this.normalizeJidUser(jid) === botUser,
+    const mentionedUsers = new Set(
+      mentionedJids.map((jid) => this.normalizeJidUser(jid)),
     );
-    if (!isMentioned) return null;
+    for (const botId of botIds) {
+      const botUser = this.normalizeJidUser(botId);
+      if (mentionedUsers.has(botUser)) {
+        return botUser;
+      }
+    }
 
-    return botUser;
+    return null;
   }
 
   private normalizeJidUser(jid: string): string {

@@ -16,6 +16,7 @@ describe("SharedMessageHandler", () => {
     adapter = {
       state: "ready",
       botId: "12345@c.us",
+      botLid: "999@lid",
       connect: jest.fn(),
       disconnect: jest.fn(),
       sendMessage: jest.fn(),
@@ -57,6 +58,36 @@ describe("SharedMessageHandler", () => {
       timestamp: Date.now(),
       fromMe: false,
       mentionedIds: ["12345@c.us"],
+      raw: {},
+    };
+
+    await handler.createHandler()(message);
+
+    expect(adapter.reply).toHaveBeenCalledWith(
+      message,
+      expect.objectContaining({
+        type: "text",
+        text: expect.stringContaining("WBScanner Status"),
+      }),
+    );
+  });
+
+  it("handles @bot commands when the mention JID uses LID", async () => {
+    const handler = new SharedMessageHandler({
+      adapter,
+      redis,
+      logger,
+      scanRequestQueue,
+    });
+    const message: WAMessage = {
+      id: "msg-1b",
+      chatId: "chat-1",
+      senderId: "user-1",
+      body: "@scanner status",
+      isGroup: true,
+      timestamp: Date.now(),
+      fromMe: false,
+      mentionedIds: ["999@lid"],
       raw: {},
     };
 
