@@ -1008,6 +1008,7 @@ ${C.primary("  ╚════════════════════�
   async step4StartServices() {
     this.displayStepHeader(4, "Starting Services", ICON.docker);
 
+    const isMvp = await this.isMvpMode();
     const composeArgs = await this.getComposeArgs();
 
     // First, check if existing containers are running and stop them
@@ -1856,7 +1857,7 @@ const hasVersionFlag = argv.includes("-V") || argv.includes("--version");
 const hasCommand = argv.some((arg) => !arg.startsWith("-"));
 const parseArgs =
   !hasHelpFlag && !hasVersionFlag && !hasCommand
-    ? [...process.argv, "setup"]
+    ? [process.argv[0], process.argv[1], "setup", ...argv]
     : process.argv;
 
 program.parse(parseArgs);

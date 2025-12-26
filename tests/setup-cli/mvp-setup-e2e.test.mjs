@@ -126,6 +126,7 @@ describe.sequential('MVP setup onboarding (end-to-end)', () => {
     const output = stripAnsi(`${result.stdout}\n${result.stderr}`);
     expect(output).toContain('MVP defaults applied');
     expect(output).toContain('Configuration set to mvp mode');
+    expect(output).toContain('This may take a minute on first run...');
 
     const envContent = await fs.readFile(ENV_PATH, 'utf-8');
     expect(envContent).toContain('MVP_MODE=1');
@@ -134,5 +135,23 @@ describe.sequential('MVP setup onboarding (end-to-end)', () => {
     const logContent = await fs.readFile(dockerLog, 'utf-8');
     expect(logContent).toContain('compose -f docker-compose.mvp.yml up -d --build');
     expect(logContent).toContain('compose -f docker-compose.mvp.yml exec -T wa-client');
+  });
+
+  it('defaults to setup when no command is provided', async () => {
+    const env = {
+      ...process.env,
+      PATH: `${tempDir}:${process.env.PATH}`,
+      FORCE_COLOR: '0',
+    };
+
+    const result = await execa(
+      'node',
+      ['scripts/unified-cli.mjs', '--noninteractive', '--skip-pairing'],
+      { cwd: ROOT_DIR, env }
+    );
+
+    const output = stripAnsi(`${result.stdout}\n${result.stderr}`);
+    expect(output).toContain('Setup Overview:');
+    expect(output).toContain('Configuration set to mvp mode');
   });
 });
