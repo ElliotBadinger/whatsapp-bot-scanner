@@ -67,13 +67,19 @@ export class InProcessScanQueue implements ScanRequestQueue {
     },
   ) {
     if (opts.concurrency < 1) {
-      throw new Error("InProcessScanQueue concurrency must be >= 1");
+      throw new Error(
+        `InProcessScanQueue concurrency must be >= 1 (got ${opts.concurrency})`,
+      );
     }
     if (opts.rateLimit < 1) {
-      throw new Error("InProcessScanQueue rateLimit must be >= 1");
+      throw new Error(
+        `InProcessScanQueue rateLimit must be >= 1 (got ${opts.rateLimit})`,
+      );
     }
     if (opts.rateWindowMs < 1) {
-      throw new Error("InProcessScanQueue rateWindowMs must be >= 1");
+      throw new Error(
+        `InProcessScanQueue rateWindowMs must be >= 1 (got ${opts.rateWindowMs})`,
+      );
     }
 
     this.pruneIntervalMs = Math.min(60_000, this.ttlMs, opts.rateWindowMs);

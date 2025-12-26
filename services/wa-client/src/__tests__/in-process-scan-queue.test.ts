@@ -109,12 +109,73 @@ describe("InProcessScanQueue", () => {
     await queue.close();
   });
 
+  it("expires failure reply suppression after 30 minutes", async () => {
+    let now = 0;
+    jest.spyOn(Date, "now").mockImplementation(() => now);
+
+    const adapter = {
+      sendMessage: jest.fn().mockResolvedValue({ success: true }),
+    } as any;
+
+    const scanUrl = jest.fn().mockRejectedValue(new Error("Timeout"));
+    const formatVerdictMessage = jest.fn().mockReturnValue("ok");
+
+    const queue = new InProcessScanQueue({
+      adapter,
+      concurrency: 1,
+      rateLimit: 10,
+      rateWindowMs: 60_000,
+      logger,
+      scanUrl,
+      scanOptions: { followRedirects: false },
+      formatVerdictMessage,
+    });
+
+    await queue.add("scan", {
+      url: "https://bad.example",
+      urlHash: "h1",
+      chatId: "chat-1",
+      messageId: "msg-1",
+    });
+
+    await nextTick();
+    await nextTick();
+    expect(adapter.sendMessage).toHaveBeenCalledTimes(1);
+
+    now = 10 * 60_000;
+    await queue.add("scan", {
+      url: "https://bad2.example",
+      urlHash: "h2",
+      chatId: "chat-1",
+      messageId: "msg-1",
+    });
+
+    await nextTick();
+    await nextTick();
+    expect(adapter.sendMessage).toHaveBeenCalledTimes(1);
+
+    now = 30 * 60_000 + 1;
+    await queue.add("scan", {
+      url: "https://bad3.example",
+      urlHash: "h3",
+      chatId: "chat-1",
+      messageId: "msg-1",
+    });
+
+    await nextTick();
+    await nextTick();
+    expect(adapter.sendMessage).toHaveBeenCalledTimes(2);
+
+    await queue.close();
+  });
+
   it("prunes expired seenUrls entries", async () => {
     let now = 1000;
     jest.spyOn(Date, "now").mockImplementation(() => now);
 
     const queue = new InProcessScanQueue({
       adapter: { sendMessage: async () => ({ success: true }) } as any,
+      // Minimal allowed concurrency; this test only cares about pruning behavior.
       concurrency: 1,
       rateLimit: 10,
       rateWindowMs: 1000,
@@ -154,6 +215,7 @@ describe("InProcessScanQueue", () => {
 
     const queue = new InProcessScanQueue({
       adapter: { sendMessage: async () => ({ success: true }) } as any,
+      // Minimal allowed concurrency; this test only cares about pruning behavior.
       concurrency: 1,
       rateLimit: 10,
       rateWindowMs: 1000,
