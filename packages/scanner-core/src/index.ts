@@ -1,17 +1,19 @@
 import {
   config,
   domainAgeDaysFromRdap,
-  getGsbProvider,
-  getPhishtankProvider,
-  getUrlhausProvider,
-  getVirusTotalProvider,
+  gsbLookup,
+  phishtankLookup,
   normalizeUrl,
   extractUrls as sharedExtractUrls,
   expandUrl,
   extraHeuristics,
   scoreFromSignals,
   type RiskVerdict,
+  type GsbThreatMatch,
   type Signals,
+  vtAnalyzeUrl,
+  vtVerdictStats,
+  urlhausLookup,
 } from "@wbscanner/shared";
 
 export interface ScanOptions {
@@ -49,13 +51,8 @@ function buildHeuristicSignals(
   };
 }
 
-function extractGsbThreatTypes(matches: unknown[]): string[] {
-  return matches
-    .map((match) => {
-      const threatType = (match as { threatType?: unknown })?.threatType;
-      return typeof threatType === "string" ? threatType : undefined;
-    })
-    .filter((threatType): threatType is string => !!threatType);
+function gsbThreatTypes(matches: GsbThreatMatch[]): string[] {
+  return matches.map((match) => match.threatType);
 }
 
 async function buildExternalSignals(
@@ -64,27 +61,20 @@ async function buildExternalSignals(
   enableExternalEnrichers: boolean,
 ): Promise<{ signals: Partial<Signals>; usedExternalSignals: boolean }> {
   const signals: Partial<Signals> = {};
+  let usedExternalSignals = false;
 
   if (!enableExternalEnrichers) {
     return { signals, usedExternalSignals: false };
   }
 
-  const [gsbProvider, vtProvider, urlhausProvider, phishtankProvider] =
-    await Promise.all([
-      getGsbProvider(),
-      getVirusTotalProvider(),
-      getUrlhausProvider(),
-      getPhishtankProvider(),
-    ]);
-
   const externalTasks: Promise<void>[] = [];
 
-  if (gsbProvider) {
+  if (config.gsb.enabled) {
     externalTasks.push(
-      gsbProvider
-        .gsbLookup([finalUrl])
+      gsbLookup([finalUrl], config.gsb.timeoutMs)
         .then((res) => {
-          const threatTypes = extractGsbThreatTypes(res.matches ?? []);
+          usedExternalSignals = true;
+          const threatTypes = gsbThreatTypes(res.matches);
           if (threatTypes.length > 0) {
             signals.gsbThreatTypes = threatTypes;
           }
@@ -95,12 +85,12 @@ async function buildExternalSignals(
     );
   }
 
-  if (vtProvider) {
+  if (config.vt.enabled) {
     externalTasks.push(
-      vtProvider
-        .vtAnalyzeUrl(finalUrl)
+      vtAnalyzeUrl(finalUrl)
         .then((analysis) => {
-          const stats = vtProvider.vtVerdictStats(analysis);
+          usedExternalSignals = true;
+          const stats = vtVerdictStats(analysis);
           if (!stats) {
             return;
           }
@@ -114,11 +104,11 @@ async function buildExternalSignals(
     );
   }
 
-  if (urlhausProvider) {
+  if (config.urlhaus.enabled) {
     externalTasks.push(
-      urlhausProvider
-        .urlhausLookup(finalUrl)
+      urlhausLookup(finalUrl, config.urlhaus.timeoutMs)
         .then((res) => {
+          usedExternalSignals = true;
           if (res.listed) {
             signals.urlhausListed = true;
           }
@@ -129,11 +119,11 @@ async function buildExternalSignals(
     );
   }
 
-  if (phishtankProvider) {
+  if (config.phishtank.enabled) {
     externalTasks.push(
-      phishtankProvider
-        .phishtankLookup(finalUrl)
+      phishtankLookup(finalUrl, config.phishtank.timeoutMs)
         .then((res) => {
+          usedExternalSignals = true;
           if (res.verified) {
             signals.phishtankVerified = true;
           }
@@ -148,6 +138,7 @@ async function buildExternalSignals(
     externalTasks.push(
       domainAgeDaysFromRdap(parsed.hostname, config.rdap.timeoutMs)
         .then((ageDays) => {
+          usedExternalSignals = true;
           if (ageDays !== undefined) {
             signals.domainAgeDays = ageDays;
           }
@@ -160,7 +151,6 @@ async function buildExternalSignals(
 
   await Promise.all(externalTasks);
 
-  const usedExternalSignals = Object.keys(signals).length > 0;
   return { signals, usedExternalSignals };
 }
 
