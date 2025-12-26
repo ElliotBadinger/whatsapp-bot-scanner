@@ -310,7 +310,7 @@ ENV NODE_ENV=production \
   WA_LIBRARY=baileys
 
 RUN apt-get update -o Acquire::Retries=3 -o Acquire::ForceIPv4=true && \
-  apt-get install -y --no-install-recommends nodejs && \
+  apt-get install -y --no-install-recommends nodejs ca-certificates && \
   rm -rf /var/lib/apt/lists/*
 
 # Copy production node_modules from baileys-specific prod-deps stage

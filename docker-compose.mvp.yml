@@ -12,6 +12,10 @@ services:
       - WA_LIBRARY=${WA_LIBRARY:-baileys}
       - WA_HTTP_PORT=${WA_CLIENT_PORT:-3005}
       - NODE_OPTIONS=--max-old-space-size=512 --dns-result-order=ipv4first
+    network_mode: ${WA_NETWORK_MODE:-bridge}
+    dns:
+      - ${WA_DNS1:-1.1.1.1}
+      - ${WA_DNS2:-8.8.8.8}
     ports:
       - "${WA_CLIENT_PORT:-3005}:3005"
     volumes:

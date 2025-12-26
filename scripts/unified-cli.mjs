@@ -868,6 +868,43 @@ ${C.primary("  ╚════════════════════�
     }
   }
 
+  async checkWhatsAppConnectivity() {
+    const composeArgs = await this.getComposeArgs();
+    const nodeScript = [
+      "(async()=>{",
+      "try{",
+      "const ctrl=AbortSignal.timeout(7000);",
+      "await fetch('https://web.whatsapp.com',{signal:ctrl,method:'HEAD'});",
+      "process.exit(0);",
+      "}catch(e){process.exit(1);}",
+      "})();",
+    ].join("");
+
+    try {
+      await execa(
+        "docker",
+        [...composeArgs, "exec", "-T", "wa-client", "node", "-e", nodeScript],
+        { cwd: ROOT_DIR },
+      );
+      return { ok: true };
+    } catch {
+      return { ok: false };
+    }
+  }
+
+  async checkHostWhatsAppConnectivity() {
+    try {
+      const ctrl = AbortSignal.timeout(7000);
+      const res = await fetch("https://web.whatsapp.com", {
+        signal: ctrl,
+        method: "HEAD",
+      });
+      return { ok: true, status: res.status };
+    } catch {
+      return { ok: false };
+    }
+  }
+
   async getContainerStatus() {
     const composeArgs = await this.getComposeArgs();
     try {
@@ -1715,6 +1752,34 @@ ${C.primary("  ╚════════════════════�
 
     try {
       const composeArgs = await this.getComposeArgs();
+      const connectivity = await this.checkWhatsAppConnectivity();
+      if (!connectivity.ok) {
+        const hostConnectivity = await this.checkHostWhatsAppConnectivity();
+        const hostNetworkHint =
+          process.platform === "linux" && hostConnectivity.ok
+            ? "  - On Linux, try WA_NETWORK_MODE=host to use host networking"
+            : null;
+        spinner.warn(C.warning("WhatsApp connectivity unavailable from container"));
+        console.log(`
+  ${ICON.warning}  ${C.warning("Cannot reach https://web.whatsapp.com from wa-client container")}
+  
+  ${C.text("Fix suggestions:")}
+  ${C.muted(
+    hostConnectivity.ok
+      ? "  - Host can reach WhatsApp; container network/DNS likely blocked"
+      : "  - Host cannot reach WhatsApp; outbound access likely blocked",
+  )}
+  ${C.muted("  - Ensure outbound HTTPS (443) is allowed to WhatsApp endpoints")}
+  ${C.muted("  - Set custom DNS: WA_DNS1=1.1.1.1 WA_DNS2=8.8.8.8")}
+  ${hostNetworkHint ? C.muted(hostNetworkHint) : ""}
+  ${C.muted("  - Restart containers after changing DNS")}
+
+  ${C.text("Try:")}
+  ${C.code("  docker compose -f docker-compose.mvp.yml down")}
+  ${C.code("  WA_DNS1=1.1.1.1 WA_DNS2=8.8.8.8 docker compose -f docker-compose.mvp.yml up -d")}
+`);
+        return false;
+      }
       const startTime = Date.now();
       const timeoutMs = 120000; // 2 minutes
       let qrDisplayed = false;
