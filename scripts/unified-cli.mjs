@@ -1231,7 +1231,9 @@ ${C.primary("  ╚════════════════════�
       const conflicts = await this.checkRequiredPorts();
 
       if (conflicts.length > 0) {
-        portSpinner.warn(C.warning(`Found ${conflicts.length} port conflict(s)`));
+        portSpinner.warn(
+          C.warning(`Found ${conflicts.length} port conflict(s)`),
+        );
         const resolved = await this.resolvePortConflicts(conflicts);
         if (!resolved) {
           throw new Error(
