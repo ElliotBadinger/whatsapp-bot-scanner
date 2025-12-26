@@ -588,6 +588,10 @@ export const config = {
 };
 
 export function assertControlPlaneToken(): string {
+  if (config.modes.mvp) {
+    return getControlPlaneTokenOptional() ?? "";
+  }
+
   return getControlPlaneToken();
 }
 
