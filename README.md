@@ -45,3 +45,4 @@ bun run --filter @wbscanner/wa-client dev
 - `SETUP_GUIDE.md` — MVP-first setup and troubleshooting
 - `docs/SECURITY_SETUP.md` — optional API keys and secrets
 - `docs/MVP_PLAN.md` — scope notes for the MVP
+- `docs/LINK_CORPUS.md` — build a fresh URL corpus for stress testing
