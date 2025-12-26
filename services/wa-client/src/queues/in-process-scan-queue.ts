@@ -171,8 +171,7 @@ export class InProcessScanQueue implements ScanRequestQueue {
   private pruneFailureReplies(now: number): void {
     const maxScans = 500;
     let scanned = 0;
-    const cursor =
-      this.failureRepliesCursor ?? this.failureReplies.entries();
+    const cursor = this.failureRepliesCursor ?? this.failureReplies.entries();
     while (scanned < maxScans) {
       const next = cursor.next();
       if (next.done) {
