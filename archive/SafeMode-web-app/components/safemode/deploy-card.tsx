@@ -1,19 +1,27 @@
-"use client"
+"use client";
 
-import type React from "react"
-import { cn } from "@/lib/utils"
+import type React from "react";
+import { cn } from "@/lib/utils";
 
 interface DeployCardProps {
-  name: string
-  icon: React.ReactNode
-  description: string
-  features: string[]
-  href: string
-  recommended?: boolean
-  onClick?: () => void
+  name: string;
+  icon: React.ReactNode;
+  description: string;
+  features: string[];
+  href: string;
+  recommended?: boolean;
+  onClick?: () => void;
 }
 
-export function DeployCard({ name, icon, description, features, href, recommended, onClick }: DeployCardProps) {
+export function DeployCard({
+  name,
+  icon,
+  description,
+  features,
+  href,
+  recommended,
+  onClick,
+}: DeployCardProps) {
   return (
     <a
       href={href}
@@ -29,15 +37,21 @@ export function DeployCard({ name, icon, description, features, href, recommende
     >
       {/* Recommended badge */}
       {recommended && (
-        <div className="absolute -top-3 left-4 bg-primary px-3 py-1 text-xs font-bold text-background">RECOMMENDED</div>
+        <div className="absolute -top-3 left-4 bg-primary px-3 py-1 text-xs font-bold text-background">
+          RECOMMENDED
+        </div>
       )}
 
       {/* Header */}
       <div className="flex items-center gap-4 mb-4">
         <div className="text-primary text-3xl">{icon}</div>
         <div>
-          <h3 className="font-mono text-lg text-primary font-bold">[ {name} ]</h3>
-          <p className="font-mono text-xs text-muted-foreground">{description}</p>
+          <h3 className="font-mono text-lg text-primary font-bold">
+            [ {name} ]
+          </h3>
+          <p className="font-mono text-xs text-muted-foreground">
+            {description}
+          </p>
         </div>
       </div>
 
@@ -53,8 +67,11 @@ export function DeployCard({ name, icon, description, features, href, recommende
 
       {/* Action */}
       <div className="font-mono text-sm text-primary group-hover:text-primary transition-colors">
-        DEPLOY → <span className="opacity-0 group-hover:opacity-100 transition-opacity">▓▓▓</span>
+        DEPLOY →{" "}
+        <span className="opacity-0 group-hover:opacity-100 transition-opacity">
+          ▓▓▓
+        </span>
       </div>
     </a>
-  )
+  );
 }

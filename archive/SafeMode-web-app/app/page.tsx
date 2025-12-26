@@ -1,9 +1,9 @@
-import Link from "next/link"
-import { NavBar } from "@/components/safemode/nav-bar"
-import { CRTMonitor } from "@/components/safemode/crt-monitor"
-import { StatsDisplay } from "@/components/safemode/stats-display"
-import { SafeModeCard, CardBadge } from "@/components/safemode/card"
-import { SafeModeButton } from "@/components/safemode/button"
+import Link from "next/link";
+import { NavBar } from "@/components/safemode/nav-bar";
+import { CRTMonitor } from "@/components/safemode/crt-monitor";
+import { StatsDisplay } from "@/components/safemode/stats-display";
+import { SafeModeCard, CardBadge } from "@/components/safemode/card";
+import { SafeModeButton } from "@/components/safemode/button";
 
 export default function LandingPage() {
   return (
@@ -20,7 +20,8 @@ export default function LandingPage() {
                 INDUSTRIAL-GRADE LINK SCANNING
               </h1>
               <p className="font-mono text-sm lg:text-base text-muted-foreground max-w-2xl mx-auto">
-                Protect WhatsApp groups from phishing & malware with automated threat detection
+                Protect WhatsApp groups from phishing & malware with automated
+                threat detection
               </p>
             </div>
 
@@ -47,11 +48,18 @@ export default function LandingPage() {
                 <SafeModeCard variant="highlighted" className="p-6 lg:p-8">
                   <CardBadge>✓ RECOMMENDED</CardBadge>
 
-                  <h3 className="font-mono text-lg lg:text-xl font-bold text-primary mb-2 mt-2">USE COMMUNITY BOT</h3>
+                  <h3 className="font-mono text-lg lg:text-xl font-bold text-primary mb-2 mt-2">
+                    USE COMMUNITY BOT
+                  </h3>
 
-                  <p className="font-mono text-xs text-muted-foreground mb-4">Zero Setup Required</p>
+                  <p className="font-mono text-xs text-muted-foreground mb-4">
+                    Zero Setup Required
+                  </p>
 
-                  <ul className="space-y-2 font-mono text-sm text-muted-foreground mb-6" aria-label="Benefits">
+                  <ul
+                    className="space-y-2 font-mono text-sm text-muted-foreground mb-6"
+                    aria-label="Benefits"
+                  >
                     <li>✓ Free forever</li>
                     <li>✓ No hosting needed</li>
                     <li>✓ 1-minute setup</li>
@@ -70,9 +78,14 @@ export default function LandingPage() {
                     DEPLOY YOUR OWN →
                   </h3>
 
-                  <p className="font-mono text-xs text-muted-foreground mb-4">Advanced Users</p>
+                  <p className="font-mono text-xs text-muted-foreground mb-4">
+                    Advanced Users
+                  </p>
 
-                  <ul className="space-y-2 font-mono text-sm text-muted-foreground mb-6" aria-label="Benefits">
+                  <ul
+                    className="space-y-2 font-mono text-sm text-muted-foreground mb-6"
+                    aria-label="Benefits"
+                  >
                     <li>✓ Full control</li>
                     <li>✓ Your data stays yours</li>
                     <li>✓ Self-hosted infrastructure</li>
@@ -110,5 +123,5 @@ export default function LandingPage() {
         </div>
       </main>
     </div>
-  )
+  );
 }

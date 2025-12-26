@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 export function ScanlineOverlay() {
   return (
@@ -41,5 +41,5 @@ export function ScanlineOverlay() {
         }}
       />
     </div>
-  )
+  );
 }

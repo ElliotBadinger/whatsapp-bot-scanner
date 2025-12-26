@@ -1,18 +1,18 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { cn } from "@/lib/utils"
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
 
 const navLinks = [
   { href: "/", label: "HOME" },
   { href: "/community", label: "COMMUNITY" },
   { href: "/deploy", label: "DEPLOY" },
   { href: "/admin", label: "ADMIN" },
-]
+];
 
 export function NavBar() {
-  const pathname = usePathname()
+  const pathname = usePathname();
 
   return (
     <nav className="h-16 bg-background/95 border-b border-border backdrop-blur-md sticky top-0 z-50">
@@ -44,5 +44,5 @@ export function NavBar() {
         </div>
       </div>
     </nav>
-  )
+  );
 }

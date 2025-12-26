@@ -139,9 +139,9 @@ describe("downloadUrlscanArtifacts", () => {
     const scanId = "523e4567-e89b-12d3-a456-426614174000";
     const invalidHash = "not-a-valid-hash";
 
-    await expect(
-      downloadUrlscanArtifacts(scanId, invalidHash),
-    ).rejects.toThrow("Invalid url hash");
+    await expect(downloadUrlscanArtifacts(scanId, invalidHash)).rejects.toThrow(
+      "Invalid url hash",
+    );
   });
 
   it("handles both downloads failing", async () => {
