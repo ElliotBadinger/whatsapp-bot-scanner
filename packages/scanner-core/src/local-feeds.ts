@@ -230,9 +230,7 @@ function loadFeed(
   }
 }
 
-function loadTopDomains(
-  cache: TopDomainsCache | null,
-): TopDomainsCache | null {
+function loadTopDomains(cache: TopDomainsCache | null): TopDomainsCache | null {
   try {
     if (!fs.existsSync(TOP_DOMAINS_PATH)) return cache;
     const stats = fs.statSync(TOP_DOMAINS_PATH);
@@ -363,8 +361,7 @@ function detectTyposquat(
 
   for (let i = 0; i < sld.length - 1; i += 1) {
     if (sld[i] === sld[i + 1]) continue;
-    const swapped =
-      sld.slice(0, i) + sld[i + 1] + sld[i] + sld.slice(i + 2);
+    const swapped = sld.slice(0, i) + sld[i + 1] + sld[i] + sld.slice(i + 2);
     const candidate = `${swapped}.${suffix}`;
     if (topDomains.exact.has(candidate)) {
       return { target: candidate, method: "swap" };

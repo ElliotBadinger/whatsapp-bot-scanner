@@ -37,7 +37,11 @@ describe("local feed lookup", () => {
       "utf8",
     );
     fs.writeFileSync(path.join(tempDir, "sans-domains.txt"), "", "utf8");
-    fs.writeFileSync(path.join(tempDir, "majestic-top-domains.txt"), "", "utf8");
+    fs.writeFileSync(
+      path.join(tempDir, "majestic-top-domains.txt"),
+      "",
+      "utf8",
+    );
 
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const {
@@ -61,7 +65,11 @@ describe("local feed lookup", () => {
       "suspicious.test\n",
       "utf8",
     );
-    fs.writeFileSync(path.join(tempDir, "majestic-top-domains.txt"), "", "utf8");
+    fs.writeFileSync(
+      path.join(tempDir, "majestic-top-domains.txt"),
+      "",
+      "utf8",
+    );
 
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const {
@@ -85,7 +93,10 @@ describe("local feed lookup", () => {
     );
 
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { lookupLocalFeedSignals, resetLocalFeedCache } = require("../local-feeds");
+    const {
+      lookupLocalFeedSignals,
+      resetLocalFeedCache,
+    } = require("../local-feeds");
     resetLocalFeedCache();
 
     const signals = lookupLocalFeedSignals("https://gogle.com/login");
