@@ -1,5 +1,6 @@
 import { config, logger, metrics } from "@wbscanner/shared";
 import { randomBytes } from "node:crypto";
+import type { ScanOptions } from "@wbscanner/scanner-core";
 
 import type { WhatsAppAdapter } from "../adapters/index.js";
 import type { ScanJobData, ScanRequestQueue } from "../types/scanQueue.js";
@@ -33,6 +34,7 @@ export class InProcessScanQueue implements ScanRequestQueue {
   private closed = false;
   private readonly ttlMs = config.wa.messageLineageTtlSeconds * 1000;
   private readonly seenUrls = new Map<string, number>();
+  private readonly failureReplies = new Map<string, number>();
   private readonly rateLimits = new Map<
     string,
     { windowStart: number; count: number }
@@ -41,6 +43,8 @@ export class InProcessScanQueue implements ScanRequestQueue {
   private lastPruneAt = 0;
   private readonly pruneIntervalMs: number;
   private seenUrlsCursor: IterableIterator<[string, number]> | null = null;
+  private failureRepliesCursor: IterableIterator<[string, number]> | null =
+    null;
   private rateLimitsCursor: IterableIterator<
     [string, { windowStart: number; count: number }]
   > | null = null;
@@ -52,10 +56,8 @@ export class InProcessScanQueue implements ScanRequestQueue {
       rateLimit: number;
       rateWindowMs: number;
       logger: typeof logger;
-      scanUrl: (
-        url: string,
-        opts: { followRedirects: boolean },
-      ) => Promise<ScanUrlResult>;
+      scanUrl: (url: string, opts: ScanOptions) => Promise<ScanUrlResult>;
+      scanOptions: ScanOptions;
       formatVerdictMessage: (
         verdict: string,
         reasons: string[],
@@ -103,8 +105,10 @@ export class InProcessScanQueue implements ScanRequestQueue {
     this.closed = true;
     this.queue.length = 0;
     this.seenUrls.clear();
+    this.failureReplies.clear();
     this.rateLimits.clear();
     this.seenUrlsCursor = null;
+    this.failureRepliesCursor = null;
     this.rateLimitsCursor = null;
   }
 
@@ -141,6 +145,7 @@ export class InProcessScanQueue implements ScanRequestQueue {
     if (now - this.lastPruneAt < this.pruneIntervalMs) return;
     this.lastPruneAt = now;
     this.pruneSeenUrls(now);
+    this.pruneFailureReplies(now);
     this.pruneRateLimits(now);
   }
 
@@ -161,6 +166,26 @@ export class InProcessScanQueue implements ScanRequestQueue {
       scanned += 1;
     }
     this.seenUrlsCursor = cursor;
+  }
+
+  private pruneFailureReplies(now: number): void {
+    const maxScans = 500;
+    let scanned = 0;
+    const cursor =
+      this.failureRepliesCursor ?? this.failureReplies.entries();
+    while (scanned < maxScans) {
+      const next = cursor.next();
+      if (next.done) {
+        this.failureRepliesCursor = null;
+        return;
+      }
+      const [key, expiry] = next.value;
+      if (expiry <= now) {
+        this.failureReplies.delete(key);
+      }
+      scanned += 1;
+    }
+    this.failureRepliesCursor = cursor;
   }
 
   private pruneRateLimits(now: number): void {
@@ -200,17 +225,54 @@ export class InProcessScanQueue implements ScanRequestQueue {
         { err, chatId: job.data.chatId, url: job.data.url, jobId: job.id },
         "MVP scan job failed",
       );
+      await this.sendFailureReply(job.data);
     } finally {
       this.active -= 1;
       this.drain();
     }
   }
 
+  private shouldSendFailureReply(now: number, data: ScanJobData): boolean {
+    const key = `${data.chatId}:${data.messageId}`;
+    const expiry = this.failureReplies.get(key) ?? 0;
+    if (expiry > now) {
+      return false;
+    }
+    this.failureReplies.set(key, now + this.ttlMs);
+    return true;
+  }
+
+  private async sendFailureReply(data: ScanJobData): Promise<void> {
+    const now = Date.now();
+    if (!this.shouldSendFailureReply(now, data)) {
+      return;
+    }
+
+    const text = `Link scan: ERROR\nURL: ${data.url}\nScan failed. Please try again later.`;
+    try {
+      const sendResult = await this.opts.adapter.sendMessage(
+        data.chatId,
+        { type: "text", text },
+        { quotedMessageId: data.messageId },
+      );
+
+      if (!sendResult.success) {
+        this.opts.logger.warn(
+          { chatId: data.chatId, url: data.url },
+          "Failed to send scan failure reply",
+        );
+      }
+    } catch (err) {
+      this.opts.logger.warn(
+        { err, chatId: data.chatId, url: data.url },
+        "Failed to send scan failure reply",
+      );
+    }
+  }
+
   private async handle(data: ScanJobData): Promise<void> {
     const started = Date.now();
-    const result = await this.opts.scanUrl(data.url, {
-      followRedirects: false,
-    });
+    const result = await this.opts.scanUrl(data.url, this.opts.scanOptions);
     const text = this.opts.formatVerdictMessage(
       result.verdict.level,
       result.verdict.reasons,

@@ -29,7 +29,7 @@ import {
   connectRedis,
 } from "@wbscanner/shared";
 import { InMemoryRedis } from "@wbscanner/shared";
-import { scanUrl } from "@wbscanner/scanner-core";
+import { scanUrl, type ScanOptions } from "@wbscanner/scanner-core";
 
 import {
   createAdapterFromEnv,
@@ -146,6 +146,42 @@ async function main(): Promise<void> {
     const rateWindowMs =
       Number.parseInt(process.env.MVP_GROUP_RATE_WINDOW_MS ?? "60000", 10) ||
       60000;
+
+    const followRedirects =
+      (process.env.MVP_SCAN_FOLLOW_REDIRECTS ?? "0") === "1";
+
+    const timeoutMsRaw = Number.parseInt(
+      process.env.MVP_SCAN_TIMEOUT_MS ?? "4000",
+      10,
+    );
+    const timeoutMs =
+      Number.isFinite(timeoutMsRaw) && timeoutMsRaw > 0 ? timeoutMsRaw : 4000;
+
+    const maxRedirectsRaw = Number.parseInt(
+      process.env.MVP_SCAN_MAX_REDIRECTS ?? "3",
+      10,
+    );
+    const maxRedirects =
+      Number.isFinite(maxRedirectsRaw) && maxRedirectsRaw >= 0
+        ? maxRedirectsRaw
+        : 3;
+
+    const maxContentLengthRaw = Number.parseInt(
+      process.env.MVP_SCAN_MAX_CONTENT_LENGTH ?? "0",
+      10,
+    );
+    // 0 means no limit in `scanner-core`.
+    const maxContentLength =
+      Number.isFinite(maxContentLengthRaw) && maxContentLengthRaw >= 0
+        ? maxContentLengthRaw
+        : 0;
+
+    const scanOptions: ScanOptions = {
+      followRedirects,
+      timeoutMs: Math.max(500, timeoutMs),
+      maxRedirects: followRedirects ? Math.max(1, maxRedirects) : 0,
+      maxContentLength,
+    };
     scanRequestQueue = new InProcessScanQueue({
       adapter,
       concurrency,
@@ -153,6 +189,7 @@ async function main(): Promise<void> {
       rateWindowMs,
       logger,
       scanUrl,
+      scanOptions,
       formatVerdictMessage,
     });
   } else {
