@@ -1002,60 +1002,60 @@ function createBaileysLogger(base: Logger): {
       meta !== null && typeof meta === "object" && !Array.isArray(meta);
 
     const emitWith = (
-      fn: Logger["info"],
+      levelName: "trace" | "debug" | "info" | "warn" | "error",
       metaValue: unknown,
       msgValue?: string,
     ) => {
-      const withMeta = fn as unknown as (
-        obj: Record<string, unknown>,
+      const fn = base[levelName] as unknown as (
+        this: Logger,
+        objOrMsg?: Record<string, unknown> | string,
         msg?: string,
       ) => void;
-      const msgOnly = fn as unknown as (msg: string) => void;
 
       if (msgValue) {
         if (isMetaObject) {
-          withMeta(metaValue as Record<string, unknown>, msgValue);
+          fn.call(base, metaValue as Record<string, unknown>, msgValue);
         } else {
-          msgOnly(msgValue);
+          fn.call(base, msgValue);
         }
         return;
       }
 
       if (isMetaObject) {
-        withMeta(metaValue as Record<string, unknown>);
+        fn.call(base, metaValue as Record<string, unknown>);
       } else if (typeof metaValue === "string") {
-        msgOnly(metaValue);
+        fn.call(base, metaValue);
       }
     };
 
     if (level === "error" && shouldDownlevelError(message)) {
-      emitWith(base.warn, meta, message);
+      emitWith("warn", meta, message);
       return;
     }
 
     if (level === "info" && shouldDownlevelInfo(message)) {
-      emitWith(base.debug, meta, message);
+      emitWith("debug", meta, message);
       return;
     }
 
     switch (level) {
       case "trace":
-        emitWith(base.trace, meta, message);
+        emitWith("trace", meta, message);
         break;
       case "debug":
-        emitWith(base.debug, meta, message);
+        emitWith("debug", meta, message);
         break;
       case "info":
-        emitWith(base.info, meta, message);
+        emitWith("info", meta, message);
         break;
       case "warn":
-        emitWith(base.warn, meta, message);
+        emitWith("warn", meta, message);
         break;
       case "error":
-        emitWith(base.error, meta, message);
+        emitWith("error", meta, message);
         break;
       default:
-        emitWith(base.info, meta, message);
+        emitWith("info", meta, message);
     }
   };
 
