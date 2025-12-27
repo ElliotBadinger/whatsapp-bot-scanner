@@ -47,6 +47,7 @@ const baselinePath =
   args["baseline-path"] || path.join(outputDir, "link-corpus.jsonl");
 const baselineSummaryPath =
   args["baseline-summary"] || path.join(outputDir, "link-corpus.summary.json");
+const skipFeedRefresh = Boolean(args["skip-feed-refresh"]);
 
 if (mode === "fetch" || mode === "all") {
   run("node", [
@@ -95,6 +96,9 @@ if (mode === "fetch" || mode === "all") {
 }
 
 if (mode === "scan" || mode === "all") {
+  if (!skipFeedRefresh) {
+    run("node", ["scripts/update-local-feeds.js"]);
+  }
   run("bun", ["scripts/robustness/scan-robustness.ts"], {
     ROBUSTNESS_MANIFEST_PATH: manifestPath,
   });

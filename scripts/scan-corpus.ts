@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { spawnSync } from "node:child_process";
 import {
   normalizeLabel,
   scanJsonlGrouped,
@@ -13,7 +14,20 @@ const reportLimit = Number.parseInt(
   10,
 );
 
+const refreshFeeds =
+  (process.env.SCAN_CORPUS_REFRESH_FEEDS || "true").toLowerCase() !== "false" &&
+  (process.env.SCAN_CORPUS_REFRESH_FEEDS || "true").toLowerCase() !== "0";
+
 const run = async () => {
+  if (refreshFeeds) {
+    const result = spawnSync("node", ["scripts/update-local-feeds.js"], {
+      stdio: "inherit",
+      env: process.env,
+    });
+    if (result.status !== 0) {
+      throw new Error("Failed to refresh local feeds for scan-corpus");
+    }
+  }
   const reportEntries: ReportEntry[] = [];
   const { buckets, elapsedSeconds } = await scanJsonlGrouped(filePath, {
     reportEntries,
