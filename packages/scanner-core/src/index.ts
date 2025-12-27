@@ -8,6 +8,7 @@ import {
   extractUrls as sharedExtractUrls,
   expandUrl,
   extraHeuristics,
+  isShortener,
   scoreFromSignals,
   type RiskVerdict,
   type GsbThreatMatch,
@@ -15,8 +16,13 @@ import {
   vtAnalyzeUrl,
   vtVerdictStats,
   urlhausLookup,
+  urlHash,
 } from "@wbscanner/shared";
 import { lookupLocalFeedSignals } from "./local-feeds";
+import {
+  analyzeLocalEnhancedSecurity,
+  recordLocalThreatVerdict,
+} from "./local-enhanced";
 
 export type ExternalEnricherProvider =
   | "gsb"
@@ -31,6 +37,7 @@ export interface ScanOptions {
   timeoutMs?: number;
   maxContentLength?: number;
   enableExternalEnrichers?: boolean;
+  enableEnhancedSecurity?: boolean;
   extraSignals?: Partial<Signals>;
   /**
    * Optional hook invoked when an external enricher lookup fails.
@@ -51,7 +58,10 @@ export interface ScanResult {
   finalUrl: string;
   redirectChain: string[];
   verdict: RiskVerdict;
-  signals: Partial<Signals>;
+  signals: Partial<Signals> & {
+    enhancedSecurityScore?: number;
+    enhancedSecurityReasons?: string[];
+  };
 }
 
 export function extractUrls(text: string): string[] {
@@ -62,6 +72,8 @@ function buildHeuristicSignals(
   targetUrl: string,
   redirectCount: number,
   heuristicsOnly: boolean,
+  wasShortened: boolean,
+  finalUrlMismatch: boolean,
 ): Partial<Signals> {
   const parsed = new URL(targetUrl);
   const heuristicSignals = extraHeuristics(parsed);
@@ -69,6 +81,8 @@ function buildHeuristicSignals(
     ...heuristicSignals,
     redirectCount,
     heuristicsOnly,
+    wasShortened,
+    finalUrlMismatch,
   };
 }
 
@@ -223,6 +237,8 @@ export async function scanUrl(
 
   const followRedirects = options.followRedirects ?? false;
   const enableExternalEnrichers = options.enableExternalEnrichers ?? false;
+  const enableEnhancedSecurity =
+    options.enableEnhancedSecurity ?? config.enhancedSecurity.enabled;
   let finalUrl = normalized;
   let redirectChain: string[] = [];
 
@@ -237,26 +253,69 @@ export async function scanUrl(
   }
 
   const parsedFinal = new URL(finalUrl);
+  const urlHashValue = urlHash(normalized);
+  const wasShortened = isShortener(new URL(normalized).hostname);
+  const finalUrlMismatch =
+    wasShortened && new URL(normalized).hostname !== parsedFinal.hostname;
+
+  const enhancedSecurityResult = enableEnhancedSecurity
+    ? await analyzeLocalEnhancedSecurity(finalUrl, urlHashValue)
+    : { score: 0, reasons: [], skipExternalAPIs: false };
 
   const external = await buildExternalSignals(
     finalUrl,
     parsedFinal,
-    enableExternalEnrichers,
+    enableExternalEnrichers && !enhancedSecurityResult.skipExternalAPIs,
     options.onExternalEnricherError,
   );
 
   const localSignals = lookupLocalFeedSignals(finalUrl);
 
   const heuristicsOnly =
-    !enableExternalEnrichers || !external.usedExternalSignals;
+    !enableExternalEnrichers ||
+    enhancedSecurityResult.skipExternalAPIs ||
+    !external.usedExternalSignals;
 
   const signals: Signals = {
-    ...buildHeuristicSignals(finalUrl, redirectChain.length, heuristicsOnly),
+    ...buildHeuristicSignals(
+      finalUrl,
+      redirectChain.length,
+      heuristicsOnly,
+      wasShortened,
+      finalUrlMismatch,
+    ),
     ...external.signals,
     ...localSignals,
     ...(options.extraSignals ?? {}),
   };
-  const verdict = scoreFromSignals(signals);
+  let verdict = scoreFromSignals(signals);
+  if (enhancedSecurityResult.reasons.length > 0) {
+    verdict = {
+      ...verdict,
+      reasons: Array.from(
+        new Set([...verdict.reasons, ...enhancedSecurityResult.reasons]),
+      ),
+    };
+  }
+  if (
+    enhancedSecurityResult.verdict === "malicious" &&
+    enhancedSecurityResult.skipExternalAPIs
+  ) {
+    verdict = {
+      ...verdict,
+      level: "malicious",
+    };
+  }
+
+  if (enableEnhancedSecurity) {
+    const confidence = Math.min(
+      1,
+      (enhancedSecurityResult.score || 0) / 3.0,
+    );
+    await recordLocalThreatVerdict(finalUrl, verdict.level, confidence).catch(
+      () => undefined,
+    );
+  }
 
   return {
     inputUrl: rawUrl,
@@ -264,7 +323,11 @@ export async function scanUrl(
     finalUrl,
     redirectChain,
     verdict,
-    signals,
+    signals: {
+      ...signals,
+      enhancedSecurityScore: enhancedSecurityResult.score,
+      enhancedSecurityReasons: enhancedSecurityResult.reasons,
+    },
   };
 }
 

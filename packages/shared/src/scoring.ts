@@ -33,6 +33,8 @@ export interface Signals {
   finalUrlMismatch?: boolean;
   homoglyph?: HomoglyphResult;
   heuristicsOnly?: boolean;
+  enhancedSecurityScore?: number;
+  enhancedSecurityReasons?: string[];
 }
 
 export interface RiskVerdict {

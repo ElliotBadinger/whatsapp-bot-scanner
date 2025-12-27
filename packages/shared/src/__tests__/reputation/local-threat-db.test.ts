@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { request } from "undici";
 import { LocalThreatDatabase } from "../../reputation/local-threat-db";
 
@@ -165,6 +168,38 @@ describe("LocalThreatDatabase", () => {
     );
     expect(normalized).toBe(1);
     expect(normalizedSecond).toBe(1);
+  });
+
+  it("loads OpenPhish feed from a local file without remote fetches", async () => {
+    const redis = new FakeRedis();
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "wbscanner-"));
+    const feedPath = path.join(tempDir, "openphish.txt");
+    fs.writeFileSync(
+      feedPath,
+      "http://Example.com/path?utm=1#frag\nhttps://example.com/second",
+      "utf8",
+    );
+
+    const db = new LocalThreatDatabase(redis as any, {
+      feedUrl: feedPath,
+      updateIntervalMs: 60000,
+      allowRemoteFeeds: false,
+    });
+
+    await db.updateOpenPhishFeed();
+
+    expect(undiciRequest).not.toHaveBeenCalled();
+    const normalized = await redis.sismember(
+      "threat_db:openphish",
+      "http://example.com/path",
+    );
+    const normalizedSecond = await redis.sismember(
+      "threat_db:openphish",
+      "https://example.com/second",
+    );
+    expect(normalized).toBe(1);
+    expect(normalizedSecond).toBe(1);
+    fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
   it("handles OpenPhish failures without throwing", async () => {

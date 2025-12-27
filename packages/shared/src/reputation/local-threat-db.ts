@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { request } from "undici";
 import { logger } from "../log";
 import type Redis from "ioredis";
@@ -12,6 +15,7 @@ export interface LocalThreatResult {
 interface LocalThreatDatabaseOptions {
   feedUrl: string;
   updateIntervalMs: number;
+  allowRemoteFeeds?: boolean;
 }
 
 export class LocalThreatDatabase {
@@ -25,6 +29,57 @@ export class LocalThreatDatabase {
   constructor(redis: Redis, options: LocalThreatDatabaseOptions) {
     this.redis = redis;
     this.options = options;
+  }
+
+  private resolveLocalFeedPath(feedUrl: string): string | null {
+    if (!feedUrl) return null;
+    if (feedUrl.startsWith("file://")) {
+      try {
+        return fileURLToPath(feedUrl);
+      } catch {
+        return null;
+      }
+    }
+    if (feedUrl.startsWith("http://") || feedUrl.startsWith("https://")) {
+      return null;
+    }
+    const normalized = path.resolve(feedUrl);
+    return fs.existsSync(normalized) ? normalized : null;
+  }
+
+  private async readFeedText(feedUrl: string): Promise<string | null> {
+    const localPath = this.resolveLocalFeedPath(feedUrl);
+    if (localPath) {
+      try {
+        return fs.readFileSync(localPath, "utf8");
+      } catch (err) {
+        logger.warn({ err, path: localPath }, "Failed to read local threat feed");
+        return null;
+      }
+    }
+    if (this.options.allowRemoteFeeds === false) {
+      logger.warn(
+        { feedUrl },
+        "Remote threat feed disabled; skipping update",
+      );
+      return null;
+    }
+    if (!feedUrl.startsWith("http://") && !feedUrl.startsWith("https://")) {
+      return null;
+    }
+
+    const response = await request(feedUrl, {
+      method: "GET",
+      headersTimeout: 10000,
+      bodyTimeout: 30000,
+      maxRedirections: 5,
+    });
+
+    if (response.statusCode !== 200) {
+      throw new Error(`OpenPhish feed returned ${response.statusCode}`);
+    }
+
+    return response.body.text();
   }
 
   async start(): Promise<void> {
@@ -98,18 +153,10 @@ export class LocalThreatDatabase {
     try {
       logger.info("Updating OpenPhish feed...");
 
-      const response = await request(this.options.feedUrl, {
-        method: "GET",
-        headersTimeout: 10000,
-        bodyTimeout: 30000,
-        maxRedirections: 5, // Follow redirects
-      });
-
-      if (response.statusCode !== 200) {
-        throw new Error(`OpenPhish feed returned ${response.statusCode}`);
+      const feedData = await this.readFeedText(this.options.feedUrl);
+      if (!feedData) {
+        return;
       }
-
-      const feedData = await response.body.text();
       const urls = feedData
         .split("\n")
         .map((line) => line.trim())

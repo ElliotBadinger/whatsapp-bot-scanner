@@ -29,4 +29,21 @@ describe("scanner-core", () => {
     expect(results).toHaveLength(1);
     expect(results[0].normalizedUrl).toBe("https://a.test/");
   });
+
+  it("includes enhanced security reasons when enabled", async () => {
+    const result = await scanUrl("http://qwertyuiop.test/login", {
+      enableEnhancedSecurity: true,
+      enableExternalEnrichers: false,
+    });
+    const enhancedSignals = result.signals as Record<string, unknown>;
+    const enhancedScore = enhancedSignals.enhancedSecurityScore as number;
+    const enhancedReasons = enhancedSignals.enhancedSecurityReasons as string[];
+    expect(enhancedScore).toBeGreaterThan(0);
+    expect(enhancedReasons).toEqual(
+      expect.arrayContaining(["Keyboard walk pattern detected"]),
+    );
+    expect(result.verdict.reasons).toEqual(
+      expect.arrayContaining(["Keyboard walk pattern detected"]),
+    );
+  });
 });
