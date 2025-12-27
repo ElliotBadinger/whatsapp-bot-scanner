@@ -47,6 +47,7 @@ const baselinePath =
   args["baseline-path"] || path.join(outputDir, "link-corpus.jsonl");
 const baselineSummaryPath =
   args["baseline-summary"] || path.join(outputDir, "link-corpus.summary.json");
+const feedsDir = args["feeds-dir"] || path.join(outputDir, "feeds");
 const skipFeedRefresh = Boolean(args["skip-feed-refresh"]);
 
 if (mode === "fetch" || mode === "all") {
@@ -57,6 +58,8 @@ if (mode === "fetch" || mode === "all") {
     baselinePath,
     "--summary",
     baselineSummaryPath,
+    "--feeds-dir",
+    feedsDir,
   ]);
   const fetchArgs = [
     "scripts/robustness/fetch-robustness-datasets.py",
@@ -96,10 +99,11 @@ if (mode === "fetch" || mode === "all") {
 }
 
 if (mode === "scan" || mode === "all") {
-  if (!skipFeedRefresh) {
-    run("node", ["scripts/update-local-feeds.js"]);
+  if (!skipFeedRefresh && !fs.existsSync(feedsDir)) {
+    run("node", ["scripts/update-local-feeds.js", "--out-dir", feedsDir]);
   }
   run("bun", ["scripts/robustness/scan-robustness.ts"], {
     ROBUSTNESS_MANIFEST_PATH: manifestPath,
+    LOCAL_FEED_DIR: feedsDir,
   });
 }

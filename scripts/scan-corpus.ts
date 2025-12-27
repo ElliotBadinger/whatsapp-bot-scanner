@@ -14,9 +14,15 @@ const reportLimit = Number.parseInt(
   10,
 );
 
+const feedDir = (process.env.SCAN_CORPUS_FEED_DIR || "").trim();
+if (feedDir) {
+  process.env.LOCAL_FEED_DIR = feedDir;
+}
+
 const refreshFeeds =
   (process.env.SCAN_CORPUS_REFRESH_FEEDS || "true").toLowerCase() !== "false" &&
-  (process.env.SCAN_CORPUS_REFRESH_FEEDS || "true").toLowerCase() !== "0";
+  (process.env.SCAN_CORPUS_REFRESH_FEEDS || "true").toLowerCase() !== "0" &&
+  !feedDir;
 
 const run = async () => {
   if (refreshFeeds) {

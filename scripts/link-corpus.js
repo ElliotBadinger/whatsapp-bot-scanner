@@ -557,13 +557,71 @@ async function buildCorpus(options) {
     { total: 0, benign: 0, suspicious: 0, malicious: 0, tricky: 0 },
   );
 
-  return { entries: deduped, stats };
+  return {
+    entries: deduped,
+    stats,
+    feeds: {
+      openphishUrls,
+      urlhausUrls,
+      phishtankUrls,
+      certplDomains,
+      sansDomains: suspiciousDomains,
+      majesticDomains: benignDomains,
+    },
+  };
 }
 
 function writeJsonLines(filePath, entries) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const lines = entries.map((entry) => JSON.stringify(entry));
   fs.writeFileSync(filePath, `${lines.join("\n")}\n`, "utf8");
+}
+
+function writeFeedFile(filePath, entries) {
+  const unique = Array.from(new Set(entries.filter(Boolean)));
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, `${unique.join("\n")}\n`, "utf8");
+}
+
+function writeFeedSnapshot(feedDir, feeds, sources) {
+  fs.mkdirSync(feedDir, { recursive: true });
+  writeFeedFile(path.join(feedDir, "openphish.txt"), feeds.openphishUrls);
+  writeFeedFile(path.join(feedDir, "urlhaus.txt"), feeds.urlhausUrls);
+  writeFeedFile(path.join(feedDir, "certpl-domains.txt"), feeds.certplDomains);
+  writeFeedFile(path.join(feedDir, "sans-domains.txt"), feeds.sansDomains);
+  writeFeedFile(
+    path.join(feedDir, "majestic-top-domains.txt"),
+    feeds.majesticDomains,
+  );
+  writeFeedFile(path.join(feedDir, "phishtank.txt"), feeds.phishtankUrls);
+
+  const summary = {
+    fetchedAt: new Date().toISOString(),
+    majestic: { count: feeds.majesticDomains.length, source: sources.benign },
+    certpl: {
+      count: feeds.certplDomains.length,
+      source: sources.malicious.certpl,
+    },
+    openphish: {
+      count: feeds.openphishUrls.length,
+      source: sources.malicious.openphish,
+    },
+    urlhaus: {
+      count: feeds.urlhausUrls.length,
+      source: sources.malicious.urlhaus,
+    },
+    sans: { count: feeds.sansDomains.length, source: sources.suspicious },
+    phishtank: sources.malicious.phishtank
+      ? { count: feeds.phishtankUrls.length, source: sources.malicious.phishtank }
+      : { count: 0, source: null },
+    outputDir: feedDir,
+  };
+
+  fs.writeFileSync(
+    path.join(feedDir, "summary.json"),
+    JSON.stringify(summary, null, 2),
+    "utf8",
+  );
 }
 
 async function enqueueEntries(entries, options) {
@@ -611,6 +669,7 @@ async function main() {
     sources: DEFAULT_SOURCES,
     out: args.out || "storage/link-corpus.jsonl",
     summary: args.summary || "storage/link-corpus.summary.json",
+    feedsDir: args["feeds-dir"] || "",
     benignLimit: full
       ? undefined
       : parseIntOr(args["benign-limit"], DEFAULT_LIMITS.benign),
@@ -632,11 +691,14 @@ async function main() {
     full,
   };
 
-  const { entries, stats } = await buildCorpus(options);
+  const { entries, stats, feeds } = await buildCorpus(options);
 
   if (!options.dryRun) {
     writeJsonLines(options.out, entries);
     fs.writeFileSync(options.summary, JSON.stringify(stats, null, 2), "utf8");
+  }
+  if (!options.dryRun && options.feedsDir && feeds) {
+    writeFeedSnapshot(options.feedsDir, feeds, options.sources);
   }
 
   console.log(
