@@ -172,14 +172,20 @@ describe("Performance Benchmarks", () => {
 
       const elapsed = (performance.now() - start) / 1000;
       const throughput = iterations / elapsed;
+      const baseTarget = Number.parseFloat(
+        process.env.PERF_BENCH_THROUGHPUT_MIN ?? "200000",
+      );
+      const target = Math.floor(baseTarget / PERF_MULTIPLIER);
 
       console.log(`\n📊 Throughput Test: scoreFromSignals`);
       console.log(
         `   ${throughput.toLocaleString(undefined, { maximumFractionDigits: 0 })} calls/sec`,
       );
-      console.log(`   Target: >200,000 calls/sec`);
+      console.log(
+        `   Target: >${target.toLocaleString()} calls/sec (base ${baseTarget.toLocaleString()} / ${PERF_MULTIPLIER}x)`,
+      );
 
-      expect(throughput).toBeGreaterThan(200000);
+      expect(throughput).toBeGreaterThan(target);
     });
 
     test("extraHeuristics() completes in <1ms", () => {
