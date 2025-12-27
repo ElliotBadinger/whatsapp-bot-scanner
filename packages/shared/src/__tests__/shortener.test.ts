@@ -1,10 +1,18 @@
+const mockClientRequest = jest.fn();
+const mockClientClose = jest.fn().mockResolvedValue(undefined);
+
 jest.mock("undici", () => ({
   request: jest.fn(),
   fetch: jest.fn(),
+  Client: jest.fn().mockImplementation(() => ({
+    request: mockClientRequest,
+    close: mockClientClose,
+  })),
 }));
 
 jest.mock("../ssrf", () => ({
   isPrivateHostname: jest.fn().mockResolvedValue(false),
+  resolveSafeIp: jest.fn().mockResolvedValue("1.2.3.4"),
 }));
 
 import {
@@ -19,8 +27,9 @@ const { request, fetch } = jest.requireMock("undici") as {
   request: jest.MockedFunction<typeof requestType>;
   fetch: jest.MockedFunction<typeof fetchType>;
 };
-const { isPrivateHostname } = jest.requireMock("../ssrf") as {
+const { isPrivateHostname, resolveSafeIp } = jest.requireMock("../ssrf") as {
   isPrivateHostname: jest.Mock;
+  resolveSafeIp: jest.Mock;
 };
 
 const makeResponse = (options: {
@@ -28,24 +37,26 @@ const makeResponse = (options: {
   location?: string;
   contentLength?: number;
 }) => ({
-  status: options.status,
+  statusCode: options.status,
   headers: {
-    get: (name: string) => {
-      if (name === "location") return options.location ?? null;
-      if (name === "content-length" && options.contentLength !== undefined) {
-        return String(options.contentLength);
-      }
-      return null;
-    },
+    location: options.location ?? undefined,
+    "content-length":
+      options.contentLength !== undefined
+        ? String(options.contentLength)
+        : undefined,
   },
-  body: { cancel: jest.fn() },
+  body: { destroy: jest.fn() },
 });
 
 beforeEach(() => {
   request.mockReset();
   fetch.mockReset();
+  mockClientRequest.mockReset();
+  mockClientClose.mockClear();
   (isPrivateHostname as jest.Mock).mockReset();
   (isPrivateHostname as jest.Mock).mockResolvedValue(false);
+  (resolveSafeIp as jest.Mock).mockReset();
+  (resolveSafeIp as jest.Mock).mockResolvedValue("1.2.3.4");
   config.shortener.unshortenEndpoint = "https://unshorten.test";
   config.shortener.unshortenRetries = 1;
   config.orchestrator.expansion.maxRedirects = 2;
@@ -103,12 +114,12 @@ describe("shortener expansion", () => {
   });
 
   it("falls back to direct expansion on unshorten failure", async () => {
-    request.mockResolvedValue({
+    request.mockResolvedValueOnce({
       statusCode: 500,
       body: { json: async () => ({}) },
     } as any);
 
-    fetch
+    mockClientRequest
       .mockResolvedValueOnce(
         makeResponse({ status: 302, location: "https://final.test" }) as any,
       )
@@ -125,7 +136,7 @@ describe("shortener expansion", () => {
       statusCode: 404,
       body: { json: async () => ({}) },
     } as any);
-    (isPrivateHostname as jest.Mock).mockResolvedValueOnce(true);
+    (resolveSafeIp as jest.Mock).mockRejectedValueOnce(new Error("Private IP"));
 
     const result = await resolveShortener("https://bit.ly/private");
     expect(result.provider).toBe("original");
@@ -138,7 +149,10 @@ describe("shortener expansion", () => {
       statusCode: 404,
       body: { json: async () => ({}) },
     } as any);
-    fetch.mockResolvedValueOnce(makeResponse({ status: 404 }) as any);
+
+    mockClientRequest.mockResolvedValueOnce(
+      makeResponse({ status: 404 }) as any,
+    );
 
     const result = await resolveShortener("https://tinyurl.com/abc");
     expect(result.provider).toBe("original");
