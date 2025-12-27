@@ -31,6 +31,7 @@ export interface ScanOptions {
   timeoutMs?: number;
   maxContentLength?: number;
   enableExternalEnrichers?: boolean;
+  extraSignals?: Partial<Signals>;
   /**
    * Optional hook invoked when an external enricher lookup fails.
    * Only used when `enableExternalEnrichers` is enabled.
@@ -253,6 +254,7 @@ export async function scanUrl(
     ...buildHeuristicSignals(finalUrl, redirectChain.length, heuristicsOnly),
     ...external.signals,
     ...localSignals,
+    ...(options.extraSignals ?? {}),
   };
   const verdict = scoreFromSignals(signals);
 

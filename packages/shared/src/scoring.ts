@@ -25,6 +25,10 @@ export interface Signals {
   hasBinaryPathToken?: boolean;
   typoSquatTarget?: string;
   typoSquatMethod?: string;
+  mlLabel?: string;
+  mlMaliciousScore?: number;
+  mlBenignScore?: number;
+  mlSource?: string;
   manualOverride?: "allow" | "deny" | null;
   finalUrlMismatch?: boolean;
   homoglyph?: HomoglyphResult;
@@ -239,6 +243,35 @@ function evaluateHeuristicSignals(
   return score;
 }
 
+function evaluateMlSignals(
+  signals: Signals,
+  score: number,
+  reasons: string[],
+): number {
+  if (signals.mlMaliciousScore === undefined) return score;
+  const source = signals.mlSource ? ` (${signals.mlSource})` : "";
+  if (signals.mlMaliciousScore >= 0.9) {
+    score += 8;
+    pushReason(
+      reasons,
+      `ML model high-confidence malicious${source} (${signals.mlMaliciousScore.toFixed(2)})`,
+    );
+  } else if (signals.mlMaliciousScore >= 0.7) {
+    score += 6;
+    pushReason(
+      reasons,
+      `ML model suspicious${source} (${signals.mlMaliciousScore.toFixed(2)})`,
+    );
+  } else if (signals.mlMaliciousScore >= 0.5) {
+    score += 4;
+    pushReason(
+      reasons,
+      `ML model low-confidence malicious${source} (${signals.mlMaliciousScore.toFixed(2)})`,
+    );
+  }
+  return score;
+}
+
 function determineRiskLevel(finalScore: number): {
   level: RiskVerdict["level"];
   cacheTtl: number;
@@ -277,6 +310,7 @@ export function scoreFromSignals(signals: Signals): RiskVerdict {
   score = evaluateVirusTotalSignals(signals, score, reasons);
   score = evaluateDomainAge(signals, score, reasons);
   score = evaluateHomoglyphSignals(signals, score, reasons);
+  score = evaluateMlSignals(signals, score, reasons);
   score = evaluateHeuristicSignals(signals, score, reasons);
 
   if (signals.heuristicsOnly) {

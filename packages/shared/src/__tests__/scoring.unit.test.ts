@@ -37,6 +37,20 @@ describe("Scoring Algorithm - Edge Cases", () => {
     );
   });
 
+  test("ml malicious score elevates risk tiers", () => {
+    const high = scoreFromSignals({ mlMaliciousScore: 0.95, mlSource: "test" });
+    expect(high.level).toBe("malicious");
+    expect(high.score).toBeGreaterThanOrEqual(8);
+
+    const mid = scoreFromSignals({ mlMaliciousScore: 0.75 });
+    expect(mid.level).toBe("suspicious");
+    expect(mid.score).toBeGreaterThanOrEqual(6);
+
+    const low = scoreFromSignals({ mlMaliciousScore: 0.55 });
+    expect(low.level).toBe("suspicious");
+    expect(low.score).toBeGreaterThanOrEqual(4);
+  });
+
   test("IP literal with binary path token is escalated to malicious", () => {
     const result = scoreFromSignals({
       isIpLiteral: true,

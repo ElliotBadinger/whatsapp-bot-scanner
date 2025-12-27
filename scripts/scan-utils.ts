@@ -6,6 +6,10 @@ export type ScanEntry = {
   url: string;
   label?: string;
   source?: string;
+  mlLabel?: string;
+  mlMaliciousScore?: number;
+  mlBenignScore?: number;
+  mlSource?: string;
 };
 
 export type Bucket = {
@@ -174,9 +178,24 @@ export async function scanJsonlGrouped(
     const bucket = ensureBucket(buckets, groupKey);
     bucket.total += 1;
 
+    const extraSignals = {
+      ...(isFiniteNumber(entry.mlMaliciousScore)
+        ? { mlMaliciousScore: entry.mlMaliciousScore }
+        : {}),
+      ...(isFiniteNumber(entry.mlBenignScore)
+        ? { mlBenignScore: entry.mlBenignScore }
+        : {}),
+      ...(entry.mlLabel ? { mlLabel: entry.mlLabel } : {}),
+      ...(entry.mlSource ? { mlSource: entry.mlSource } : {}),
+    };
+    const scanOptionsForEntry =
+      Object.keys(extraSignals).length > 0
+        ? { ...scanOptions, extraSignals }
+        : scanOptions;
+
     let result: ScanResult | null = null;
     try {
-      result = await scanFn(entry.url, scanOptions);
+      result = await scanFn(entry.url, scanOptionsForEntry);
     } catch {
       bucket.skipped += 1;
       continue;
