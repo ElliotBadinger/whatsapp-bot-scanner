@@ -85,9 +85,13 @@ export async function buildServer(options: BuildOptions = {}) {
   const redisClient = options.redisClient ?? (await getSharedRedis());
   const queue = options.queue ?? (await getSharedQueue());
 
-  const rateLimiter = createApiRateLimiter(redisClient, RATE_LIMIT_CONFIGS.api, {
-    allowMemory: process.env.NODE_ENV === "test",
-  });
+  const rateLimiter = createApiRateLimiter(
+    redisClient,
+    RATE_LIMIT_CONFIGS.api,
+    {
+      allowMemory: process.env.NODE_ENV === "test",
+    },
+  );
 
   const app = Fastify();
   app.setErrorHandler(globalErrorHandler);
