@@ -1,5 +1,5 @@
-## 2025-12-21 - SSRF Bypass via IPv4-Mapped IPv6 Addresses
+## 2025-10-27 - Rate Limiting Missing on Control Plane API
 
-**Vulnerability:** The `isPrivateIp` function failed to detect IPv4-mapped IPv6 addresses (e.g., `::ffff:127.0.0.1`) as private. This allowed SSRF bypass where an attacker could access internal services by using the IPv6 representation of private IPv4 addresses.
-**Learning:** Network libraries often treat IPv4-mapped IPv6 addresses as IPv6, but they effectively route to IPv4 destinations. Simply checking IPv4 ranges against an IPv6 address object fails.
-**Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
+**Vulnerability:** The control plane API (`services/control-plane`) lacked rate limiting on authenticated endpoints. While authentication was present, authenticated users (or compromised tokens) could potentially DoS the service or brute-force resources.
+**Learning:** Even internal or authenticated APIs need rate limiting to prevent resource exhaustion and abuse. Relying solely on authentication assumes trust that may be violated by compromised credentials or bugs in client logic.
+**Prevention:** Implemented rate limiting middleware using `rate-limiter-flexible` (via shared utility) on all protected routes. Added `X-RateLimit` headers to response for client visibility.
