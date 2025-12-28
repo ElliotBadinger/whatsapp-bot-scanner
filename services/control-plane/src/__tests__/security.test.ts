@@ -330,3 +330,57 @@ describe('Security: Error Message Safety', () => {
     }
   });
 });
+
+describe('Security: Rate Limiting', () => {
+  test('includes rate limit headers in response', async () => {
+    const { app } = await buildTestServer(async () => ({
+      rows: [{ scans: 0, malicious: 0, groups: 0 }]
+    }));
+    try {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/status',
+        headers: authHeader,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.headers).toHaveProperty('x-ratelimit-limit');
+      expect(response.headers).toHaveProperty('x-ratelimit-remaining');
+      expect(response.headers).toHaveProperty('x-ratelimit-reset');
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('enforces rate limits on excessive requests', async () => {
+    const { app } = await buildTestServer(async () => ({
+      rows: [{ scans: 0, malicious: 0, groups: 0 }]
+    }));
+    try {
+      // Consume all points (limit is 100)
+      const limit = 100;
+      const promises = [];
+      for (let i = 0; i < limit + 1; i++) {
+        promises.push(
+          app.inject({
+            method: 'GET',
+            url: '/status',
+            headers: authHeader,
+          })
+        );
+      }
+
+      const responses = await Promise.all(promises);
+      const okResponses = responses.filter(r => r.statusCode === 200);
+      const limitedResponses = responses.filter(r => r.statusCode === 429);
+
+      expect(okResponses.length).toBeLessThanOrEqual(limit);
+      expect(limitedResponses.length).toBeGreaterThan(0);
+
+      const lastResponse = limitedResponses[0];
+      expect(JSON.parse(lastResponse.payload).error).toBe('too_many_requests');
+    } finally {
+      await app.close();
+    }
+  });
+});
