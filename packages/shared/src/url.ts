@@ -20,18 +20,49 @@ const TRACKING_PARAMS = new Set([
   "vero_id",
 ]);
 
+// Hoisted regexes to avoid recompilation on every call
+const URL_REGEX =
+  /((https?:\/\/|www\.)[^\s<>()]+[^\s`!()\[\]{};:'".,<>?«»“”‘’])/gi;
+const BARE_DOMAIN_REGEX =
+  /(?<!:\/\/)(?<!@)\b((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?:\/[^{\s<>()`!()\[\]{};:'".,<>?«»“”‘’}]*)?)/gi;
+
+// Hoisted Set for O(1) lookup
+const SUSPICIOUS_TLDS = new Set([
+  "zip",
+  "mov",
+  "tk",
+  "ml",
+  "cf",
+  "gq",
+  "work",
+  "click",
+  "country",
+  "kim",
+  "men",
+  "party",
+  "science",
+  "top",
+  "xyz",
+  "club",
+  "link",
+]);
+
+// Cache for forbidden patterns
+let cachedForbiddenPatterns: string[] | null = null;
+
+// Exported for testing purposes
+export function resetForbiddenPatternsCache(): void {
+  cachedForbiddenPatterns = null;
+}
+
 export function extractUrls(text: string): string[] {
   if (!text) return [];
-  const urlRegex =
-    /((https?:\/\/|www\.)[^\s<>()]+[^\s`!()\[\]{};:'".,<>?«»“”‘’])/gi;
-  const bareDomainRegex =
-    /(?<!:\/\/)(?<!@)\b((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?:\/[^{\s<>()`!()\[\]{};:'".,<>?«»“”‘’}]*)?)/gi;
 
   const matches = new Set<string>();
-  for (const m of text.match(urlRegex) || []) {
+  for (const m of text.match(URL_REGEX) || []) {
     matches.add(m);
   }
-  for (const m of text.match(bareDomainRegex) || []) {
+  for (const m of text.match(BARE_DOMAIN_REGEX) || []) {
     if (m.startsWith("www.")) continue;
     matches.add(m);
   }
@@ -111,31 +142,12 @@ export async function expandUrl(
 
 export function isSuspiciousTld(hostname: string): boolean {
   const t = parse(hostname);
-  const bad = new Set([
-    "zip",
-    "mov",
-    "tk",
-    "ml",
-    "cf",
-    "gq",
-    "work",
-    "click",
-    "country",
-    "kim",
-    "men",
-    "party",
-    "science",
-    "top",
-    "xyz",
-    "club",
-    "link",
-  ]);
   if (!t.publicSuffix) {
     return false;
   }
 
   const lastLabel = t.publicSuffix.split(".").at(-1);
-  return !!lastLabel && bad.has(lastLabel);
+  return !!lastLabel && SUSPICIOUS_TLDS.has(lastLabel);
 }
 
 export function isShortener(hostname: string): boolean {
@@ -143,10 +155,14 @@ export function isShortener(hostname: string): boolean {
 }
 
 function parseForbiddenPatterns(): string[] {
-  return (process.env.WA_FORBIDDEN_HOSTNAMES || "")
+  if (cachedForbiddenPatterns !== null) {
+    return cachedForbiddenPatterns;
+  }
+  cachedForbiddenPatterns = (process.env.WA_FORBIDDEN_HOSTNAMES || "")
     .split(",")
     .map((entry) => entry.trim().toLowerCase())
     .filter((entry) => entry.length > 0);
+  return cachedForbiddenPatterns;
 }
 
 export async function isForbiddenHostname(hostname: string): Promise<boolean> {
