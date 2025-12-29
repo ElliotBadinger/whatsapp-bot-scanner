@@ -330,3 +330,47 @@ describe('Security: Error Message Safety', () => {
     }
   });
 });
+
+describe('Security: Rate Limiting', () => {
+  test('enforces rate limits on rescan endpoint', async () => {
+    // rescan limit is 10 points per minute (see packages/shared/src/rate-limiter.ts)
+    const limit = 10;
+    const { app, queue } = await buildTestServer(async (sql: string) => {
+      // Mock DB for rescan checks if needed (though redis checks come first)
+      if (sql.startsWith('SELECT chat_id')) {
+        return { rows: [] };
+      }
+      return { rows: [] };
+    });
+
+    try {
+      // Send requests up to the limit
+      for (let i = 0; i < limit; i++) {
+        const response = await app.inject({
+          method: 'POST',
+          url: '/rescan',
+          headers: authHeader,
+          payload: { url: `https://example.com/page${i}` },
+        });
+        // Should be successful (200) or validation error (400) but NOT 429
+        // 200 is expected because we use valid URLs
+        expect(response.statusCode).not.toBe(429);
+      }
+
+      // The next request should be rate limited
+      const response = await app.inject({
+        method: 'POST',
+        url: '/rescan',
+        headers: authHeader,
+        payload: { url: 'https://example.com/blocked' },
+      });
+
+      expect(response.statusCode).toBe(429);
+      const body = JSON.parse(response.payload);
+      expect(body.error).toBe('too_many_requests');
+
+    } finally {
+      await app.close();
+    }
+  });
+});

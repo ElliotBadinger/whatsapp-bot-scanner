@@ -24,6 +24,9 @@ import {
   getConnectedSharedRedis,
   ValidationError,
   globalErrorHandler,
+  createApiRateLimiter,
+  consumeRateLimit,
+  RATE_LIMIT_CONFIGS,
 } from "@wbscanner/shared";
 import { getSharedConnection } from "./database.js";
 
@@ -81,6 +84,31 @@ export async function buildServer(options: BuildOptions = {}) {
   const ownsClient = !options.dbClient;
   const redisClient = options.redisClient ?? (await getSharedRedis());
   const queue = options.queue ?? (await getSharedQueue());
+
+  // Initialize rate limiters
+  const overrideLimiter = createApiRateLimiter(
+    redisClient,
+    RATE_LIMIT_CONFIGS.override,
+  );
+  const rescanLimiter = createApiRateLimiter(
+    redisClient,
+    RATE_LIMIT_CONFIGS.rescan,
+  );
+
+  const checkRateLimit = async (
+    req: FastifyRequest,
+    reply: FastifyReply,
+    limiter: ReturnType<typeof createApiRateLimiter>,
+  ) => {
+    const key = req.ip;
+    const result = await consumeRateLimit(limiter, key);
+    if (!result.allowed) {
+      reply.header("Retry-After", result.retryAfter);
+      reply.code(429).send({ error: "too_many_requests" });
+      return false;
+    }
+    return true;
+  };
 
   const app = Fastify();
   app.setErrorHandler(globalErrorHandler);
@@ -188,6 +216,8 @@ export async function buildServer(options: BuildOptions = {}) {
     }
 
     protectedApp.post("/overrides", async (req, reply) => {
+      if (!(await checkRateLimit(req, reply, overrideLimiter))) return;
+
       const validation = OverrideBodySchema.safeParse(req.body);
       if (!validation.success) {
         throw new ValidationError(validation.error);
@@ -247,6 +277,8 @@ export async function buildServer(options: BuildOptions = {}) {
     });
 
     protectedApp.post("/rescan", async (req, reply) => {
+      if (!(await checkRateLimit(req, reply, rescanLimiter))) return;
+
       const validation = RescanBodySchema.safeParse(req.body);
       if (!validation.success) {
         throw new ValidationError(validation.error);
