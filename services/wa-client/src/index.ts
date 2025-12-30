@@ -2260,7 +2260,7 @@ async function main() {
             const msg = `\n╔${"═".repeat(50)}╗\n║  WhatsApp Pairing Code: ${code.padEnd(24)} ║\n║  Phone: ${maskPhone(remotePhone).padEnd(37)} ║\n║  Valid for: ~2:40 minutes${" ".repeat(22)} ║\n╚${"═".repeat(50)}╝\n`;
             process.stdout.write(msg);
             logger.info(
-              { phoneNumber: maskPhone(remotePhone), attempt, code },
+              { phoneNumber: maskPhone(remotePhone), attempt },
               "Phone-number pairing code ready.",
             );
           },
@@ -2376,7 +2376,7 @@ async function main() {
           const msg = `\n╔${"═".repeat(50)}╗\n║  WhatsApp Pairing Code: ${code.padEnd(24)} ║\n║  Phone: ${maskPhone(remotePhone).padEnd(37)} ║\n║  Valid for: ~2:40 minutes${" ".repeat(22)} ║\n╚${"═".repeat(50)}╝\n`;
           process.stdout.write(msg);
           logger.info(
-            { phoneNumber: maskPhone(remotePhone), attempt, code },
+            { phoneNumber: maskPhone(remotePhone), attempt },
             "Phone-number pairing code ready.",
           );
         },
@@ -2510,7 +2510,6 @@ async function main() {
         schedulePairingCodeRefresh(remainingMs);
         logger.info(
           {
-            pairingCode: cachedPairingCode.code,
             phoneNumber: maskPhone(remotePhone),
             remainingMs,
           },
@@ -2657,8 +2656,8 @@ async function main() {
         }
         schedulePairingCodeRefresh(PHONE_PAIRING_CODE_TTL_MS);
         logger.info(
-          { pairingCode: code, phoneNumber: maskPhone(remotePhone) },
-          "Enter this pairing code in WhatsApp > Linked devices > Link with phone number.",
+          { phoneNumber: maskPhone(remotePhone) },
+          "Enter the pairing code (displayed in console) in WhatsApp > Linked devices > Link with phone number.",
         );
         if (config.wa.qrTerminal) {
           process.stdout.write(
