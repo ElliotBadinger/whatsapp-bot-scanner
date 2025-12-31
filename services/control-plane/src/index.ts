@@ -24,6 +24,10 @@ import {
   getConnectedSharedRedis,
   ValidationError,
   globalErrorHandler,
+  createApiRateLimiter,
+  consumeRateLimit,
+  RATE_LIMIT_CONFIGS,
+  RateLimitError,
 } from "@wbscanner/shared";
 import { getSharedConnection } from "./database.js";
 
@@ -85,6 +89,17 @@ export async function buildServer(options: BuildOptions = {}) {
   const app = Fastify();
   app.setErrorHandler(globalErrorHandler);
 
+  // Initialize rate limiters
+  const apiLimiter = createApiRateLimiter(redisClient, RATE_LIMIT_CONFIGS.api);
+  const overrideLimiter = createApiRateLimiter(
+    redisClient,
+    RATE_LIMIT_CONFIGS.override,
+  );
+  const rescanLimiter = createApiRateLimiter(
+    redisClient,
+    RATE_LIMIT_CONFIGS.rescan,
+  );
+
   // Public routes (no auth required) - must be registered before the auth hook
   app.get("/healthz", async () => ({ ok: true }));
   app.get("/metrics", async (_req, reply) => {
@@ -95,7 +110,19 @@ export async function buildServer(options: BuildOptions = {}) {
   await app.register(async (protectedApp: FastifyInstance) => {
     protectedApp.addHook("preHandler", createAuthHook(requiredToken));
 
-    protectedApp.get("/status", async () => {
+    // Rate limiting helper
+    const checkRateLimit = async (
+      limiter: ReturnType<typeof createApiRateLimiter>,
+      keySuffix: string,
+    ) => {
+      const result = await consumeRateLimit(limiter, keySuffix);
+      if (!result.allowed) {
+        throw new RateLimitError(result.retryAfter);
+      }
+    };
+
+    protectedApp.get("/status", async (req) => {
+      await checkRateLimit(apiLimiter, req.ip);
       const { rows } = await dbClient.query(
         "SELECT (SELECT COUNT(*) FROM scans) AS scans, (SELECT COUNT(*) FROM scans WHERE verdict = ?) AS malicious, (SELECT COUNT(*) FROM groups) AS groups",
         ["malicious"],
@@ -113,6 +140,7 @@ export async function buildServer(options: BuildOptions = {}) {
     });
 
     protectedApp.get("/scans/recent", async (req, reply) => {
+      await checkRateLimit(apiLimiter, req.ip);
       const rawLimit = (req.query as { limit?: string | number })?.limit;
       const parsedLimit = Number.parseInt(String(rawLimit ?? "10"), 10);
       const limit =
@@ -188,6 +216,7 @@ export async function buildServer(options: BuildOptions = {}) {
     }
 
     protectedApp.post("/overrides", async (req, reply) => {
+      await checkRateLimit(overrideLimiter, req.ip);
       const validation = OverrideBodySchema.safeParse(req.body);
       if (!validation.success) {
         throw new ValidationError(validation.error);
@@ -210,7 +239,8 @@ export async function buildServer(options: BuildOptions = {}) {
       reply.code(201).send({ ok: true });
     });
 
-    protectedApp.get("/overrides", async () => {
+    protectedApp.get("/overrides", async (req) => {
+      await checkRateLimit(apiLimiter, req.ip);
       const { rows } = await dbClient.query(
         "SELECT * FROM overrides ORDER BY created_at DESC LIMIT 100",
       );
@@ -218,6 +248,7 @@ export async function buildServer(options: BuildOptions = {}) {
     });
 
     protectedApp.post("/groups/:chatId/mute", async (req, reply) => {
+      await checkRateLimit(apiLimiter, req.ip);
       const validation = MuteGroupParamsSchema.safeParse(req.params);
       if (!validation.success) {
         throw new ValidationError(validation.error);
@@ -233,6 +264,7 @@ export async function buildServer(options: BuildOptions = {}) {
     });
 
     protectedApp.post("/groups/:chatId/unmute", async (req, reply) => {
+      await checkRateLimit(apiLimiter, req.ip);
       const validation = MuteGroupParamsSchema.safeParse(req.params);
       if (!validation.success) {
         throw new ValidationError(validation.error);
@@ -247,6 +279,7 @@ export async function buildServer(options: BuildOptions = {}) {
     });
 
     protectedApp.post("/rescan", async (req, reply) => {
+      await checkRateLimit(rescanLimiter, req.ip);
       const validation = RescanBodySchema.safeParse(req.body);
       if (!validation.success) {
         throw new ValidationError(validation.error);
@@ -320,6 +353,8 @@ export async function buildServer(options: BuildOptions = {}) {
           urlHash: string;
           type: string;
         };
+
+        await checkRateLimit(apiLimiter, req.ip);
 
         // Validate urlHash format to prevent path traversal (SHA-256 hex string)
         if (typeof hash !== "string" || !/^[a-fA-F0-9]{64}$/.test(hash)) {
