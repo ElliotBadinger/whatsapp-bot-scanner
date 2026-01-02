@@ -51,6 +51,22 @@ describe("Scoring Algorithm - Edge Cases", () => {
     expect(low.score).toBeGreaterThanOrEqual(4);
   });
 
+  test("feed source overrides to malicious or suspicious", () => {
+    const malicious = scoreFromSignals({ feedSource: "openphish_feed" });
+    expect(malicious.level).toBe("malicious");
+
+    const suspicious = scoreFromSignals({ feedSource: "sans_domaindata" });
+    expect(suspicious.level).toBe("suspicious");
+  });
+
+  test("credential keywords on shortened URLs elevate to malicious", () => {
+    const result = scoreFromSignals({
+      wasShortened: true,
+      hasCredentialKeywords: true,
+    });
+    expect(result.level).toBe("malicious");
+  });
+
   test("IP literal with binary path token is escalated to malicious", () => {
     const result = scoreFromSignals({
       isIpLiteral: true,
@@ -161,6 +177,13 @@ describe("extraHeuristics", () => {
       new URL("https://example.com/login?next=https%3A%2F%2Fevil.test%2F"),
     );
     expect(signals.hasRedirectParam).toBe(true);
+  });
+
+  test("flags credential keywords in URL paths", () => {
+    const signals = extraHeuristics(
+      new URL("https://example.com/login/reset-password"),
+    );
+    expect(signals.hasCredentialKeywords).toBe(true);
   });
 
   test("flags binary architecture tokens in paths", () => {

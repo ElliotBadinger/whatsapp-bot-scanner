@@ -378,9 +378,11 @@ export async function scanJsonlGrouped(
 
     const inputUrl = entry.inputUrl ?? entry.url;
     const fixtureSignals = buildFixtureSignals(entry);
+    const feedSource = entry.source ?? options.sourceOverride;
     const extraSignals = {
       ...(scanOptions.extraSignals ?? {}),
       ...fixtureSignals,
+      ...(feedSource ? { feedSource } : {}),
       ...(isFiniteNumber(entry.mlMaliciousScore)
         ? { mlMaliciousScore: entry.mlMaliciousScore }
         : {}),

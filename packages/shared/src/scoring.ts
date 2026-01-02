@@ -29,12 +29,14 @@ export interface Signals {
   mlMaliciousScore?: number;
   mlBenignScore?: number;
   mlSource?: string;
+  feedSource?: string;
   manualOverride?: "allow" | "deny" | null;
   finalUrlMismatch?: boolean;
   homoglyph?: HomoglyphResult;
   heuristicsOnly?: boolean;
   enhancedSecurityScore?: number;
   enhancedSecurityReasons?: string[];
+  hasCredentialKeywords?: boolean;
 }
 
 export interface RiskVerdict {
@@ -84,6 +86,38 @@ function evaluateBlocklistSignals(
     score += 10;
     pushReason(reasons, "Known malware distribution (URLhaus)");
   }
+  return score;
+}
+
+const MALICIOUS_FEED_SOURCES = new Set([
+  "openphish_feed",
+  "urlhaus_feed",
+  "certpl_feed",
+  "phishing_database",
+  "threatfox_full",
+]);
+
+const SUSPICIOUS_FEED_SOURCES = new Set(["sans_domaindata"]);
+
+function evaluateFeedSignals(
+  signals: Signals,
+  score: number,
+  reasons: string[],
+): number {
+  const feedSource = signals.feedSource?.toLowerCase();
+  if (!feedSource) return score;
+
+  if (MALICIOUS_FEED_SOURCES.has(feedSource)) {
+    score += 10;
+    pushReason(reasons, `Known malicious feed source (${feedSource})`);
+    return score;
+  }
+
+  if (SUSPICIOUS_FEED_SOURCES.has(feedSource)) {
+    score += 4;
+    pushReason(reasons, `Suspicious feed source (${feedSource})`);
+  }
+
   return score;
 }
 
@@ -216,6 +250,10 @@ function evaluateHeuristicSignals(
     score += 4;
     pushReason(reasons, "Open redirect parameter detected");
   }
+  if (signals.hasCredentialKeywords && signals.wasShortened) {
+    score += 6;
+    pushReason(reasons, "Credential keywords on shortened URL");
+  }
   if (signals.isIpLiteral && signals.hasExecutableExtension) {
     score += 3;
     pushReason(reasons, "Executable hosted on IP address");
@@ -308,6 +346,7 @@ export function scoreFromSignals(signals: Signals): RiskVerdict {
   let score = 0;
   const reasons: string[] = [];
 
+  score = evaluateFeedSignals(signals, score, reasons);
   score = evaluateBlocklistSignals(signals, score, reasons);
   score = evaluateVirusTotalSignals(signals, score, reasons);
   score = evaluateDomainAge(signals, score, reasons);
@@ -362,6 +401,19 @@ const BINARY_PATH_TOKENS = new Set([
   "x86_64",
 ]);
 
+const CREDENTIAL_KEYWORDS = [
+  "login",
+  "verify",
+  "secure",
+  "account",
+  "update",
+  "signin",
+  "sign-in",
+  "password",
+  "bank",
+  "billing",
+];
+
 export function extraHeuristics(u: URL): Partial<Signals> {
   const port = u.port
     ? parseInt(u.port, 10)
@@ -400,6 +452,10 @@ export function extraHeuristics(u: URL): Partial<Signals> {
     .split(/[./_-]+/)
     .map((segment) => segment.toLowerCase())
     .some((segment) => BINARY_PATH_TOKENS.has(segment));
+  const credentialText = `${u.hostname}${u.pathname}${u.search}`.toLowerCase();
+  const hasCredentialKeywords = CREDENTIAL_KEYWORDS.some((token) =>
+    credentialText.includes(token),
+  );
   return {
     hasUncommonPort,
     isIpLiteral,
@@ -410,5 +466,6 @@ export function extraHeuristics(u: URL): Partial<Signals> {
     hasUserInfo,
     hasRedirectParam,
     hasBinaryPathToken,
+    hasCredentialKeywords,
   };
 }
