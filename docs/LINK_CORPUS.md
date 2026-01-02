@@ -30,6 +30,14 @@ npm run scan-corpus
 
 This runs the local scanner against the corpus and prints verdict counts and average scores per label.
 
+To measure generalization without feed leakage:
+
+```bash
+SCAN_CORPUS_OFFLINE=true \
+SCAN_CORPUS_DISABLE_LOCAL_FEEDS=true \
+npm run scan-corpus
+```
+
 ## Enqueue into the scan-request queue
 
 ```bash

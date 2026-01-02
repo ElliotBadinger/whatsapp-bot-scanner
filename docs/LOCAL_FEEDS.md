@@ -44,6 +44,13 @@ LOCAL_FEEDS_ENABLED=true \
 npm run scan-corpus
 ```
 
+For benchmark generalization (avoid feed leakage):
+
+```bash
+ROBUSTNESS_DISABLE_LOCAL_FEEDS=true \
+npm run robustness:scan
+```
+
 ## Notes
 
 - Feeds update periodically; run the updater via cron to keep them fresh.

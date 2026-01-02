@@ -30,6 +30,30 @@ function parseList(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
+function mergeCounts(
+  target: Record<string, number>,
+  source: Record<string, number>,
+): void {
+  for (const [key, value] of Object.entries(source)) {
+    target[key] = (target[key] ?? 0) + value;
+  }
+}
+
+function mergeConfusion(
+  target: Record<string, Record<string, number>>,
+  source: Record<string, Record<string, number>>,
+): void {
+  for (const expected of Object.keys(source)) {
+    if (!target[expected]) {
+      target[expected] = {};
+    }
+    for (const actual of Object.keys(source[expected] ?? {})) {
+      const count = source[expected]?.[actual] ?? 0;
+      target[expected][actual] = (target[expected][actual] ?? 0) + count;
+    }
+  }
+}
+
 function sumBuckets(target: Bucket, source: Bucket): Bucket {
   target.total += source.total;
   target.labeled += source.labeled;
@@ -40,6 +64,11 @@ function sumBuckets(target: Bucket, source: Bucket): Bucket {
   target.correct += source.correct;
   target.missed += source.missed;
   target.skipped += source.skipped;
+  target.trickyExpected += source.trickyExpected;
+  target.trickyFlagged += source.trickyFlagged;
+  target.trickyBlocked += source.trickyBlocked;
+  mergeCounts(target.expectedByLabel, source.expectedByLabel);
+  mergeConfusion(target.confusion, source.confusion);
   return target;
 }
 
@@ -51,6 +80,25 @@ const reportLimit = Number.parseInt(
   10,
 );
 const sourceFilter = new Set(parseList(process.env.ROBUSTNESS_SOURCES));
+const disableLocalFeeds =
+  (process.env.ROBUSTNESS_DISABLE_LOCAL_FEEDS || "").toLowerCase() === "true";
+const offlineMode =
+  (process.env.ROBUSTNESS_OFFLINE || "").toLowerCase() === "true";
+const disableEnhancedSecurity =
+  (process.env.ROBUSTNESS_DISABLE_ENHANCED_SECURITY || "").toLowerCase() === "true";
+
+if (disableLocalFeeds) {
+  process.env.LOCAL_FEEDS_ENABLED = "false";
+}
+
+const scanOptions =
+  offlineMode || disableEnhancedSecurity || disableLocalFeeds
+    ? {
+        enableExternalEnrichers: false,
+        followRedirects: false,
+        enableEnhancedSecurity: false,
+      }
+    : undefined;
 
 const manifest = JSON.parse(
   fs.readFileSync(manifestPath, "utf8"),
@@ -69,6 +117,11 @@ const overall: Bucket = {
   correct: 0,
   missed: 0,
   skipped: 0,
+  expectedByLabel: {},
+  confusion: {},
+  trickyExpected: 0,
+  trickyFlagged: 0,
+  trickyBlocked: 0,
 };
 
 const run = async () => {
@@ -90,6 +143,7 @@ const run = async () => {
       reportLimit,
       groupKey: () => source.id,
       sourceOverride: source.id,
+      scanOptions,
     });
     const bucket = buckets[source.id];
     if (!bucket) {

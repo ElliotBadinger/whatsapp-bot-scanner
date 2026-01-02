@@ -11,9 +11,21 @@ function parseArgs(argv) {
     const key = arg.slice(2);
     const next = argv[i + 1];
     if (!next || next.startsWith("--")) {
-      args[key] = true;
+      if (args[key] === undefined) {
+        args[key] = true;
+      } else if (Array.isArray(args[key])) {
+        args[key].push(true);
+      } else {
+        args[key] = [args[key], true];
+      }
     } else {
-      args[key] = next;
+      if (args[key] === undefined) {
+        args[key] = next;
+      } else if (Array.isArray(args[key])) {
+        args[key].push(next);
+      } else {
+        args[key] = [args[key], next];
+      }
       i += 1;
     }
   }
@@ -48,19 +60,29 @@ const baselinePath =
 const baselineSummaryPath =
   args["baseline-summary"] || path.join(outputDir, "link-corpus.summary.json");
 const feedsDir = args["feeds-dir"] || path.join(outputDir, "feeds");
-const skipFeedRefresh = Boolean(args["skip-feed-refresh"]);
+const skipFeedRefresh = Boolean(args["skip-feed-refresh"] || args.offline);
+const skipBaseline = Boolean(args["skip-baseline"]);
+const disableLocalFeeds = Boolean(args["disable-local-feeds"] || args.offline);
+const sources = Array.isArray(args.source)
+  ? args.source
+  : args.source
+    ? [args.source]
+    : [];
+const maxRows = args["max-rows"];
 
 if (mode === "fetch" || mode === "all") {
-  run("node", [
-    "scripts/link-corpus.js",
-    "--full",
-    "--out",
-    baselinePath,
-    "--summary",
-    baselineSummaryPath,
-    "--feeds-dir",
-    feedsDir,
-  ]);
+  if (!skipBaseline) {
+    run("node", [
+      "scripts/link-corpus.js",
+      "--full",
+      "--out",
+      baselinePath,
+      "--summary",
+      baselineSummaryPath,
+      "--feeds-dir",
+      feedsDir,
+    ]);
+  }
   const fetchArgs = [
     "scripts/robustness/fetch-robustness-datasets.py",
     "--output-dir",
@@ -74,12 +96,15 @@ if (mode === "fetch" || mode === "all") {
   if (args["reports-dir"]) {
     fetchArgs.push("--reports-dir", args["reports-dir"]);
   }
-  if (args.source) {
-    fetchArgs.push("--source", args.source);
+  if (maxRows) {
+    fetchArgs.push("--max-rows", maxRows);
+  }
+  for (const source of sources) {
+    fetchArgs.push("--source", source);
   }
   run("python", fetchArgs);
 
-  if (fs.existsSync(manifestPath) && fs.existsSync(baselinePath)) {
+  if (!skipBaseline && fs.existsSync(manifestPath) && fs.existsSync(baselinePath)) {
     const manifest = readJson(manifestPath);
     const summary = fs.existsSync(baselineSummaryPath)
       ? readJson(baselineSummaryPath)
@@ -105,5 +130,7 @@ if (mode === "scan" || mode === "all") {
   run("bun", ["scripts/robustness/scan-robustness.ts"], {
     ROBUSTNESS_MANIFEST_PATH: manifestPath,
     LOCAL_FEED_DIR: feedsDir,
+    ROBUSTNESS_DISABLE_LOCAL_FEEDS: disableLocalFeeds ? "true" : "",
+    ROBUSTNESS_OFFLINE: args.offline ? "true" : "",
   });
 }

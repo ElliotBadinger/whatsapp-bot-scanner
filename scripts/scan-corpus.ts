@@ -14,12 +14,22 @@ const reportLimit = Number.parseInt(
   10,
 );
 
+const disableLocalFeeds =
+  (process.env.SCAN_CORPUS_DISABLE_LOCAL_FEEDS || "").toLowerCase() === "true";
+if (disableLocalFeeds) {
+  process.env.LOCAL_FEEDS_ENABLED = "false";
+}
+
+const offlineMode =
+  (process.env.SCAN_CORPUS_OFFLINE || "").toLowerCase() === "true";
+
 const feedDir = (process.env.SCAN_CORPUS_FEED_DIR || "").trim();
 if (feedDir) {
   process.env.LOCAL_FEED_DIR = feedDir;
 }
 
 const refreshFeeds =
+  !offlineMode &&
   (process.env.SCAN_CORPUS_REFRESH_FEEDS || "true").toLowerCase() !== "false" &&
   (process.env.SCAN_CORPUS_REFRESH_FEEDS || "true").toLowerCase() !== "0" &&
   !feedDir;
