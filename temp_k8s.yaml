@@ -160,7 +160,9 @@ spec:
           livenessProbe:
             exec:
               command:
-                - 'wget --header="Authorization: Bearer 0c631281be532906ba6af324a5ea626aec3de294bd3eb71aa0b2872942344fb7" -qO- http://127.0.0.1:8080/healthz || exit 1'
+                - /bin/sh
+                - -c
+                - node -e "const http=require('http');http.get('http://127.0.0.1:8080/healthz',{headers:{Authorization:'Bearer '+(process.env.CONTROL_PLANE_API_TOKEN||'')}},r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"
             failureThreshold: 10
             periodSeconds: 10
             timeoutSeconds: 3
