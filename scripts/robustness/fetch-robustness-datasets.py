@@ -155,6 +155,7 @@ DATASET_SOURCES = [
         "id": "urlscan_export",
         "type": "urlscan_export",
         "env": "URLSCAN_EXPORT_PATH",
+        "default_label": "suspicious",
         "source_url": "https://urlscan.io/docs/api/",
         "notes": "urlscan.io export (local JSON/JSONL)",
     },
@@ -410,6 +411,114 @@ def parse_phishtank_urls(raw: str) -> List[str]:
     return urls
 
 
+def normalize_chain(urls: Iterable[str]) -> List[str]:
+    chain: List[str] = []
+    for value in urls:
+        normalized = normalize_url(str(value))
+        if not normalized:
+            continue
+        if chain and chain[-1] == normalized:
+            continue
+        chain.append(normalized)
+    return chain
+
+
+def extract_urlscan_label(entry: Dict, fallback: str) -> str:
+    for key in ("label", "classification", "result", "verdict", "status"):
+        label = map_label(entry.get(key))
+        if label:
+            return label
+    verdicts = entry.get("verdicts")
+    if isinstance(verdicts, dict):
+        overall = verdicts.get("overall")
+        if isinstance(overall, dict):
+            for key in ("label", "classification", "verdict"):
+                label = map_label(overall.get(key))
+                if label:
+                    return label
+    return fallback
+
+
+def extract_urlscan_chain(entry: Dict) -> List[str]:
+    chain: List[str] = []
+    page = entry.get("page") if isinstance(entry.get("page"), dict) else {}
+    redirects = (
+        page.get("redirects")
+        if isinstance(page, dict)
+        else None
+    )
+    if not redirects:
+        data = entry.get("data") if isinstance(entry.get("data"), dict) else {}
+        redirects = data.get("redirects") if isinstance(data, dict) else None
+    if isinstance(redirects, list):
+        for item in redirects:
+            if isinstance(item, dict):
+                for key in ("url", "location", "redirect", "to", "target"):
+                    value = item.get(key)
+                    if value:
+                        chain.append(value)
+                        break
+            elif isinstance(item, str):
+                chain.append(item)
+
+    if not chain:
+        data = entry.get("data") if isinstance(entry.get("data"), dict) else {}
+        requests = data.get("requests") if isinstance(data, dict) else None
+        if isinstance(requests, list):
+            for item in requests:
+                if not isinstance(item, dict):
+                    continue
+                value = item.get("url")
+                if not value:
+                    request_obj = item.get("request")
+                    if isinstance(request_obj, dict):
+                        value = request_obj.get("url")
+                if value:
+                    chain.append(value)
+
+    return normalize_chain(chain)
+
+
+def build_urlscan_fixture(entry: Dict, fallback_label: str) -> Optional[Dict[str, object]]:
+    if not isinstance(entry, dict):
+        return None
+    task = entry.get("task") if isinstance(entry.get("task"), dict) else {}
+    page = entry.get("page") if isinstance(entry.get("page"), dict) else {}
+    input_raw = task.get("url") or entry.get("task_url") or entry.get("input")
+    final_raw = page.get("url") or page.get("final_url") or entry.get("page_url")
+    chain = extract_urlscan_chain(entry)
+
+    if not chain:
+        if input_raw:
+            chain.append(str(input_raw))
+        if final_raw and final_raw != input_raw:
+            chain.append(str(final_raw))
+
+    normalized_chain = normalize_chain(chain)
+    input_url = normalize_url(str(input_raw)) if input_raw else None
+    final_url = normalize_url(str(final_raw)) if final_raw else None
+    if not input_url and normalized_chain:
+        input_url = normalized_chain[0]
+    if not final_url and normalized_chain:
+        final_url = normalized_chain[-1]
+    if not input_url and not final_url:
+        return None
+
+    label = extract_urlscan_label(entry, fallback_label)
+    tags = ["urlscan"]
+    if normalized_chain and len(normalized_chain) > 1:
+        tags.append("redirect-chain")
+
+    return {
+        "url": input_url or final_url,
+        "label": label,
+        "inputUrl": input_url,
+        "finalUrl": final_url,
+        "redirectChain": normalized_chain if normalized_chain else None,
+        "tags": tags,
+    }
+
+
 def write_entry(
     output_file,
     url: str,
@@ -418,6 +527,7 @@ def write_entry(
     fetched_at: str,
     counts: Dict[str, int],
     metadata: Optional[Dict[str, str]] = None,
+    extra_fields: Optional[Dict[str, object]] = None,
     max_rows: Optional[int] = None,
 ) -> bool:
     if max_rows and counts.get("total", 0) >= max_rows:
@@ -425,6 +535,11 @@ def write_entry(
     entry = {"url": url, "label": label or "unknown", "source": source_id, "fetchedAt": fetched_at}
     if metadata:
         entry["metadata"] = metadata
+    if extra_fields:
+        for key, value in extra_fields.items():
+            if value is None:
+                continue
+            entry[key] = value
     output_file.write(json.dumps(entry) + "\n")
     counts["total"] = counts.get("total", 0) + 1
     label_key = label or "unknown"
@@ -1088,28 +1203,64 @@ def fetch_urlscan_export(
     if not export_path.exists():
         raise RuntimeError("URLSCAN export missing")
     counts: Dict[str, int] = {}
+    fallback_label = source.get("default_label", "suspicious")
     with open(output_path, "w", encoding="utf-8") as output_file:
         if export_path.suffix.lower() in (".jsonl", ".ndjson"):
             with open(export_path, "r", encoding="utf-8", errors="ignore") as handle:
-                parse_json_lines(
-                    handle,
+                for line in handle:
+                    trimmed = line.strip()
+                    if not trimmed:
+                        continue
+                    try:
+                        entry = json.loads(trimmed)
+                    except json.JSONDecodeError:
+                        continue
+                    fixture = build_urlscan_fixture(entry, fallback_label)
+                    if not fixture:
+                        continue
+                    if not write_entry(
+                        output_file,
+                        fixture["url"],
+                        fixture["label"],
+                        source["id"],
+                        fetched_at,
+                        counts,
+                        extra_fields={
+                            "inputUrl": fixture.get("inputUrl"),
+                            "finalUrl": fixture.get("finalUrl"),
+                            "redirectChain": fixture.get("redirectChain"),
+                            "tags": fixture.get("tags"),
+                        },
+                        max_rows=max_rows,
+                    ):
+                        break
+        else:
+            with open(export_path, "r", encoding="utf-8", errors="ignore") as handle:
+                try:
+                    data = json.load(handle)
+                except json.JSONDecodeError as exc:
+                    raise RuntimeError("Invalid URLSCAN export JSON") from exc
+            entries = data if isinstance(data, list) else [data]
+            for entry in entries:
+                fixture = build_urlscan_fixture(entry, fallback_label)
+                if not fixture:
+                    continue
+                if not write_entry(
                     output_file,
-                    counts,
+                    fixture["url"],
+                    fixture["label"],
                     source["id"],
                     fetched_at,
-                    "suspicious",
+                    counts,
+                    extra_fields={
+                        "inputUrl": fixture.get("inputUrl"),
+                        "finalUrl": fixture.get("finalUrl"),
+                        "redirectChain": fixture.get("redirectChain"),
+                        "tags": fixture.get("tags"),
+                    },
                     max_rows=max_rows,
-                )
-        else:
-            parse_json_file(
-                export_path,
-                output_file,
-                counts,
-                source["id"],
-                fetched_at,
-                "suspicious",
-                max_rows=max_rows,
-            )
+                ):
+                    break
     return counts
 
 

@@ -54,6 +54,9 @@ docs/security-reports/SECURITY_FINDINGS.md
 # Keep the comprehensive tickets for reference
 !docs/security-reports/COMPREHENSIVE_SECURITY_TICKETS.md
 
+# Benchmark reports (generated artifacts)
+benchmarks/report*.json
+
 # Test/utility scripts (not part of core setup)
 test_certificate_validation.js
 services/scan-orchestrator/src/index-original.ts

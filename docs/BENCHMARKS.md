@@ -33,6 +33,7 @@ It supports:
 
 - Near-real-time feeds: OpenPhish, URLHaus, CERT.PL, SANS, PhishTank.
 - Live IP/IOC feeds: ThreatFox, SSLBL.
+- Redirect-chain fixtures: urlscan export (`URLSCAN_EXPORT_PATH`).
 - Research datasets: PhreshPhish, URL-Phish, StealthPhisher, PhishOFE.
 - Reports/patterns: local report extraction from `scripts/dataset reports`.
 
@@ -57,6 +58,7 @@ node scripts/robustness-suite.mjs \
   --source openphish_feed \
   --source urlhaus_feed \
   --source threatfox_full \
+  --source urlscan_export \
   --source phreshphish \
   --source phishing_database
 ```
@@ -71,6 +73,16 @@ node scripts/robustness-suite.mjs \
   --offline
 ```
 
+## Redirect-Chain Fixtures (urlscan)
+
+Provide a local export file before fetch:
+
+```bash
+export URLSCAN_EXPORT_PATH=/path/to/urlscan-export.jsonl
+```
+
+The ingestion extracts `inputUrl`, `finalUrl`, and `redirectChain` when present.
+
 ## Metrics
 
 The scan output now reports:
@@ -79,6 +91,16 @@ The scan output now reports:
 - `flagged` binary metrics: precision, recall, TPR, FPR
 - `tricky` slice rates (flagged + blocked)
 - Full confusion matrix per source
+
+## Gates (CI-ready)
+
+Define red/amber/green thresholds in `benchmarks/gates.json`.
+Generate a report file and run the checker:
+
+```bash
+node scripts/robustness-suite.mjs --mode scan --skip-feed-refresh --offline > benchmarks/report.json
+npm run benchmarks:check
+```
 
 ## Avoiding Leakage
 

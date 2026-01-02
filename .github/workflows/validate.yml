@@ -56,3 +56,7 @@ jobs:
 
       - name: Run comprehensive validation
         run: ./scripts/validate-types.sh
+
+      - name: Benchmark gates
+        if: ${{ hashFiles('benchmarks/report.json') != '' }}
+        run: node scripts/benchmarks/check-gates.mjs --report benchmarks/report.json --gates benchmarks/gates.json

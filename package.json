@@ -28,7 +28,8 @@
     "scan-corpus": "bun scripts/scan-corpus.ts",
     "robustness": "node scripts/robustness-suite.mjs --mode all",
     "robustness:fetch": "node scripts/robustness-suite.mjs --mode fetch",
-    "robustness:scan": "node scripts/robustness-suite.mjs --mode scan"
+    "robustness:scan": "node scripts/robustness-suite.mjs --mode scan",
+    "benchmarks:check": "node scripts/benchmarks/check-gates.mjs --report benchmarks/report.json --gates benchmarks/gates.json"
   },
   "workspaces": [
     "packages/*",
