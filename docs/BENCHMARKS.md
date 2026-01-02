@@ -83,6 +83,14 @@ export URLSCAN_EXPORT_PATH=/path/to/urlscan-export.jsonl
 
 The ingestion extracts `inputUrl`, `finalUrl`, and `redirectChain` when present.
 
+To generate a larger synthetic export:
+
+```bash
+python scripts/benchmarks/generate-urlscan-fixtures.py \
+  --out storage/robustness/urlscan-export.jsonl \
+  --count 500
+```
+
 ## Metrics
 
 The scan output now reports:
