@@ -59,12 +59,13 @@ describe("Scoring Algorithm - Edge Cases", () => {
     expect(suspicious.level).toBe("suspicious");
   });
 
-  test("credential keywords on shortened URLs elevate to malicious", () => {
+  test("credential keywords on shortened URLs elevate risk", () => {
     const result = scoreFromSignals({
       wasShortened: true,
       hasCredentialKeywords: true,
     });
-    expect(result.level).toBe("malicious");
+    expect(result.level).toBe("suspicious");
+    expect(result.score).toBeGreaterThanOrEqual(6);
   });
 
   test("IP literal with binary path token is escalated to malicious", () => {

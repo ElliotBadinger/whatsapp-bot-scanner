@@ -29,6 +29,11 @@ describe("scan utils", () => {
       correct: 6,
       missed: 2,
       skipped: 1,
+      expectedByLabel: {},
+      confusion: {},
+      trickyExpected: 0,
+      trickyFlagged: 0,
+      trickyBlocked: 0,
     });
 
     expect(summary.flaggedRate).toBe(0.5);
