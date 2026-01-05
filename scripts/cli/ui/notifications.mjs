@@ -60,6 +60,10 @@ export class NotificationManager {
    * Trigger a pairing code alert with stunning visual display
    */
   triggerPairingAlert(code, phone, countdown = '02:00', callbacks = {}) {
+    if (this.ui?.success) {
+      this.ui.success(`Pairing code detected: ${code}`);
+    }
+
     // Play audio alert (non-blocking)
     if (this.audioEnabled) {
       this.playAlertSound();

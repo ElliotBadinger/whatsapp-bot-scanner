@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { execa } from 'execa';
+import * as execa from 'execa';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -51,7 +51,7 @@ class TestRunner {
     console.log('🧪 Running tests with Vitest...');
 
     try {
-      const result = await execa('npx', [
+      const result = await execa.execa('npx', [
         'vitest',
         'run',
         ...testFiles,
@@ -93,7 +93,7 @@ class TestRunner {
     console.log(`🎯 Running specific tests: ${testPatterns.join(', ')}`);
 
     try {
-      const result = await execa('npx', [
+      const result = await execa.execa('npx', [
         'vitest',
         'run',
         ...testPatterns,
@@ -115,7 +115,7 @@ class TestRunner {
     console.log('👀 Running tests in watch mode...');
 
     try {
-      const result = await execa('npx', [
+      const result = await execa.execa('npx', [
         'vitest',
         'watch',
         '--config', path.join(__dirname, 'test-config.mjs'),
@@ -136,7 +136,7 @@ class TestRunner {
     console.log('🔍 Running coverage analysis...');
 
     try {
-      const result = await execa('npx', [
+      const result = await execa.execa('npx', [
         'vitest',
         'run',
         '--coverage',

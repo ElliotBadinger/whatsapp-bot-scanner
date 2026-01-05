@@ -2,7 +2,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import os from 'node:os';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { execa } from 'execa';
+import * as execa from 'execa';
+
+vi.mock('execa', () => ({
+  execa: vi.fn(),
+}));
 
 // Import the components to test
 import { DockerOrchestrator } from '../../scripts/cli/core/docker.mjs';
@@ -188,7 +192,7 @@ describe('DockerOrchestrator Tests', () => {
   describe('Docker Compose Detection', () => {
     it('should detect Docker Compose v2', async () => {
       const mockExeca = vi.fn().mockResolvedValue({ stdout: 'Docker Compose version v2.23.0' });
-      vi.spyOn(execa, 'execa').mockImplementation(mockExeca);
+      execa.execa.mockImplementation(mockExeca);
 
       const result = await dockerOrchestrator.detectDockerCompose();
       expect(result.supportsComposeV2).toBe(true);
@@ -199,8 +203,8 @@ describe('DockerOrchestrator Tests', () => {
 
     it('should detect legacy docker-compose', async () => {
       const mockExeca = vi.fn();
-      mockExeca.mockImplementation((cmd) => {
-        if (cmd === 'docker' && Array.isArray(cmd) && cmd.includes('compose')) {
+      mockExeca.mockImplementation((cmd, args) => {
+        if (cmd === 'docker' && Array.isArray(args) && args[0] === 'compose') {
           return Promise.reject(new Error('Command failed'));
         }
         if (cmd === 'docker-compose') {
@@ -208,7 +212,7 @@ describe('DockerOrchestrator Tests', () => {
         }
         return Promise.reject(new Error('Command not found'));
       });
-      vi.spyOn(execa, 'execa').mockImplementation(mockExeca);
+      execa.execa.mockImplementation(mockExeca);
 
       const result = await dockerOrchestrator.detectDockerCompose();
       expect(result.supportsComposeV2).toBe(false);
@@ -221,7 +225,7 @@ describe('DockerOrchestrator Tests', () => {
   describe('Service Management', () => {
     it('should build and start services successfully', async () => {
       const mockExeca = vi.fn().mockResolvedValue({ stdout: 'Building...' });
-      vi.spyOn(execa, 'execa').mockImplementation(mockExeca);
+      execa.execa.mockImplementation(mockExeca);
 
       const result = await dockerOrchestrator.buildAndStartServices();
       expect(result).toBe(true);
@@ -230,8 +234,26 @@ describe('DockerOrchestrator Tests', () => {
     });
 
     it('should handle service build failures', async () => {
-      const mockExeca = vi.fn().mockRejectedValue(new Error('Build failed'));
-      vi.spyOn(execa, 'execa').mockImplementation(mockExeca);
+      const mockExeca = vi.fn().mockImplementation((cmd, args) => {
+        if (
+          cmd === 'docker' &&
+          Array.isArray(args) &&
+          args[0] === 'compose' &&
+          args[1] === 'version'
+        ) {
+          return Promise.resolve({ stdout: 'Docker Compose version v2.23.0' });
+        }
+        if (
+          cmd === 'docker' &&
+          Array.isArray(args) &&
+          args[0] === 'compose' &&
+          args[1] === 'build'
+        ) {
+          return Promise.reject(new Error('Build failed'));
+        }
+        return Promise.resolve({ stdout: '' });
+      });
+      execa.execa.mockImplementation(mockExeca);
 
       await expect(dockerOrchestrator.buildAndStartServices()).rejects.toThrow('Failed to build and start services');
 
@@ -241,13 +263,31 @@ describe('DockerOrchestrator Tests', () => {
 
   describe('Service Health Monitoring', () => {
     it('should check service health and return results', async () => {
-      const mockExeca = vi.fn().mockResolvedValue({
-        stdout: JSON.stringify([
-          { Service: 'wa-client', State: 'running', Health: 'healthy' },
-          { Service: 'control-plane', State: 'running', Health: 'healthy' }
-        ])
+      const mockExeca = vi.fn().mockImplementation((cmd, args) => {
+        if (
+          cmd === 'docker' &&
+          Array.isArray(args) &&
+          args[0] === 'compose' &&
+          args[1] === 'version'
+        ) {
+          return Promise.resolve({ stdout: 'Docker Compose version v2.23.0' });
+        }
+        if (
+          cmd === 'docker' &&
+          Array.isArray(args) &&
+          args[0] === 'compose' &&
+          args[1] === 'ps'
+        ) {
+          return Promise.resolve({
+            stdout: JSON.stringify([
+              { Service: 'wa-client', State: 'running', Health: 'healthy' },
+              { Service: 'control-plane', State: 'running', Health: 'healthy' },
+            ]),
+          });
+        }
+        return Promise.resolve({ stdout: '' });
       });
-      vi.spyOn(execa, 'execa').mockImplementation(mockExeca);
+      execa.execa.mockImplementation(mockExeca);
 
       const results = await dockerOrchestrator.checkAllServicesHealth();
       expect(results.length).toBeGreaterThan(0);
@@ -258,8 +298,26 @@ describe('DockerOrchestrator Tests', () => {
     });
 
     it('should handle service health check failures', async () => {
-      const mockExeca = vi.fn().mockRejectedValue(new Error('Health check failed'));
-      vi.spyOn(execa, 'execa').mockImplementation(mockExeca);
+      const mockExeca = vi.fn().mockImplementation((cmd, args) => {
+        if (
+          cmd === 'docker' &&
+          Array.isArray(args) &&
+          args[0] === 'compose' &&
+          args[1] === 'version'
+        ) {
+          return Promise.resolve({ stdout: 'Docker Compose version v2.23.0' });
+        }
+        if (
+          cmd === 'docker' &&
+          Array.isArray(args) &&
+          args[0] === 'compose' &&
+          args[1] === 'ps'
+        ) {
+          return Promise.reject(new Error('Health check failed'));
+        }
+        return Promise.resolve({ stdout: '' });
+      });
+      execa.execa.mockImplementation(mockExeca);
 
       await expect(dockerOrchestrator.checkServiceHealth('wa-client')).rejects.toThrow('Failed to check health for wa-client');
 
@@ -322,7 +380,9 @@ describe('PairingManager Tests', () => {
   describe('Countdown Timer', () => {
     it('should start and stop countdown timer', () => {
       // Mock setInterval and clearInterval
-      const mockSetInterval = vi.fn();
+      const originalSetInterval = global.setInterval;
+      const originalClearInterval = global.clearInterval;
+      const mockSetInterval = vi.fn().mockReturnValue(1);
       const mockClearInterval = vi.fn();
       global.setInterval = mockSetInterval;
       global.clearInterval = mockClearInterval;
@@ -336,8 +396,8 @@ describe('PairingManager Tests', () => {
       expect(mockClearInterval).toHaveBeenCalled();
 
       // Restore original functions
-      delete global.setInterval;
-      delete global.clearInterval;
+      global.setInterval = originalSetInterval;
+      global.clearInterval = originalClearInterval;
     });
   });
 });

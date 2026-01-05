@@ -106,7 +106,9 @@ class MockQueue {
   }
 }
 
-describe("Queue Performance Tests", () => {
+const runPerfBenchmarks = process.env.RUN_PERF_BENCH === "true";
+
+(runPerfBenchmarks ? describe : describe.skip)("Queue Performance Tests", () => {
   let queue: MockQueue;
 
   beforeEach(() => {

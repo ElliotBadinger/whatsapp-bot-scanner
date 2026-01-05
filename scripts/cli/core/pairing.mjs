@@ -77,6 +77,7 @@ export class PairingManager {
       "session established",
       "pairing complete",
       "connected to whatsapp",
+      "successfully paired",
     ];
 
     this.ui.info("🎯 Configured pairing success detection for specific events");

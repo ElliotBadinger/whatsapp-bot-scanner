@@ -2,7 +2,7 @@ import { vi } from 'vitest';
 import os from 'node:os';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { execa } from 'execa';
+import * as execa from 'execa';
 
 // Test utilities and mocking infrastructure
 export class TestUtilities {
@@ -124,15 +124,15 @@ export class TestUtilities {
       rootDir,
       ui,
       currentConfig: {},
-      async loadOrCreateConfig() {
+      loadOrCreateConfig: vi.fn(async function loadOrCreateConfig() {
         return this.currentConfig;
-      },
-      async updateConfig(apiKeys) {
+      }),
+      updateConfig: vi.fn(async function updateConfig(apiKeys) {
         this.currentConfig = { ...this.currentConfig, ...apiKeys };
-      },
-      getConfig() {
+      }),
+      getConfig: vi.fn(function getConfig() {
         return this.currentConfig;
-      },
+      }),
       parseConfig(configContent) {
         const config = {};
         const lines = configContent.split('\n');
@@ -163,35 +163,35 @@ export class TestUtilities {
       ui,
       activeLogStreams: new Map(),
       healthCheckIntervals: new Map(),
-      async detectDockerCompose() {
+      detectDockerCompose: vi.fn(async function detectDockerCompose() {
         return {
           command: ['docker', 'compose'],
           version: 'v2',
           supportsComposeV2: true
         };
-      },
-      async buildAndStartServices() {
+      }),
+      buildAndStartServices: vi.fn(async function buildAndStartServices() {
         return true;
-      },
-      async getServiceStatus() {
+      }),
+      getServiceStatus: vi.fn(async function getServiceStatus() {
         return 'wa-client Up, control-plane Up, scan-orchestrator Up';
-      },
-      async streamLogsWithFormatting(serviceName, options) {
+      }),
+      streamLogsWithFormatting: vi.fn(async function streamLogsWithFormatting(serviceName, options) {
         return {
           process: { on: vi.fn(), kill: vi.fn() },
           stop: vi.fn()
         };
-      },
-      async checkAllServicesHealth() {
+      }),
+      checkAllServicesHealth: vi.fn(async function checkAllServicesHealth() {
         return [
           { service: 'wa-client', status: 'running', healthy: true, state: 'running', health: 'healthy' },
           { service: 'control-plane', status: 'running', healthy: true, state: 'running', health: 'healthy' },
           { service: 'scan-orchestrator', status: 'running', healthy: true, state: 'running', health: 'healthy' }
         ];
-      },
-      displayHealthStatus(healthResults) {
+      }),
+      displayHealthStatus: vi.fn(function displayHealthStatus(healthResults) {
         // Mock display method
-      },
+      }),
       stopAllLogStreams() {
         this.activeLogStreams.clear();
       },
@@ -209,6 +209,16 @@ export class TestUtilities {
    * @returns {Object} Mock pairing manager
    */
   static createMockPairingManager(dockerOrchestrator, ui, notifications) {
+    const extractPairingCode = vi.fn((line) => {
+      const match = line.match(/code: (\d+)/);
+      return match ? match[1] : null;
+    });
+
+    const extractPhoneNumber = vi.fn((line) => {
+      const match = line.match(/phone: (\+\d+)/);
+      return match ? match[1] : null;
+    });
+
     return {
       dockerOrchestrator,
       ui,
@@ -223,14 +233,8 @@ export class TestUtilities {
         'pairing complete',
         'connected to whatsapp'
       ],
-      extractPairingCode(line) {
-        const match = line.match(/code: (\d+)/);
-        return match ? match[1] : null;
-      },
-      extractPhoneNumber(line) {
-        const match = line.match(/phone: (\+\d+)/);
-        return match ? match[1] : null;
-      },
+      extractPairingCode,
+      extractPhoneNumber,
       generateSimulatedPairingCode() {
         return Math.floor(100000 + Math.random() * 900000).toString();
       },

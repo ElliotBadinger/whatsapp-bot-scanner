@@ -1,6 +1,6 @@
 import { request } from "undici";
 import { logger } from "../log";
-import { assertSafeUrl } from "../ssrf";
+import { isPrivateIp } from "../ssrf";
 
 export interface SecurityHeaders {
   hsts: boolean;
@@ -43,13 +43,18 @@ export async function httpFingerprinting(
 
   try {
     if (enableSSRFGuard) {
-      try {
-        await assertSafeUrl(url);
-      } catch (err) {
+      const hostname = new URL(url).hostname;
+      const isIpv4Literal = /^\d+\.\d+\.\d+\.\d+$/.test(hostname);
+      const isBracketedIpv6 = hostname.startsWith("[") && hostname.endsWith("]");
+      const ipCandidate = isBracketedIpv6 ? hostname.slice(1, -1) : hostname;
+
+      if (
+        hostname === "localhost" ||
+        (isIpv4Literal && isPrivateIp(ipCandidate)) ||
+        (isBracketedIpv6 && isPrivateIp(ipCandidate))
+      ) {
         result.suspicionScore += 1.0;
-        result.reasons.push(
-          err instanceof Error ? `SSRF guard blocked URL: ${err.message}` : "SSRF guard blocked URL",
-        );
+        result.reasons.push("URL points to private IP address");
         return result;
       }
     }
@@ -123,13 +128,21 @@ function analyzeRedirects(
 
   try {
     const originalHost = new URL(originalUrl).hostname;
-    const redirectHost = new URL(location).hostname;
+    const redirectUrl = new URL(location, originalUrl);
+    const redirectHost = redirectUrl.hostname;
 
     if (originalHost !== redirectHost) {
-      if (redirectHost.includes("localhost")) {
+      if (redirectHost === "localhost" || redirectHost.includes("localhost")) {
         result.suspiciousRedirects = true;
         result.suspicionScore += 0.6;
         result.reasons.push("Suspicious redirect to local address");
+        return;
+      }
+
+      if (/^\d+\.\d+\.\d+\.\d+$/.test(redirectHost) && isPrivateIp(redirectHost)) {
+        result.suspiciousRedirects = true;
+        result.suspicionScore += 0.6;
+        result.reasons.push("Suspicious redirect to private/local address");
       }
     }
   } catch {
@@ -166,4 +179,3 @@ function handleHttpError(
 
   return result;
 }
-

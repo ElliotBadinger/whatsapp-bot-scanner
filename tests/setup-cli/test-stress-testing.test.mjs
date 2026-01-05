@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import os from 'node:os';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { execa } from 'execa';
+import * as execa from 'execa';
 
 // Import the components to test
 import { UnifiedCLI } from '../../scripts/cli/core/unified-cli.mjs';

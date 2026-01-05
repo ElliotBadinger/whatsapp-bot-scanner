@@ -6,14 +6,14 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { CompatibilityManager } from '../../scripts/cli/core/compatibility.mjs';
-import { execSync } from 'child_process';
+import * as childProcess from 'child_process';
 import { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const ROOT_DIR = path.resolve(__dirname, '../../../');
+const ROOT_DIR = path.resolve(__dirname, '../..');
 
 describe('Backward Compatibility Layer', () => {
   let compatibilityManager;
@@ -113,6 +113,7 @@ describe('Backward Compatibility Layer', () => {
       const scriptPath = path.join(ROOT_DIR, 'scripts', scriptName);
 
       // Create a test script
+      require('fs').mkdirSync(path.dirname(scriptPath), { recursive: true });
       const testScriptContent = `#!/bin/bash\necho "Test script executed"`;
       require('fs').writeFileSync(scriptPath, testScriptContent);
       require('fs').chmodSync(scriptPath, '755');
@@ -180,19 +181,10 @@ describe('Compatibility Layer Integration', () => {
 
 describe('Fallback Mechanisms', () => {
   it('should handle script execution failures gracefully', () => {
-    // Mock execSync to throw an error
-    const originalExecSync = execSync;
-    execSync.mockImplementationOnce(() => {
-      throw new Error('Test execution error');
-    });
-
-    const scriptName = 'nonexistent-script.sh';
+    const compatibilityManager = new CompatibilityManager();
 
     // This should not crash, just return false
-    const result = compatibilityManager.executeOriginalScript(scriptName, []);
+    const result = compatibilityManager.executeOriginalScript('nonexistent-script.sh', []);
     expect(result).toBe(false);
-
-    // Restore original execSync
-    execSync.mockRestore();
   });
 });

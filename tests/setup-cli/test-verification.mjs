@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { execa } from 'execa';
+import * as execa from 'execa';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -141,7 +141,7 @@ class TestVerification {
 
     try {
       // Run a quick test to verify execution
-      const result = await execa('npx', [
+      const result = await execa.execa('npx', [
         'vitest',
         'run',
         '--reporter=json',
@@ -231,7 +231,7 @@ class TestVerification {
 
       for (const dep of dependencies) {
         try {
-          await execa('npm', ['list', dep], {
+          await execa.execa('npm', ['list', dep], {
             stdio: 'pipe',
             cwd: __dirname
           });

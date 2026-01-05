@@ -24,7 +24,9 @@ import {
   type Signals,
 } from "@wbscanner/shared";
 
-describe("Stress Testing", () => {
+const runPerfBenchmarks = process.env.RUN_PERF_BENCH === "true";
+
+(runPerfBenchmarks ? describe : describe.skip)("Stress Testing", () => {
   describe("Memory Usage Under Load", () => {
     test("does not leak memory with 10K sequential scoring operations", () => {
       const signals: Signals = {

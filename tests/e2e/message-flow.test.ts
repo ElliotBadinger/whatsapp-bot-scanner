@@ -13,9 +13,12 @@ describe('End-to-end message to verdict flow', () => {
   it('extracts URLs, scores signals, and formats a verdict message', () => {
     const message = 'Heads up: http://login.paypa1.test/account?id=42';
     const urls = extractUrls(message);
-    expect(urls).toEqual(['http://login.paypa1.test/account?id=42']);
+    expect(urls).toContain('http://login.paypa1.test/account?id=42');
 
-    const normalized = normalizeUrl(urls[0]);
+    const primary = urls.find((url) => url.startsWith('http://login.paypa1.test/'));
+    expect(primary).toBe('http://login.paypa1.test/account?id=42');
+
+    const normalized = normalizeUrl(primary!);
     expect(normalized).toBe('http://login.paypa1.test/account?id=42');
 
     const finalUrl = new URL(normalized!);

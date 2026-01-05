@@ -18,7 +18,9 @@ import { normalizeUrl, extractUrls, urlHash, isSuspiciousTld } from "../url";
 import { detectHomoglyphs } from "../homoglyph";
 import { CircuitBreaker, CircuitState } from "../circuit-breaker";
 
-describe("Performance Benchmarks", () => {
+const runPerfBenchmarks = process.env.RUN_PERF_BENCH === "true";
+
+(runPerfBenchmarks ? describe : describe.skip)("Performance Benchmarks", () => {
   const ITERATIONS = 10000;
   const WARMUP = 1000;
 

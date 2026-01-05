@@ -1,7 +1,5 @@
 jest.mock("node:dns/promises", () => ({
   lookup: jest.fn(),
-  resolve4: jest.fn(),
-  resolve6: jest.fn(),
 }));
 
 import { isPrivateHostname, isPrivateIp } from "../ssrf";
@@ -13,16 +11,9 @@ const { lookup } = jest.requireMock("node:dns/promises") as {
   >;
 };
 
-const { resolve4, resolve6 } = jest.requireMock("node:dns/promises") as {
-  resolve4: jest.MockedFunction<(hostname: string) => Promise<string[]>>;
-  resolve6: jest.MockedFunction<(hostname: string) => Promise<string[]>>;
-};
-
 describe("SSRF guards", () => {
   beforeEach(() => {
     lookup.mockReset();
-    resolve4.mockReset();
-    resolve6.mockReset();
   });
 
   it("detects private ipv4 ranges", () => {
@@ -41,30 +32,19 @@ describe("SSRF guards", () => {
   });
 
   it("flags private hostnames based on dns lookup", async () => {
-    resolve4.mockResolvedValueOnce(["192.168.1.5"]); // NOSONAR - test vector
-    resolve6.mockResolvedValueOnce([]);
+    lookup.mockResolvedValueOnce([{ address: "192.168.1.5", family: 4 }]); // NOSONAR - test vector
     await expect(isPrivateHostname("internal.test")).resolves.toBe(true);
 
-    resolve4.mockResolvedValueOnce(["8.8.8.8"]); // NOSONAR - test vector
-    resolve6.mockResolvedValueOnce([]);
+    lookup.mockResolvedValueOnce([{ address: "8.8.8.8", family: 4 }]); // NOSONAR - test vector
     await expect(isPrivateHostname("public.test")).resolves.toBe(false);
   });
 
   it("fails closed when dns lookup errors", async () => {
-    resolve4.mockRejectedValueOnce(new Error("dns failure"));
-    resolve6.mockRejectedValueOnce(new Error("dns failure"));
     lookup.mockRejectedValueOnce(new Error("dns failure"));
     await expect(isPrivateHostname("unknown.test")).resolves.toBe(true);
   });
 
   it("fails closed for non-ipv6 bracketed hostnames", async () => {
-    resolve4.mockImplementationOnce(async (value) => {
-      // expect(value).toBe("[example.com]");
-      throw new Error("dns failure");
-    });
-    resolve6.mockRejectedValueOnce(new Error("dns failure"));
-    lookup.mockRejectedValueOnce(new Error("dns failure"));
-
     await expect(isPrivateHostname("[example.com]")).resolves.toBe(true);
   });
 });

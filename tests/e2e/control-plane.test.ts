@@ -1,5 +1,9 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import Fastify from 'fastify';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
 vi.mock('ioredis', () => ({
   __esModule: true,
@@ -11,7 +15,13 @@ vi.mock('ioredis', () => ({
 }));
 
 vi.mock('bullmq', () => ({
-  Queue: vi.fn().mockImplementation(() => ({ add: vi.fn(), on: vi.fn() })),
+  Queue: class QueueMock {
+    add = vi.fn();
+    on = vi.fn();
+    constructor() {
+      // no-op
+    }
+  },
 }));
 
 vi.mock('confusables', () => ({ __esModule: true, default: (input: string) => input }));
@@ -30,27 +40,31 @@ process.env.CONTROL_PLANE_API_TOKEN = 'test-token';
 
 describe('Control plane integration', () => {
   const redisDel = vi.fn().mockResolvedValue(1);
+  const redisGet = vi.fn().mockResolvedValue(null);
   const queueAdd = vi.fn().mockResolvedValue({ id: 'job-123' });
-  const pgClient = {
-    connect: vi.fn().mockResolvedValue(undefined),
+  const dbClient = {
     query: vi.fn(),
   } as any;
 
   beforeEach(() => {
     redisDel.mockReset();
     redisDel.mockResolvedValue(1);
+    redisGet.mockReset();
+    redisGet.mockResolvedValue(null);
     queueAdd.mockReset();
     queueAdd.mockResolvedValue({ id: 'job-123' });
-    pgClient.query.mockReset();
+    dbClient.query.mockReset();
   });
 
   it('invalidates caches and enqueues rescan', async () => {
-    pgClient.query.mockResolvedValueOnce({ rows: [{ chat_id: 'chat-123', message_id: 'msg-456' }] });
+    dbClient.query.mockResolvedValueOnce({
+      rows: [{ chat_id: 'chat-123', message_id: 'msg-456' }],
+    });
 
     const { buildServer } = await import('../../services/control-plane/src/index');
     const { app } = await buildServer({
-      pgClient,
-      redisClient: { del: redisDel } as any,
+      dbClient,
+      redisClient: { del: redisDel, get: redisGet } as any,
       queue: { add: queueAdd } as any,
     });
 
@@ -76,23 +90,30 @@ describe('Control plane integration', () => {
   });
 
   it('streams stored artifacts from disk', async () => {
-    const screenshotPath = 'storage/urlscan-artifacts/test_e2e.png';
+    const urlHash =
+      '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    const screenshotPath = resolve(
+      process.env.URLSCAN_ARTIFACT_DIR || resolve(repoRoot, 'storage/urlscan-artifacts'),
+      'test_e2e.png',
+    );
     const fs = await import('node:fs/promises');
     await Fastify().ready();
-    await fs.mkdir('storage/urlscan-artifacts', { recursive: true });
+    await fs.mkdir(dirname(screenshotPath), { recursive: true });
     await fs.writeFile(screenshotPath, 'fake', 'utf8');
-    pgClient.query.mockResolvedValueOnce({ rows: [{ urlscan_screenshot_path: screenshotPath }] });
+    dbClient.query.mockResolvedValueOnce({
+      rows: [{ urlscan_screenshot_path: screenshotPath }],
+    });
 
     const { buildServer } = await import('../../services/control-plane/src/index');
     const { app } = await buildServer({
-      pgClient,
-      redisClient: { del: redisDel } as any,
+      dbClient,
+      redisClient: { del: redisDel, get: redisGet } as any,
       queue: { add: queueAdd } as any,
     });
 
     const response = await app.inject({
       method: 'GET',
-      url: '/scans/hash123/urlscan-artifacts/screenshot',
+      url: `/scans/${urlHash}/urlscan-artifacts/screenshot`,
       headers: { authorization: 'Bearer test-token' },
     });
 
@@ -130,12 +151,12 @@ describe('Control plane integration', () => {
   });
 
   it('reports scan status via /status endpoint', async () => {
-    pgClient.query.mockResolvedValueOnce({ rows: [{ scans: '12', malicious: '3' }] });
+    dbClient.query.mockResolvedValueOnce({ rows: [{ scans: '12', malicious: '3' }] });
 
     const { buildServer } = await import('../../services/control-plane/src/index');
     const { app } = await buildServer({
-      pgClient,
-      redisClient: { del: redisDel } as any,
+      dbClient,
+      redisClient: { del: redisDel, get: redisGet } as any,
       queue: { add: queueAdd } as any,
     });
 
@@ -146,7 +167,7 @@ describe('Control plane integration', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body)).toEqual({ scans: 12, malicious: 3 });
+    expect(JSON.parse(response.body)).toEqual({ scans: 12, malicious: 3, groups: 0 });
   });
 });
 
@@ -165,6 +186,7 @@ describe('WA admin command integration', () => {
       body: '!scanner rescan http://example.com',
       author: 'user',
       from: 'user',
+      getContact: async () => ({ id: { _serialized: 'user' } }),
       getChat: async () => ({
         isGroup: true,
         sendMessage: chat.sendMessage.bind(chat),

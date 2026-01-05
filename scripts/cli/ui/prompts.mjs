@@ -77,7 +77,7 @@ export class UserInterface {
    */
   async prompt(options) {
     if (!this.interactive) {
-      return options.initialValue || '';
+      return options.default ?? options.initialValue ?? options.initial ?? '';
     }
 
     try {

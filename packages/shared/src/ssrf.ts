@@ -27,30 +27,22 @@ const BLOCKED_HOSTNAMES = [
 export async function isPrivateHostname(hostname: string): Promise<boolean> {
   const lowerHostname = hostname.toLowerCase();
 
+  if (lowerHostname.startsWith("[") || lowerHostname.endsWith("]")) {
+    return true; // fail closed for bracketed hostnames (except literal IPs handled elsewhere)
+  }
+
   // Check blocked hostnames first
   if (BLOCKED_HOSTNAMES.includes(lowerHostname)) {
     return true;
   }
 
   try {
-    const results = await Promise.allSettled([
-      dns.resolve4(hostname),
-      dns.resolve6(hostname),
-    ]);
-
-    // If all failed, we consider it a failure and fail closed
-    if (results.every((r) => r.status === "rejected")) {
-      throw new Error("DNS resolution failed");
+    const addresses = await dns.lookup(hostname, { all: true });
+    if (!Array.isArray(addresses) || addresses.length === 0) {
+      throw new Error("DNS lookup returned no addresses");
     }
 
-    const addrs: string[] = [];
-    for (const res of results) {
-      if (res.status === "fulfilled") {
-        addrs.push(...res.value);
-      }
-    }
-
-    return addrs.some((ip) => isPrivateIp(ip));
+    return addresses.some((addr) => isPrivateIp(addr.address));
   } catch {
     return true; // fail closed
   }

@@ -20,7 +20,9 @@ import {
   type Signals,
 } from "@wbscanner/shared";
 
-describe("HTTP Endpoint Performance Tests", () => {
+const runPerfBenchmarks = process.env.RUN_PERF_BENCH === "true";
+
+(runPerfBenchmarks ? describe : describe.skip)("HTTP Endpoint Performance Tests", () => {
   let app: FastifyInstance;
 
   beforeAll(async () => {

@@ -25,14 +25,14 @@ beforeAll(() => {
 
 describe('Control plane Postgres persistence', () => {
   it('persists override records through the REST API', async () => {
-    const pgClient = {
+    const dbClient = {
       query: vi.fn().mockResolvedValue({ rows: [] }),
     } as any;
     const redisClient = { del: vi.fn() } as any;
     const queue = { add: vi.fn() } as any;
 
     const { buildServer } = await import('../../services/control-plane/src/index');
-    const { app } = await buildServer({ pgClient, redisClient, queue });
+    const { app } = await buildServer({ dbClient, redisClient, queue });
 
     const response = await app.inject({
       method: 'POST',
@@ -49,7 +49,7 @@ describe('Control plane Postgres persistence', () => {
     });
 
     expect(response.statusCode).toBe(201);
-    expect(pgClient.query).toHaveBeenCalledWith(
+    expect(dbClient.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO overrides'),
       expect.arrayContaining(['abc', null, 'deny'])
     );

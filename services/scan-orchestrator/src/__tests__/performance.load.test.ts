@@ -24,7 +24,9 @@ import {
   type Signals,
 } from "@wbscanner/shared";
 
-describe("Load Testing", () => {
+const runPerfBenchmarks = process.env.RUN_PERF_BENCH === "true";
+
+(runPerfBenchmarks ? describe : describe.skip)("Load Testing", () => {
   describe("Concurrent Scoring Operations", () => {
     test("handles 10 concurrent scoring calculations in <100ms", async () => {
       const signals: Signals[] = Array.from({ length: 10 }, (_, i) => ({

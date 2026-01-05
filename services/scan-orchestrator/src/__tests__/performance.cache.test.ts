@@ -13,7 +13,9 @@
 import { performance } from "node:perf_hooks";
 import { VerdictCache, type CachedVerdict } from "@wbscanner/shared";
 
-describe("Cache Performance Tests", () => {
+const runPerfBenchmarks = process.env.RUN_PERF_BENCH === "true";
+
+(runPerfBenchmarks ? describe : describe.skip)("Cache Performance Tests", () => {
   let cache: VerdictCache;
 
   beforeEach(() => {

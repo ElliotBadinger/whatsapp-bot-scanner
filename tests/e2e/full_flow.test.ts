@@ -7,14 +7,18 @@ import { request } from 'undici';
 
 const CONTROL_PLANE_URL = process.env.CONTROL_PLANE_URL || 'http://localhost:3000';
 const API_TOKEN = process.env.CONTROL_PLANE_API_TOKEN || 'dev-token';
+const RUN_STACK_E2E = process.env.RUN_STACK_E2E === 'true';
 
 describe('End-to-End System Flow', () => {
   // Skip if we can't reach the control plane
   let isReachable = false;
 
   beforeAll(async () => {
+    if (!RUN_STACK_E2E) {
+      return;
+    }
     try {
-      const { statusCode } = await request(`${CONTROL_PLANE_URL}/health`, {
+      const { statusCode } = await request(`${CONTROL_PLANE_URL}/healthz`, {
         method: 'GET',
       });
       if (statusCode === 200) {
@@ -26,7 +30,7 @@ describe('End-to-End System Flow', () => {
   });
 
   it('should scan a URL and return a verdict', async () => {
-    if (!isReachable) {
+    if (!RUN_STACK_E2E || !isReachable) {
       console.log('Skipping test: Control plane unreachable');
       return;
     }

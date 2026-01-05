@@ -18,6 +18,7 @@ describe('WA admin command scenarios', () => {
     author: 'admin',
     from: 'admin',
     getChat: async () => chat,
+    getContact: async () => ({ id: { _serialized: 'admin' } }),
   } as any);
 
   beforeEach(() => {

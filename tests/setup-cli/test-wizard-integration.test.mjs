@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import os from 'node:os';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { execa } from 'execa';
+import * as execa from 'execa';
 
 // Import the components to test
 import { SetupWizard } from '../../scripts/cli/core/setup-wizard.mjs';
@@ -232,9 +232,7 @@ describe('CLI Command Integration Tests', () => {
         })
       };
 
-      // Replace the setup wizard creation
-      const originalSetupWizard = SetupWizard;
-      vi.spyOn(global, 'SetupWizard').mockImplementation(() => mockSetupWizard);
+      vi.spyOn(cli, 'createSetupWizard').mockReturnValue(mockSetupWizard);
 
       // Mock process.exit to prevent actual exit
       const originalExit = process.exit;
@@ -264,9 +262,7 @@ describe('CLI Command Integration Tests', () => {
         run: vi.fn().mockRejectedValue(new Error('Setup failed due to missing dependencies'))
       };
 
-      // Replace the setup wizard creation
-      const originalSetupWizard = SetupWizard;
-      vi.spyOn(global, 'SetupWizard').mockImplementation(() => mockSetupWizard);
+      vi.spyOn(cli, 'createSetupWizard').mockReturnValue(mockSetupWizard);
 
       // Mock process.exit to prevent actual exit
       const originalExit = process.exit;

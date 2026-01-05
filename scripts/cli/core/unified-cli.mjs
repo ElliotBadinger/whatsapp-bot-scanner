@@ -44,6 +44,13 @@ export class UnifiedCLI {
       }
     } catch (error) {
       handleError(error, this);
+      if (process.env.NODE_ENV === 'test') {
+        return {
+          success: false,
+          message: 'Setup failed',
+          error: error?.message || String(error)
+        };
+      }
       process.exit(1);
     }
   }

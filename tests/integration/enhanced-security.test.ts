@@ -30,14 +30,11 @@ describe('Enhanced Security Integration', () => {
       const url = 'https://phishing-site.example.com/login';
       const hash = 'test-hash-2';
 
-      await redis.set(`threat:feed:${hash}`, JSON.stringify({
-        url,
-        urlHash: hash,
-        firstSeen: Date.now(),
-        lastSeen: Date.now(),
-        confidence: 0.9,
-        tags: ['openphish'],
-      }), 'EX', 86400);
+      const normalizedUrl = new URL(url);
+      normalizedUrl.search = '';
+      normalizedUrl.hash = '';
+
+      await redis.sadd('threat_db:openphish', normalizedUrl.toString().toLowerCase());
 
       const result = await analyzer.analyze(url, hash);
 

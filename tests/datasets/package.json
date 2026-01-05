@@ -7,9 +7,9 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@types/node": "^20.11.30",
+    "@types/node": "^22.15.29",
     "ioredis-mock": "^8.0.0",
-    "typescript": "^5.5.4",
-    "vitest": "^1.6.0"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.15"
   }
 }

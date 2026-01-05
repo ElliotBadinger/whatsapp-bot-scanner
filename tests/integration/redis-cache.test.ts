@@ -74,10 +74,9 @@ describe('Scan orchestrator Redis caching', () => {
       ttl: redisState.ttlMock,
     } as unknown as Redis;
 
-    (globalThis as any).__WBSCANNER_TEST_REDIS__ = redisStub;
-
     const orchestrator = await import('../../services/scan-orchestrator/src/index');
     const { fetchGsbAnalysis } = orchestrator.__testables;
+    orchestrator.__testables.setRedisForTests(redisStub);
 
     const first = await fetchGsbAnalysis('https://cache.test', 'abc123');
 

@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { execa } from 'execa';
+import * as execa from 'execa';
 
 // Global test setup
 export function setup() {

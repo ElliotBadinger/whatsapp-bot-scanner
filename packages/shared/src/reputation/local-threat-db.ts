@@ -24,9 +24,12 @@ export class LocalThreatDatabase {
   private readonly COLLABORATIVE_KEY = "threat_db:collaborative";
   private readonly LAST_UPDATE_KEY = "threat_db:last_update";
 
-  constructor(redis: Redis, options: LocalThreatDatabaseOptions) {
+  constructor(redis: Redis, options: Partial<LocalThreatDatabaseOptions> = {}) {
     this.redis = redis;
-    this.options = options;
+    this.options = {
+      feedUrl: options.feedUrl ?? "https://openphish.com/feed.txt",
+      updateIntervalMs: options.updateIntervalMs ?? 2 * 60 * 60 * 1000,
+    };
   }
 
   async start(): Promise<void> {
@@ -248,4 +251,3 @@ export class LocalThreatDatabase {
     }
   }
 }
-

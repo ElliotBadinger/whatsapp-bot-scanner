@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import os from 'node:os';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { execa } from 'execa';
+import * as execa from 'execa';
 
 // Import the unified CLI system
 import { UnifiedCLI } from '../../scripts/cli/core/unified-cli.mjs';
@@ -373,10 +373,15 @@ describe('CLI Integration Tests', () => {
       // Execute the CLI and expect it to handle the error path
       const result = await cli.run();
 
-      expect(result).toBeUndefined();
+      expect(result).toEqual(
+        expect.objectContaining({
+          success: false,
+          message: 'Setup failed',
+        }),
+      );
       expect(mockSetupWizard.run).toHaveBeenCalled();
       expect(createWizardSpy).toHaveBeenCalled();
-      expect(process.exit).toHaveBeenCalledWith(1);
+      expect(process.exit).not.toHaveBeenCalled();
 
       // Restore originals
       createWizardSpy.mockRestore();

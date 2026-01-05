@@ -20,7 +20,7 @@ import { fileURLToPath } from 'url';
 // Get current directory
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const ROOT_DIR = path.resolve(__dirname, '../../../../');
+const ROOT_DIR = path.resolve(__dirname, '../../..');
 
 /**
  * Script mapping for backward compatibility
