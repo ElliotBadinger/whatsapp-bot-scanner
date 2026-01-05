@@ -308,7 +308,11 @@ export class EnhancedSecurityAnalyzer {
 
   async updateFeeds(): Promise<void> {
     if (config.enhancedSecurity.enabled && config.enhancedSecurity.localThreatDb.enabled) {
-      await this.localThreatDb.updateOpenPhishFeed();
+      if (process.env.OPENPHISH_FEED_URL) {
+        await this.localThreatDb.updateOpenPhishFeed();
+      } else {
+        logger.info('Skipping OpenPhish fetch: OPENPHISH_FEED_URL not set');
+      }
       logger.info('Threat feeds updated manually');
     }
   }
