@@ -1,6 +1,8 @@
 import { request } from "undici";
 import { logger } from "../log";
 import type Redis from "ioredis";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 
 export interface LocalThreatResult {
   score: number;
@@ -28,17 +30,15 @@ export class LocalThreatDatabase {
   }
 
   async start(): Promise<void> {
-    // Initial feed update - non-fatal if it fails
     try {
       await this.updateOpenPhishFeed();
     } catch (err) {
       logger.warn(
         { err },
-        "Initial OpenPh feed update failed; will retry on next interval",
+        "Initial OpenPhish update failed; will retry on next interval",
       );
     }
 
-    // Schedule periodic updates
     this.updateTimer = setInterval(() => {
       this.updateOpenPhishFeed().catch((err) => {
         logger.warn({ err }, "Failed to update OpenPhish feed");
@@ -56,7 +56,7 @@ export class LocalThreatDatabase {
     logger.info("Local threat database stopped");
   }
 
-  async check(url: string, _hash: string): Promise<LocalThreatResult> {
+  async check(url: string, _hash?: string): Promise<LocalThreatResult> {
     const result: LocalThreatResult = {
       score: 0,
       reasons: [],
@@ -65,7 +65,6 @@ export class LocalThreatDatabase {
     try {
       const normalizedUrl = this.normalizeUrl(url);
 
-      // Check OpenPhish feed
       const openphishMatch = await this.redis.sismember(
         this.OPENPHISH_KEY,
         normalizedUrl,
@@ -76,7 +75,6 @@ export class LocalThreatDatabase {
         result.reasons.push("URL found in OpenPhish feed");
       }
 
-      // Check collaborative learning database
       const collaborativeScore = await this.redis.zscore(
         this.COLLABORATIVE_KEY,
         normalizedUrl,
@@ -88,9 +86,44 @@ export class LocalThreatDatabase {
       }
 
       return result;
-    } catch (_err) {
-      logger.warn({ url, err: _err }, "Local threat database check failed");
+    } catch (err) {
+      logger.warn({ url, err }, "Local threat database check failed");
       return result;
+    }
+  }
+
+  async ingestThreatUrls(
+    source: string,
+    urls: string[],
+    { ttlSeconds = 24 * 60 * 60 }: { ttlSeconds?: number } = {},
+  ): Promise<void> {
+    try {
+      const normalized = urls
+        .map((url) => this.normalizeUrl(url))
+        .filter((line) => line && line.startsWith("http"));
+
+      if (normalized.length === 0) {
+        return;
+      }
+
+      const pipeline = this.redis.pipeline();
+
+      const batchSize = 1000;
+      for (let i = 0; i < normalized.length; i += batchSize) {
+        const batch = normalized.slice(i, i + batchSize);
+        pipeline.sadd(this.OPENPHISH_KEY, ...batch);
+      }
+
+      pipeline.set(this.LAST_UPDATE_KEY, Date.now());
+      pipeline.expire(this.OPENPHISH_KEY, ttlSeconds);
+
+      await pipeline.exec();
+      logger.info(
+        { source, count: normalized.length },
+        "Threat URLs ingested into local threat database",
+      );
+    } catch (err) {
+      logger.warn({ err, source }, "Failed to ingest threat URLs");
     }
   }
 
@@ -98,18 +131,7 @@ export class LocalThreatDatabase {
     try {
       logger.info("Updating OpenPhish feed...");
 
-      const response = await request(this.options.feedUrl, {
-        method: "GET",
-        headersTimeout: 10000,
-        bodyTimeout: 30000,
-        maxRedirections: 5, // Follow redirects
-      });
-
-      if (response.statusCode !== 200) {
-        throw new Error(`OpenPhish feed returned ${response.statusCode}`);
-      }
-
-      const feedData = await response.body.text();
+      const feedData = await this.loadFeedData(this.options.feedUrl);
       const urls = feedData
         .split("\n")
         .map((line) => line.trim())
@@ -120,11 +142,9 @@ export class LocalThreatDatabase {
         throw new Error("No URLs found in OpenPhish feed");
       }
 
-      // Update Redis with new feed data
       const pipeline = this.redis.pipeline();
       pipeline.del(this.OPENPHISH_KEY);
 
-      // Add URLs in batches to avoid memory issues
       const batchSize = 1000;
       for (let i = 0; i < urls.length; i += batchSize) {
         const batch = urls.slice(i, i + batchSize);
@@ -132,17 +152,13 @@ export class LocalThreatDatabase {
       }
 
       pipeline.set(this.LAST_UPDATE_KEY, Date.now());
-      pipeline.expire(this.OPENPHISH_KEY, 24 * 60 * 60); // 24 hours TTL
+      pipeline.expire(this.OPENPHISH_KEY, 24 * 60 * 60);
 
       await pipeline.exec();
 
-      logger.info(
-        { count: urls.length },
-        "OpenPhish feed updated successfully",
-      );
+      logger.info({ count: urls.length }, "OpenPhish feed updated successfully");
     } catch (err) {
       logger.warn({ err }, "Failed to update OpenPhish feed");
-      // Don't throw - make this non-fatal to allow service to continue running
     }
   }
 
@@ -163,7 +179,6 @@ export class LocalThreatDatabase {
 
       if (score > 0) {
         await this.redis.zadd(this.COLLABORATIVE_KEY, score, normalizedUrl);
-        // Set TTL for collaborative entries (30 days)
         await this.redis.expire(this.COLLABORATIVE_KEY, 30 * 24 * 60 * 60);
       }
     } catch (err) {
@@ -194,15 +209,43 @@ export class LocalThreatDatabase {
     }
   }
 
+  private async loadFeedData(source: string): Promise<string> {
+    try {
+      const parsed = new URL(source);
+      if (parsed.protocol === "file:") {
+        return await readFile(fileURLToPath(parsed), "utf8");
+      }
+
+      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+        const response = await request(source, {
+          method: "GET",
+          headersTimeout: 10000,
+          bodyTimeout: 30000,
+          maxRedirections: 5,
+        });
+
+        if (response.statusCode !== 200) {
+          throw new Error(`Feed returned ${response.statusCode}`);
+        }
+
+        return await response.body.text();
+      }
+
+      return await readFile(fileURLToPath(parsed), "utf8");
+    } catch {
+      return await readFile(source, "utf8");
+    }
+  }
+
   private normalizeUrl(url: string): string {
     try {
       const parsed = new URL(url);
-      // Remove common tracking parameters and fragments
       parsed.search = "";
       parsed.hash = "";
       return parsed.toString().toLowerCase();
-    } catch (_err) {
+    } catch {
       return url.toLowerCase();
     }
   }
 }
+

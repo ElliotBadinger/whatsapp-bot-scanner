@@ -73,3 +73,34 @@ export function isPrivateIp(ip: string): boolean {
     return true;
   }
 }
+
+export async function assertSafeUrl(rawUrl: string): Promise<void> {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error("Invalid URL");
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error(`Unsupported URL protocol: ${parsed.protocol}`);
+  }
+
+  const hostname = parsed.hostname;
+  if (!hostname) {
+    throw new Error("Missing hostname");
+  }
+
+  // Fast path: literal IPs.
+  if (/^(\d+\.\d+\.\d+\.\d+|\[[0-9a-fA-F:]+\])$/.test(hostname)) {
+    const ip = hostname.startsWith("[") ? hostname.slice(1, -1) : hostname;
+    if (isPrivateIp(ip)) {
+      throw new Error("Blocked private IP target");
+    }
+    return;
+  }
+
+  if (await isPrivateHostname(hostname)) {
+    throw new Error("Blocked private hostname target");
+  }
+}

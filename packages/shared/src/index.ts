@@ -20,6 +20,7 @@ export * from "./reputation/dns-intelligence";
 export * from "./reputation/certificate-intelligence";
 export * from "./reputation/advanced-heuristics";
 export * from "./reputation/local-threat-db";
+export * from "./reputation/local-offline-analyzer";
 export * from "./reputation/http-fingerprint";
 export * from "./reputation/provider-factory";
 export * from "./circuit-breaker";

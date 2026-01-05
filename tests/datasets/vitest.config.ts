@@ -7,19 +7,16 @@ const rootDir = dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   test: {
     environment: 'node',
-    setupFiles: ['./vitest.setup.ts'],
+    testTimeout: 60_000,
     env: {
       URLSCAN_ENABLED: 'false',
-      CONTROL_PLANE_API_TOKEN: 'integration-test-token',
-      DNSBL_ENABLED: 'false',
-      CERT_INTEL_ENABLED: 'false',
-      HTTP_FINGERPRINT_ENABLED: 'false',
+      CONTROL_PLANE_API_TOKEN: 'dataset-test-token',
+      LOG_LEVEL: 'error',
     },
   },
   resolve: {
     alias: {
       '@wbscanner/shared': resolve(rootDir, '../../packages/shared/src'),
-      bottleneck: resolve(rootDir, './stubs/bottleneck.ts'),
     },
   },
 });

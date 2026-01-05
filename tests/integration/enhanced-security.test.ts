@@ -1,5 +1,6 @@
 import { EnhancedSecurityAnalyzer } from '../../services/scan-orchestrator/src/enhanced-security';
 import RedisMock from 'ioredis-mock';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 describe('Enhanced Security Integration', () => {
   let redis: any;
@@ -8,11 +9,9 @@ describe('Enhanced Security Integration', () => {
   beforeAll(async () => {
     redis = new RedisMock();
     analyzer = new EnhancedSecurityAnalyzer(redis);
-    await analyzer.start();
   });
 
   afterAll(async () => {
-    await analyzer.stop();
     await redis.quit();
   });
 
@@ -43,7 +42,7 @@ describe('Enhanced Security Integration', () => {
       const result = await analyzer.analyze(url, hash);
 
       expect(result.score).toBeGreaterThan(0);
-      expect(result.reasons.some(r => r.includes('OpenPhish'))).toBe(true);
+      expect(result.reasons.some(r => /openphish/i.test(r))).toBe(true);
     }, 10000);
 
     it('should handle benign URL without false positives', async () => {

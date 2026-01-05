@@ -17,6 +17,7 @@
     "lint": "bun run --filter '*' lint",
     "lint:fix": "bun run --filter '*' lint:fix",
     "test": "bun run --filter '*' test -- --passWithNoTests",
+    "test:datasets": "bun run --filter @wbscanner/dataset-tests test",
     "test:coverage": "bun run --filter '*' test -- --coverage --passWithNoTests",
     "build": "bun run --filter '*' build",
     "build:prod": "NODE_ENV=production bun run --filter '*' build:prod",
@@ -28,6 +29,7 @@
     "packages/*",
     "services/*",
     "apps/*",
+    "tests/*",
     "SafeMode-web-app"
   ],
   "dependencies": {

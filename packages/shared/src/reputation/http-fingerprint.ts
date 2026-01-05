@@ -1,5 +1,6 @@
-import { request } from 'undici';
-import { logger } from '../log';
+import { request } from "undici";
+import { logger } from "../log";
+import { assertSafeUrl } from "../ssrf";
 
 export interface SecurityHeaders {
   hsts: boolean;
@@ -23,7 +24,7 @@ interface HTTPFingerprintOptions {
 
 export async function httpFingerprinting(
   url: string,
-  options: HTTPFingerprintOptions = {}
+  options: HTTPFingerprintOptions = {},
 ): Promise<HTTPFingerprint> {
   const { timeoutMs = 2000, enableSSRFGuard = true } = options;
 
@@ -41,15 +42,20 @@ export async function httpFingerprinting(
   };
 
   try {
-    // SSRF protection
-    if (enableSSRFGuard && isPrivateIP(new URL(url).hostname)) {
-      result.suspicionScore += 1.0;
-      result.reasons.push('URL points to private IP address');
-      return result;
+    if (enableSSRFGuard) {
+      try {
+        await assertSafeUrl(url);
+      } catch (err) {
+        result.suspicionScore += 1.0;
+        result.reasons.push(
+          err instanceof Error ? `SSRF guard blocked URL: ${err.message}` : "SSRF guard blocked URL",
+        );
+        return result;
+      }
     }
 
     const response = await request(url, {
-      method: 'HEAD', // Use HEAD to minimize data transfer
+      method: "HEAD",
       headersTimeout: timeoutMs,
       bodyTimeout: timeoutMs,
       maxRedirections: 5,
@@ -58,12 +64,11 @@ export async function httpFingerprinting(
     result.statusCode = response.statusCode;
     const headers = response.headers;
 
-    // Analyze response headers
-    analyzeSecurityHeaders(headers, result);
+    analyzeSecurityHeaders(headers as Record<string, unknown>, result);
     analyzeStatusCode(result.statusCode, result);
     analyzeServerHeader(headers.server as string, result);
     analyzeRedirects(url, headers.location as string, result);
-    analyzeContentType(headers['content-type'] as string, result);
+    analyzeContentType(headers["content-type"] as string, result);
 
     return result;
   } catch (err: unknown) {
@@ -71,23 +76,25 @@ export async function httpFingerprinting(
   }
 }
 
-function analyzeSecurityHeaders(headers: Record<string, unknown>, result: HTTPFingerprint): void {
-  // Check security headers
-  result.securityHeaders.hsts = !!(headers['strict-transport-security']);
-  result.securityHeaders.csp = !!(headers['content-security-policy']);
-  result.securityHeaders.xFrameOptions = !!(headers['x-frame-options']);
-  result.securityHeaders.xContentTypeOptions = !!(headers['x-content-type-options']);
+function analyzeSecurityHeaders(
+  headers: Record<string, unknown>,
+  result: HTTPFingerprint,
+): void {
+  result.securityHeaders.hsts = !!headers["strict-transport-security"];
+  result.securityHeaders.csp = !!headers["content-security-policy"];
+  result.securityHeaders.xFrameOptions = !!headers["x-frame-options"];
+  result.securityHeaders.xContentTypeOptions = !!headers["x-content-type-options"];
 
-  // Score based on missing security headers
-  const missingHeaders = Object.values(result.securityHeaders).filter(present => !present).length;
+  const missingHeaders = Object.values(result.securityHeaders).filter(
+    (present) => !present,
+  ).length;
   if (missingHeaders >= 3) {
     result.suspicionScore += 0.4;
-    result.reasons.push('Multiple security headers missing');
+    result.reasons.push("Multiple security headers missing");
   }
 }
 
 function analyzeStatusCode(statusCode: number, result: HTTPFingerprint): void {
-  // Check for suspicious status codes
   if (statusCode >= 400 && statusCode < 500) {
     result.suspicionScore += 0.2;
     result.reasons.push(`Client error status: ${statusCode}`);
@@ -99,83 +106,64 @@ function analyzeStatusCode(statusCode: number, result: HTTPFingerprint): void {
 
 function analyzeServerHeader(server: string, result: HTTPFingerprint): void {
   if (!server) return;
-  
-  const suspiciousServers = ['apache/1.', 'nginx/0.', 'test', 'localhost'];
-  if (suspiciousServers.some(sus => server.toLowerCase().includes(sus))) {
+
+  const suspiciousServers = ["apache/1.", "nginx/0.", "test", "localhost"];
+  if (suspiciousServers.some((sus) => server.toLowerCase().includes(sus))) {
     result.suspicionScore += 0.3;
-    result.reasons.push('Suspicious server header');
+    result.reasons.push("Suspicious server header");
   }
 }
 
-function analyzeRedirects(originalUrl: string, location: string, result: HTTPFingerprint): void {
+function analyzeRedirects(
+  originalUrl: string,
+  location: string,
+  result: HTTPFingerprint,
+): void {
   if (!location) return;
-  
+
   try {
     const originalHost = new URL(originalUrl).hostname;
     const redirectHost = new URL(location).hostname;
 
     if (originalHost !== redirectHost) {
-      // Cross-domain redirect - check if suspicious
-      if (isPrivateIP(redirectHost) || redirectHost.includes('localhost')) {
+      if (redirectHost.includes("localhost")) {
         result.suspiciousRedirects = true;
         result.suspicionScore += 0.6;
-        result.reasons.push('Suspicious redirect to private/local address');
+        result.reasons.push("Suspicious redirect to local address");
       }
     }
-  } catch (_err) {
-    // Invalid redirect URL
+  } catch {
     result.suspiciousRedirects = true;
     result.suspicionScore += 0.4;
-    result.reasons.push('Invalid redirect URL');
+    result.reasons.push("Invalid redirect URL");
   }
 }
 
 function analyzeContentType(contentType: string, result: HTTPFingerprint): void {
-  if (contentType && contentType.includes('application/octet-stream')) {
+  if (contentType && contentType.includes("application/octet-stream")) {
     result.suspicionScore += 0.3;
-    result.reasons.push('Binary content type detected');
+    result.reasons.push("Binary content type detected");
   }
 }
 
 function handleHttpError(
-  error: { message?: string; code?: string }, 
-  url: string, 
-  result: HTTPFingerprint
+  error: { message?: string; code?: string },
+  url: string,
+  result: HTTPFingerprint,
 ): HTTPFingerprint {
-  logger.warn({ url, err: error.message }, 'HTTP fingerprinting failed');
+  logger.warn({ url, err: error.message }, "HTTP fingerprinting failed");
 
-  // Analyze the error for additional insights
-  if (error.code === 'ENOTFOUND') {
+  if (error.code === "ENOTFOUND") {
     result.suspicionScore += 0.5;
-    result.reasons.push('Domain not found');
-  } else if (error.code === 'ECONNREFUSED') {
+    result.reasons.push("Domain not found");
+  } else if (error.code === "ECONNREFUSED") {
     result.suspicionScore += 0.4;
-    result.reasons.push('Connection refused');
-  } else if (error.code === 'CERT_AUTHORITY_INVALID') {
+    result.reasons.push("Connection refused");
+  } else if (error.code === "CERT_AUTHORITY_INVALID") {
     result.suspicionScore += 0.6;
-    result.reasons.push('Invalid certificate authority');
+    result.reasons.push("Invalid certificate authority");
   }
 
   return result;
 }
 
-function isPrivateIP(hostname: string): boolean {
-  // Check for private IP ranges
-  const privateRanges = [
-    /^10\./,
-    /^172\.(1[6-9]|2[0-9]|3[01])\./,
-    /^192\.168\./,
-    /^127\./,
-    /^169\.254\./, // Link-local
-    /^::1$/, // IPv6 localhost
-    /^fc00:/, // IPv6 private
-    /^fe80:/, // IPv6 link-local
-  ];
-
-  // Check for localhost variations
-  if (hostname === 'localhost' || hostname === '0.0.0.0') {
-    return true;
-  }
-
-  return privateRanges.some(range => range.test(hostname));
-}

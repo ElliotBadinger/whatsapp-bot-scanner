@@ -201,8 +201,12 @@ import { describeHotkeys } from "./ui/hotkeys.mjs";
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const ROOT_DIR = path.resolve(path.dirname(SCRIPT_PATH), "..", "..");
-const ENV_PATH = path.join(ROOT_DIR, ".env");
-const ENV_TEMPLATE_PATH = path.join(ROOT_DIR, ".env.example");
+const ENV_PATH = process.env.SETUP_ENV_PATH
+  ? path.resolve(process.env.SETUP_ENV_PATH)
+  : path.join(ROOT_DIR, ".env");
+const ENV_TEMPLATE_PATH = process.env.SETUP_ENV_TEMPLATE_PATH
+  ? path.resolve(process.env.SETUP_ENV_TEMPLATE_PATH)
+  : path.join(ROOT_DIR, ".env.example");
 
 const HTTP_HEALTH_TARGETS = [
   {

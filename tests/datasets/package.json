@@ -1,0 +1,15 @@
+{
+  "name": "@wbscanner/dataset-tests",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "node -e \"process.exit(0)\"",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "ioredis-mock": "^8.0.0",
+    "typescript": "^5.5.4",
+    "vitest": "^1.6.0"
+  }
+}
