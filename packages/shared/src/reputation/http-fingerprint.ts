@@ -45,7 +45,8 @@ export async function httpFingerprinting(
     if (enableSSRFGuard) {
       const hostname = new URL(url).hostname;
       const isIpv4Literal = /^\d+\.\d+\.\d+\.\d+$/.test(hostname);
-      const isBracketedIpv6 = hostname.startsWith("[") && hostname.endsWith("]");
+      const isBracketedIpv6 =
+        hostname.startsWith("[") && hostname.endsWith("]");
       const ipCandidate = isBracketedIpv6 ? hostname.slice(1, -1) : hostname;
 
       if (
@@ -77,7 +78,11 @@ export async function httpFingerprinting(
 
     return result;
   } catch (err: unknown) {
-    return handleHttpError(err as { message?: string; code?: string }, url, result);
+    return handleHttpError(
+      err as { message?: string; code?: string },
+      url,
+      result,
+    );
   }
 }
 
@@ -88,7 +93,8 @@ function analyzeSecurityHeaders(
   result.securityHeaders.hsts = !!headers["strict-transport-security"];
   result.securityHeaders.csp = !!headers["content-security-policy"];
   result.securityHeaders.xFrameOptions = !!headers["x-frame-options"];
-  result.securityHeaders.xContentTypeOptions = !!headers["x-content-type-options"];
+  result.securityHeaders.xContentTypeOptions =
+    !!headers["x-content-type-options"];
 
   const missingHeaders = Object.values(result.securityHeaders).filter(
     (present) => !present,
@@ -139,7 +145,10 @@ function analyzeRedirects(
         return;
       }
 
-      if (/^\d+\.\d+\.\d+\.\d+$/.test(redirectHost) && isPrivateIp(redirectHost)) {
+      if (
+        /^\d+\.\d+\.\d+\.\d+$/.test(redirectHost) &&
+        isPrivateIp(redirectHost)
+      ) {
         result.suspiciousRedirects = true;
         result.suspicionScore += 0.6;
         result.reasons.push("Suspicious redirect to private/local address");
@@ -152,7 +161,10 @@ function analyzeRedirects(
   }
 }
 
-function analyzeContentType(contentType: string, result: HTTPFingerprint): void {
+function analyzeContentType(
+  contentType: string,
+  result: HTTPFingerprint,
+): void {
   if (contentType && contentType.includes("application/octet-stream")) {
     result.suspicionScore += 0.3;
     result.reasons.push("Binary content type detected");

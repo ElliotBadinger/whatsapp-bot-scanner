@@ -1,11 +1,11 @@
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export async function ensureCachedBytes(
   url: string,
   destPath: string,
-  { maxAgeMs, headers }: { maxAgeMs: number; headers?: Record<string, string> }
+  { maxAgeMs, headers }: { maxAgeMs: number; headers?: Record<string, string> },
 ): Promise<Uint8Array> {
   const now = Date.now();
   let staleBytes: Uint8Array | null = null;
@@ -25,7 +25,7 @@ export async function ensureCachedBytes(
       const res = await fetch(url, {
         signal: AbortSignal.timeout(60_000),
         headers: {
-          'User-Agent': 'wbscanner-dataset-tests/1.0',
+          "User-Agent": "wbscanner-dataset-tests/1.0",
           ...headers,
         },
       });
@@ -54,7 +54,7 @@ export async function ensureCachedBytes(
 export async function ensureCachedText(
   url: string,
   destPath: string,
-  { maxAgeMs, headers }: { maxAgeMs: number; headers?: Record<string, string> }
+  { maxAgeMs, headers }: { maxAgeMs: number; headers?: Record<string, string> },
 ): Promise<string> {
   const bytes = await ensureCachedBytes(url, destPath, { maxAgeMs, headers });
   return new TextDecoder().decode(bytes);

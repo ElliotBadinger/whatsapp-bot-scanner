@@ -23,36 +23,157 @@ type SuspiciousPattern = {
 };
 
 const SUSPICIOUS_PATTERNS: SuspiciousPattern[] = [
-  { id: "compromised-wp", name: "Compromised WordPress", regex: /\/wp-(admin|login|content)\/[a-z0-9]{20,}/i, score: 0.25 },
-  { id: "fake-login-session", name: "Fake login with session", regex: /\/(login|signin|account).*\d{10,}/i, score: 0.2 },
-  { id: "verify-account", name: "Phishing verify flow", regex: /\/verify.*account.*[a-z0-9]{30,}/i, score: 0.25 },
-  { id: "open-redirect", name: "Open redirect", regex: /\.(php|asp|jsp)\?.*=.*http/i, score: 0.25 },
-  { id: "suspicious-action", name: "Suspicious action page", regex: /\/(secure|update|confirm).*\.(php|asp|jsp)/i, score: 0.2 },
-  { id: "random-hash-file", name: "Random hash file", regex: /\/[a-z0-9]{32,}\.(php|html)/i, score: 0.25 },
-  { id: "brand-impersonation", name: "Brand impersonation", regex: /\/(paypal|amazon|apple|microsoft|google).*verify/i, score: 0.35 },
-  { id: "ip-with-port", name: "IP address with port", regex: /https?:\/\/\d{1,3}(?:\.\d{1,3}){3}:\d{2,5}\//i, score: 1.0 },
+  {
+    id: "compromised-wp",
+    name: "Compromised WordPress",
+    regex: /\/wp-(admin|login|content)\/[a-z0-9]{20,}/i,
+    score: 0.25,
+  },
+  {
+    id: "fake-login-session",
+    name: "Fake login with session",
+    regex: /\/(login|signin|account).*\d{10,}/i,
+    score: 0.2,
+  },
+  {
+    id: "verify-account",
+    name: "Phishing verify flow",
+    regex: /\/verify.*account.*[a-z0-9]{30,}/i,
+    score: 0.25,
+  },
+  {
+    id: "open-redirect",
+    name: "Open redirect",
+    regex: /\.(php|asp|jsp)\?.*=.*http/i,
+    score: 0.25,
+  },
+  {
+    id: "suspicious-action",
+    name: "Suspicious action page",
+    regex: /\/(secure|update|confirm).*\.(php|asp|jsp)/i,
+    score: 0.2,
+  },
+  {
+    id: "random-hash-file",
+    name: "Random hash file",
+    regex: /\/[a-z0-9]{32,}\.(php|html)/i,
+    score: 0.25,
+  },
+  {
+    id: "brand-impersonation",
+    name: "Brand impersonation",
+    regex: /\/(paypal|amazon|apple|microsoft|google).*verify/i,
+    score: 0.35,
+  },
+  {
+    id: "ip-with-port",
+    name: "IP address with port",
+    regex: /https?:\/\/\d{1,3}(?:\.\d{1,3}){3}:\d{2,5}\//i,
+    score: 1.0,
+  },
 
   // Hard-mode: wrappers, cloud-abuse, deep-link fallback, "ClickFix" lures.
-  { id: "wrapper-proofpoint", name: "Proofpoint URLDefense wrapper", regex: /https?:\/\/urldefense\.proofpoint\.com\/v2\/url\?/i, score: 0.9 },
-  { id: "wrapper-facebook", name: "Facebook link shim", regex: /https?:\/\/l\.facebook\.com\/l\.php\?/i, score: 0.35 },
-  { id: "wrapper-google", name: "Google link shim", regex: /https?:\/\/www\.google\.com\/url\?/i, score: 0.35 },
-  { id: "wrapper-safelinks", name: "Microsoft SafeLinks wrapper", regex: /https?:\/\/[^/]+\.safelinks\.protection\.outlook\.com\//i, score: 0.9 },
-  { id: "google-business-redirect", name: "Google Business redirect", regex: /https?:\/\/business\.google\.com\/website_shared\/launch_bw\.html\?/i, score: 0.9 },
+  {
+    id: "wrapper-proofpoint",
+    name: "Proofpoint URLDefense wrapper",
+    regex: /https?:\/\/urldefense\.proofpoint\.com\/v2\/url\?/i,
+    score: 0.9,
+  },
+  {
+    id: "wrapper-facebook",
+    name: "Facebook link shim",
+    regex: /https?:\/\/l\.facebook\.com\/l\.php\?/i,
+    score: 0.35,
+  },
+  {
+    id: "wrapper-google",
+    name: "Google link shim",
+    regex: /https?:\/\/www\.google\.com\/url\?/i,
+    score: 0.35,
+  },
+  {
+    id: "wrapper-safelinks",
+    name: "Microsoft SafeLinks wrapper",
+    regex: /https?:\/\/[^/]+\.safelinks\.protection\.outlook\.com\//i,
+    score: 0.9,
+  },
+  {
+    id: "google-business-redirect",
+    name: "Google Business redirect",
+    regex:
+      /https?:\/\/business\.google\.com\/website_shared\/launch_bw\.html\?/i,
+    score: 0.9,
+  },
 
-  { id: "cloudflare-pages", name: "Cloudflare Pages hosting", regex: /https?:\/\/[^/]+\.pages\.dev\//i, score: 0.35 },
-  { id: "cloudflare-workers", name: "Cloudflare Workers hosting", regex: /https?:\/\/[^/]+\.workers\.dev\//i, score: 0.35 },
+  {
+    id: "cloudflare-pages",
+    name: "Cloudflare Pages hosting",
+    regex: /https?:\/\/[^/]+\.pages\.dev\//i,
+    score: 0.35,
+  },
+  {
+    id: "cloudflare-workers",
+    name: "Cloudflare Workers hosting",
+    regex: /https?:\/\/[^/]+\.workers\.dev\//i,
+    score: 0.35,
+  },
 
-  { id: "appsflyer-onelink", name: "AppsFlyer OneLink", regex: /https?:\/\/[^/]*onelink\.me\//i, score: 0.35 },
-  { id: "appsflyer-fallback", name: "AppsFlyer web fallback URL", regex: /[?&]af_web_dp=https?:\/\//i, score: 1.0 },
-  { id: "branch-deeplink", name: "Branch deep link", regex: /https?:\/\/[^/]*app\.link\//i, score: 0.35 },
-  { id: "branch-fallback", name: "Branch fallback URL", regex: /[?&]\\$fallback_url=https?:\/\//i, score: 1.0 },
-  { id: "firebase-fallback", name: "Firebase dynamic link fallback", regex: /[?&]ofl=https?:\/\//i, score: 1.0 },
+  {
+    id: "appsflyer-onelink",
+    name: "AppsFlyer OneLink",
+    regex: /https?:\/\/[^/]*onelink\.me\//i,
+    score: 0.35,
+  },
+  {
+    id: "appsflyer-fallback",
+    name: "AppsFlyer web fallback URL",
+    regex: /[?&]af_web_dp=https?:\/\//i,
+    score: 1.0,
+  },
+  {
+    id: "branch-deeplink",
+    name: "Branch deep link",
+    regex: /https?:\/\/[^/]*app\.link\//i,
+    score: 0.35,
+  },
+  {
+    id: "branch-fallback",
+    name: "Branch fallback URL",
+    regex: /[?&]\\$fallback_url=https?:\/\//i,
+    score: 1.0,
+  },
+  {
+    id: "firebase-fallback",
+    name: "Firebase dynamic link fallback",
+    regex: /[?&]ofl=https?:\/\//i,
+    score: 1.0,
+  },
 
-  { id: "clickfix-lure", name: "ClickFix lure path", regex: /\/verify-human\/|\/how-to-fix\/|\/clickfix\/|\/fix\b/i, score: 0.9 },
-  { id: "phaas-resphp", name: "PhaaS kit artifact (res###.php)", regex: /\/cgi-bin\/res\d{3}\.php\?/i, score: 1.0 },
+  {
+    id: "clickfix-lure",
+    name: "ClickFix lure path",
+    regex: /\/verify-human\/|\/how-to-fix\/|\/clickfix\/|\/fix\b/i,
+    score: 0.9,
+  },
+  {
+    id: "phaas-resphp",
+    name: "PhaaS kit artifact (res###.php)",
+    regex: /\/cgi-bin\/res\d{3}\.php\?/i,
+    score: 1.0,
+  },
 
-  { id: "linktree-space", name: "Linktree space bypass", regex: /https?:\/\/linktr\.ee\/%20/i, score: 0.4 },
-  { id: "link-in-bio", name: "Link-in-bio service", regex: /https?:\/\/(?:bio\.link|linktr\.ee)\//i, score: 0.25 },
+  {
+    id: "linktree-space",
+    name: "Linktree space bypass",
+    regex: /https?:\/\/linktr\.ee\/%20/i,
+    score: 0.4,
+  },
+  {
+    id: "link-in-bio",
+    name: "Link-in-bio service",
+    regex: /https?:\/\/(?:bio\.link|linktr\.ee)\//i,
+    score: 0.25,
+  },
 ];
 
 export async function advancedHeuristics(
@@ -103,7 +224,9 @@ export async function advancedHeuristics(
     const suspiciousChars = detectSuspiciousCharacters(fullUrl);
     if (suspiciousChars.length > 0) {
       result.score += 0.3 * suspiciousChars.length;
-      result.reasons.push(`Suspicious characters: ${suspiciousChars.join(", ")}`);
+      result.reasons.push(
+        `Suspicious characters: ${suspiciousChars.join(", ")}`,
+      );
       result.suspiciousPatterns.push(...suspiciousChars);
     }
 
