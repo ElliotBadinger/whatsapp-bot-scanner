@@ -1,4 +1,4 @@
-## 2025-02-24 - Homoglyph Detection Memory Optimization
+## 2025-02-24 - URL Parsing Optimization
 
-**Learning:** The `detectHomoglyphs` function in `packages/shared/src/homoglyph.ts` used a full matrix O(N\*M) for Levenshtein distance calculation. Since this is called frequently (8 comparisons per domain check), it creates significant GC pressure.
-**Action:** Always check basic algorithmic complexity in hot paths. Replaced with O(min(N,M)) space implementation using two rows.
+**Learning:** Hot paths like `isSuspiciousTld` and `extractUrls` were re-creating large `Set` and `RegExp` objects on every call, causing unnecessary GC pressure and CPU cycles.
+**Action:** Hoisted static data structures (sets, regexes) to module scope. Added caching for environment variable parsing in `isForbiddenHostname`. Always check for re-initialization of static data in frequently called utility functions.
