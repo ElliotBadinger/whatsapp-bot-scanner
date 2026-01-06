@@ -17,6 +17,7 @@ describe("control-plane error handling", () => {
       dbClient,
       redisClient: redisClient as any,
       queue: queue as any,
+      rateLimitOptions: { forceMemory: true },
     });
     return { app, dbClient };
   }
@@ -55,6 +56,7 @@ describe("control-plane error handling", () => {
       dbClient: dbClient as any,
       redisClient: redisClient as any,
       queue: queue as any,
+      rateLimitOptions: { forceMemory: true },
     });
 
     const response = await app.inject({
