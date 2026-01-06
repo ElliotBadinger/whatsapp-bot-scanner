@@ -17,6 +17,7 @@ export interface RateLimitResult {
 
 export interface RateLimiterOptions {
   allowMemory?: boolean;
+  forceMemory?: boolean;
 }
 
 /**
@@ -28,8 +29,12 @@ export function createApiRateLimiter(
   config: RateLimiterConfig,
   options: RateLimiterOptions = {},
 ) {
-  if (process.env.NODE_ENV === "test" || !redis) {
-    if (process.env.NODE_ENV !== "test" && !options.allowMemory) {
+  if (process.env.NODE_ENV === "test" || !redis || options.forceMemory) {
+    if (
+      process.env.NODE_ENV !== "test" &&
+      !options.allowMemory &&
+      !options.forceMemory
+    ) {
       throw new Error(
         "Redis is required for rate limiting outside tests (set allowMemory to override).",
       );

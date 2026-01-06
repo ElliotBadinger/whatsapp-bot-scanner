@@ -24,6 +24,11 @@ import {
   getConnectedSharedRedis,
   ValidationError,
   globalErrorHandler,
+  createApiRateLimiter,
+  consumeRateLimit,
+  RATE_LIMIT_CONFIGS,
+  RateLimitError,
+  type RateLimiterOptions,
 } from "@wbscanner/shared";
 import { getSharedConnection } from "./database.js";
 
@@ -72,6 +77,7 @@ export interface BuildOptions {
   };
   redisClient?: Redis;
   queue?: Queue;
+  rateLimitOptions?: RateLimiterOptions;
 }
 
 export async function buildServer(options: BuildOptions = {}) {
@@ -81,6 +87,30 @@ export async function buildServer(options: BuildOptions = {}) {
   const ownsClient = !options.dbClient;
   const redisClient = options.redisClient ?? (await getSharedRedis());
   const queue = options.queue ?? (await getSharedQueue());
+
+  // Initialize Rate Limiters
+  const apiLimiter = createApiRateLimiter(
+    redisClient,
+    RATE_LIMIT_CONFIGS.api,
+    options.rateLimitOptions,
+  );
+  const overrideLimiter = createApiRateLimiter(
+    redisClient,
+    RATE_LIMIT_CONFIGS.override,
+    options.rateLimitOptions,
+  );
+  const rescanLimiter = createApiRateLimiter(
+    redisClient,
+    RATE_LIMIT_CONFIGS.rescan,
+    options.rateLimitOptions,
+  );
+
+  async function checkRateLimit(limiter: any, key: string) {
+    const res = await consumeRateLimit(limiter, key);
+    if (!res.allowed) {
+      throw new RateLimitError(res.retryAfter);
+    }
+  }
 
   const app = Fastify();
   app.setErrorHandler(globalErrorHandler);
@@ -95,7 +125,8 @@ export async function buildServer(options: BuildOptions = {}) {
   await app.register(async (protectedApp: FastifyInstance) => {
     protectedApp.addHook("preHandler", createAuthHook(requiredToken));
 
-    protectedApp.get("/status", async () => {
+    protectedApp.get("/status", async (req) => {
+      await checkRateLimit(apiLimiter, `api:${req.ip || "unknown"}`);
       const { rows } = await dbClient.query(
         "SELECT (SELECT COUNT(*) FROM scans) AS scans, (SELECT COUNT(*) FROM scans WHERE verdict = ?) AS malicious, (SELECT COUNT(*) FROM groups) AS groups",
         ["malicious"],
@@ -113,6 +144,7 @@ export async function buildServer(options: BuildOptions = {}) {
     });
 
     protectedApp.get("/scans/recent", async (req, reply) => {
+      await checkRateLimit(apiLimiter, `api:${req.ip || "unknown"}`);
       const rawLimit = (req.query as { limit?: string | number })?.limit;
       const parsedLimit = Number.parseInt(String(rawLimit ?? "10"), 10);
       const limit =
@@ -188,6 +220,7 @@ export async function buildServer(options: BuildOptions = {}) {
     }
 
     protectedApp.post("/overrides", async (req, reply) => {
+      await checkRateLimit(overrideLimiter, `override:${req.ip || "unknown"}`);
       const validation = OverrideBodySchema.safeParse(req.body);
       if (!validation.success) {
         throw new ValidationError(validation.error);
@@ -210,7 +243,8 @@ export async function buildServer(options: BuildOptions = {}) {
       reply.code(201).send({ ok: true });
     });
 
-    protectedApp.get("/overrides", async () => {
+    protectedApp.get("/overrides", async (req) => {
+      await checkRateLimit(apiLimiter, `api:${req.ip || "unknown"}`);
       const { rows } = await dbClient.query(
         "SELECT * FROM overrides ORDER BY created_at DESC LIMIT 100",
       );
@@ -218,6 +252,7 @@ export async function buildServer(options: BuildOptions = {}) {
     });
 
     protectedApp.post("/groups/:chatId/mute", async (req, reply) => {
+      await checkRateLimit(apiLimiter, `api:${req.ip || "unknown"}`);
       const validation = MuteGroupParamsSchema.safeParse(req.params);
       if (!validation.success) {
         throw new ValidationError(validation.error);
@@ -233,6 +268,7 @@ export async function buildServer(options: BuildOptions = {}) {
     });
 
     protectedApp.post("/groups/:chatId/unmute", async (req, reply) => {
+      await checkRateLimit(apiLimiter, `api:${req.ip || "unknown"}`);
       const validation = MuteGroupParamsSchema.safeParse(req.params);
       if (!validation.success) {
         throw new ValidationError(validation.error);
@@ -247,6 +283,7 @@ export async function buildServer(options: BuildOptions = {}) {
     });
 
     protectedApp.post("/rescan", async (req, reply) => {
+      await checkRateLimit(rescanLimiter, `rescan:${req.ip || "unknown"}`);
       const validation = RescanBodySchema.safeParse(req.body);
       if (!validation.success) {
         throw new ValidationError(validation.error);
@@ -316,6 +353,7 @@ export async function buildServer(options: BuildOptions = {}) {
     protectedApp.get(
       "/scans/:urlHash/urlscan-artifacts/:type",
       async (req, reply) => {
+        await checkRateLimit(apiLimiter, `api:${req.ip || "unknown"}`);
         const { urlHash: hash, type } = req.params as {
           urlHash: string;
           type: string;
