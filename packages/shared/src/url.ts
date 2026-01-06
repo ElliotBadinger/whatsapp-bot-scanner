@@ -20,18 +20,51 @@ const TRACKING_PARAMS = new Set([
   "vero_id",
 ]);
 
+const URL_REGEX =
+  /((https?:\/\/|www\.)[^\s<>()]+[^\s`!()\[\]{};:'".,<>?«»“”‘’])/gi;
+const BARE_DOMAIN_REGEX =
+  /(?<!:\/\/)(?<!@)\b((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?:\/[^{\s<>()`!()\[\]{};:'".,<>?«»“”‘’}]*)?)/gi;
+
+const SUSPICIOUS_TLDS = new Set([
+  "zip",
+  "mov",
+  "tk",
+  "ml",
+  "cf",
+  "gq",
+  "work",
+  "click",
+  "country",
+  "kim",
+  "men",
+  "party",
+  "science",
+  "top",
+  "xyz",
+  "club",
+  "link",
+]);
+
+let forbiddenPatternsCache: string[] | null = null;
+
+export function resetForbiddenPatternsCache() {
+  forbiddenPatternsCache = null;
+}
+
 export function extractUrls(text: string): string[] {
   if (!text) return [];
-  const urlRegex =
-    /((https?:\/\/|www\.)[^\s<>()]+[^\s`!()\[\]{};:'".,<>?«»“”‘’])/gi;
-  const bareDomainRegex =
-    /(?<!:\/\/)(?<!@)\b((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?:\/[^{\s<>()`!()\[\]{};:'".,<>?«»“”‘’}]*)?)/gi;
 
   const matches = new Set<string>();
-  for (const m of text.match(urlRegex) || []) {
+  // Reset lastIndex for global regexes to ensure consistent behavior if reused
+  // (Though match() with global flag ignores lastIndex and finds all,
+  // but good practice if we switched to exec loops. Here match() is fine)
+  // Actually, match() with /g does not use lastIndex but returns all matches.
+  // So hoisting is safe.
+
+  for (const m of text.match(URL_REGEX) || []) {
     matches.add(m);
   }
-  for (const m of text.match(bareDomainRegex) || []) {
+  for (const m of text.match(BARE_DOMAIN_REGEX) || []) {
     if (m.startsWith("www.")) continue;
     matches.add(m);
   }
@@ -111,31 +144,12 @@ export async function expandUrl(
 
 export function isSuspiciousTld(hostname: string): boolean {
   const t = parse(hostname);
-  const bad = new Set([
-    "zip",
-    "mov",
-    "tk",
-    "ml",
-    "cf",
-    "gq",
-    "work",
-    "click",
-    "country",
-    "kim",
-    "men",
-    "party",
-    "science",
-    "top",
-    "xyz",
-    "club",
-    "link",
-  ]);
   if (!t.publicSuffix) {
     return false;
   }
 
   const lastLabel = t.publicSuffix.split(".").at(-1);
-  return !!lastLabel && bad.has(lastLabel);
+  return !!lastLabel && SUSPICIOUS_TLDS.has(lastLabel);
 }
 
 export function isShortener(hostname: string): boolean {
@@ -143,10 +157,12 @@ export function isShortener(hostname: string): boolean {
 }
 
 function parseForbiddenPatterns(): string[] {
-  return (process.env.WA_FORBIDDEN_HOSTNAMES || "")
+  if (forbiddenPatternsCache) return forbiddenPatternsCache;
+  forbiddenPatternsCache = (process.env.WA_FORBIDDEN_HOSTNAMES || "")
     .split(",")
     .map((entry) => entry.trim().toLowerCase())
     .filter((entry) => entry.length > 0);
+  return forbiddenPatternsCache;
 }
 
 export async function isForbiddenHostname(hostname: string): Promise<boolean> {
