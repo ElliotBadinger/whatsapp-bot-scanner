@@ -38,18 +38,31 @@ function getControlPlaneToken(): string {
   return token;
 }
 
-export async function controlPlaneFetch(
+export function normalizeBearerToken(raw: string): string {
+  const token = raw.trim();
+  const lower = token.toLowerCase();
+  const bearerPrefix = "bearer";
+  if (lower === bearerPrefix) {
+    return "";
+  }
+
+  if (lower.startsWith(`${bearerPrefix} `)) {
+    return token.slice(bearerPrefix.length + 1).trim();
+  }
+  return token;
+}
+
+/**
+ * Low-level control-plane fetch.
+ *
+ * @param token A prevalidated bearer token string (without the `Bearer ` prefix).
+ */
+async function controlPlaneFetchInternal(
   path: string,
+  token: string,
   init: RequestInit & { timeoutMs?: number } = {},
 ): Promise<Response> {
   const base = resolveControlPlaneBase();
-  const token = getControlPlaneToken();
-  if (!token) {
-    throw new ControlPlaneError("CONTROL_PLANE_API_TOKEN is required", {
-      status: 500,
-      code: "MISSING_TOKEN",
-    });
-  }
   const url = `${base}${path.startsWith("/") ? path : `/${path}`}`;
 
   const headers = new Headers(init.headers);
@@ -72,6 +85,42 @@ export async function controlPlaneFetch(
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+/**
+ * Fetch from the control-plane using the service token from `CONTROL_PLANE_API_TOKEN`.
+ *
+ * Throws a `ControlPlaneError` when the token is missing.
+ */
+export async function controlPlaneFetch(
+  path: string,
+  init: RequestInit & { timeoutMs?: number } = {},
+): Promise<Response> {
+  const token = getControlPlaneToken();
+  if (!token) {
+    throw new ControlPlaneError("CONTROL_PLANE_API_TOKEN is required", {
+      status: 500,
+      code: "MISSING_TOKEN",
+    });
+  }
+
+  return controlPlaneFetchInternal(path, token, init);
+}
+
+export async function controlPlaneFetchWithBearerToken(
+  token: string,
+  path: string,
+  init: RequestInit & { timeoutMs?: number } = {},
+): Promise<Response> {
+  const normalized = normalizeBearerToken(token);
+  if (!normalized) {
+    throw new ControlPlaneError("Bearer token is required", {
+      status: 400,
+      code: "INVALID_INPUT_MISSING_BEARER_TOKEN",
+    });
+  }
+
+  return controlPlaneFetchInternal(path, normalized, init);
 }
 
 async function controlPlaneFetchJsonInternal<T>(
