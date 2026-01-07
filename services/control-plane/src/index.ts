@@ -24,6 +24,9 @@ import {
   getConnectedSharedRedis,
   ValidationError,
   globalErrorHandler,
+  createApiRateLimiter,
+  consumeRateLimit,
+  RATE_LIMIT_CONFIGS,
 } from "@wbscanner/shared";
 import { getSharedConnection } from "./database.js";
 
@@ -82,6 +85,14 @@ export async function buildServer(options: BuildOptions = {}) {
   const redisClient = options.redisClient ?? (await getSharedRedis());
   const queue = options.queue ?? (await getSharedQueue());
 
+  const rateLimiter = createApiRateLimiter(
+    redisClient,
+    RATE_LIMIT_CONFIGS.api,
+    {
+      allowMemory: process.env.NODE_ENV === "test",
+    },
+  );
+
   const app = Fastify();
   app.setErrorHandler(globalErrorHandler);
 
@@ -94,6 +105,23 @@ export async function buildServer(options: BuildOptions = {}) {
 
   await app.register(async (protectedApp: FastifyInstance) => {
     protectedApp.addHook("preHandler", createAuthHook(requiredToken));
+
+    protectedApp.addHook("preHandler", async (req, reply) => {
+      const key = req.ip;
+      const result = await consumeRateLimit(rateLimiter, key);
+
+      reply.header("X-RateLimit-Limit", RATE_LIMIT_CONFIGS.api.points);
+      reply.header("X-RateLimit-Remaining", result.remaining);
+      reply.header("X-RateLimit-Reset", Math.ceil(result.resetMs / 1000));
+
+      if (!result.allowed) {
+        reply.code(429).send({
+          error: "too_many_requests",
+          retry_after: result.retryAfter,
+        });
+        return reply;
+      }
+    });
 
     protectedApp.get("/status", async () => {
       const { rows } = await dbClient.query(
