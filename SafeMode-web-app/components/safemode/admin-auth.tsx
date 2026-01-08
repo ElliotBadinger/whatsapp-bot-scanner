@@ -1,39 +1,83 @@
-"use client"
+"use client";
 
-import type React from "react"
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { NavBar } from "./nav-bar"
-import { TerminalCard } from "./terminal-card"
+import type React from "react";
+import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NavBar } from "./nav-bar";
+import { TerminalCard } from "./terminal-card";
 
 interface AdminAuthProps {
-  onAuthenticated: () => void
+  onAuthenticated: () => void;
 }
 
-// Demo token for proof of concept
-const DEMO_TOKEN = "safemode-admin-demo"
-
 export function AdminAuth({ onAuthenticated }: AdminAuthProps) {
-  const [token, setToken] = useState("")
-  const [error, setError] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [token, setToken] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    const controller = new AbortController();
+    setIsLoading(true);
+    fetch("/api/auth/session", {
+      method: "GET",
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then((resp) => {
+        if (resp.ok) {
+          onAuthenticated();
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (mounted) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+      controller.abort();
+    };
+  }, [onAuthenticated]);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsLoading(true)
-    setError(null)
+    e.preventDefault();
+    if (isLoading) return;
+    setIsLoading(true);
+    setError(null);
 
-    // Simulate auth check
-    await new Promise((resolve) => setTimeout(resolve, 800))
+    try {
+      const resp = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
 
-    if (token === DEMO_TOKEN || token === "demo") {
-      onAuthenticated()
-    } else {
-      setError("ACCESS_DENIED: Invalid token")
+      if (resp.ok) {
+        onAuthenticated();
+        return;
+      }
+
+      const payload = (await resp.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      const code = payload?.error;
+      if (resp.status === 401) {
+        setError("ACCESS_DENIED: Invalid token");
+      } else if (resp.status === 500 && code === "server_not_configured") {
+        setError("SERVER_ERROR: SAFEMODE_ADMIN_TOKEN is not configured");
+      } else {
+        setError("REQUEST_FAILED: Unable to authenticate");
+      }
+    } catch {
+      setError("REQUEST_FAILED: Unable to authenticate");
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false)
-  }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -69,7 +113,9 @@ export function AdminAuth({ onAuthenticated }: AdminAuthProps) {
                 </div>
 
                 {error && (
-                  <div className="font-mono text-xs text-danger bg-danger/10 border border-danger/30 p-3">{error}</div>
+                  <div className="font-mono text-xs text-danger bg-danger/10 border border-danger/30 p-3">
+                    {error}
+                  </div>
                 )}
 
                 <Button
@@ -80,14 +126,10 @@ export function AdminAuth({ onAuthenticated }: AdminAuthProps) {
                   {isLoading ? "AUTHENTICATING..." : "[ AUTHENTICATE ]"}
                 </Button>
               </form>
-
-              <div className="text-center font-mono text-xs text-primary/40">
-                <p>Demo token: "demo"</p>
-              </div>
             </div>
           </TerminalCard>
         </div>
       </div>
     </div>
-  )
+  );
 }
