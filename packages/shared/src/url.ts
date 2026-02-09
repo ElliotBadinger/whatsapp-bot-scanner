@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { URL } from "node:url";
 import { isPrivateHostname } from "./ssrf";
 import { request } from "undici";
-import { toASCII } from "punycode/";
+import { toASCII } from "punycode";
 import { parse } from "tldts";
 import { isKnownShortener } from "./url-shortener";
 
@@ -20,18 +20,20 @@ const TRACKING_PARAMS = new Set([
   "vero_id",
 ]);
 
+// Hoisted regexes to avoid recompilation
+const URL_REGEX =
+  /((https?:\/\/|www\.)[^\s<>()]+[^\s`!()\[\]{};:'".,<>?«»“”‘’])/gi;
+const BARE_DOMAIN_REGEX =
+  /(?<!:\/\/)(?<!@)\b((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?:\/[^{\s<>()`!()\[\]{};:'".,<>?«»“”‘’}]*)?)/gi;
+
 export function extractUrls(text: string): string[] {
   if (!text) return [];
-  const urlRegex =
-    /((https?:\/\/|www\.)[^\s<>()]+[^\s`!()\[\]{};:'".,<>?«»“”‘’])/gi;
-  const bareDomainRegex =
-    /(?<!:\/\/)(?<!@)\b((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?:\/[^{\s<>()`!()\[\]{};:'".,<>?«»“”‘’}]*)?)/gi;
 
   const matches = new Set<string>();
-  for (const m of text.match(urlRegex) || []) {
+  for (const m of text.match(URL_REGEX) || []) {
     matches.add(m);
   }
-  for (const m of text.match(bareDomainRegex) || []) {
+  for (const m of text.match(BARE_DOMAIN_REGEX) || []) {
     if (m.startsWith("www.")) continue;
     matches.add(m);
   }
@@ -109,44 +111,57 @@ export async function expandUrl(
   return { finalUrl: nu, chain };
 }
 
+// Hoisted bad TLDs set
+const BAD_TLDS = new Set([
+  "zip",
+  "mov",
+  "tk",
+  "ml",
+  "cf",
+  "gq",
+  "work",
+  "click",
+  "country",
+  "kim",
+  "men",
+  "party",
+  "science",
+  "top",
+  "xyz",
+  "club",
+  "link",
+]);
+
 export function isSuspiciousTld(hostname: string): boolean {
   const t = parse(hostname);
-  const bad = new Set([
-    "zip",
-    "mov",
-    "tk",
-    "ml",
-    "cf",
-    "gq",
-    "work",
-    "click",
-    "country",
-    "kim",
-    "men",
-    "party",
-    "science",
-    "top",
-    "xyz",
-    "club",
-    "link",
-  ]);
   if (!t.publicSuffix) {
     return false;
   }
 
   const lastLabel = t.publicSuffix.split(".").at(-1);
-  return !!lastLabel && bad.has(lastLabel);
+  return !!lastLabel && BAD_TLDS.has(lastLabel);
 }
 
 export function isShortener(hostname: string): boolean {
   return isKnownShortener(hostname);
 }
 
+let forbiddenPatternsCache: string[] | null = null;
+
 function parseForbiddenPatterns(): string[] {
-  return (process.env.WA_FORBIDDEN_HOSTNAMES || "")
+  if (forbiddenPatternsCache !== null) {
+    return forbiddenPatternsCache;
+  }
+  forbiddenPatternsCache = (process.env.WA_FORBIDDEN_HOSTNAMES || "")
     .split(",")
     .map((entry) => entry.trim().toLowerCase())
     .filter((entry) => entry.length > 0);
+  return forbiddenPatternsCache;
+}
+
+// Exposed for testing to allow resetting cache when env vars change
+export function resetForbiddenPatternsCache() {
+  forbiddenPatternsCache = null;
 }
 
 export async function isForbiddenHostname(hostname: string): Promise<boolean> {
