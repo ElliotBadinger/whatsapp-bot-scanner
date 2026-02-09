@@ -1,5 +1,3 @@
-import "server-only";
-
 export class ControlPlaneError extends Error {
   public readonly status: number;
   public readonly code?: string;
@@ -40,10 +38,10 @@ function getControlPlaneToken(): string {
 
 export async function controlPlaneFetch(
   path: string,
-  init: RequestInit & { timeoutMs?: number } = {},
+  init: RequestInit & { timeoutMs?: number; authToken?: string } = {},
 ): Promise<Response> {
   const base = resolveControlPlaneBase();
-  const token = getControlPlaneToken();
+  const token = (init.authToken ?? getControlPlaneToken()).trim();
   if (!token) {
     throw new ControlPlaneError("CONTROL_PLANE_API_TOKEN is required", {
       status: 500,
@@ -61,10 +59,11 @@ export async function controlPlaneFetch(
   const timeoutMs = init.timeoutMs ?? 8000;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const { timeoutMs: _timeoutMs, authToken: _authToken, ...requestInit } = init;
 
   try {
     return await fetch(url, {
-      ...init,
+      ...requestInit,
       headers,
       signal: controller.signal,
       cache: "no-store",
@@ -76,17 +75,17 @@ export async function controlPlaneFetch(
 
 async function controlPlaneFetchJsonInternal<T>(
   path: string,
-  init: RequestInit & { timeoutMs?: number },
+  init: RequestInit & { timeoutMs?: number; authToken?: string },
   options: { allowNoContent: false },
 ): Promise<{ status: number; data: T }>;
 async function controlPlaneFetchJsonInternal<T>(
   path: string,
-  init: RequestInit & { timeoutMs?: number },
+  init: RequestInit & { timeoutMs?: number; authToken?: string },
   options: { allowNoContent: true },
 ): Promise<{ status: number; data: T | undefined }>;
 async function controlPlaneFetchJsonInternal<T>(
   path: string,
-  init: RequestInit & { timeoutMs?: number },
+  init: RequestInit & { timeoutMs?: number; authToken?: string },
   options: { allowNoContent: boolean },
 ): Promise<{ status: number; data: T | undefined }> {
   const resp = await controlPlaneFetch(path, init);
@@ -180,17 +179,17 @@ async function controlPlaneFetchJsonInternal<T>(
 
 export async function controlPlaneFetchJsonWithStatus<T>(
   path: string,
-  init: RequestInit & { timeoutMs?: number },
+  init: RequestInit & { timeoutMs?: number; authToken?: string },
   options: { allowNoContent: false },
 ): Promise<{ status: number; data: T }>;
 export async function controlPlaneFetchJsonWithStatus<T>(
   path: string,
-  init: RequestInit & { timeoutMs?: number },
+  init: RequestInit & { timeoutMs?: number; authToken?: string },
   options: { allowNoContent: true },
 ): Promise<{ status: number; data: T | undefined }>;
 export async function controlPlaneFetchJsonWithStatus<T>(
   path: string,
-  init: RequestInit & { timeoutMs?: number } = {},
+  init: RequestInit & { timeoutMs?: number; authToken?: string } = {},
   options: { allowNoContent: boolean } = { allowNoContent: false },
 ): Promise<{ status: number; data: T | undefined }> {
   if (options.allowNoContent) {
@@ -202,7 +201,7 @@ export async function controlPlaneFetchJsonWithStatus<T>(
 
 export async function controlPlaneFetchJson<T>(
   path: string,
-  init: RequestInit & { timeoutMs?: number } = {},
+  init: RequestInit & { timeoutMs?: number; authToken?: string } = {},
 ): Promise<T> {
   const { data } = await controlPlaneFetchJsonWithStatus<T>(path, init, {
     allowNoContent: false,

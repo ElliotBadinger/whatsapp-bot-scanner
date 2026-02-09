@@ -1,4 +1,5 @@
 import { controlPlaneFetchJson } from "@/lib/control-plane-server";
+import { requireAdminSession } from "@/lib/auth/require-admin-session";
 import {
   type ControlPlaneScanRow,
   mapScanRow,
@@ -36,6 +37,9 @@ function makeCursor(item: Pick<ScanVerdict, "timestamp" | "id">): string {
 }
 
 export async function GET(req: Request) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return auth.response;
+
   const encoder = new TextEncoder();
   const lastEventId = req.headers.get("last-event-id");
   const initialAfter =
@@ -108,7 +112,7 @@ export async function GET(req: Request) {
         if (afterCursor) params.set("after", afterCursor);
         const rows = await controlPlaneFetchJson<ControlPlaneScanRow[]>(
           `/scans/recent?${params.toString()}`,
-          { timeoutMs: 6000 },
+          { timeoutMs: 6000, authToken: auth.session.controlPlaneToken },
         );
         return rows.map(mapScanRow);
       };

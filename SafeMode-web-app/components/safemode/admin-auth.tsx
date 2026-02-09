@@ -1,39 +1,117 @@
-"use client"
+"use client";
 
-import type React from "react"
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { NavBar } from "./nav-bar"
-import { TerminalCard } from "./terminal-card"
+import type React from "react";
+import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NavBar } from "./nav-bar";
+import { TerminalCard } from "./terminal-card";
 
 interface AdminAuthProps {
-  onAuthenticated: () => void
+  onAuthenticated: () => void;
 }
 
-// Demo token for proof of concept
-const DEMO_TOKEN = "safemode-admin-demo"
-
 export function AdminAuth({ onAuthenticated }: AdminAuthProps) {
-  const [token, setToken] = useState("")
-  const [error, setError] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [token, setToken] = useState("");
+  const [csrfToken, setCsrfToken] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadCsrf = async () => {
+      try {
+        const resp = await fetch("/api/auth/csrf", {
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+        if (!resp.ok) {
+          throw new Error("csrf_failed");
+        }
+        const body = (await resp.json().catch(() => null)) as {
+          csrfToken?: unknown;
+        } | null;
+        const raw =
+          body && typeof body.csrfToken === "string" ? body.csrfToken : null;
+        if (!raw) {
+          throw new Error("csrf_failed");
+        }
+        if (!cancelled) {
+          setCsrfToken(raw);
+        }
+      } catch {
+        if (!cancelled) {
+          setError("AUTH_INIT_FAILED: Unable to initialize session");
+        }
+      }
+    };
+
+    loadCsrf();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsLoading(true)
-    setError(null)
+    e.preventDefault();
+    setIsLoading(true);
+    setError(null);
 
-    // Simulate auth check
-    await new Promise((resolve) => setTimeout(resolve, 800))
+    try {
+      if (!csrfToken) {
+        throw new Error("csrf_missing");
+      }
 
-    if (token === DEMO_TOKEN || token === "demo") {
-      onAuthenticated()
-    } else {
-      setError("ACCESS_DENIED: Invalid token")
+      const resp = await fetch("/api/auth/login", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: token.trim(), csrfToken }),
+      });
+
+      if (resp.ok) {
+        setToken("");
+        setCsrfToken(null);
+        onAuthenticated();
+        return;
+      }
+
+      const body = (await resp.json().catch(() => null)) as {
+        error?: unknown;
+      } | null;
+      const code = body && typeof body.error === "string" ? body.error : null;
+
+      if (resp.status === 401) {
+        setError("ACCESS_DENIED: Invalid token");
+      } else if (resp.status === 403) {
+        setError("ACCESS_DENIED: CSRF check failed (retry)");
+        if (code === "csrf_failed") {
+          fetch("/api/auth/csrf", {
+            cache: "no-store",
+            credentials: "same-origin",
+          })
+            .then((csrfResp) => csrfResp.json())
+            .then((csrfBody: { csrfToken?: unknown }) => {
+              if (typeof csrfBody.csrfToken === "string") {
+                setCsrfToken(csrfBody.csrfToken);
+              }
+            })
+            .catch(() => {});
+        }
+      } else if (resp.status === 429) {
+        setError("RATE_LIMITED: Try again later");
+      } else if (code) {
+        setError(`AUTH_FAILED: ${code.toUpperCase()}`);
+      } else {
+        setError("AUTH_FAILED: Unexpected error");
+      }
+    } catch {
+      setError("AUTH_FAILED: Unexpected error");
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false)
-  }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -69,25 +147,23 @@ export function AdminAuth({ onAuthenticated }: AdminAuthProps) {
                 </div>
 
                 {error && (
-                  <div className="font-mono text-xs text-danger bg-danger/10 border border-danger/30 p-3">{error}</div>
+                  <div className="font-mono text-xs text-danger bg-danger/10 border border-danger/30 p-3">
+                    {error}
+                  </div>
                 )}
 
                 <Button
                   type="submit"
-                  disabled={isLoading || !token.trim()}
+                  disabled={isLoading || !token.trim() || !csrfToken}
                   className="w-full bg-primary text-background hover:bg-primary/80 font-mono font-bold"
                 >
                   {isLoading ? "AUTHENTICATING..." : "[ AUTHENTICATE ]"}
                 </Button>
               </form>
-
-              <div className="text-center font-mono text-xs text-primary/40">
-                <p>Demo token: "demo"</p>
-              </div>
             </div>
           </TerminalCard>
         </div>
       </div>
     </div>
-  )
+  );
 }
