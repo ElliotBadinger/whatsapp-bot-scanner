@@ -1,5 +1,7 @@
 import "server-only";
 
+import { getEnv } from "./env";
+
 export class ControlPlaneError extends Error {
   public readonly status: number;
   public readonly code?: string;
@@ -13,29 +15,21 @@ export class ControlPlaneError extends Error {
 }
 
 function resolveControlPlaneBase(): string {
-  const candidate = (
-    process.env.CONTROL_PLANE_BASE || "http://localhost:8080"
-  ).trim();
+  // `getEnv()` validates `CONTROL_PLANE_URL` on startup (and lazily on first access).
+  // During the deprecation window, `CONTROL_PLANE_BASE` can be used as a fallback value.
+  // If misconfigured, it throws and the request fails early.
+  // Normalizes the base URL (removes hash and trailing slashes).
+  const { CONTROL_PLANE_URL } = getEnv();
+  const parsed = new URL(CONTROL_PLANE_URL);
 
-  try {
-    const parsed = new URL(candidate);
-    if (!["http:", "https:"].includes(parsed.protocol)) {
-      throw new Error("invalid protocol");
-    }
-    parsed.hash = "";
-    let base = parsed.toString();
-    while (base.endsWith("/")) {
-      base = base.slice(0, -1);
-    }
-    return base;
-  } catch {
-    return "http://localhost:8080";
+  parsed.hash = "";
+
+  let base = parsed.toString();
+  while (base.endsWith("/")) {
+    base = base.slice(0, -1);
   }
-}
 
-function getControlPlaneToken(): string {
-  const token = (process.env.CONTROL_PLANE_API_TOKEN || "").trim();
-  return token;
+  return base;
 }
 
 export async function controlPlaneFetch(
@@ -43,13 +37,7 @@ export async function controlPlaneFetch(
   init: RequestInit & { timeoutMs?: number } = {},
 ): Promise<Response> {
   const base = resolveControlPlaneBase();
-  const token = getControlPlaneToken();
-  if (!token) {
-    throw new ControlPlaneError("CONTROL_PLANE_API_TOKEN is required", {
-      status: 500,
-      code: "MISSING_TOKEN",
-    });
-  }
+  const token = getEnv().CONTROL_PLANE_API_TOKEN;
   const url = `${base}${path.startsWith("/") ? path : `/${path}`}`;
 
   const headers = new Headers(init.headers);

@@ -3,6 +3,8 @@ const nextConfig = {
   // Enable React strict mode for better development warnings
   reactStrictMode: true,
 
+  // Public env vars are exposed via the `NEXT_PUBLIC_` prefix (validated in `lib/public-env.ts`).
+
   // Image optimization configuration
   images: {
     formats: ["image/avif", "image/webp"],
