@@ -116,7 +116,7 @@ export async function analyzeLocalEnhancedSecurity(
           ? db.check(finalUrl, urlHash)
           : Promise.resolve({ score: 0, reasons: [] } as LocalThreatResult),
       )
-      .catch(() => ({ score: 0, reasons: [] } as LocalThreatResult)),
+      .catch(() => ({ score: 0, reasons: [] }) as LocalThreatResult),
   ]);
 
   const heuristicsData =

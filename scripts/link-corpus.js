@@ -612,7 +612,10 @@ function writeFeedSnapshot(feedDir, feeds, sources) {
     },
     sans: { count: feeds.sansDomains.length, source: sources.suspicious },
     phishtank: sources.malicious.phishtank
-      ? { count: feeds.phishtankUrls.length, source: sources.malicious.phishtank }
+      ? {
+          count: feeds.phishtankUrls.length,
+          source: sources.malicious.phishtank,
+        }
       : { count: 0, source: null },
     outputDir: feedDir,
   };

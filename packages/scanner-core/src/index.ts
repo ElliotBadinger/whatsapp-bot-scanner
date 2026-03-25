@@ -308,10 +308,7 @@ export async function scanUrl(
   }
 
   if (enableEnhancedSecurity) {
-    const confidence = Math.min(
-      1,
-      (enhancedSecurityResult.score || 0) / 3.0,
-    );
+    const confidence = Math.min(1, (enhancedSecurityResult.score || 0) / 3.0);
     await recordLocalThreatVerdict(finalUrl, verdict.level, confidence).catch(
       () => undefined,
     );

@@ -52,9 +52,7 @@ const reportLimit = Number.parseInt(
 );
 const sourceFilter = new Set(parseList(process.env.ROBUSTNESS_SOURCES));
 
-const manifest = JSON.parse(
-  fs.readFileSync(manifestPath, "utf8"),
-) as Manifest;
+const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as Manifest;
 const reportEntries: ReportEntry[] = [];
 const summaries: Array<Record<string, unknown>> = [];
 const skipped: ManifestSource[] = [];

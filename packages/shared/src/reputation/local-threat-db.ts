@@ -53,15 +53,15 @@ export class LocalThreatDatabase {
       try {
         return fs.readFileSync(localPath, "utf8");
       } catch (err) {
-        logger.warn({ err, path: localPath }, "Failed to read local threat feed");
+        logger.warn(
+          { err, path: localPath },
+          "Failed to read local threat feed",
+        );
         return null;
       }
     }
     if (this.options.allowRemoteFeeds === false) {
-      logger.warn(
-        { feedUrl },
-        "Remote threat feed disabled; skipping update",
-      );
+      logger.warn({ feedUrl }, "Remote threat feed disabled; skipping update");
       return null;
     }
     if (!feedUrl.startsWith("http://") && !feedUrl.startsWith("https://")) {
