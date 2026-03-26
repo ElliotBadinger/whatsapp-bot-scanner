@@ -129,8 +129,9 @@ Save as `scripts/generate-secrets.sh`, make executable with `chmod +x scripts/ge
    - HashiCorp Vault
    - Google Secret Manager
    - Azure Key Vault
-5. **limit API key permissions** - Use the minimum required permissions for each service
-6. **Monitor API usage** - Watch for unexpected spikes that could indicate key compromise
+5. **Kubernetes: use Secrets, not ConfigMaps** - Keep sensitive keys out of `ConfigMap` objects. Use a `Secret` (see `k8s/secret.example.yaml`) and keep `k8s/secret.yaml` out of git.
+6. **Limit API key permissions** - Use the minimum required permissions for each service
+7. **Monitor API usage** - Watch for unexpected spikes that could indicate key compromise
 
 ## Troubleshooting
 

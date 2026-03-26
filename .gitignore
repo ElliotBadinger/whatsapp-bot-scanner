@@ -19,6 +19,9 @@ SafeMode-web-app/out/
 .env
 *.local.env
 
+# Kubernetes secrets (never commit real values)
+k8s/secret.yaml
+
 # Logs
 logs/
 *.log
