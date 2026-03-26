@@ -31,6 +31,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: env
+            - secretRef:
+                name: env-secret
           image: wa-client
           imagePullPolicy: Always
           livenessProbe:
