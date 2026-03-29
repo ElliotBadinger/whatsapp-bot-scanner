@@ -8,15 +8,20 @@ describe("control-plane error handling", () => {
   afterEach(() => {
     process.env.NODE_ENV = originalEnv;
   });
+  beforeEach(() => {
+    process.env.NODE_ENV = "production";
+  });
 
   async function buildTestServer() {
     const dbClient = { query: jest.fn(async () => ({ rows: [] })) };
     const redisClient = createMockRedis();
     const queue = createMockQueue("scan-request");
+
     const { app } = await buildServer({
       dbClient,
       redisClient: redisClient as any,
       queue: queue as any,
+      rateLimitOptions: { forceMemory: true },
     });
     return { app, dbClient };
   }
@@ -55,6 +60,7 @@ describe("control-plane error handling", () => {
       dbClient: dbClient as any,
       redisClient: redisClient as any,
       queue: queue as any,
+      rateLimitOptions: { forceMemory: true },
     });
 
     const response = await app.inject({

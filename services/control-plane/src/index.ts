@@ -24,6 +24,10 @@ import {
   getConnectedSharedRedis,
   ValidationError,
   globalErrorHandler,
+  createApiRateLimiter,
+  consumeRateLimit,
+  RATE_LIMIT_CONFIGS,
+  RateLimitError,
 } from "@wbscanner/shared";
 import { getSharedConnection } from "./database.js";
 
@@ -72,6 +76,7 @@ export interface BuildOptions {
   };
   redisClient?: Redis;
   queue?: Queue;
+  rateLimitOptions?: { forceMemory?: boolean };
 }
 
 export async function buildServer(options: BuildOptions = {}) {
@@ -85,6 +90,26 @@ export async function buildServer(options: BuildOptions = {}) {
   const app = Fastify();
   app.setErrorHandler(globalErrorHandler);
 
+  const allowMemory = !!options.rateLimitOptions?.forceMemory;
+  const actualRedisClient = options.rateLimitOptions?.forceMemory
+    ? null
+    : redisClient;
+  const apiRateLimiter = createApiRateLimiter(
+    actualRedisClient,
+    RATE_LIMIT_CONFIGS.api,
+    { allowMemory },
+  );
+  const overrideRateLimiter = createApiRateLimiter(
+    actualRedisClient,
+    RATE_LIMIT_CONFIGS.override,
+    { allowMemory },
+  );
+  const rescanRateLimiter = createApiRateLimiter(
+    actualRedisClient,
+    RATE_LIMIT_CONFIGS.rescan,
+    { allowMemory },
+  );
+
   // Public routes (no auth required) - must be registered before the auth hook
   app.get("/healthz", async () => ({ ok: true }));
   app.get("/metrics", async (_req, reply) => {
@@ -94,6 +119,15 @@ export async function buildServer(options: BuildOptions = {}) {
 
   await app.register(async (protectedApp: FastifyInstance) => {
     protectedApp.addHook("preHandler", createAuthHook(requiredToken));
+    protectedApp.addHook("preHandler", async (req) => {
+      const { allowed, retryAfter } = await consumeRateLimit(
+        apiRateLimiter,
+        req.ip,
+      );
+      if (!allowed) {
+        throw new RateLimitError(retryAfter);
+      }
+    });
 
     protectedApp.get("/status", async () => {
       const { rows } = await dbClient.query(
@@ -187,28 +221,42 @@ export async function buildServer(options: BuildOptions = {}) {
       expires_at?: string;
     }
 
-    protectedApp.post("/overrides", async (req, reply) => {
-      const validation = OverrideBodySchema.safeParse(req.body);
-      if (!validation.success) {
-        throw new ValidationError(validation.error);
-      }
-      const body = validation.data;
-      await dbClient.query(
-        `INSERT INTO overrides (url_hash, pattern, status, scope, scope_id, created_by, reason, expires_at)
+    protectedApp.post(
+      "/overrides",
+      {
+        preHandler: async (req) => {
+          const { allowed, retryAfter } = await consumeRateLimit(
+            overrideRateLimiter,
+            req.ip,
+          );
+          if (!allowed) {
+            throw new RateLimitError(retryAfter);
+          }
+        },
+      },
+      async (req, reply) => {
+        const validation = OverrideBodySchema.safeParse(req.body);
+        if (!validation.success) {
+          throw new ValidationError(validation.error);
+        }
+        const body = validation.data;
+        await dbClient.query(
+          `INSERT INTO overrides (url_hash, pattern, status, scope, scope_id, created_by, reason, expires_at)
       VALUES (?,?,?,?,?,?,?,?)`,
-        [
-          body.url_hash || null,
-          body.pattern || null,
-          body.status,
-          body.scope || "global",
-          body.scope_id || null,
-          "admin",
-          body.reason || null,
-          body.expires_at || null,
-        ],
-      );
-      reply.code(201).send({ ok: true });
-    });
+          [
+            body.url_hash || null,
+            body.pattern || null,
+            body.status,
+            body.scope || "global",
+            body.scope_id || null,
+            "admin",
+            body.reason || null,
+            body.expires_at || null,
+          ],
+        );
+        reply.code(201).send({ ok: true });
+      },
+    );
 
     protectedApp.get("/overrides", async () => {
       const { rows } = await dbClient.query(
@@ -246,66 +294,80 @@ export async function buildServer(options: BuildOptions = {}) {
       reply.send({ ok: true });
     });
 
-    protectedApp.post("/rescan", async (req, reply) => {
-      const validation = RescanBodySchema.safeParse(req.body);
-      if (!validation.success) {
-        throw new ValidationError(validation.error);
-      }
-      const { url } = validation.data;
-      const normalized = normalizeUrl(url);
-      if (!normalized) {
-        reply.code(400).send({ error: "invalid_url" });
-        return;
-      }
-      const hash = urlHash(normalized);
-      const keys = [
-        `scan:${hash}`,
-        `url:verdict:${hash}`,
-        `url:analysis:${hash}:vt`,
-        `url:analysis:${hash}:gsb`,
-        `url:analysis:${hash}:whois`,
-        `url:analysis:${hash}:phishtank`,
-        `url:analysis:${hash}:urlhaus`,
-        `url:shortener:${hash}`,
-      ];
-      await Promise.all(keys.map((key) => redisClient.del(key)));
-
-      let latestMessage: { chatId?: string; messageId?: string } | undefined;
-      const raw = await redisClient.get(`${SCAN_LAST_MESSAGE_PREFIX}${hash}`);
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw) as {
-            chatId?: string;
-            messageId?: string;
-          };
-          latestMessage = parsed;
-        } catch {
-          latestMessage = undefined;
+    protectedApp.post(
+      "/rescan",
+      {
+        preHandler: async (req) => {
+          const { allowed, retryAfter } = await consumeRateLimit(
+            rescanRateLimiter,
+            req.ip,
+          );
+          if (!allowed) {
+            throw new RateLimitError(retryAfter);
+          }
+        },
+      },
+      async (req, reply) => {
+        const validation = RescanBodySchema.safeParse(req.body);
+        if (!validation.success) {
+          throw new ValidationError(validation.error);
         }
-      }
+        const { url } = validation.data;
+        const normalized = normalizeUrl(url);
+        if (!normalized) {
+          reply.code(400).send({ error: "invalid_url" });
+          return;
+        }
+        const hash = urlHash(normalized);
+        const keys = [
+          `scan:${hash}`,
+          `url:verdict:${hash}`,
+          `url:analysis:${hash}:vt`,
+          `url:analysis:${hash}:gsb`,
+          `url:analysis:${hash}:whois`,
+          `url:analysis:${hash}:phishtank`,
+          `url:analysis:${hash}:urlhaus`,
+          `url:shortener:${hash}`,
+        ];
+        await Promise.all(keys.map((key) => redisClient.del(key)));
 
-      const rescanJob = {
-        url: normalized,
-        urlHash: hash,
-        rescan: true,
-        priority: 1,
-        timestamp: Date.now(),
-        ...(latestMessage?.chatId && latestMessage?.messageId
-          ? {
-              chatId: latestMessage.chatId,
-              messageId: latestMessage.messageId,
-            }
-          : {}),
-      };
+        let latestMessage: { chatId?: string; messageId?: string } | undefined;
+        const raw = await redisClient.get(`${SCAN_LAST_MESSAGE_PREFIX}${hash}`);
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw) as {
+              chatId?: string;
+              messageId?: string;
+            };
+            latestMessage = parsed;
+          } catch {
+            latestMessage = undefined;
+          }
+        }
 
-      const job = await queue.add("rescan", rescanJob, {
-        removeOnComplete: true,
-        removeOnFail: 100,
-        priority: 1,
-      });
-      metrics.rescanRequests.labels("control-plane").inc();
-      reply.send({ ok: true, urlHash: hash, jobId: job.id });
-    });
+        const rescanJob = {
+          url: normalized,
+          urlHash: hash,
+          rescan: true,
+          priority: 1,
+          timestamp: Date.now(),
+          ...(latestMessage?.chatId && latestMessage?.messageId
+            ? {
+                chatId: latestMessage.chatId,
+                messageId: latestMessage.messageId,
+              }
+            : {}),
+        };
+
+        const job = await queue.add("rescan", rescanJob, {
+          removeOnComplete: true,
+          removeOnFail: 100,
+          priority: 1,
+        });
+        metrics.rescanRequests.labels("control-plane").inc();
+        reply.send({ ok: true, urlHash: hash, jobId: job.id });
+      },
+    );
 
     function isWithinArtifactRoot(resolvedPath: string): boolean {
       const relative = path.relative(artifactRoot, resolvedPath);
