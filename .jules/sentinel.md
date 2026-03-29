@@ -1,5 +1,4 @@
-## 2025-12-21 - SSRF Bypass via IPv4-Mapped IPv6 Addresses
-
-**Vulnerability:** The `isPrivateIp` function failed to detect IPv4-mapped IPv6 addresses (e.g., `::ffff:127.0.0.1`) as private. This allowed SSRF bypass where an attacker could access internal services by using the IPv6 representation of private IPv4 addresses.
-**Learning:** Network libraries often treat IPv4-mapped IPv6 addresses as IPv6, but they effectively route to IPv4 destinations. Simply checking IPv4 ranges against an IPv6 address object fails.
-**Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
+## 2024-03-29 - Missing Rate Limiting on Control Plane Endpoints
+**Vulnerability:** The control plane endpoints (e.g., `/rescan`, `/overrides`, and general `/scans`) lacked any rate limiting, making them vulnerable to brute force and Denial of Service (DoS) attacks.
+**Learning:** Shared rate limiting utility (`createApiRateLimiter` from `@wbscanner/shared`) existed but wasn't wired into the fastify app, likely skipped during initial implementation. Also, initializing rate limiters in testing requires explicit configuration (`rateLimitOptions: { forceMemory: true }`) to bypass Redis script execution requirements and connection errors.
+**Prevention:** Ensure new exposed endpoints, particularly POST routes handling resource intensive tasks or configurations, explicitly include rate limit pre-handlers in Fastify routers.

@@ -26,6 +26,19 @@ export function createMockRedis() {
     ttl: jest.fn(async (_key: string) => -1),
     ping: jest.fn(async () => 'PONG'),
     quit: jest.fn(async () => 'OK'),
+    multi: jest.fn(() => ({
+      exec: jest.fn(async () => []),
+      set: jest.fn(),
+      pexpire: jest.fn(),
+    })),
+    defineCommand: jest.fn(),
+    eval: jest.fn(async () => 1),
+    evalsha: jest.fn(async () => [1, 2]),
+    pipeline: jest.fn(() => ({
+      exec: jest.fn(async () => []),
+      set: jest.fn(),
+      pexpire: jest.fn(),
+    })),
   };
 }
 

@@ -24,6 +24,10 @@ import {
   getConnectedSharedRedis,
   ValidationError,
   globalErrorHandler,
+  createApiRateLimiter,
+  consumeRateLimit,
+  RATE_LIMIT_CONFIGS,
+  RateLimitError,
 } from "@wbscanner/shared";
 import { getSharedConnection } from "./database.js";
 
@@ -72,6 +76,7 @@ export interface BuildOptions {
   };
   redisClient?: Redis;
   queue?: Queue;
+  rateLimitOptions?: { forceMemory?: boolean };
 }
 
 export async function buildServer(options: BuildOptions = {}) {
@@ -85,6 +90,12 @@ export async function buildServer(options: BuildOptions = {}) {
   const app = Fastify();
   app.setErrorHandler(globalErrorHandler);
 
+  const allowMemory = !!options.rateLimitOptions?.forceMemory;
+  const actualRedisClient = options.rateLimitOptions?.forceMemory ? null : redisClient;
+  const apiRateLimiter = createApiRateLimiter(actualRedisClient, RATE_LIMIT_CONFIGS.api, { allowMemory });
+  const overrideRateLimiter = createApiRateLimiter(actualRedisClient, RATE_LIMIT_CONFIGS.override, { allowMemory });
+  const rescanRateLimiter = createApiRateLimiter(actualRedisClient, RATE_LIMIT_CONFIGS.rescan, { allowMemory });
+
   // Public routes (no auth required) - must be registered before the auth hook
   app.get("/healthz", async () => ({ ok: true }));
   app.get("/metrics", async (_req, reply) => {
@@ -94,6 +105,12 @@ export async function buildServer(options: BuildOptions = {}) {
 
   await app.register(async (protectedApp: FastifyInstance) => {
     protectedApp.addHook("preHandler", createAuthHook(requiredToken));
+    protectedApp.addHook("preHandler", async (req) => {
+      const { allowed, retryAfter } = await consumeRateLimit(apiRateLimiter, req.ip);
+      if (!allowed) {
+        throw new RateLimitError(retryAfter);
+      }
+    });
 
     protectedApp.get("/status", async () => {
       const { rows } = await dbClient.query(
@@ -187,7 +204,14 @@ export async function buildServer(options: BuildOptions = {}) {
       expires_at?: string;
     }
 
-    protectedApp.post("/overrides", async (req, reply) => {
+    protectedApp.post("/overrides", {
+      preHandler: async (req) => {
+        const { allowed, retryAfter } = await consumeRateLimit(overrideRateLimiter, req.ip);
+        if (!allowed) {
+          throw new RateLimitError(retryAfter);
+        }
+      }
+    }, async (req, reply) => {
       const validation = OverrideBodySchema.safeParse(req.body);
       if (!validation.success) {
         throw new ValidationError(validation.error);
@@ -246,7 +270,14 @@ export async function buildServer(options: BuildOptions = {}) {
       reply.send({ ok: true });
     });
 
-    protectedApp.post("/rescan", async (req, reply) => {
+    protectedApp.post("/rescan", {
+      preHandler: async (req) => {
+        const { allowed, retryAfter } = await consumeRateLimit(rescanRateLimiter, req.ip);
+        if (!allowed) {
+          throw new RateLimitError(retryAfter);
+        }
+      }
+    }, async (req, reply) => {
       const validation = RescanBodySchema.safeParse(req.body);
       if (!validation.success) {
         throw new ValidationError(validation.error);
