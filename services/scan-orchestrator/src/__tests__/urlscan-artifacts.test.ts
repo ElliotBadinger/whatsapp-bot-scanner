@@ -23,6 +23,14 @@ jest.mock("node:stream/promises", () => ({
   pipeline: jest.fn(async () => undefined),
 }));
 
+jest.mock("@wbscanner/shared", () => {
+  const actual = jest.requireActual("@wbscanner/shared");
+  return {
+    ...actual,
+    assertSafeUrl: jest.fn().mockResolvedValue(undefined),
+  };
+});
+
 const { fetch: fetchMock } = jest.requireMock("undici") as {
   fetch: jest.Mock;
 };

@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { fetch, Response } from "undici";
-import { config, logger, metrics } from "@wbscanner/shared";
+import { config, logger, metrics, assertSafeUrl } from "@wbscanner/shared";
 
 export interface ArtifactPaths {
   screenshotPath: string | null;
@@ -33,6 +33,7 @@ async function downloadToFile(
   targetPath: string,
 ): Promise<boolean> {
   try {
+    await assertSafeUrl(url);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10_000);
     let response: Response | null = null;
@@ -138,6 +139,7 @@ export async function downloadUrlscanArtifacts(
 
   let domSaved = false;
   try {
+    await assertSafeUrl(domUrl);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10_000);
     let response: Response | null = null;
