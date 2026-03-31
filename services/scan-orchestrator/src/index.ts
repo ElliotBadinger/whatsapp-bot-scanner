@@ -1,5 +1,6 @@
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import Redis from "ioredis";
+import * as crypto from "crypto";
 import { Queue, Worker } from "bullmq";
 import {
   config,
@@ -150,6 +151,18 @@ const CIRCUIT_LABELS = {
   whoisxml: "whoisxml",
   whodat: "whodat",
 } as const;
+
+function timingSafeStringEqual(
+  a: string | undefined,
+  b: string | undefined,
+): boolean {
+  if (typeof a !== "string" || typeof b !== "string") {
+    return false;
+  }
+  const hashA = crypto.createHash("sha256").update(a).digest();
+  const hashB = crypto.createHash("sha256").update(b).digest();
+  return crypto.timingSafeEqual(hashA, hashB);
+}
 
 const cacheRatios = new Map<string, { hits: number; misses: number }>();
 const circuitOpenSince = new Map<string, number>();
@@ -1887,7 +1900,11 @@ async function handleUrlscanCallback(
     ? queryTokenRaw[0]
     : queryTokenRaw;
 
-  if (!secret || (headerToken !== secret && queryToken !== secret)) {
+  if (
+    !secret ||
+    (!timingSafeStringEqual(headerToken, secret) &&
+      !timingSafeStringEqual(queryToken, secret))
+  ) {
     reply.code(401).send({ ok: false, error: "unauthorized" });
     return;
   }
