@@ -8,6 +8,7 @@ jest.mock("@wbscanner/shared", () => ({
   metrics: {
     artifactDownloadFailures: { labels: () => ({ inc: jest.fn() }) },
   },
+  assertSafeUrl: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock("node:fs/promises", () => ({
