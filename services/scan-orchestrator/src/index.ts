@@ -1,5 +1,6 @@
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import Redis from "ioredis";
+import { timingSafeEqual, createHash } from "crypto";
 import { Queue, Worker } from "bullmq";
 import {
   config,
@@ -1862,6 +1863,13 @@ interface UrlscanCallbackBody {
   [key: string]: unknown;
 }
 
+function secureCompare(a: string | undefined, b: string): boolean {
+  if (!a) return false;
+  const hashA = createHash("sha256").update(a).digest();
+  const hashB = createHash("sha256").update(b).digest();
+  return timingSafeEqual(hashA, hashB);
+}
+
 // Refactored urlscan callback handler (complexity 17 -> 15)
 async function handleUrlscanCallback(
   req: FastifyRequest,
@@ -1887,7 +1895,10 @@ async function handleUrlscanCallback(
     ? queryTokenRaw[0]
     : queryTokenRaw;
 
-  if (!secret || (headerToken !== secret && queryToken !== secret)) {
+  if (
+    !secret ||
+    (!secureCompare(headerToken, secret) && !secureCompare(queryToken, secret))
+  ) {
     reply.code(401).send({ ok: false, error: "unauthorized" });
     return;
   }
