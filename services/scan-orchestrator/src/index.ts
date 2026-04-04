@@ -1898,7 +1898,10 @@ async function handleUrlscanCallback(
   let headerMatch = false;
   if (typeof headerToken === "string") {
     const headerTokenBuf = Buffer.from(headerToken, "utf8");
-    if (headerTokenBuf.length === secretBuf.length && crypto.timingSafeEqual(headerTokenBuf, secretBuf)) {
+    if (
+      headerTokenBuf.length === secretBuf.length &&
+      crypto.timingSafeEqual(headerTokenBuf, secretBuf)
+    ) {
       headerMatch = true;
     }
   }
@@ -1906,7 +1909,10 @@ async function handleUrlscanCallback(
   let queryMatch = false;
   if (typeof queryToken === "string") {
     const queryTokenBuf = Buffer.from(queryToken, "utf8");
-    if (queryTokenBuf.length === secretBuf.length && crypto.timingSafeEqual(queryTokenBuf, secretBuf)) {
+    if (
+      queryTokenBuf.length === secretBuf.length &&
+      crypto.timingSafeEqual(queryTokenBuf, secretBuf)
+    ) {
       queryMatch = true;
     }
   }
