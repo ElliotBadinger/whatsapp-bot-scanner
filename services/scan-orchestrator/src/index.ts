@@ -1897,12 +1897,8 @@ async function handleUrlscanCallback(
   const headerTokenBuffer = Buffer.from(headerToken || "", "utf8");
   const queryTokenBuffer = Buffer.from(queryToken || "", "utf8");
 
-  const headerMatches =
-    headerTokenBuffer.length === secretBuffer.length &&
-    timingSafeEqual(headerTokenBuffer, secretBuffer);
-  const queryMatches =
-    queryTokenBuffer.length === secretBuffer.length &&
-    timingSafeEqual(queryTokenBuffer, secretBuffer);
+  const headerMatches = headerTokenBuffer.length === secretBuffer.length && timingSafeEqual(headerTokenBuffer, secretBuffer);
+  const queryMatches = queryTokenBuffer.length === secretBuffer.length && timingSafeEqual(queryTokenBuffer, secretBuffer);
 
   if (!headerMatches && !queryMatches) {
     reply.code(401).send({ ok: false, error: "unauthorized" });
