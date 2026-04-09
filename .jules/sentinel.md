@@ -5,8 +5,6 @@
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
 
 ## 2025-12-21 - Fix Timing Attack Vulnerability in Token Validation
-
-
 **Vulnerability:** The token validation logic in `services/control-plane/src/index.ts` used a simple string comparison (`token !== expectedToken`). This is vulnerable to timing attacks, where an attacker measures the time taken to reject a token to guess its value byte by byte.
 **Learning:** Simple string comparisons for sensitive tokens can expose their contents through timing differences in execution. Node.js `crypto.timingSafeEqual` provides a constant-time comparison but requires buffers of equal length.
 **Prevention:** Always use `crypto.timingSafeEqual()` when comparing security tokens, passwords, or HMACs. Ensure that length differences are handled without revealing information by either checking the lengths first or hashing both strings to equal lengths before comparison.
