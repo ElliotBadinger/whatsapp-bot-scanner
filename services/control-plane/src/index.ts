@@ -61,7 +61,9 @@ function createAuthHook(expectedToken: string) {
   ) {
     const hdr = req.headers["authorization"] || "";
     const tokenStr = Array.isArray(hdr) ? hdr[0] : hdr;
-    const token = tokenStr?.startsWith("Bearer ") ? tokenStr.slice(7) : (tokenStr || "");
+    const token = tokenStr?.startsWith("Bearer ")
+      ? tokenStr.slice(7)
+      : tokenStr || "";
 
     const providedBuffer = Buffer.from(token, "utf8");
 
