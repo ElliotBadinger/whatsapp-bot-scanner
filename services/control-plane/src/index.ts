@@ -3,6 +3,7 @@ import Fastify, {
   FastifyReply,
   type FastifyInstance,
 } from "fastify";
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import path from "node:path";
@@ -51,14 +52,23 @@ async function getSharedQueue(): Promise<Queue> {
 }
 
 function createAuthHook(expectedToken: string) {
+  const expectedBuffer = Buffer.from(expectedToken, "utf8");
+
   return function authHook(
     req: FastifyRequest,
     reply: FastifyReply,
     done: (err?: Error) => void,
   ) {
     const hdr = req.headers["authorization"] || "";
-    const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : hdr;
-    if (token !== expectedToken) {
+    const tokenStr = Array.isArray(hdr) ? hdr[0] : hdr;
+    const token = tokenStr?.startsWith("Bearer ") ? tokenStr.slice(7) : (tokenStr || "");
+
+    const providedBuffer = Buffer.from(token, "utf8");
+
+    if (
+      expectedBuffer.length !== providedBuffer.length ||
+      !crypto.timingSafeEqual(expectedBuffer, providedBuffer)
+    ) {
       reply.code(401).send({ error: "unauthorized" });
       return;
     }
