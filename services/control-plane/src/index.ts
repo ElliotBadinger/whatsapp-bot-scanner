@@ -5,6 +5,7 @@ import Fastify, {
 } from "fastify";
 import fs from "node:fs/promises";
 import { createReadStream } from "node:fs";
+import { timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import Redis from "ioredis";
 import { Queue } from "bullmq";
@@ -51,6 +52,7 @@ async function getSharedQueue(): Promise<Queue> {
 }
 
 function createAuthHook(expectedToken: string) {
+  const expectedBuffer = Buffer.from(expectedToken, "utf8");
   return function authHook(
     req: FastifyRequest,
     reply: FastifyReply,
@@ -58,7 +60,14 @@ function createAuthHook(expectedToken: string) {
   ) {
     const hdr = req.headers["authorization"] || "";
     const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : hdr;
-    if (token !== expectedToken) {
+    const tokenBuffer = Buffer.from(token, "utf8");
+
+    let isMatch = false;
+    if (expectedBuffer.length === tokenBuffer.length) {
+      isMatch = timingSafeEqual(expectedBuffer, tokenBuffer);
+    }
+
+    if (!isMatch) {
       reply.code(401).send({ error: "unauthorized" });
       return;
     }
