@@ -62,7 +62,10 @@ function createAuthHook(expectedToken: string) {
     const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : hdr;
 
     const tokenBuf = Buffer.from(token, "utf8");
-    if (tokenBuf.length !== expectedTokenBuf.length || !crypto.timingSafeEqual(tokenBuf, expectedTokenBuf)) {
+    if (
+      tokenBuf.length !== expectedTokenBuf.length ||
+      !crypto.timingSafeEqual(tokenBuf, expectedTokenBuf)
+    ) {
       reply.code(401).send({ error: "unauthorized" });
       return;
     }
