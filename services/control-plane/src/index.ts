@@ -63,7 +63,10 @@ function createAuthHook(expectedToken: string) {
 
     // Timing-safe comparison to prevent timing attacks
     const tokenBuf = Buffer.from(token, "utf8");
-    if (tokenBuf.length !== expectedTokenBuf.length || !crypto.timingSafeEqual(tokenBuf, expectedTokenBuf)) {
+    if (
+      tokenBuf.length !== expectedTokenBuf.length ||
+      !crypto.timingSafeEqual(tokenBuf, expectedTokenBuf)
+    ) {
       reply.code(401).send({ error: "unauthorized" });
       return;
     }
