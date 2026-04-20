@@ -372,9 +372,11 @@ export const config = {
       if (explicitToken) {
         return explicitToken;
       }
-      logger.warn("CONTROL_PLANE_CSRF_TOKEN is not set. A derived token from the Control Plane API token is used for CSRF protection.");
+      logger.warn(
+        "CONTROL_PLANE_CSRF_TOKEN is not set. A derived token from the Control Plane API token is used for CSRF protection.",
+      );
       const apiToken = getControlPlaneToken();
-      return crypto.createHash('sha256').update(apiToken).digest('hex');
+      return crypto.createHash("sha256").update(apiToken).digest("hex");
     },
     get allowedOrigins(): string[] {
       return parseStringList(process.env.CONTROL_PLANE_ALLOWED_ORIGINS).map(
