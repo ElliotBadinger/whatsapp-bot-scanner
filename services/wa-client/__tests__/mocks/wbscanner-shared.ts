@@ -23,7 +23,7 @@ export const config = {
         .createHash("sha256")
         .update(
           (process.env.CONTROL_PLANE_API_TOKEN || "test-token").trim() +
-            "csrf-salt"
+            "csrf-salt",
         )
         .digest("hex");
     },
