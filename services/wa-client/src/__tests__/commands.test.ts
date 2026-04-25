@@ -8,6 +8,7 @@ import {
 } from "@jest/globals";
 import FakeRedis from "./fake-redis";
 import type Redis from "ioredis";
+import crypto from "crypto";
 
 jest.mock("ioredis", () => FakeRedis);
 
@@ -93,13 +94,19 @@ describe("handleAdminCommand", () => {
       {} as unknown as Redis,
     );
 
+    const expectedCsrfToken = crypto
+      .createHash("sha256")
+      .update("secret-token")
+      .update("csrf-salt")
+      .digest("hex");
+
     expect(globalThis.fetch).toHaveBeenCalledWith(
       "http://control-plane.test/groups/group-123/mute",
       expect.objectContaining({
         method: "POST",
         headers: {
           authorization: "Bearer secret-token",
-          "x-csrf-token": "secret-token",
+          "x-csrf-token": expectedCsrfToken,
         },
       }),
     );
@@ -139,13 +146,19 @@ describe("handleAdminCommand", () => {
       {} as unknown as Redis,
     );
 
+    const expectedCsrfToken = crypto
+      .createHash("sha256")
+      .update("secret-token")
+      .update("csrf-salt")
+      .digest("hex");
+
     expect(globalThis.fetch).toHaveBeenCalledWith(
       "http://control-plane.test/rescan",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({
           authorization: "Bearer secret-token",
-          "x-csrf-token": "secret-token",
+          "x-csrf-token": expectedCsrfToken,
         }),
       }),
     );
