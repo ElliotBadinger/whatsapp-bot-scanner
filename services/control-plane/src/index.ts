@@ -60,7 +60,8 @@ function createAuthHook(expectedToken: string) {
     done: (err?: Error) => void,
   ) {
     const hdr = req.headers["authorization"] || "";
-    const tokenStr = typeof hdr === "string" ? hdr : (Array.isArray(hdr) ? hdr[0] || "" : "");
+    const tokenStr =
+      typeof hdr === "string" ? hdr : Array.isArray(hdr) ? hdr[0] || "" : "";
     const token = tokenStr.startsWith("Bearer ") ? tokenStr.slice(7) : tokenStr;
     const tokenHash = createHash("sha256").update(token).digest();
 
