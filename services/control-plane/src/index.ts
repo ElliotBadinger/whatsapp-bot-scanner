@@ -5,6 +5,7 @@ import Fastify, {
 } from "fastify";
 import fs from "node:fs/promises";
 import { createReadStream } from "node:fs";
+import { timingSafeEqual, createHash } from "node:crypto";
 import path from "node:path";
 import Redis from "ioredis";
 import { Queue } from "bullmq";
@@ -58,7 +59,12 @@ function createAuthHook(expectedToken: string) {
   ) {
     const hdr = req.headers["authorization"] || "";
     const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : hdr;
-    if (token !== expectedToken) {
+
+    // Use SHA-256 hashes to ensure constant length for timingSafeEqual
+    const hashExpected = createHash("sha256").update(expectedToken).digest();
+    const hashProvided = createHash("sha256").update(token).digest();
+
+    if (!timingSafeEqual(hashExpected, hashProvided)) {
       reply.code(401).send({ error: "unauthorized" });
       return;
     }
