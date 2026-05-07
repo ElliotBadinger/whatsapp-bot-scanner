@@ -6,6 +6,7 @@ import Fastify, {
 import fs from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import path from "node:path";
+import { timingSafeEqual } from "node:crypto";
 import Redis from "ioredis";
 import { Queue } from "bullmq";
 import {
@@ -58,7 +59,14 @@ function createAuthHook(expectedToken: string) {
   ) {
     const hdr = req.headers["authorization"] || "";
     const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : hdr;
-    if (token !== expectedToken) {
+
+    const providedBuffer = Buffer.from(token, "utf8");
+    const expectedBuffer = Buffer.from(expectedToken, "utf8");
+
+    if (
+      providedBuffer.length !== expectedBuffer.length ||
+      !timingSafeEqual(providedBuffer, expectedBuffer)
+    ) {
       reply.code(401).send({ error: "unauthorized" });
       return;
     }
