@@ -3,6 +3,7 @@ import Fastify, {
   FastifyReply,
   type FastifyInstance,
 } from "fastify";
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import path from "node:path";
@@ -58,7 +59,12 @@ function createAuthHook(expectedToken: string) {
   ) {
     const hdr = req.headers["authorization"] || "";
     const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : hdr;
-    if (token !== expectedToken) {
+
+    // Constant-time token comparison to prevent timing attacks
+    const buf1 = Buffer.from(token, "utf8");
+    const buf2 = Buffer.from(expectedToken, "utf8");
+
+    if (buf1.length !== buf2.length || !crypto.timingSafeEqual(buf1, buf2)) {
       reply.code(401).send({ error: "unauthorized" });
       return;
     }
