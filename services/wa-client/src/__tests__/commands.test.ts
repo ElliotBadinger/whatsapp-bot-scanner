@@ -53,6 +53,7 @@ describe("handleAdminCommand", () => {
   beforeEach(() => {
     process.env.CONTROL_PLANE_BASE = "http://control-plane.test";
     process.env.CONTROL_PLANE_API_TOKEN = "secret-token";
+    process.env.CONTROL_PLANE_CSRF_TOKEN = "secret-token";
     fetchMock.mockReset();
     fetchMock.mockResolvedValue({
       ok: true,
