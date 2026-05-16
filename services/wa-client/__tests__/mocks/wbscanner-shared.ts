@@ -20,8 +20,13 @@ export const config = {
       if (explicit) {
         return explicit;
       }
-      const apiToken = (process.env.CONTROL_PLANE_API_TOKEN || "test-token").trim();
-      return crypto.createHash("sha256").update(apiToken + "-csrf").digest("hex");
+      const apiToken = (
+        process.env.CONTROL_PLANE_API_TOKEN || "test-token"
+      ).trim();
+      return crypto
+        .createHash("sha256")
+        .update(apiToken + "-csrf")
+        .digest("hex");
     },
   },
   wa: {

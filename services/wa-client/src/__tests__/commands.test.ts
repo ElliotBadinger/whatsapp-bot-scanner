@@ -99,7 +99,8 @@ describe("handleAdminCommand", () => {
         method: "POST",
         headers: {
           authorization: "Bearer secret-token",
-          "x-csrf-token": "b69a663ef69ce4efe700e3471ae55b922e5c8216945d108744496b159d0a2642",
+          "x-csrf-token":
+            "b69a663ef69ce4efe700e3471ae55b922e5c8216945d108744496b159d0a2642",
         },
       }),
     );
@@ -145,7 +146,8 @@ describe("handleAdminCommand", () => {
         method: "POST",
         headers: expect.objectContaining({
           authorization: "Bearer secret-token",
-          "x-csrf-token": "b69a663ef69ce4efe700e3471ae55b922e5c8216945d108744496b159d0a2642",
+          "x-csrf-token":
+            "b69a663ef69ce4efe700e3471ae55b922e5c8216945d108744496b159d0a2642",
         }),
       }),
     );

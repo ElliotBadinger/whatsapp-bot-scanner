@@ -375,7 +375,10 @@ export const config = {
       // Deriving a fallback CSRF token using a deterministic hash of the API token
       // rather than the API token itself to prevent the master secret from leaking
       // if the CSRF token is compromised (AUTH-004).
-      return crypto.createHash("sha256").update(getControlPlaneToken() + "-csrf").digest("hex");
+      return crypto
+        .createHash("sha256")
+        .update(getControlPlaneToken() + "-csrf")
+        .digest("hex");
     },
     get allowedOrigins(): string[] {
       return parseStringList(process.env.CONTROL_PLANE_ALLOWED_ORIGINS).map(
