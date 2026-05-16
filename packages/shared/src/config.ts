@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 import { logger } from "./log";
 
 import path from "path";
+import crypto from "crypto";
 
 const mvpMode = (process.env.MVP_MODE || "") === "1";
 
@@ -367,9 +368,14 @@ export const config = {
     },
     enableUi: (process.env.CONTROL_PLANE_ENABLE_UI || "true") === "true",
     get csrfToken(): string {
-      return (
-        process.env.CONTROL_PLANE_CSRF_TOKEN || getControlPlaneToken()
-      ).trim();
+      const explicit = (process.env.CONTROL_PLANE_CSRF_TOKEN || "").trim();
+      if (explicit) {
+        return explicit;
+      }
+      // Deriving a fallback CSRF token using a deterministic hash of the API token
+      // rather than the API token itself to prevent the master secret from leaking
+      // if the CSRF token is compromised (AUTH-004).
+      return crypto.createHash("sha256").update(getControlPlaneToken() + "-csrf").digest("hex");
     },
     get allowedOrigins(): string[] {
       return parseStringList(process.env.CONTROL_PLANE_ALLOWED_ORIGINS).map(
