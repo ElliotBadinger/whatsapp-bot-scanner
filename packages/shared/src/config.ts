@@ -372,7 +372,7 @@ export const config = {
         return process.env.CONTROL_PLANE_CSRF_TOKEN.trim();
       }
       return crypto
-        .createHmac("sha256", "wbscanner-csrf-salt")
+        .createHash("sha256")
         .update(getControlPlaneToken())
         .digest("hex");
     },
