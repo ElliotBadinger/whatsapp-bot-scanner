@@ -16,11 +16,13 @@ export const config = {
   },
   controlPlane: {
     get csrfToken(): string {
-      return (
-        process.env.CONTROL_PLANE_CSRF_TOKEN ||
-        process.env.CONTROL_PLANE_API_TOKEN ||
-        "test-token"
+      if (process.env.CONTROL_PLANE_CSRF_TOKEN) {
+        return process.env.CONTROL_PLANE_CSRF_TOKEN.trim();
+      }
+      const token = (
+        process.env.CONTROL_PLANE_API_TOKEN || "test-token"
       ).trim();
+      return crypto.createHash("sha256").update(token).digest("hex");
     },
   },
   wa: {
