@@ -305,7 +305,7 @@ describe("control-plane extra routes", () => {
     }
   });
 
-  it("exposes metrics endpoint without auth", async () => {
+  it("requires auth for metrics endpoint", async () => {
     const dbClient = {
       query: jest.fn(async () => ({ rows: [] })),
     };
@@ -318,12 +318,21 @@ describe("control-plane extra routes", () => {
     });
 
     try {
-      const res = await app.inject({
+      const resNoAuth = await app.inject({
         method: "GET",
         url: "/metrics",
       });
-      expect(res.statusCode).toBe(200);
-      expect(res.headers["content-type"]).toContain("text/plain");
+      expect(resNoAuth.statusCode).toBe(401);
+
+      const resAuth = await app.inject({
+        method: "GET",
+        url: "/metrics",
+        headers: {
+          authorization: "Bearer test-token"
+        }
+      });
+      expect(resAuth.statusCode).toBe(200);
+      expect(resAuth.headers["content-type"]).toContain("text/plain");
     } finally {
       await app.close();
     }
