@@ -328,8 +328,8 @@ describe("control-plane extra routes", () => {
         method: "GET",
         url: "/metrics",
         headers: {
-          authorization: "Bearer test-token"
-        }
+          authorization: "Bearer test-token",
+        },
       });
       expect(resAuth.statusCode).toBe(200);
       expect(resAuth.headers["content-type"]).toContain("text/plain");
