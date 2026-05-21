@@ -5,6 +5,7 @@
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
 
 ## 2026-05-21 - CSRF Token Derived from Authentication Token
+
 **Vulnerability:** The CSRF token was defaulting to the exact same value as the API Authentication token (`CONTROL_PLANE_API_TOKEN`), defeating the purpose of CSRF protection by reusing authentication secrets.
 **Learning:** In horizontally scaled environments, we cannot generate a random stateful CSRF token on startup (e.g. `crypto.randomBytes()`) because instances would have mismatched tokens.
 **Prevention:** Use a deterministic derivation method (e.g. `crypto.createHash('sha256').update(apiToken).update('csrf-salt').digest('hex')`) to generate a unique, non-reversible CSRF token that stays consistent across all scaled instances without sharing the same value as the auth token.
