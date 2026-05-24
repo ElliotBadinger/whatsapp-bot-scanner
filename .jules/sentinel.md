@@ -1,5 +1,4 @@
-## 2025-12-21 - SSRF Bypass via IPv4-Mapped IPv6 Addresses
-
-**Vulnerability:** The `isPrivateIp` function failed to detect IPv4-mapped IPv6 addresses (e.g., `::ffff:127.0.0.1`) as private. This allowed SSRF bypass where an attacker could access internal services by using the IPv6 representation of private IPv4 addresses.
-**Learning:** Network libraries often treat IPv4-mapped IPv6 addresses as IPv6, but they effectively route to IPv4 destinations. Simply checking IPv4 ranges against an IPv6 address object fails.
-**Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
+## 2024-05-24 - [Timing Attack in Token Comparison]
+**Vulnerability:** The token comparison in `createAuthHook` in `services/control-plane/src/index.ts` was using the standard equality operator (`!==`), making it vulnerable to a timing attack where an attacker could measure response times to guess valid tokens character by character.
+**Learning:** Even simple string comparisons for secrets (like authentication tokens) can introduce vulnerabilities if they exit early on mismatch.
+**Prevention:** Always use `crypto.timingSafeEqual` when comparing secrets. Furthermore, because `timingSafeEqual` throws an error if the buffers are of different lengths, hash the strings first (e.g., using SHA-256) to ensure consistent lengths before comparison.
