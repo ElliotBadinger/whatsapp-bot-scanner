@@ -8,6 +8,7 @@ import {
 } from "@jest/globals";
 import FakeRedis from "./fake-redis";
 import type Redis from "ioredis";
+import { config } from "@wbscanner/shared";
 
 jest.mock("ioredis", () => FakeRedis);
 
@@ -99,7 +100,7 @@ describe("handleAdminCommand", () => {
         method: "POST",
         headers: {
           authorization: "Bearer secret-token",
-          "x-csrf-token": "secret-token",
+          "x-csrf-token": config.controlPlane.csrfToken,
         },
       }),
     );
@@ -145,7 +146,7 @@ describe("handleAdminCommand", () => {
         method: "POST",
         headers: expect.objectContaining({
           authorization: "Bearer secret-token",
-          "x-csrf-token": "secret-token",
+          "x-csrf-token": config.controlPlane.csrfToken,
         }),
       }),
     );
