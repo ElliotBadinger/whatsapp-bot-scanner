@@ -1888,14 +1888,20 @@ async function handleUrlscanCallback(
     ? queryTokenRaw[0]
     : queryTokenRaw;
 
-  const secureCompare = (a: string | undefined, b: string | undefined): boolean => {
+  const secureCompare = (
+    a: string | undefined,
+    b: string | undefined,
+  ): boolean => {
     if (!a || !b) return false;
     const aHash = crypto.createHash("sha256").update(a).digest();
     const bHash = crypto.createHash("sha256").update(b).digest();
     return crypto.timingSafeEqual(aHash, bHash);
   };
 
-  if (!secret || (!secureCompare(headerToken, secret) && !secureCompare(queryToken, secret))) {
+  if (
+    !secret ||
+    (!secureCompare(headerToken, secret) && !secureCompare(queryToken, secret))
+  ) {
     reply.code(401).send({ ok: false, error: "unauthorized" });
     return;
   }
