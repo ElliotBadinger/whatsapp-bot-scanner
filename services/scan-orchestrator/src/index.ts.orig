@@ -1890,9 +1890,10 @@ async function handleUrlscanCallback(
 
   const secureCompare = (a: string | undefined, b: string | undefined): boolean => {
     if (!a || !b) return false;
-    const aHash = crypto.createHash("sha256").update(a).digest();
-    const bHash = crypto.createHash("sha256").update(b).digest();
-    return crypto.timingSafeEqual(aHash, bHash);
+    const aBuf = Buffer.from(a, "utf8");
+    const bBuf = Buffer.from(b, "utf8");
+    if (aBuf.length !== bBuf.length) return false;
+    return crypto.timingSafeEqual(aBuf, bBuf);
   };
 
   if (!secret || (!secureCompare(headerToken, secret) && !secureCompare(queryToken, secret))) {
