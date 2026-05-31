@@ -370,7 +370,10 @@ export const config = {
     get csrfToken(): string {
       return (
         process.env.CONTROL_PLANE_CSRF_TOKEN ||
-        crypto.createHmac("sha256", getControlPlaneToken()).update("csrf").digest("hex")
+        crypto
+          .createHmac("sha256", getControlPlaneToken())
+          .update("csrf")
+          .digest("hex")
       ).trim();
     },
     get allowedOrigins(): string[] {

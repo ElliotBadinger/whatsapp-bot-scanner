@@ -21,7 +21,7 @@ export const config = {
         crypto
           .createHmac(
             "sha256",
-            process.env.CONTROL_PLANE_API_TOKEN || "test-token"
+            process.env.CONTROL_PLANE_API_TOKEN || "test-token",
           )
           .update("csrf")
           .digest("hex")
