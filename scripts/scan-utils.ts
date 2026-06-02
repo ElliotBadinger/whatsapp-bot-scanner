@@ -419,11 +419,15 @@ export async function scanJsonlGrouped(
 
     const inputUrl = entry.inputUrl ?? entry.url;
     const fixtureSignals = buildFixtureSignals(entry);
-    const feedSource = entry.source ?? options.sourceOverride;
+    // NOTE: we deliberately do NOT inject `feedSource: entry.source` here.
+    // The dataset's source id (e.g. "threatfox_full") is the ground-truth label
+    // bucket, and scoring.ts treats known feed sources as a malicious signal —
+    // feeding it in makes the benchmark circular (train==test) and trivially
+    // scores ~1.0 everywhere. The scanner must determine feed membership from
+    // its own local-feed lookups (LOCAL_FEED_DIR), not from the dataset tag.
     const extraSignals = {
       ...(scanOptions.extraSignals ?? {}),
       ...fixtureSignals,
-      ...(feedSource ? { feedSource } : {}),
       ...(isFiniteNumber(entry.mlMaliciousScore)
         ? { mlMaliciousScore: entry.mlMaliciousScore }
         : {}),
