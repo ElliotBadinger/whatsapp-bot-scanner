@@ -75,6 +75,9 @@ export function normalizeLabel(label?: string): string | null {
   if (["benign", "legit", "legitimate", "good", "clean"].includes(normalized)) {
     return "benign";
   }
+  if (["benign-hard", "benign_hard", "benignhard"].includes(normalized)) {
+    return "benign-hard";
+  }
   if (["sus", "suspicious"].includes(normalized)) {
     return "suspicious";
   }
@@ -93,6 +96,7 @@ export function resolveExpectedLabel(label?: string | null): string | null {
   const normalized = normalizeLabel(label ?? undefined);
   if (!normalized || normalized === "unknown") return null;
   if (normalized === "tricky") return "suspicious";
+  if (normalized === "benign-hard") return "benign";
   if (["benign", "suspicious", "malicious"].includes(normalized)) {
     return normalized;
   }

@@ -10,12 +10,14 @@ describe("scan utils", () => {
     expect(normalizeLabel("LEGIT")).toBe("benign");
     expect(normalizeLabel("sus")).toBe("suspicious");
     expect(normalizeLabel("tricky")).toBe("tricky");
+    expect(normalizeLabel("benign-hard")).toBe("benign-hard");
   });
 
   it("resolves expected labels with tricky mapping", () => {
     expect(resolveExpectedLabel("tricky")).toBe("suspicious");
     expect(resolveExpectedLabel("unknown")).toBeNull();
     expect(resolveExpectedLabel("benign")).toBe("benign");
+    expect(resolveExpectedLabel("benign-hard")).toBe("benign");
   });
 
   it("summarizes bucket metrics", () => {

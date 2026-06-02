@@ -34,10 +34,17 @@ It supports:
 - Near-real-time feeds: OpenPhish, URLHaus, CERT.PL, SANS, PhishTank.
 - Live IP/IOC feeds: ThreatFox, SSLBL.
 - Redirect-chain fixtures: urlscan export (`URLSCAN_EXPORT_PATH`).
-- Research datasets: PhreshPhish, URL-Phish, StealthPhisher, PhishOFE.
+- Research datasets: PhreshPhish, URL-Phish, StealthPhisher, PhishOFE, CIC-Trap4Phish (URLs + QR), DynaPD kits.
+- Offline snapshots: CISA AIS (TAXII/STIX), Censys Threats, URLx (Hunt.io), MalwareBazaar, Common Crawl CC-MAIN, Tranco (top domains + real URLs), Redirect Patterns (Internet Archive), SaaS redirector wrappers.
 - Reports/patterns: local report extraction from `scripts/dataset reports`.
 
 All are normalized into JSONL under `storage/robustness/sources/`.
+
+## Dedup + Allowlist
+
+- Fixtures are deduplicated by exact URL and registrable domain.
+- Benign-heavy sources can be labeled `benign-hard`; these are filtered to an allowlisted registrable-domain set (seeded from Tranco or a custom allowlist).
+- Provide allowlist files via `--allowlist <path>` or `ROBUSTNESS_ALLOWLIST_PATHS=/path/a.txt,/path/b.jsonl`.
 
 ## Offline Scan Controls
 
@@ -90,6 +97,23 @@ python scripts/benchmarks/generate-urlscan-fixtures.py \
   --out storage/robustness/urlscan-export.jsonl \
   --count 500
 ```
+
+## Offline Snapshot Inputs
+
+The fetcher reads local snapshots via environment variables:
+
+- `CIC_TRAP4PHISH_ARCHIVE`, `CIC_TRAP4PHISH_QR_ARCHIVE`
+- `DYNAPD_ARCHIVE` (optional synthetic base via `DYNAPD_SYNTHETIC_BASE`)
+- `PHISHOFE_ARCHIVE`, `URL_PHISH_ARCHIVE`, `STEALTHPHISHER_ARCHIVE`
+- `URLSCAN_EXPORT_PATH`
+- `CISA_AIS_ARCHIVE`, `CENSYS_THREATS_ARCHIVE`, `URLX_ARCHIVE`
+- `MALWAREBAZAAR_ARCHIVE`
+- `REDIRECT_PATTERNS_ARCHIVE`, `COMMON_CRAWL_SNAPSHOT`
+- `TRANCO_TOP_DOMAINS_PATH`, `TRANCO_REAL_URLS_ARCHIVE`
+- `REDIRECTOR_WRAPPERS_PATH`
+
+If QR payloads are stored as images, install `opencv-python` via
+`scripts/robustness/requirements.txt` to decode QR URLs.
 
 ## Metrics
 
