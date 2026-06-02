@@ -13,8 +13,8 @@
       "id": "generalization-flagged-recall",
       "path": "generalization.flagged.recall",
       "direction": "gte",
-      "green": 0.30,
-      "amber": 0.25
+      "green": 0.32,
+      "amber": 0.28
     },
     {
       "id": "generalization-flagged-fpr",
