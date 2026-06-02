@@ -1,14 +1,8 @@
 /**
- * WA Client Main Entry Point (Adapter-based)
+ * WA Client Main Entry Point
  *
- * This is the new entry point that uses the adapter pattern to support
- * both Baileys and whatsapp-web.js libraries. Set WA_LIBRARY environment
- * variable to choose the library:
- *
- *   WA_LIBRARY=baileys   - Use Baileys (recommended, default)
- *   WA_LIBRARY=wwebjs    - Use whatsapp-web.js (legacy)
- *
- * For the legacy whatsapp-web.js-only entry point, use index.ts.
+ * The wa-client connects to WhatsApp via the Baileys adapter, watches group
+ * messages, extracts URLs, scans them, and posts verdicts back to the group.
  */
 
 import Fastify from "fastify";

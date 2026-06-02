@@ -1,8 +1,8 @@
 /**
  * Shared Message Handler
  *
- * This module provides a unified message handling layer that works with
- * both Baileys and whatsapp-web.js adapters through the WhatsAppAdapter interface.
+ * This module provides the message handling layer that works with the
+ * Baileys adapter through the WhatsAppAdapter interface.
  */
 
 import type { Logger } from "pino";

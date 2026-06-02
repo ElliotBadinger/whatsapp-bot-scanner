@@ -5,7 +5,6 @@ module.exports = {
   coverageProvider: "v8",
   testMatch: ["**/__tests__/**/*.test.ts"],
   coveragePathIgnorePatterns: [
-    "<rootDir>/src/index.ts",
     "<rootDir>/src/__tests__/",
     "<rootDir>/__tests__/mocks/",
   ],
@@ -24,7 +23,6 @@ module.exports = {
     "^(\\.{1,2}/.*)\\.js$": "$1",
     "^@wbscanner/shared$": "<rootDir>/__tests__/mocks/wbscanner-shared.ts",
     "^@wbscanner/shared/(.*)$": "<rootDir>/__tests__/mocks/wbscanner-shared.ts",
-    "^whatsapp-web\\.js$": "<rootDir>/__tests__/mocks/whatsapp-web-js.ts",
     "better-sqlite3":
       "<rootDir>/../../packages/shared/__mocks__/better-sqlite3.js",
   },

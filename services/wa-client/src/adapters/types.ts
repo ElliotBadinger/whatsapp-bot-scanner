@@ -2,7 +2,7 @@
  * WhatsApp Adapter Interface
  *
  * This module defines the common interface for WhatsApp client adapters.
- * Both Baileys and whatsapp-web.js implementations must conform to this interface.
+ * The Baileys adapter implements this interface.
  */
 
 import type { Logger } from "pino";
@@ -477,4 +477,4 @@ export interface WhatsAppAdapter {
 /**
  * Library type for the adapter factory
  */
-export type WhatsAppLibrary = "baileys" | "wwebjs";
+export type WhatsAppLibrary = "baileys";

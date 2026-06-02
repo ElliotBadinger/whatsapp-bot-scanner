@@ -36,8 +36,8 @@ describe("Adapter Types", () => {
 
   describe("WhatsAppLibrary", () => {
     it("should accept valid library types", () => {
-      const libraries: WhatsAppLibrary[] = ["baileys", "wwebjs"];
-      expect(libraries).toHaveLength(2);
+      const libraries: WhatsAppLibrary[] = ["baileys"];
+      expect(libraries).toHaveLength(1);
     });
   });
 
