@@ -1,40 +1,73 @@
 # Repository Guidelines
 
+## What this is
+
+A WhatsApp link/bot scanner for **community and group admins** who self-host it.
+The bot watches group messages, extracts URLs, scans them with local heuristics
+plus free threat feeds, and posts a verdict back to the group. The MVP goal is a
+single container an admin can run with one command — no control plane, no Redis,
+no message queue, no dashboards.
+
 ## Project Structure & Module Organization
 
-- `services/control-plane`, `services/scan-orchestrator`, and `services/wa-client` host the Fastify services; keep authored TypeScript in each `src/` directory and generated JavaScript in `dist/`.
-- `packages/shared` exports queue contracts, config loaders, and logging helpers that every service imports via the `@wbscanner/...` alias.
-- Support assets live in `docs/` (architecture, security, runbooks), `db/` plus `scripts/` (SQL migrations and seed runners), and `observability/`, `grafana/`, `reverse-proxy/` (monitoring and ingress).
+- `services/wa-client` — the bot. Connects to WhatsApp via the **Baileys** adapter
+  (`src/adapters/`), handles messages (`src/handlers/message-handler.ts`), and runs
+  scans through an in-process queue (`src/queues/in-process-scan-queue.ts`). The
+  single entry point is `src/main.ts`.
+- `services/landing-page` — the marketing/landing site.
+- `packages/scanner-core` — the scanning brain (URL heuristics + feed scoring). This
+  is the product's core value; keep it well-tested.
+- `packages/shared` — config loaders, logging, metrics, and scan utilities imported
+  via the `@wbscanner/...` alias.
+- `packages/confusable` — homoglyph/confusable detection used by the scanner.
+- `scripts/` — the guided setup CLI (`unified-cli.mjs`), corpus/feed tooling, and the
+  offline robustness/benchmark harness.
+- `docker/Dockerfile` + `docker-compose.mvp.yml` — the single-container MVP build.
+
+The advanced multi-service stack (control plane, scan orchestrator, observability)
+was retired; it lives in the `pre-mvp-archive` git tag if ever needed again.
 
 ## Build, Test, and Development Commands
 
-- `make build`, `make up`, and `make down` orchestrate the Docker stack; pair with `make logs` to tail cross-service output while diagnosing issues.
-- `npm run build` compiles all workspaces; scope to one service with `npm --workspace services/<name> run build`.
-- `npm run dev` launches any workspace `dev` scripts (e.g., `ts-node src/index.ts`), so stop lingering sessions before rebuilding containers.
-- Use `npm run migrate` and `npm run seed` for database workflows defined in the `scripts/` helpers.
+- `bun install` — install workspace dependencies.
+- `bun run build` / `bun run type-check` / `bun run lint` — across all workspaces;
+  scope to one with `bun run --filter '@wbscanner/wa-client' <script>`.
+- `bun run test` — run the Jest suites across workspaces.
+- `docker compose -f docker-compose.mvp.yml up --build` — run the MVP container.
+- `bun scripts/unified-cli.mjs` — guided one-command setup for self-hosters.
 
 ## Coding Style & Naming Conventions
 
-- `.editorconfig` enforces UTF-8, LF endings, trimmed whitespace, and two-space indentation—configure your editor accordingly.
-- `tsconfig.base.json` enables strict typing and ES2020 targets; prefer explicit return types on exported functions and keep async flows promise-based.
-- Name files and queues in kebab-case (`domain-scanner.ts`, `link-score-queue`), and log via the shared `logger` to maintain consistent formatting.
+- `.editorconfig` enforces UTF-8, LF endings, trimmed whitespace, and two-space
+  indentation.
+- `tsconfig.base.json` enables strict typing; prefer explicit return types on
+  exported functions and keep async flows promise-based.
+- Name files in kebab-case; log via the shared `logger` for consistent formatting.
 
 ## Testing Guidelines
 
-- Jest is configured by `packages/shared/jest.config.js`; place specs in `__tests__/` or name them `<feature>.test.ts` to match the default regex.
-- Run `npm test --workspaces` before opening a PR; add workspace-specific `test` scripts when services gain coverage.
-- For integration checks, bring the stack up with `make up`, hit Fastify endpoints or BullMQ queues through shared clients, and document manual steps in `docs/RUNBOOKS.md`.
-- For any files created or modified, add or update applicable unit, regression, integration, performance, mutation, property-based, and end-to-end tests.
+- Jest is the test runner. Place specs in `__tests__/` or name them
+  `<feature>.test.ts`.
+- Write **unit/regression tests** for changed behaviour — that is the expected tier.
+  Add property-based tests (fast-check) where they pull their weight, especially in
+  `scanner-core`. Heavier tiers (integration/e2e/performance) are optional and only
+  warranted when a change needs them; do not add ceremony the MVP doesn't need.
+- Run `bun run test` before opening a PR.
 
 ## Commit & Pull Request Guidelines
 
-- Follow conventional commits: `type(scope): summary`, where `scope` maps to a service or package (e.g., `feat(control-plane): add mute audit log`); keep subjects imperative and under 72 characters.
-- Reference migrations, dashboards, or external tickets in the body when relevant, and squash fixups before pushing.
-- Pull requests should highlight behaviour changes, deployment or rollback notes, and test evidence; add screenshots or logs when altering APIs, dashboards, or alert rules.
-- Changes must be delivered via pull requests (do not push directly to the default branch).
-- After completing any code change or documentation update, agents must create a descriptive commit and push the branch before handing off work. Do not leave uncommitted edits in the workspace.
+- Conventional commits: `type(scope): summary`, scope mapping to a service or
+  package (e.g. `feat(scanner-core): add punycode heuristic`). Keep subjects
+  imperative and under 72 characters.
+- Deliver changes via pull requests; do not push directly to the default branch.
+- PRs should describe the behaviour change and include test evidence.
+- Commit and push your branch before handing off; do not leave uncommitted edits.
 
 ## Security & Configuration Tips
 
-- Clone `.env.mvp.example` when provisioning environments, never commit secrets, and rotate WhatsApp sessions stored by `wa-client` when sharing stacks.
-- Revisit `docs/SECURITY_PRIVACY.md` and `docs/THREAT_MODEL.md` when adding external calls or persistence, and keep the control-plane bearer token guard on new routes.
+- Clone `.env.mvp.example` when provisioning; never commit secrets, and rotate the
+  WhatsApp session stored by `wa-client` when sharing a stack.
+- The link corpus and dataset reports contain **real malicious URLs** — never open
+  them in a browser; use isolated environments. See `docs/LINK_CORPUS.md`.
+- Revisit `docs/SECURITY_PRIVACY.md` and `docs/THREAT_MODEL.md` when adding external
+  calls or persistence.
