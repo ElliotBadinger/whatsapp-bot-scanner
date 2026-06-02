@@ -3,6 +3,8 @@ import path from "node:path";
 import {
   scanJsonlGrouped,
   summarizeBucket,
+  mergeBuckets,
+  createEmptyBucket,
   type Bucket,
   type ReportEntry,
 } from "../scan-utils";
@@ -30,46 +32,23 @@ function parseList(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
-function mergeCounts(
-  target: Record<string, number>,
-  source: Record<string, number>,
-): void {
-  for (const [key, value] of Object.entries(source)) {
-    target[key] = (target[key] ?? 0) + value;
-  }
-}
+type SourceClasses = {
+  memorization?: string[];
+  generalization?: string[];
+};
 
-function mergeConfusion(
-  target: Record<string, Record<string, number>>,
-  source: Record<string, Record<string, number>>,
-): void {
-  for (const expected of Object.keys(source)) {
-    if (!target[expected]) {
-      target[expected] = {};
-    }
-    for (const actual of Object.keys(source[expected] ?? {})) {
-      const count = source[expected]?.[actual] ?? 0;
-      target[expected][actual] = (target[expected][actual] ?? 0) + count;
-    }
+function loadSourceClasses(filePath: string): {
+  classOf: Map<string, "memorization" | "generalization">;
+} {
+  const classOf = new Map<string, "memorization" | "generalization">();
+  try {
+    const raw = JSON.parse(fs.readFileSync(filePath, "utf8")) as SourceClasses;
+    for (const id of raw.memorization ?? []) classOf.set(id, "memorization");
+    for (const id of raw.generalization ?? []) classOf.set(id, "generalization");
+  } catch {
+    // No classification file — slices will be empty; overall still reported.
   }
-}
-
-function sumBuckets(target: Bucket, source: Bucket): Bucket {
-  target.total += source.total;
-  target.labeled += source.labeled;
-  target.benign += source.benign;
-  target.suspicious += source.suspicious;
-  target.malicious += source.malicious;
-  target.scoreSum += source.scoreSum;
-  target.correct += source.correct;
-  target.missed += source.missed;
-  target.skipped += source.skipped;
-  target.trickyExpected += source.trickyExpected;
-  target.trickyFlagged += source.trickyFlagged;
-  target.trickyBlocked += source.trickyBlocked;
-  mergeCounts(target.expectedByLabel, source.expectedByLabel);
-  mergeConfusion(target.confusion, source.confusion);
-  return target;
+  return { classOf };
 }
 
 const manifestPath =
@@ -100,6 +79,11 @@ const scanOptions =
       }
     : undefined;
 
+const summaryPath = process.env.ROBUSTNESS_SUMMARY_PATH || "";
+const sourceClassesPath =
+  process.env.ROBUSTNESS_SOURCE_CLASSES || "benchmarks/source-classes.json";
+const { classOf } = loadSourceClasses(sourceClassesPath);
+
 const manifest = JSON.parse(
   fs.readFileSync(manifestPath, "utf8"),
 ) as Manifest;
@@ -107,22 +91,11 @@ const reportEntries: ReportEntry[] = [];
 const summaries: Array<Record<string, unknown>> = [];
 const skipped: ManifestSource[] = [];
 
-const overall: Bucket = {
-  total: 0,
-  labeled: 0,
-  benign: 0,
-  suspicious: 0,
-  malicious: 0,
-  scoreSum: 0,
-  correct: 0,
-  missed: 0,
-  skipped: 0,
-  expectedByLabel: {},
-  confusion: {},
-  trickyExpected: 0,
-  trickyFlagged: 0,
-  trickyBlocked: 0,
-};
+// `overall` mixes feed-loaded (memorization) and held-out (generalization)
+// sources, so it is leakage-polluted; the slices below are the honest signal.
+const overall: Bucket = createEmptyBucket();
+const memorization: Bucket = createEmptyBucket();
+const generalization: Bucket = createEmptyBucket();
 
 const run = async () => {
   for (const source of manifest.sources ?? []) {
@@ -150,9 +123,16 @@ const run = async () => {
       skipped.push({ ...source, reason: "No entries scanned" });
       continue;
     }
-    sumBuckets(overall, bucket);
+    mergeBuckets(overall, bucket);
+    const sourceClass = classOf.get(source.id);
+    if (sourceClass === "memorization") {
+      mergeBuckets(memorization, bucket);
+    } else if (sourceClass === "generalization") {
+      mergeBuckets(generalization, bucket);
+    }
     summaries.push({
       source: source.id,
+      class: sourceClass ?? "unclassified",
       elapsedSeconds,
       ...summarizeBucket(bucket),
     });
@@ -167,10 +147,19 @@ const run = async () => {
     manifest: manifestPath,
     generatedAt: manifest.generatedAt,
     overall: summarizeBucket(overall),
+    memorization: summarizeBucket(memorization),
+    generalization: summarizeBucket(generalization),
     sources: summaries,
     skipped,
   };
 
+  if (summaryPath) {
+    fs.writeFileSync(
+      summaryPath,
+      `${JSON.stringify(output, null, 2)}\n`,
+      "utf8",
+    );
+  }
   console.log(JSON.stringify(output, null, 2));
 };
 

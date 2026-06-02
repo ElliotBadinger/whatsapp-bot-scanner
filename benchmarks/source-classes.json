@@ -1,0 +1,14 @@
+{
+  "_comment": "Classifies robustness sources for honest benchmarking. 'memorization' sources have their URLs loaded into the local feeds during scanning, so detecting them is a list lookup (train==test) and recall is trivially ~1.0 — it proves the feed pipeline works, NOT that detection generalizes. 'generalization' sources are held out of all loaded feeds, so they measure real heuristic detection of novel URLs. MUST stay in sync with the feeds in storage/robustness/feeds/ (openphish, urlhaus, certpl, sans, majestic).",
+  "memorization": [
+    "openphish_feed",
+    "urlhaus_feed",
+    "certpl_feed",
+    "sans_domaindata"
+  ],
+  "generalization": [
+    "phishing_database",
+    "threatfox_full",
+    "urlscan_export"
+  ]
+}

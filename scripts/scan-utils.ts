@@ -173,24 +173,61 @@ export function summarizeBucket(bucket: Bucket): {
   };
 }
 
+export function createEmptyBucket(): Bucket {
+  return {
+    total: 0,
+    labeled: 0,
+    benign: 0,
+    suspicious: 0,
+    malicious: 0,
+    scoreSum: 0,
+    correct: 0,
+    missed: 0,
+    skipped: 0,
+    expectedByLabel: {},
+    confusion: {},
+    trickyExpected: 0,
+    trickyFlagged: 0,
+    trickyBlocked: 0,
+  };
+}
+
+/**
+ * Accumulate `source` into `target` in place (and return it). Used to build the
+ * `overall` aggregate and the memorization/generalization slice aggregates from
+ * per-source buckets without re-scanning.
+ */
+export function mergeBuckets(target: Bucket, source: Bucket): Bucket {
+  target.total += source.total;
+  target.labeled += source.labeled;
+  target.benign += source.benign;
+  target.suspicious += source.suspicious;
+  target.malicious += source.malicious;
+  target.scoreSum += source.scoreSum;
+  target.correct += source.correct;
+  target.missed += source.missed;
+  target.skipped += source.skipped;
+  target.trickyExpected += source.trickyExpected;
+  target.trickyFlagged += source.trickyFlagged;
+  target.trickyBlocked += source.trickyBlocked;
+  for (const [key, value] of Object.entries(source.expectedByLabel)) {
+    target.expectedByLabel[key] = (target.expectedByLabel[key] ?? 0) + value;
+  }
+  for (const expected of Object.keys(source.confusion)) {
+    if (!target.confusion[expected]) {
+      target.confusion[expected] = {};
+    }
+    for (const [actual, count] of Object.entries(source.confusion[expected])) {
+      target.confusion[expected][actual] =
+        (target.confusion[expected][actual] ?? 0) + count;
+    }
+  }
+  return target;
+}
+
 function ensureBucket(buckets: Record<string, Bucket>, key: string): Bucket {
   if (!buckets[key]) {
-    buckets[key] = {
-      total: 0,
-      labeled: 0,
-      benign: 0,
-      suspicious: 0,
-      malicious: 0,
-      scoreSum: 0,
-      correct: 0,
-      missed: 0,
-      skipped: 0,
-      expectedByLabel: {},
-      confusion: {},
-      trickyExpected: 0,
-      trickyFlagged: 0,
-      trickyBlocked: 0,
-    };
+    buckets[key] = createEmptyBucket();
   }
   return buckets[key];
 }

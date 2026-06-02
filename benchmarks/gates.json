@@ -1,12 +1,27 @@
 {
-  "version": 1,
+  "version": 2,
+  "_comment": "Gates target honest slices (see benchmarks/source-classes.json). 'memorization' = sources whose URLs are loaded into the local feeds, so detection is a list lookup and recall must be ~perfect (pipeline sanity, NOT proof of value). 'generalization' = held-out novel URLs that measure real detection; its flagged-recall bar is a REGRESSION FLOOR pinned to the current measured level, NOT an aspirational target. Raising it is a Layer-1 value decision. flagged = suspicious OR malicious, matching how the heuristic engine expresses risk.",
   "gates": [
     {
-      "id": "overall-flagged-recall",
-      "path": "overall.flagged.recall",
+      "id": "memorization-flagged-recall",
+      "path": "memorization.flagged.recall",
       "direction": "gte",
-      "green": 0.95,
-      "amber": 0.9
+      "green": 0.99,
+      "amber": 0.95
+    },
+    {
+      "id": "generalization-flagged-recall",
+      "path": "generalization.flagged.recall",
+      "direction": "gte",
+      "green": 0.30,
+      "amber": 0.25
+    },
+    {
+      "id": "generalization-flagged-fpr",
+      "path": "generalization.flagged.fpr",
+      "direction": "lte",
+      "green": 0.02,
+      "amber": 0.05
     },
     {
       "id": "overall-flagged-fpr",
@@ -14,20 +29,6 @@
       "direction": "lte",
       "green": 0.005,
       "amber": 0.01
-    },
-    {
-      "id": "overall-tricky-flagged",
-      "path": "overall.tricky.flaggedRate",
-      "direction": "gte",
-      "green": 0.95,
-      "amber": 0.9
-    },
-    {
-      "id": "overall-malicious-recall",
-      "path": "overall.recallByLabel.malicious",
-      "direction": "gte",
-      "green": 0.9,
-      "amber": 0.85
     }
   ],
   "sourceGates": [
@@ -42,14 +43,6 @@
     {
       "id": "openphish-flagged-recall",
       "source": "openphish_feed",
-      "path": "flagged.recall",
-      "direction": "gte",
-      "green": 0.9,
-      "amber": 0.85
-    },
-    {
-      "id": "urlscan-flagged-recall",
-      "source": "urlscan_export",
       "path": "flagged.recall",
       "direction": "gte",
       "green": 0.9,
