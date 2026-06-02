@@ -39,6 +39,8 @@
     "next": "16.0.7"
   },
   "devDependencies": {
+    "@stryker-mutator/core": "^9.4.0",
+    "@stryker-mutator/vitest-runner": "^9.4.0",
     "@types/jest": "^29.5.14",
     "bullmq": "^5.65.1",
     "chalk": "^5.4.1",
