@@ -371,10 +371,9 @@ export const config = {
       if (process.env.CONTROL_PLANE_CSRF_TOKEN) {
         return process.env.CONTROL_PLANE_CSRF_TOKEN.trim();
       }
-      return crypto
-        .createHmac("sha256", getControlPlaneToken())
-        .update("csrf-token-derivation")
-        .digest("hex");
+      return crypto.createHmac('sha256', getControlPlaneToken())
+        .update('csrf-token-derivation')
+        .digest('hex');
     },
     get allowedOrigins(): string[] {
       return parseStringList(process.env.CONTROL_PLANE_ALLOWED_ORIGINS).map(
