@@ -20,7 +20,10 @@ export const config = {
         return process.env.CONTROL_PLANE_CSRF_TOKEN.trim();
       }
       return crypto
-        .createHmac("sha256", process.env.CONTROL_PLANE_API_TOKEN || "test-token")
+        .createHmac(
+          "sha256",
+          process.env.CONTROL_PLANE_API_TOKEN || "test-token",
+        )
         .update("csrf-token-derivation")
         .digest("hex");
     },
