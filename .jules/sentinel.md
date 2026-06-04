@@ -5,6 +5,7 @@
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
 
 ## 2025-02-28 - CSRF Token Generation Issue
+
 **Vulnerability:** The CSRF token fell back to using the raw API authentication token.
 **Learning:** Defaulting secondary authentication tokens (like CSRF) to primary credentials completely invalidates their protective purpose. An attacker recovering the CSRF token also compromises the API token.
 **Prevention:** Avoid coupling security tokens. Generate fallback tokens using one-way deterministic derivations (e.g., HMAC or SHA256 of the master token) or persistent storage rather than reusing primary tokens directly.

@@ -372,7 +372,10 @@ export const config = {
       if (explicitToken) {
         return explicitToken;
       }
-      return crypto.createHash("sha256").update(getControlPlaneToken()).digest("hex");
+      return crypto
+        .createHash("sha256")
+        .update(getControlPlaneToken())
+        .digest("hex");
     },
     get allowedOrigins(): string[] {
       return parseStringList(process.env.CONTROL_PLANE_ALLOWED_ORIGINS).map(
