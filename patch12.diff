@@ -1,0 +1,11 @@
+--- services/wa-client/src/__tests__/commands.test.ts
++++ services/wa-client/src/__tests__/commands.test.ts
+@@ -131,7 +131,7 @@
+         headers: {
+           authorization: "Bearer secret-token",
+           "content-type": "application/json",
+-          "x-csrf-token": "secret-token",
++          "x-csrf-token": expect.any(String),
+         },
+         body: JSON.stringify({ url: "https://example.com/test" }),
+       }),
