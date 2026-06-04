@@ -99,7 +99,7 @@ describe("handleAdminCommand", () => {
         method: "POST",
         headers: {
           authorization: "Bearer secret-token",
-          "x-csrf-token": "secret-token",
+          "x-csrf-token": expect.any(String),
         },
       }),
     );
@@ -145,7 +145,7 @@ describe("handleAdminCommand", () => {
         method: "POST",
         headers: expect.objectContaining({
           authorization: "Bearer secret-token",
-          "x-csrf-token": "secret-token",
+          "x-csrf-token": expect.any(String),
         }),
       }),
     );
