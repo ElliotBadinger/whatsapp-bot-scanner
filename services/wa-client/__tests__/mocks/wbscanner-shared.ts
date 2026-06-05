@@ -22,7 +22,10 @@ export const config = {
       }
       return crypto
         .createHash("sha256")
-        .update((process.env.CONTROL_PLANE_API_TOKEN || "test-token") + "csrf-fallback-salt")
+        .update(
+          (process.env.CONTROL_PLANE_API_TOKEN || "test-token") +
+            "csrf-fallback-salt",
+        )
         .digest("hex");
     },
   },
