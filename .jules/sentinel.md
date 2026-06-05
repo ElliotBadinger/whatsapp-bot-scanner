@@ -3,3 +3,8 @@
 **Vulnerability:** The `isPrivateIp` function failed to detect IPv4-mapped IPv6 addresses (e.g., `::ffff:127.0.0.1`) as private. This allowed SSRF bypass where an attacker could access internal services by using the IPv6 representation of private IPv4 addresses.
 **Learning:** Network libraries often treat IPv4-mapped IPv6 addresses as IPv6, but they effectively route to IPv4 destinations. Simply checking IPv4 ranges against an IPv6 address object fails.
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
+
+## 2025-12-21 - Stateless Fallback Security Tokens in Horizontally Scaled Environments
+**Vulnerability:** A CSRF token defaulted to the API token if not explicitly configured, defeating its purpose by reusing an authentication token for CSRF protection.
+**Learning:** Generating stateful random tokens (like `crypto.randomBytes()`) on module load for fallback security tokens causes token mismatches across horizontally scaled instances in distributed environments.
+**Prevention:** When implementing fallback security tokens in distributed applications, avoid stateful on-load generation. Instead, use deterministic derivation (e.g., hashing a master secret with a salt) or persistent shared storage to ensure token consistency across all instances.
