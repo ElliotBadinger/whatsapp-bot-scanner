@@ -2,7 +2,6 @@ import dotenv from "dotenv";
 import { logger } from "./log";
 
 import path from "path";
-import crypto from "crypto";
 
 const mvpMode = (process.env.MVP_MODE || "") === "1";
 
@@ -368,14 +367,9 @@ export const config = {
     },
     enableUi: (process.env.CONTROL_PLANE_ENABLE_UI || "true") === "true",
     get csrfToken(): string {
-      const explicitToken = process.env.CONTROL_PLANE_CSRF_TOKEN;
-      if (explicitToken && explicitToken.trim()) {
-        return explicitToken.trim();
-      }
-      return crypto
-        .createHash("sha256")
-        .update(getControlPlaneToken() + "csrf-fallback-salt")
-        .digest("hex");
+      return (
+        process.env.CONTROL_PLANE_CSRF_TOKEN || getControlPlaneToken()
+      ).trim();
     },
     get allowedOrigins(): string[] {
       return parseStringList(process.env.CONTROL_PLANE_ALLOWED_ORIGINS).map(
