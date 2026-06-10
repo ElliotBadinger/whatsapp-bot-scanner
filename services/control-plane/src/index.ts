@@ -52,7 +52,10 @@ async function getSharedQueue(): Promise<Queue> {
 }
 
 function createAuthHook(expectedToken: string) {
-  const expectedHash = crypto.createHash("sha256").update(expectedToken).digest();
+  const expectedHash = crypto
+    .createHash("sha256")
+    .update(expectedToken)
+    .digest();
   return function authHook(
     req: FastifyRequest,
     reply: FastifyReply,

@@ -5,6 +5,7 @@
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
 
 ## 2025-02-20 - Timing Attack on Fastify PreHandler Hook Token Comparison
+
 **Vulnerability:** The createAuthHook function compared authentication tokens using strict equality (`===`), making it vulnerable to timing attacks.
 **Learning:** Always use `crypto.timingSafeEqual` when comparing sensitive tokens, even in simple authentication hooks.
 **Prevention:** Ensure constant-time comparison is used. To avoid length mismatch errors with `timingSafeEqual`, hash the strings (e.g., using `crypto.createHash('sha256')`) to fixed-length buffers before comparing them.
