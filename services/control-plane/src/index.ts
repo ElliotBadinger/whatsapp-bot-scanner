@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import Fastify, {
   FastifyRequest,
   FastifyReply,
@@ -51,14 +52,16 @@ async function getSharedQueue(): Promise<Queue> {
 }
 
 function createAuthHook(expectedToken: string) {
+  const expectedHash = crypto.createHash("sha256").update(expectedToken).digest();
   return function authHook(
     req: FastifyRequest,
     reply: FastifyReply,
     done: (err?: Error) => void,
   ) {
-    const hdr = req.headers["authorization"] || "";
+    const hdr = (req.headers["authorization"] as string) || "";
     const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : hdr;
-    if (token !== expectedToken) {
+    const tokenHash = crypto.createHash("sha256").update(token).digest();
+    if (!crypto.timingSafeEqual(tokenHash, expectedHash)) {
       reply.code(401).send({ error: "unauthorized" });
       return;
     }
