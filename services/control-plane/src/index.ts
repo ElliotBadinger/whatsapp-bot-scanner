@@ -26,6 +26,7 @@ import {
   globalErrorHandler,
 } from "@wbscanner/shared";
 import { getSharedConnection } from "./database.js";
+import { timingSafeEqual, createHash } from "node:crypto";
 
 const artifactRoot = path.resolve(
   process.env.URLSCAN_ARTIFACT_DIR || "storage/urlscan-artifacts",
@@ -58,7 +59,10 @@ function createAuthHook(expectedToken: string) {
   ) {
     const hdr = req.headers["authorization"] || "";
     const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : hdr;
-    if (token !== expectedToken) {
+    // Secure constant-time comparison to prevent timing attacks (AUTH-001)
+    const hashA = createHash("sha256").update(token).digest();
+    const hashB = createHash("sha256").update(expectedToken).digest();
+    if (!timingSafeEqual(hashA, hashB)) {
       reply.code(401).send({ error: "unauthorized" });
       return;
     }
