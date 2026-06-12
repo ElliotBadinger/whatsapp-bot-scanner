@@ -20,7 +20,9 @@ export const config = {
         process.env.CONTROL_PLANE_CSRF_TOKEN ||
         crypto
           .createHash("sha256")
-          .update((process.env.CONTROL_PLANE_API_TOKEN || "test-token") + "csrf-salt")
+          .update(
+            (process.env.CONTROL_PLANE_API_TOKEN || "test-token") + "csrf-salt",
+          )
           .digest("hex")
       ).trim();
     },
