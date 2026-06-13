@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import dotenv from "dotenv";
 import { logger } from "./log";
 
@@ -368,7 +369,11 @@ export const config = {
     enableUi: (process.env.CONTROL_PLANE_ENABLE_UI || "true") === "true",
     get csrfToken(): string {
       return (
-        process.env.CONTROL_PLANE_CSRF_TOKEN || getControlPlaneToken()
+        process.env.CONTROL_PLANE_CSRF_TOKEN ||
+        crypto
+          .createHmac("sha256", getControlPlaneToken())
+          .update("csrf-salt")
+          .digest("hex")
       ).trim();
     },
     get allowedOrigins(): string[] {
