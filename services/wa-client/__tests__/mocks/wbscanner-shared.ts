@@ -18,7 +18,13 @@ export const config = {
     get csrfToken(): string {
       return (
         process.env.CONTROL_PLANE_CSRF_TOKEN ||
-        crypto.createHmac("sha256", process.env.CONTROL_PLANE_API_TOKEN || "test-token").update("csrf-salt").digest("hex")
+        crypto
+          .createHmac(
+            "sha256",
+            process.env.CONTROL_PLANE_API_TOKEN || "test-token",
+          )
+          .update("csrf-salt")
+          .digest("hex")
       ).trim();
     },
   },
