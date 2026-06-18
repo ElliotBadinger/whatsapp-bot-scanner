@@ -181,6 +181,7 @@ process_cpu_seconds_total 123.45`;
         const response = await app.inject({
           method: "GET",
           url: "/metrics",
+          headers: { authorization: "Bearer test-token" },
         });
         timings.push(performance.now() - start);
         expect(response.statusCode).toBe(200);
@@ -201,7 +202,7 @@ process_cpu_seconds_total 123.45`;
 
       const responses = await Promise.all(
         Array.from({ length: concurrency }, () =>
-          app.inject({ method: "GET", url: "/metrics" }),
+          app.inject({ method: "GET", url: "/metrics", headers: { authorization: "Bearer test-token" } }),
         ),
       );
 
