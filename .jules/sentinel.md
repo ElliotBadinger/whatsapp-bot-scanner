@@ -5,6 +5,7 @@
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
 
 ## 2025-12-21 - CSRF Token Fallback Derivation
+
 **Vulnerability:** The CSRF token fallback logic reused the API authentication token directly, coupling authentication credentials with CSRF protection and risking token exposure during cross-origin requests.
 **Learning:** Implementing fallback security tokens in horizontally scaled environments requires deterministic derivation (like hashing a master secret or base token) rather than generating stateful random bytes on module load, which causes token mismatches.
 **Prevention:** Never use authentication credentials directly as CSRF tokens. Always generate or deterministically derive separate, single-purpose tokens using strong cryptographic hashing.
