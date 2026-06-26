@@ -5,6 +5,7 @@
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
 
 ## 2024-06-26 - [AUTH-004] Fix CSRF Token Reusing API Token
+
 **Vulnerability:** The CSRF token was defaulting to the API token in `packages/shared/src/config.ts`, violating the principle of distinct tokens for distinct purposes.
 **Learning:** Hardcoding token reuse in configs defeats CSRF protection. In multi-instance or scaled environments, fallback tokens must be generated deterministically (e.g., via hashing) to avoid token mismatch across instances when stateful tokens (like `crypto.randomBytes()`) are used.
 **Prevention:** Always derive fallback security tokens deterministically from a master secret, and ensure they are computationally distinct from the master secret itself.
