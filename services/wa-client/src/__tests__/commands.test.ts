@@ -100,11 +100,7 @@ describe("handleAdminCommand", () => {
         method: "POST",
         headers: {
           authorization: "Bearer secret-token",
-          "x-csrf-token": crypto
-            .createHash("sha256")
-            .update("secret-token")
-            .update("csrf-salt")
-            .digest("hex"),
+          "x-csrf-token": crypto.createHash("sha256").update("secret-token").update("csrf-salt").digest("hex"),
         },
       }),
     );
@@ -150,11 +146,7 @@ describe("handleAdminCommand", () => {
         method: "POST",
         headers: expect.objectContaining({
           authorization: "Bearer secret-token",
-          "x-csrf-token": crypto
-            .createHash("sha256")
-            .update("secret-token")
-            .update("csrf-salt")
-            .digest("hex"),
+          "x-csrf-token": crypto.createHash("sha256").update("secret-token").update("csrf-salt").digest("hex"),
         }),
       }),
     );
