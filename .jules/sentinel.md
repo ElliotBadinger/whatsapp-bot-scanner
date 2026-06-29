@@ -3,3 +3,9 @@
 **Vulnerability:** The `isPrivateIp` function failed to detect IPv4-mapped IPv6 addresses (e.g., `::ffff:127.0.0.1`) as private. This allowed SSRF bypass where an attacker could access internal services by using the IPv6 representation of private IPv4 addresses.
 **Learning:** Network libraries often treat IPv4-mapped IPv6 addresses as IPv6, but they effectively route to IPv4 destinations. Simply checking IPv4 ranges against an IPv6 address object fails.
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
+
+## 2025-12-21 - Derived CSRF Token
+
+**Vulnerability:** CSRF token defaulting to the authentication token (AUTH-004). This defeats the purpose of the CSRF protection.
+**Learning:** In horizontally scaled environments, generating stateful random tokens on module load causes token mismatch across instances. We cannot use `crypto.randomBytes()`.
+**Prevention:** Use deterministic derivation by hashing a master secret or use persistent shared storage.
