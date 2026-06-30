@@ -19,7 +19,10 @@ export const config = {
       if (process.env.CONTROL_PLANE_CSRF_TOKEN) {
         return process.env.CONTROL_PLANE_CSRF_TOKEN.trim();
       }
-      return crypto.createHash("sha256").update(process.env.CONTROL_PLANE_API_TOKEN || "test-token").digest("hex");
+      return crypto
+        .createHash("sha256")
+        .update(process.env.CONTROL_PLANE_API_TOKEN || "test-token")
+        .digest("hex");
     },
   },
   wa: {
