@@ -61,8 +61,11 @@ function createAuthHook(expectedToken: string) {
     const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : hdr;
 
     // Hash both tokens to ensure they have the same length and use timingSafeEqual
-    const expectedHash = crypto.createHash('sha256').update(expectedToken).digest();
-    const tokenHash = crypto.createHash('sha256').update(token).digest();
+    const expectedHash = crypto
+      .createHash("sha256")
+      .update(expectedToken)
+      .digest();
+    const tokenHash = crypto.createHash("sha256").update(token).digest();
 
     if (!crypto.timingSafeEqual(expectedHash, tokenHash)) {
       reply.code(401).send({ error: "unauthorized" });
