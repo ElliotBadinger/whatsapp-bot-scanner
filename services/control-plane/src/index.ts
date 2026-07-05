@@ -61,7 +61,9 @@ function createAuthHook(expectedToken: string) {
     const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : hdr;
     const tokenBuf = Buffer.from(token, "utf8");
     const expectedBuf = Buffer.from(expectedToken, "utf8");
-    const isMatch = tokenBuf.length === expectedBuf.length && crypto.timingSafeEqual(tokenBuf, expectedBuf);
+    const isMatch =
+      tokenBuf.length === expectedBuf.length &&
+      crypto.timingSafeEqual(tokenBuf, expectedBuf);
     if (!isMatch) {
       reply.code(401).send({ error: "unauthorized" });
       return;
