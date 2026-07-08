@@ -61,7 +61,7 @@ function createAuthHook(expectedToken: string) {
     const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : hdr;
 
     let isAuthorized = false;
-    if (typeof token === 'string' && typeof expectedToken === 'string') {
+    if (typeof token === "string" && typeof expectedToken === "string") {
       const hashA = crypto.createHash("sha256").update(token).digest();
       const hashB = crypto.createHash("sha256").update(expectedToken).digest();
       isAuthorized = crypto.timingSafeEqual(hashA, hashB);
