@@ -20,8 +20,14 @@ export const config = {
       if (explicit) {
         return explicit.trim();
       }
-      const token = (process.env.CONTROL_PLANE_API_TOKEN || "test-token").trim();
-      return crypto.createHash("sha256").update(token).update("csrf-salt").digest("hex");
+      const token = (
+        process.env.CONTROL_PLANE_API_TOKEN || "test-token"
+      ).trim();
+      return crypto
+        .createHash("sha256")
+        .update(token)
+        .update("csrf-salt")
+        .digest("hex");
     },
   },
   wa: {
