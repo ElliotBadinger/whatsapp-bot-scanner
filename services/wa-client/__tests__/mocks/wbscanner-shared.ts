@@ -17,7 +17,8 @@ export const config = {
   controlPlane: {
     get csrfToken(): string {
       return (
-        process.env.CONTROL_PLANE_CSRF_TOKEN || "3f4f1c76077e80ccb7815054b3b1d2bb1a83dd8d1ace4bde24dcdb632e8f3d97"
+        process.env.CONTROL_PLANE_CSRF_TOKEN ||
+        "3f4f1c76077e80ccb7815054b3b1d2bb1a83dd8d1ace4bde24dcdb632e8f3d97"
       ).trim();
     },
   },
