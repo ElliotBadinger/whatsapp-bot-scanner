@@ -5,7 +5,6 @@
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
 
 ## 2025-07-11 - CSRF Protection Defeated by Token Reuse
-
 **Vulnerability:** The CSRF token was defaulting to the same value as the main API authentication token (`getControlPlaneToken()`). This defeats the purpose of having a separate CSRF token and exposes the API if the CSRF token is leaked or if a CSRF attack simply replays the auth token.
 **Learning:** Never reuse authentication tokens for CSRF protection. In horizontally scaled environments, stateful random tokens generated on module load cause mismatches.
 **Prevention:** Use deterministic derivation (e.g., hashing a master secret using `crypto.createHash`) or persistent shared storage for CSRF tokens to ensure consistency across instances without reusing auth tokens.
