@@ -369,7 +369,9 @@ export const config = {
     get csrfToken(): string {
       const configured = process.env.CONTROL_PLANE_CSRF_TOKEN?.trim();
       if (!configured) {
-        throw new Error('CONTROL_PLANE_CSRF_TOKEN must be set separately from API token');
+        throw new Error(
+          "CONTROL_PLANE_CSRF_TOKEN must be set separately from API token",
+        );
       }
       return configured;
     },
