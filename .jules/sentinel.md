@@ -5,6 +5,7 @@
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
 
 ## 2025-12-23 - Timing Attack via Strict Equality Token Comparison
+
 **Vulnerability:** The API token comparison in `createAuthHook` used strict equality (`===`/`!==`), allowing attackers to perform timing attacks to brute-force tokens character by character.
 **Learning:** Using simple string comparison for secrets exposes the service to timing side-channels in V8 engine and JS runtime, which exit early upon character mismatch.
 **Prevention:** Always convert secrets to equal-length Buffers and use `crypto.timingSafeEqual()` to compare them in constant time. Check length equality before calling `timingSafeEqual()` to avoid length mismatch errors.
