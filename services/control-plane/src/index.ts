@@ -26,6 +26,7 @@ import {
   globalErrorHandler,
 } from "@wbscanner/shared";
 import { getSharedConnection } from "./database.js";
+import crypto from "node:crypto";
 
 const artifactRoot = path.resolve(
   process.env.URLSCAN_ARTIFACT_DIR || "storage/urlscan-artifacts",
@@ -58,7 +59,9 @@ function createAuthHook(expectedToken: string) {
   ) {
     const hdr = req.headers["authorization"] || "";
     const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : hdr;
-    if (token !== expectedToken) {
+    const a = Buffer.from(token as string, 'utf8');
+    const b = Buffer.from(expectedToken, 'utf8');
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
       reply.code(401).send({ error: "unauthorized" });
       return;
     }
