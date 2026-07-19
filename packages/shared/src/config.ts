@@ -1,4 +1,4 @@
-import crypto from 'node:crypto';
+import crypto from "node:crypto";
 import dotenv from "dotenv";
 import { logger } from "./log";
 
