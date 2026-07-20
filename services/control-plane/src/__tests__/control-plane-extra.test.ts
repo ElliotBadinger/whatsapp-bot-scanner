@@ -14,7 +14,7 @@ const fsPromises = jest.requireMock("node:fs/promises") as {
   readFile: jest.Mock;
 };
 
-const authHeader = { authorization: "Bearer test-token" };
+const authHeader = { authorization: "Bearer test-token", "x-csrf-token": "d3a4cdc230277c4d1111710329295dae4652017fd32478be6e3d04ddfc192abb" };
 
 describe("control-plane extra routes", () => {
   let buildServer: typeof import("../index").buildServer;

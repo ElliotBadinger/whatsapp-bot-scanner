@@ -2,7 +2,7 @@ import { buildServer } from "../index";
 import { normalizeUrl, urlHash } from "@wbscanner/shared";
 import { createMockQueue, createMockRedis } from "../../../../test-utils/setup";
 
-const authHeader = { authorization: "Bearer test-token" };
+const authHeader = { authorization: "Bearer test-token", "x-csrf-token": "d3a4cdc230277c4d1111710329295dae4652017fd32478be6e3d04ddfc192abb" };
 
 async function buildTestServer(
   dbQueryImpl?: (sql: string) => Promise<{ rows: unknown[] }>,

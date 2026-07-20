@@ -1,5 +1,4 @@
-## 2025-12-21 - SSRF Bypass via IPv4-Mapped IPv6 Addresses
-
-**Vulnerability:** The `isPrivateIp` function failed to detect IPv4-mapped IPv6 addresses (e.g., `::ffff:127.0.0.1`) as private. This allowed SSRF bypass where an attacker could access internal services by using the IPv6 representation of private IPv4 addresses.
-**Learning:** Network libraries often treat IPv4-mapped IPv6 addresses as IPv6, but they effectively route to IPv4 destinations. Simply checking IPv4 ranges against an IPv6 address object fails.
-**Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
+## 2024-07-20 - CSRF Token Leaks API Key Fallback
+**Vulnerability:** The CSRF token in the application's configuration `config.ts` defaulted to the `CONTROL_PLANE_API_TOKEN` if not explicitly set. This fallback logic leaked a highly privileged token, and its enforcement was largely ineffective since the endpoints were authenticated via Bearer tokens.
+**Learning:** Fallback mechanisms shouldn't inadvertently downgrade security by exposing powerful secrets via secondary channels like CSRF headers.
+**Prevention:** Always derivate secondary tokens (e.g., using `crypto.createHash('sha256').update(secret + "salt").digest('hex')`) rather than reusing primary authentication tokens directly. Additionally, use `crypto.timingSafeEqual` for string comparisons when authenticating via headers to mitigate timing attacks.
