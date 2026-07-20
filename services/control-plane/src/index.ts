@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import Fastify, {
   FastifyRequest,
   FastifyReply,
@@ -57,11 +58,64 @@ function createAuthHook(expectedToken: string) {
     done: (err?: Error) => void,
   ) {
     const hdr = req.headers["authorization"] || "";
-    const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : hdr;
-    if (token !== expectedToken) {
+    const token =
+      typeof hdr === "string" ? hdr : Array.isArray(hdr) ? hdr[0] : "";
+    const finalToken = token.startsWith("Bearer ") ? token.slice(7) : token;
+
+    try {
+      const expectedBuffer = Buffer.from(expectedToken, "utf8");
+      const providedBuffer = Buffer.from(finalToken, "utf8");
+
+      if (
+        expectedBuffer.length !== providedBuffer.length ||
+        !crypto.timingSafeEqual(expectedBuffer, providedBuffer)
+      ) {
+        reply.code(401).send({ error: "unauthorized" });
+        return;
+      }
+    } catch (e) {
       reply.code(401).send({ error: "unauthorized" });
       return;
     }
+
+    if (["POST", "PUT", "DELETE", "PATCH"].includes(req.method)) {
+      const expectedCsrf = config.controlPlane.csrfToken;
+      const providedCsrfHeader = req.headers["x-csrf-token"];
+      const providedCsrf =
+        typeof providedCsrfHeader === "string"
+          ? providedCsrfHeader
+          : Array.isArray(providedCsrfHeader)
+            ? providedCsrfHeader[0]
+            : "";
+
+      if (!providedCsrf) {
+        reply
+          .code(403)
+          .send({ error: "forbidden", message: "Missing CSRF token" });
+        return;
+      }
+
+      try {
+        const expectedCsrfBuffer = Buffer.from(expectedCsrf, "utf8");
+        const providedCsrfBuffer = Buffer.from(providedCsrf, "utf8");
+
+        if (
+          expectedCsrfBuffer.length !== providedCsrfBuffer.length ||
+          !crypto.timingSafeEqual(expectedCsrfBuffer, providedCsrfBuffer)
+        ) {
+          reply
+            .code(403)
+            .send({ error: "forbidden", message: "Invalid CSRF token" });
+          return;
+        }
+      } catch (e) {
+        reply
+          .code(403)
+          .send({ error: "forbidden", message: "Invalid CSRF token" });
+        return;
+      }
+    }
+
     done();
   };
 }
