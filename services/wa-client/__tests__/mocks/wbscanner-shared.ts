@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import crypto from "crypto";
 import FakeRedis from "../../src/__tests__/fake-redis";
 

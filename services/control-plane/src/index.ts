@@ -52,13 +52,16 @@ async function getSharedQueue(): Promise<Queue> {
 }
 
 function createAuthHook(expectedToken: string) {
+  const unauthorized = (reply: FastifyReply) => reply.code(401).send({ error: "unauthorized" });
+  const forbidden = (reply: FastifyReply, message: string) => reply.code(403).send({ error: "forbidden", message });
+
   return function authHook(
     req: FastifyRequest,
     reply: FastifyReply,
     done: (err?: Error) => void,
   ) {
     const hdr = req.headers["authorization"] || "";
-    const token = typeof hdr === "string" ? hdr : Array.isArray(hdr) ? hdr[0] : "";
+    const token = Array.isArray(hdr) ? hdr[0] || "" : hdr;
     const finalToken = token.startsWith("Bearer ") ? token.slice(7) : token;
 
     try {
@@ -69,22 +72,19 @@ function createAuthHook(expectedToken: string) {
         expectedBuffer.length !== providedBuffer.length ||
         !crypto.timingSafeEqual(expectedBuffer, providedBuffer)
       ) {
-        reply.code(401).send({ error: "unauthorized" });
-        return;
+        return unauthorized(reply);
       }
-    } catch (e) {
-      reply.code(401).send({ error: "unauthorized" });
-      return;
+    } catch {
+      return unauthorized(reply);
     }
 
     if (["POST", "PUT", "DELETE", "PATCH"].includes(req.method)) {
       const expectedCsrf = config.controlPlane.csrfToken;
       const providedCsrfHeader = req.headers["x-csrf-token"];
-      const providedCsrf = typeof providedCsrfHeader === "string" ? providedCsrfHeader : Array.isArray(providedCsrfHeader) ? providedCsrfHeader[0] : "";
+      const providedCsrf = Array.isArray(providedCsrfHeader) ? providedCsrfHeader[0] || "" : providedCsrfHeader || "";
 
       if (!providedCsrf) {
-        reply.code(403).send({ error: "forbidden", message: "Missing CSRF token" });
-        return;
+        return forbidden(reply, "Missing CSRF token");
       }
 
       try {
@@ -95,12 +95,10 @@ function createAuthHook(expectedToken: string) {
           expectedCsrfBuffer.length !== providedCsrfBuffer.length ||
           !crypto.timingSafeEqual(expectedCsrfBuffer, providedCsrfBuffer)
         ) {
-          reply.code(403).send({ error: "forbidden", message: "Invalid CSRF token" });
-          return;
+          return forbidden(reply, "Invalid CSRF token");
         }
-      } catch (e) {
-        reply.code(403).send({ error: "forbidden", message: "Invalid CSRF token" });
-        return;
+      } catch {
+        return forbidden(reply, "Invalid CSRF token");
       }
     }
 
