@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import Fastify, {
   FastifyRequest,
   FastifyReply,
@@ -50,15 +51,22 @@ async function getSharedQueue(): Promise<Queue> {
   return sharedQueue;
 }
 
+
 function createAuthHook(expectedToken: string) {
   return function authHook(
     req: FastifyRequest,
     reply: FastifyReply,
     done: (err?: Error) => void,
   ) {
-    const hdr = req.headers["authorization"] || "";
+    const hdr = (req.headers["authorization"] as string) || "";
     const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : hdr;
-    if (token !== expectedToken) {
+
+    // Constant-time string comparison.
+    // We hash both to ensure fixed length since timingSafeEqual throws on mismatched lengths.
+    const tokenHash = crypto.createHash("sha256").update(token).digest();
+    const expectedHash = crypto.createHash("sha256").update(expectedToken).digest();
+
+    if (!crypto.timingSafeEqual(tokenHash, expectedHash)) {
       reply.code(401).send({ error: "unauthorized" });
       return;
     }
