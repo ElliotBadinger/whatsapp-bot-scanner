@@ -52,10 +52,7 @@ async function getSharedQueue(): Promise<Queue> {
 }
 
 function createAuthHook(expectedToken: string) {
-  const expectedHash = crypto
-    .createHash("sha256")
-    .update(expectedToken)
-    .digest();
+  const expectedHash = crypto.createHash('sha256').update(expectedToken).digest();
   return function authHook(
     req: FastifyRequest,
     reply: FastifyReply,
@@ -64,7 +61,7 @@ function createAuthHook(expectedToken: string) {
     const hdr = req.headers["authorization"] || "";
     const hdrStr = Array.isArray(hdr) ? hdr[0] : (hdr as string);
     const token = hdrStr.startsWith("Bearer ") ? hdrStr.slice(7) : hdrStr;
-    const tokenHash = crypto.createHash("sha256").update(token).digest();
+    const tokenHash = crypto.createHash('sha256').update(token).digest();
 
     // Hash tokens before timingSafeEqual to guarantee identical buffer lengths and prevent timing attacks
     if (!crypto.timingSafeEqual(tokenHash, expectedHash)) {
