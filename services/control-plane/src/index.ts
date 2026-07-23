@@ -62,10 +62,7 @@ function createAuthHook(expectedToken: string) {
 
     // Prevent timing attacks by using crypto.timingSafeEqual
     // Hash both tokens to ensure equal length buffers before comparing
-    const expectedHash = crypto
-      .createHash("sha256")
-      .update(expectedToken)
-      .digest();
+    const expectedHash = crypto.createHash("sha256").update(expectedToken).digest();
     const tokenHash = crypto.createHash("sha256").update(token).digest();
 
     if (!crypto.timingSafeEqual(expectedHash, tokenHash)) {
