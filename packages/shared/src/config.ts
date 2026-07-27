@@ -373,7 +373,10 @@ export const config = {
       }
       const apiToken = getControlPlaneToken();
       if (!apiToken) return "";
-      return crypto.createHash("sha256").update(apiToken + "csrf_salt").digest("hex");
+      return crypto
+        .createHash("sha256")
+        .update(apiToken + "csrf_salt")
+        .digest("hex");
     },
     get allowedOrigins(): string[] {
       return parseStringList(process.env.CONTROL_PLANE_ALLOWED_ORIGINS).map(
