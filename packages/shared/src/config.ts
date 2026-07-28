@@ -1,8 +1,8 @@
 import dotenv from "dotenv";
 import { logger } from "./log";
 
-import path from "path";
-import crypto from "crypto";
+import crypto from "node:crypto";
+import path from "node:path";
 
 const mvpMode = (process.env.MVP_MODE || "") === "1";
 

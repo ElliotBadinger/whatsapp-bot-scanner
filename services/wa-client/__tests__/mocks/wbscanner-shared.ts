@@ -1,4 +1,4 @@
-import crypto from "crypto";
+import crypto from "node:crypto";
 import FakeRedis from "../../src/__tests__/fake-redis";
 
 const noop = () => undefined;
