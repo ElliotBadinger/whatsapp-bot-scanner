@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import Redis from "ioredis";
 import { Queue, Worker } from "bullmq";
@@ -388,7 +389,7 @@ function normalizeUrlscanArtifactCandidate(
   const trimmed = candidate.trim();
   if (!trimmed) return { invalid: false };
 
-  const sanitizedBase = baseUrl.replace(/\/+$/, "");
+  const sanitizedBase = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
   let trustedHostname: string;
   try {
     trustedHostname = new URL(sanitizedBase).hostname.toLowerCase();
@@ -430,10 +431,10 @@ function extractUrlscanArtifactCandidates(
   uuid: string,
   payload: unknown,
 ): ArtifactCandidate[] {
-  const baseUrl = (config.urlscan.baseUrl || "https://urlscan.io").replace(
-    /\/+$/,
-    "",
-  );
+  const rawBaseUrl = config.urlscan.baseUrl || "https://urlscan.io";
+  const baseUrl = rawBaseUrl.endsWith("/")
+    ? rawBaseUrl.slice(0, -1)
+    : rawBaseUrl;
   const candidates: ArtifactCandidate[] = [];
   const seen = new Set<string>();
 
@@ -1887,7 +1888,24 @@ async function handleUrlscanCallback(
     ? queryTokenRaw[0]
     : queryTokenRaw;
 
-  if (!secret || (headerToken !== secret && queryToken !== secret)) {
+  const expectedHash = crypto
+    .createHash("sha256")
+    .update(secret || "")
+    .digest();
+  const headerTokenHash = crypto
+    .createHash("sha256")
+    .update(headerToken || "")
+    .digest();
+  const queryTokenHash = crypto
+    .createHash("sha256")
+    .update(queryToken || "")
+    .digest();
+
+  if (
+    !secret ||
+    (!crypto.timingSafeEqual(expectedHash, headerTokenHash) &&
+      !crypto.timingSafeEqual(expectedHash, queryTokenHash))
+  ) {
     reply.code(401).send({ ok: false, error: "unauthorized" });
     return;
   }
@@ -1905,9 +1923,10 @@ async function handleUrlscanCallback(
     return;
   }
 
-  const urlscanBaseUrl = (
-    config.urlscan.baseUrl || "https://urlscan.io"
-  ).replace(/\/+$/, "");
+  const urlscanBaseUrlRaw = config.urlscan.baseUrl || "https://urlscan.io";
+  const urlscanBaseUrl = urlscanBaseUrlRaw.endsWith("/")
+    ? urlscanBaseUrlRaw.slice(0, -1)
+    : urlscanBaseUrlRaw;
   const artifactSources = [
     body?.screenshotURL,
     body?.task?.screenshotURL,
