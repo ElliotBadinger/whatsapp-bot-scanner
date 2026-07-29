@@ -375,11 +375,7 @@ export const config = {
       // Derive a deterministic CSRF token from the API token instead of reusing it directly.
       // This ensures horizontal scaling works without sharing state, while fixing the vulnerability.
       const token = getControlPlaneToken();
-      return crypto
-        .createHash("sha256")
-        .update(token)
-        .update("csrf-salt")
-        .digest("hex");
+      return crypto.createHash('sha256').update(token).update('csrf-salt').digest('hex');
     },
     get allowedOrigins(): string[] {
       return parseStringList(process.env.CONTROL_PLANE_ALLOWED_ORIGINS).map(

@@ -389,9 +389,7 @@ function normalizeUrlscanArtifactCandidate(
   const trimmed = candidate.trim();
   if (!trimmed) return { invalid: false };
 
-  const sanitizedBase = baseUrl.endsWith("/")
-    ? baseUrl.replace(/\/+$/, "")
-    : baseUrl;
+  const sanitizedBase = baseUrl.endsWith("/") ? baseUrl.replace(/\/+$/, "") : baseUrl;
   let trustedHostname: string;
   try {
     trustedHostname = new URL(sanitizedBase).hostname.toLowerCase();
@@ -433,7 +431,7 @@ function extractUrlscanArtifactCandidates(
   uuid: string,
   payload: unknown,
 ): ArtifactCandidate[] {
-  let baseUrl = config.urlscan.baseUrl || "https://urlscan.io";
+  let baseUrl = (config.urlscan.baseUrl || "https://urlscan.io");
   if (baseUrl.endsWith("/")) baseUrl = baseUrl.replace(/\/+$/, "");
   const candidates: ArtifactCandidate[] = [];
   const seen = new Set<string>();
@@ -1888,24 +1886,11 @@ async function handleUrlscanCallback(
     ? queryTokenRaw[0]
     : queryTokenRaw;
 
-  const expectedHash = crypto
-    .createHash("sha256")
-    .update(secret || "")
-    .digest();
-  const headerTokenHash = crypto
-    .createHash("sha256")
-    .update(headerToken || "")
-    .digest();
-  const queryTokenHash = crypto
-    .createHash("sha256")
-    .update(queryToken || "")
-    .digest();
+  const expectedHash = crypto.createHash("sha256").update(secret || "").digest();
+  const headerTokenHash = crypto.createHash("sha256").update(headerToken || "").digest();
+  const queryTokenHash = crypto.createHash("sha256").update(queryToken || "").digest();
 
-  if (
-    !secret ||
-    (!crypto.timingSafeEqual(expectedHash, headerTokenHash) &&
-      !crypto.timingSafeEqual(expectedHash, queryTokenHash))
-  ) {
+  if (!secret || (!crypto.timingSafeEqual(expectedHash, headerTokenHash) && !crypto.timingSafeEqual(expectedHash, queryTokenHash))) {
     reply.code(401).send({ ok: false, error: "unauthorized" });
     return;
   }
@@ -1924,8 +1909,7 @@ async function handleUrlscanCallback(
   }
 
   let urlscanBaseUrl = config.urlscan.baseUrl || "https://urlscan.io";
-  if (urlscanBaseUrl.endsWith("/"))
-    urlscanBaseUrl = urlscanBaseUrl.replace(/\/+$/, "");
+  if (urlscanBaseUrl.endsWith("/")) urlscanBaseUrl = urlscanBaseUrl.replace(/\/+$/, "");
   const artifactSources = [
     body?.screenshotURL,
     body?.task?.screenshotURL,
