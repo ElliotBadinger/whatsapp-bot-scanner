@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import Redis from "ioredis";
 import { Queue, Worker } from "bullmq";
@@ -1887,7 +1888,11 @@ async function handleUrlscanCallback(
     ? queryTokenRaw[0]
     : queryTokenRaw;
 
-  if (!secret || (headerToken !== secret && queryToken !== secret)) {
+  const expectedHash = crypto.createHash("sha256").update(secret || "").digest();
+  const headerTokenHash = crypto.createHash("sha256").update(headerToken || "").digest();
+  const queryTokenHash = crypto.createHash("sha256").update(queryToken || "").digest();
+
+  if (!secret || (!crypto.timingSafeEqual(expectedHash, headerTokenHash) && !crypto.timingSafeEqual(expectedHash, queryTokenHash))) {
     reply.code(401).send({ ok: false, error: "unauthorized" });
     return;
   }
