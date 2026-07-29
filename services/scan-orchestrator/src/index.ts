@@ -1888,11 +1888,24 @@ async function handleUrlscanCallback(
     ? queryTokenRaw[0]
     : queryTokenRaw;
 
-  const expectedHash = crypto.createHash("sha256").update(secret || "").digest();
-  const headerTokenHash = crypto.createHash("sha256").update(headerToken || "").digest();
-  const queryTokenHash = crypto.createHash("sha256").update(queryToken || "").digest();
+  const expectedHash = crypto
+    .createHash("sha256")
+    .update(secret || "")
+    .digest();
+  const headerTokenHash = crypto
+    .createHash("sha256")
+    .update(headerToken || "")
+    .digest();
+  const queryTokenHash = crypto
+    .createHash("sha256")
+    .update(queryToken || "")
+    .digest();
 
-  if (!secret || (!crypto.timingSafeEqual(expectedHash, headerTokenHash) && !crypto.timingSafeEqual(expectedHash, queryTokenHash))) {
+  if (
+    !secret ||
+    (!crypto.timingSafeEqual(expectedHash, headerTokenHash) &&
+      !crypto.timingSafeEqual(expectedHash, queryTokenHash))
+  ) {
     reply.code(401).send({ ok: false, error: "unauthorized" });
     return;
   }
