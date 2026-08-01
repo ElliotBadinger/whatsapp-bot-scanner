@@ -1,4 +1,4 @@
-import crypto from 'node:crypto';
+import crypto from "node:crypto";
 import dotenv from "dotenv";
 import { logger } from "./log";
 
@@ -370,7 +370,7 @@ export const config = {
     get csrfToken(): string {
       return (
         process.env.CONTROL_PLANE_CSRF_TOKEN ||
-        crypto.createHash('sha256').update(getControlPlaneToken()).digest('hex')
+        crypto.createHash("sha256").update(getControlPlaneToken()).digest("hex")
       ).trim();
     },
     get allowedOrigins(): string[] {

@@ -5,6 +5,7 @@
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
 
 ## 2024-08-01 - Derived CSRF Token
+
 **Vulnerability:** The CSRF token was defaulting directly to the API token if no explicit CSRF token was provided. This means if a CSRF token was ever leaked, it would compromise the highly-privileged API token.
 **Learning:** Default fallbacks must not lower the security posture by reusing credentials designed for different purposes.
 **Prevention:** If a distinct configuration variable is missing, securely derive fallback values (e.g. by hashing the master secret using SHA-256) rather than directly reusing the secret. Also ensure that tests mocking configuration objects contain necessary module imports when injecting standard library functions like `crypto`.
