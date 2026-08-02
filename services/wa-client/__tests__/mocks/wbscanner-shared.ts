@@ -20,7 +20,12 @@ export const config = {
       if (explicitToken) {
         return explicitToken.trim();
       }
-      return crypto.createHash("sha256").update((process.env.CONTROL_PLANE_API_TOKEN || "test-token").trim() + "csrf").digest("hex");
+      return crypto
+        .createHash("sha256")
+        .update(
+          (process.env.CONTROL_PLANE_API_TOKEN || "test-token").trim() + "csrf",
+        )
+        .digest("hex");
     },
   },
   wa: {
