@@ -5,7 +5,6 @@
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
 
 ## 2025-12-08 - CSRF Token Generation
-
 **Vulnerability:** CSRF token defaulting to API token (AUTH-004), leaving the app vulnerable to CSRF if left implicitly configured or potentially leaking API tokens.
 **Learning:** For horizontally scaled apps, do not generate stateful random tokens on module load (e.g. `crypto.randomBytes()`). This causes mismatch across instances. Use deterministic derivation (`crypto.createHash('sha256').update(masterSecret).digest()`) or persistent shared storage instead.
 **Prevention:** Always ensure CSRF generation is separated from Auth, and explicitly handled for scaled instances via derived or persistent strategies.

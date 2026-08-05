@@ -370,10 +370,7 @@ export const config = {
     get csrfToken(): string {
       const explicit = (process.env.CONTROL_PLANE_CSRF_TOKEN || "").trim();
       if (explicit) return explicit;
-      return crypto
-        .createHash("sha256")
-        .update(getControlPlaneToken())
-        .digest("hex");
+      return crypto.createHash("sha256").update(getControlPlaneToken()).digest("hex");
     },
     get allowedOrigins(): string[] {
       return parseStringList(process.env.CONTROL_PLANE_ALLOWED_ORIGINS).map(
