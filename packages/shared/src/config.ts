@@ -372,7 +372,11 @@ export const config = {
       if (explicit) return explicit;
       const apiToken = getControlPlaneToken();
       // Derive a deterministic CSRF token from the API token without exposing it directly
-      return crypto.createHash("sha256").update(apiToken).update("csrf-salt").digest("hex");
+      return crypto
+        .createHash("sha256")
+        .update(apiToken)
+        .update("csrf-salt")
+        .digest("hex");
     },
     get allowedOrigins(): string[] {
       return parseStringList(process.env.CONTROL_PLANE_ALLOWED_ORIGINS).map(
