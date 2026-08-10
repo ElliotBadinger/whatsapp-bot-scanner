@@ -5,6 +5,7 @@
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
 
 ## 2024-05-30 - Fix Information Disclosure on Metrics Endpoint
+
 **Vulnerability:** The `/metrics` endpoint in the `control-plane` service was registered before the authentication hook, making it publicly accessible without a token. This could expose Prometheus metrics containing internal system state, queue depths, and error rates to unauthenticated attackers.
 **Learning:** Fastify registers hooks hierarchically. Endpoints defined before an `app.register()` block with an `addHook` (like the authentication check) will not be protected. Critical administrative endpoints must be explicitly placed inside the authenticated block.
 **Prevention:** Ensure all non-public administrative routes, including observability endpoints like `/metrics`, are registered within the `app.register()` block that configures the `preHandler` authentication hook.
