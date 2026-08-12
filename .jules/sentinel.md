@@ -5,6 +5,7 @@
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
 
 ## 2025-05-18 - Avoid Stateful Random Token Generation for CSRF Protection in Horizontally Scaled Apps
+
 **Vulnerability:** The application was setting `csrfToken` directly to the `getControlPlaneToken()` value if `CONTROL_PLANE_CSRF_TOKEN` was not provided via environment. Reusing an authentication token as a CSRF token completely nullifies CSRF protection because both tokens are sent with every authenticated request and cannot be independently validated against one another. The recommended scanner fix (using `crypto.randomBytes()`) introduces stateful, unpredictable token discrepancies when horizontally scaled across nodes unless centrally persisted.
 **Learning:** In a distributed/microservice architecture, fallback CSRF tokens shouldn't rely on random bytes at runtime initialization without shared persistence (e.g., Redis). Otherwise, round-robin load balancing causes token mismatches, breaking cross-service API requests like those used by the CLI commands in `wa-client` connecting to the `control-plane`.
 **Prevention:** Always use deterministic secret derivation (e.g., HMAC or salted Hash based on a pre-shared master token) when defining a shared fallback secret, or force explicit provisioning. Avoid `randomBytes()` as a fallback in multi-instance setups without a shared state store.
