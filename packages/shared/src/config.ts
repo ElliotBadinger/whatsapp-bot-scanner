@@ -369,7 +369,11 @@ export const config = {
     enableUi: (process.env.CONTROL_PLANE_ENABLE_UI || "true") === "true",
     get csrfToken(): string {
       return (
-        process.env.CONTROL_PLANE_CSRF_TOKEN || crypto.createHash("sha256").update(getControlPlaneToken() + "csrf-salt").digest("hex")
+        process.env.CONTROL_PLANE_CSRF_TOKEN ||
+        crypto
+          .createHash("sha256")
+          .update(getControlPlaneToken() + "csrf-salt")
+          .digest("hex")
       ).trim();
     },
     get allowedOrigins(): string[] {

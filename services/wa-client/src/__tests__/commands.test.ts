@@ -22,7 +22,10 @@ jest.mock("rate-limiter-flexible", () => ({
 import type { Client, Message, GroupChat } from "whatsapp-web.js";
 import { handleAdminCommand, formatGroupVerdict } from "../index";
 import crypto from "node:crypto";
-const csrfToken = crypto.createHash("sha256").update("secret-token" + "csrf-salt").digest("hex");
+const csrfToken = crypto
+  .createHash("sha256")
+  .update("secret-token" + "csrf-salt")
+  .digest("hex");
 
 jest.mock(
   "confusables",
