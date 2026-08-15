@@ -1,4 +1,4 @@
-import crypto from "crypto";
+import crypto from "node:crypto";
 import FakeRedis from "../../src/__tests__/fake-redis";
 
 const noop = () => undefined;
@@ -17,9 +17,7 @@ export const config = {
   controlPlane: {
     get csrfToken(): string {
       return (
-        process.env.CONTROL_PLANE_CSRF_TOKEN ||
-        process.env.CONTROL_PLANE_API_TOKEN ||
-        "test-token"
+        process.env.CONTROL_PLANE_CSRF_TOKEN || crypto.createHash('sha256').update((process.env.CONTROL_PLANE_API_TOKEN || 'test-token') + 'csrf-salt').digest('hex')
       ).trim();
     },
   },
