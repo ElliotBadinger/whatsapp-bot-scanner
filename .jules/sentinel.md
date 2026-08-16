@@ -5,6 +5,7 @@
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
 
 ## 2025-02-28 - CSRF Token Derivation using Deterministic Hashing
+
 **Vulnerability:** CSRF token defaulting to the same value as the authentication API token.
 **Learning:** The application's `config.controlPlane.csrfToken` defaults to the exact `CONTROL_PLANE_API_TOKEN` if not set, defeating CSRF protection.
 **Prevention:** Derive the CSRF token via deterministic hashing using a master secret and a salt, rather than stateful random tokens.
