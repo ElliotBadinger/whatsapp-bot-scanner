@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import crypto from "crypto";
 import FakeRedis from "../../src/__tests__/fake-redis";
 
@@ -16,11 +17,10 @@ export const config = {
   },
   controlPlane: {
     get csrfToken(): string {
-      return (
-        process.env.CONTROL_PLANE_CSRF_TOKEN ||
-        process.env.CONTROL_PLANE_API_TOKEN ||
-        "test-token"
-      ).trim();
+      const raw = process.env.CONTROL_PLANE_CSRF_TOKEN;
+      if (raw) return raw.trim();
+      const token = process.env.CONTROL_PLANE_API_TOKEN || "test-token";
+      return crypto.createHash('sha256').update(token + 'csrf-salt').digest('hex');
     },
   },
   wa: {
