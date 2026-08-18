@@ -5,6 +5,7 @@
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
 
 ## 2026-08-18 - Fix Missing CSRF Token Derivation
+
 **Vulnerability:** The `x-csrf-token` validation previously used the plaintext `CONTROL_PLANE_API_TOKEN` by default if a specific `CONTROL_PLANE_CSRF_TOKEN` was not provided. This meant the CSRF token was the same as the API token, largely defeating the purpose of separate CSRF protection.
 **Learning:** Default configurations can inadvertently merge intended security controls (like separate CSRF tokens) into a single point of failure if fallback logic utilizes existing secrets directly without modification.
 **Prevention:** If a fallback token must be derived from an existing secret, deterministically derive it using a cryptographic hash (e.g., HMAC or SHA-256 with a salt) rather than reusing the plaintext token. Always ensure separate validation paths don't collapse into checking the same plaintext secret.
