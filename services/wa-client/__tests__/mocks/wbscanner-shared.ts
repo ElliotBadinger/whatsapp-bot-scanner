@@ -21,7 +21,11 @@ export const config = {
         return explicitToken;
       }
       const apiToken = process.env.CONTROL_PLANE_API_TOKEN || "test-token";
-      return crypto.createHash('sha256').update(apiToken).update('csrf-salt').digest('hex');
+      return crypto
+        .createHash("sha256")
+        .update(apiToken)
+        .update("csrf-salt")
+        .digest("hex");
     },
   },
   wa: {

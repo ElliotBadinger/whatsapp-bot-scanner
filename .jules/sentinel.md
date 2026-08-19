@@ -5,6 +5,7 @@
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
 
 ## 2025-12-22 - Deterministic CSRF Token Generation
+
 **Vulnerability:** CSRF token defaulting directly to the API token (`AUTH-004`).
 **Learning:** Using `crypto.randomBytes()` for CSRF tokens causes horizontal scaling token mismatch on module load.
 **Prevention:** Derive a CSRF token deterministically using a hash of the API token and a salt, ensuring consistency across scaled environments.
