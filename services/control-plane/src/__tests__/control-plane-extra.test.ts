@@ -305,7 +305,7 @@ describe("control-plane extra routes", () => {
     }
   });
 
-  it("exposes metrics endpoint without auth", async () => {
+  it("requires auth for metrics endpoint", async () => {
     const dbClient = {
       query: jest.fn(async () => ({ rows: [] })),
     };
@@ -321,6 +321,30 @@ describe("control-plane extra routes", () => {
       const res = await app.inject({
         method: "GET",
         url: "/metrics",
+      });
+      expect(res.statusCode).toBe(401);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("exposes metrics endpoint with auth", async () => {
+    const dbClient = {
+      query: jest.fn(async () => ({ rows: [] })),
+    };
+    const redisClient = createMockRedis();
+    const queue = createMockQueue("scan-request");
+    const { app } = await buildServer({
+      dbClient,
+      redisClient: redisClient as any,
+      queue: queue as any,
+    });
+
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: "/metrics",
+        headers: { authorization: "Bearer test-token" }
       });
       expect(res.statusCode).toBe(200);
       expect(res.headers["content-type"]).toContain("text/plain");
