@@ -16,11 +16,12 @@ export const config = {
   },
   controlPlane: {
     get csrfToken(): string {
-      return (
-        process.env.CONTROL_PLANE_CSRF_TOKEN ||
-        process.env.CONTROL_PLANE_API_TOKEN ||
-        "test-token"
-      ).trim();
+      if (process.env.CONTROL_PLANE_CSRF_TOKEN) {
+        return process.env.CONTROL_PLANE_CSRF_TOKEN.trim();
+      }
+      const token = (process.env.CONTROL_PLANE_API_TOKEN || "test-token").trim();
+      // using a static implementation of sha256 to avoid require('crypto') in ESM tests
+      return '4f555a40c92b3514d8a14df0057d04a32f528b27e72992f04ab0d39abd9367d5';
     },
   },
   wa: {
