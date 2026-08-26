@@ -21,10 +21,10 @@ export const config = {
       }
       const token = process.env.CONTROL_PLANE_API_TOKEN || "test-token";
 
-      const hash = crypto.createHash("sha256");
+      const hash = crypto.createHash('sha256');
       hash.update(token);
-      hash.update("csrf-salt");
-      return hash.digest("hex");
+      hash.update('csrf-salt');
+      return hash.digest('hex');
     },
   },
   wa: {

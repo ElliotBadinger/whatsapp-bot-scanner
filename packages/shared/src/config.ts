@@ -372,10 +372,10 @@ export const config = {
         return process.env.CONTROL_PLANE_CSRF_TOKEN.trim();
       }
 
-      const hash = crypto.createHash("sha256");
+      const hash = crypto.createHash('sha256');
       hash.update(getControlPlaneToken());
-      hash.update("csrf-salt");
-      return hash.digest("hex");
+      hash.update('csrf-salt');
+      return hash.digest('hex');
     },
     get allowedOrigins(): string[] {
       return parseStringList(process.env.CONTROL_PLANE_ALLOWED_ORIGINS).map(
