@@ -62,10 +62,7 @@ function createAuthHook(expectedToken: string) {
     const tokenBuf = Buffer.from(token, "utf8");
     const expectedBuf = Buffer.from(expectedToken, "utf8");
 
-    if (
-      tokenBuf.length !== expectedBuf.length ||
-      !crypto.timingSafeEqual(tokenBuf, expectedBuf)
-    ) {
+    if (tokenBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(tokenBuf, expectedBuf)) {
       reply.code(401).send({ error: "unauthorized" });
       return;
     }
