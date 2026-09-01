@@ -600,6 +600,11 @@ export function assertEssentialConfig(serviceName: string): void {
 
   if (!config.modes.mvp && !config.redisUrl?.trim()) missing.push("REDIS_URL");
 
+  if (config.vt?.enabled && !config.vt?.apiKey) missing.push("VT_API_KEY");
+  if (config.gsb?.enabled && !config.gsb?.apiKey) missing.push("GSB_API_KEY");
+  if (config.whoisxml?.enabled && !config.whoisxml?.apiKey)
+    missing.push("WHOISXML_API_KEY");
+
   if (missing.length > 0) {
     logger.error(
       { service: serviceName, missing },
