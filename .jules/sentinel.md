@@ -4,7 +4,6 @@
 **Learning:** Network libraries often treat IPv4-mapped IPv6 addresses as IPv6, but they effectively route to IPv4 destinations. Simply checking IPv4 ranges against an IPv6 address object fails.
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
 
-
 ## 2025-12-21 - CSRF Token Generation
 
 **Vulnerability:** The CSRF token was defaulting to the exact same value as the API token. This defeats the purpose of having a separate CSRF token if the API token gets leaked or if the CSRF token is exposed in logs or headers.
