@@ -367,9 +367,13 @@ export const config = {
     },
     enableUi: (process.env.CONTROL_PLANE_ENABLE_UI || "true") === "true",
     get csrfToken(): string {
-      return (
-        process.env.CONTROL_PLANE_CSRF_TOKEN || getControlPlaneToken()
-      ).trim();
+      const explicitToken = process.env.CONTROL_PLANE_CSRF_TOKEN;
+      if (explicitToken) {
+        return explicitToken.trim();
+      }
+      const apiToken = getControlPlaneToken();
+      // Derive a deterministic CSRF token from the API token
+      return require('crypto').createHash('sha256').update(apiToken).update('csrf-salt').digest('hex');
     },
     get allowedOrigins(): string[] {
       return parseStringList(process.env.CONTROL_PLANE_ALLOWED_ORIGINS).map(
