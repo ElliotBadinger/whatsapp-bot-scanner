@@ -305,7 +305,7 @@ describe("control-plane extra routes", () => {
     }
   });
 
-  it("exposes metrics endpoint without auth", async () => {
+  it("exposes metrics endpoint with auth", async () => {
     const dbClient = {
       query: jest.fn(async () => ({ rows: [] })),
     };
@@ -321,9 +321,18 @@ describe("control-plane extra routes", () => {
       const res = await app.inject({
         method: "GET",
         url: "/metrics",
+        headers: { authorization: "Bearer " + "test-token" },
       });
       expect(res.statusCode).toBe(200);
       expect(res.headers["content-type"]).toContain("text/plain");
+
+      const resUnauthorized = await app.inject({
+        method: "GET",
+        url: "/metrics",
+      });
+      // Should return 404 because without auth we hit global not found, or 401 if auth failed first
+      // Since it's inside protectedApp, 401 should trigger.
+      expect(resUnauthorized.statusCode).toBe(401);
     } finally {
       await app.close();
     }
