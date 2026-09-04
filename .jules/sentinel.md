@@ -5,6 +5,7 @@
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
 
 ## 2024-03-22 - [Medium] Fix Public Metrics Endpoint Exposure
+
 **Vulnerability:** The Prometheus `/metrics` endpoint in `control-plane` was registered as a public route (before the `createAuthHook`), exposing internal system state, queues, and potential memory layout information to unauthenticated users on the internet (INFO-004 / CWE-200).
 **Learning:** Routes registered directly on the parent `Fastify` instance will not be affected by `app.register()` plugin hooks like preHandler authentication. Even internal-facing administrative endpoints must be explicitly placed behind authentication to prevent information disclosure.
 **Prevention:** Register all administrative endpoints inside the protected plugin context where the `preHandler` hook enforcing `createAuthHook` is applied.
