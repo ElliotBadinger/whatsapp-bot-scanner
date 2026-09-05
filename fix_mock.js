@@ -1,10 +1,13 @@
-const fs = require('fs');
+const fs = require("fs");
 
-let configContent = fs.readFileSync('services/wa-client/__tests__/mocks/wbscanner-shared.ts', 'utf8');
+let configContent = fs.readFileSync(
+  "services/wa-client/__tests__/mocks/wbscanner-shared.ts",
+  "utf8",
+);
 
 const importCrypto = "import crypto from 'node:crypto';\n";
 if (!configContent.includes("import crypto")) {
-    configContent = importCrypto + configContent;
+  configContent = importCrypto + configContent;
 }
 
 const targetString = `
@@ -28,4 +31,7 @@ const replacementString = `
     },`;
 
 configContent = configContent.replace(targetString, replacementString);
-fs.writeFileSync('services/wa-client/__tests__/mocks/wbscanner-shared.ts', configContent);
+fs.writeFileSync(
+  "services/wa-client/__tests__/mocks/wbscanner-shared.ts",
+  configContent,
+);

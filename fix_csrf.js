@@ -1,11 +1,11 @@
-const fs = require('fs');
+const fs = require("fs");
 
-let configContent = fs.readFileSync('packages/shared/src/config.ts', 'utf8');
+let configContent = fs.readFileSync("packages/shared/src/config.ts", "utf8");
 
 const importCrypto = "import crypto from 'node:crypto';\n";
 
 if (!configContent.includes("import crypto")) {
-    configContent = importCrypto + configContent;
+  configContent = importCrypto + configContent;
 }
 
 const targetString = `
@@ -27,4 +27,4 @@ const replacementString = `
     },`;
 
 configContent = configContent.replace(targetString, replacementString);
-fs.writeFileSync('packages/shared/src/config.ts', configContent);
+fs.writeFileSync("packages/shared/src/config.ts", configContent);
