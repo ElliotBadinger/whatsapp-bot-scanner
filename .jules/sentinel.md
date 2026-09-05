@@ -5,6 +5,7 @@
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
 
 ## 2025-03-08 - Fixed CSRF Token Defaulting to API Token
+
 **Vulnerability:** The CSRF token was defaulting to the authentication token, neutralizing its protection (CWE-352).
 **Learning:** It's important to not use the exact authentication token as a fallback CSRF token, as this breaks the separate defense lines for authentication vs CSRF.
 **Prevention:** Use a securely derived hash (e.g. SHA-256 with salt) of the authentication token for fallbacks when generating fallback CSRF tokens to preserve token separation.
