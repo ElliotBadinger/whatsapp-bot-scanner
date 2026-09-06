@@ -5,6 +5,7 @@
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
 
 ## 2025-03-09 - [Non-Constant-Time Token Comparison Fixed]
+
 **Vulnerability:** AUTH-001: The createAuthHook function compared tokens using strict equality (===), allowing timing attacks to brute-force the API token.
 **Learning:** Using basic string comparison for tokens leaks timing information as it exits early upon encountering a mismatch.
 **Prevention:** Always use `crypto.timingSafeEqual` along with checking for equal Buffer lengths when comparing secrets.
