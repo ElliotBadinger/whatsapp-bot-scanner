@@ -29,6 +29,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: env
+            - secretRef:
+                name: wbscanner-secrets
           image: scan-orchestrator
           imagePullPolicy: Always
           livenessProbe:
