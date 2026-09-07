@@ -5,6 +5,7 @@
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
 
 ## 2024-12-09 - [Missing Rate Limiting on Control Plane API]
+
 **Vulnerability:** Fastify endpoints lacking rate limiting could be brute-forced or suffer from denial of service.
 **Learning:** Rate limiting is critical for authentication endpoints and general API health.
 **Prevention:** Use `@fastify/rate-limit` package and apply it to the main `app` instance before any routes.
