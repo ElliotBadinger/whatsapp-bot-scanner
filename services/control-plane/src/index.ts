@@ -7,6 +7,7 @@ import fs from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import path from "node:path";
 import Redis from "ioredis";
+import rateLimit from "@fastify/rate-limit";
 import { Queue } from "bullmq";
 import {
   register,
@@ -86,6 +87,7 @@ export async function buildServer(options: BuildOptions = {}) {
   app.setErrorHandler(globalErrorHandler);
 
   // Public routes (no auth required) - must be registered before the auth hook
+
   app.get("/healthz", async () => ({ ok: true }));
   app.get("/metrics", async (_req, reply) => {
     reply.header("Content-Type", register.contentType);
@@ -93,6 +95,12 @@ export async function buildServer(options: BuildOptions = {}) {
   });
 
   await app.register(async (protectedApp: FastifyInstance) => {
+    // Security Enhancement: Added rate limiting to mitigate brute-force and DoS attacks against protected routes.
+    await protectedApp.register(rateLimit, {
+      max: 100,
+      timeWindow: "1 minute",
+      keyGenerator: (req) => req.ip,
+    });
     protectedApp.addHook("preHandler", createAuthHook(requiredToken));
 
     protectedApp.get("/status", async () => {
