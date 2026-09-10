@@ -329,7 +329,7 @@ describe("control-plane extra routes", () => {
       const res = await app.inject({
         method: "GET",
         url: "/metrics",
-        headers: { authorization: 'Bearer test-token' }
+        headers: { authorization: "Bearer test-token" },
       });
       expect(res.statusCode).toBe(200);
       expect(res.headers["content-type"]).toContain("text/plain");
