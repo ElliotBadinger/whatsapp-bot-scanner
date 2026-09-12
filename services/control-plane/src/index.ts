@@ -4,7 +4,7 @@ import Fastify, {
   type FastifyInstance,
 } from "fastify";
 import fs from "node:fs/promises";
-import crypto from 'node:crypto';
+import crypto from "node:crypto";
 import { createReadStream } from "node:fs";
 import path from "node:path";
 import Redis from "ioredis";
@@ -59,8 +59,8 @@ function createAuthHook(expectedToken: string) {
   ) {
     const hdr = req.headers["authorization"] || "";
     const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : hdr;
-    const a = Buffer.from(token, 'utf8');
-    const b = Buffer.from(expectedToken, 'utf8');
+    const a = Buffer.from(token, "utf8");
+    const b = Buffer.from(expectedToken, "utf8");
     if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
       reply.code(401).send({ error: "unauthorized" });
       return;

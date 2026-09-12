@@ -5,6 +5,7 @@
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
 
 ## 2025-12-08 - [Non-Constant-Time Token Comparison Fix]
+
 **Vulnerability:** The control plane's authentication hook used strict equality (\`===\`) to compare the provided bearer token against the expected token.
 **Learning:** Using simple string comparison for authentication tokens opens the application up to timing attacks, where attackers can guess tokens by measuring response times.
 **Prevention:** Always use \`crypto.timingSafeEqual()\` with buffered strings when comparing sensitive security tokens or secrets.
