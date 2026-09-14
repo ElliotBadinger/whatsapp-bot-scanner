@@ -5,6 +5,7 @@
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
 
 ## 2024-05-18 - [Fix Token Timing Attack]
+
 **Vulnerability:** The `createAuthHook` in `services/control-plane/src/index.ts` uses strict equality (`===`) to compare the provided bearer token with the expected control plane token. This allows attackers to perform a timing attack, potentially brute-forcing the token character by character by measuring the response times.
 **Learning:** Hardcoded comparisons or simple `===` on secret values (like authentication tokens or HMACs) leak timing information, bypassing the purpose of using strong secret keys.
 **Prevention:** Always use `crypto.timingSafeEqual()` from Node's built-in `crypto` module when comparing secrets, after first ensuring they are converted to equal-length Buffers.
