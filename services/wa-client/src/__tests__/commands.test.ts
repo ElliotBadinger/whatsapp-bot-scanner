@@ -21,7 +21,7 @@ jest.mock("rate-limiter-flexible", () => ({
 
 import type { Client, Message, GroupChat } from "whatsapp-web.js";
 import { handleAdminCommand, formatGroupVerdict } from "../index";
-import crypto from "node:crypto";
+import crypto from 'node:crypto';
 
 jest.mock(
   "confusables",
@@ -100,10 +100,7 @@ describe("handleAdminCommand", () => {
         method: "POST",
         headers: {
           authorization: "Bearer secret-token",
-          "x-csrf-token": crypto
-            .createHash("sha256")
-            .update("secret-token" + "csrf-salt")
-            .digest("hex"),
+          "x-csrf-token": crypto.createHash('sha256').update('secret-token' + 'csrf-salt').digest('hex'),
         },
       }),
     );
@@ -149,10 +146,7 @@ describe("handleAdminCommand", () => {
         method: "POST",
         headers: expect.objectContaining({
           authorization: "Bearer secret-token",
-          "x-csrf-token": crypto
-            .createHash("sha256")
-            .update("secret-token" + "csrf-salt")
-            .digest("hex"),
+          "x-csrf-token": crypto.createHash('sha256').update('secret-token' + 'csrf-salt').digest('hex'),
         }),
       }),
     );
