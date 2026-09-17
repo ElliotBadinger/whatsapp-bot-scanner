@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import Fastify, {
   FastifyRequest,
   FastifyReply,
@@ -58,7 +59,12 @@ function createAuthHook(expectedToken: string) {
   ) {
     const hdr = req.headers["authorization"] || "";
     const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : hdr;
-    if (token !== expectedToken) {
+
+    // Prevent timing attacks on authentication tokens
+    const tokenBuffer = Buffer.from(token, 'utf8');
+    const expectedBuffer = Buffer.from(expectedToken, 'utf8');
+
+    if (tokenBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(tokenBuffer, expectedBuffer)) {
       reply.code(401).send({ error: "unauthorized" });
       return;
     }
