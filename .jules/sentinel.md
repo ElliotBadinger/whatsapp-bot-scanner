@@ -5,6 +5,7 @@
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
 
 ## 2024-05-20 - [Timing Attack in Auth Hook]
+
 **Vulnerability:** String comparison (===) used for authentication tokens allows timing attacks.
 **Learning:** Node.js crypto module provides `timingSafeEqual` which is required for security token comparisons, but requires length check first as it throws if lengths mismatch.
 **Prevention:** Always use `crypto.timingSafeEqual` for sensitive string matching.
