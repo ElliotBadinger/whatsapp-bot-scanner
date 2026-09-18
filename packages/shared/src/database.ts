@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import type { Logger } from "pino";
 import fs from "fs";
 import path from "path";
@@ -61,7 +62,8 @@ function createSqliteDriver(dbPath: string): SqliteDriver {
     };
   }
 
-  const requireFunc = (0, eval)("require") as (id: string) => unknown;
+  // When targeting CommonJS, __filename is available; fallback to process.cwd() if undefined
+  const requireFunc = createRequire(typeof __filename !== "undefined" ? __filename : process.cwd() + "/");
   const moduleName = ["better", "sqlite3"].join("-");
   const BetterSqlite3 = requireFunc(moduleName) as unknown as new (
     path: string,
