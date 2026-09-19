@@ -1,11 +1,14 @@
-const fs = require('fs');
+const fs = require("fs");
 
-const path = 'services/control-plane/src/index.ts';
-let content = fs.readFileSync(path, 'utf8');
+const path = "services/control-plane/src/index.ts";
+let content = fs.readFileSync(path, "utf8");
 
 // Add crypto import if it doesn't exist
 if (!content.includes('import crypto from "node:crypto";')) {
-  content = content.replace('import fs from "node:fs/promises";', 'import fs from "node:fs/promises";\nimport crypto from "node:crypto";');
+  content = content.replace(
+    'import fs from "node:fs/promises";',
+    'import fs from "node:fs/promises";\nimport crypto from "node:crypto";',
+  );
 }
 
 // Replace string comparison with timingSafeEqual by hashing first
@@ -17,4 +20,4 @@ const newCode = `    const hashA = crypto.createHash("sha256").update(token).dig
 content = content.replace(oldCode, newCode);
 
 // Write back
-fs.writeFileSync(path, content, 'utf8');
+fs.writeFileSync(path, content, "utf8");
