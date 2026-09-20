@@ -94,7 +94,9 @@ describe("queue configuration validation", () => {
     process.env.CONTROL_PLANE_API_TOKEN = "test-token";
     jest.isolateModules(() => {
       const { config } = require(CONFIG_PATH) as typeof import("../config");
-      expect(config.controlPlane.csrfToken).toBe("d3a4cdc230277c4d1111710329295dae4652017fd32478be6e3d04ddfc192abb");
+      expect(config.controlPlane.csrfToken).toBe(
+        "d3a4cdc230277c4d1111710329295dae4652017fd32478be6e3d04ddfc192abb",
+      );
     });
   });
 });
