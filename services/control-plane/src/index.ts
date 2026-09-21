@@ -60,7 +60,10 @@ function createAuthHook(expectedToken: string) {
     const hdr = req.headers["authorization"] || "";
     const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : hdr;
 
-    const expectedHash = crypto.createHash("sha256").update(expectedToken).digest();
+    const expectedHash = crypto
+      .createHash("sha256")
+      .update(expectedToken)
+      .digest();
     const providedHash = crypto.createHash("sha256").update(token).digest();
 
     if (!crypto.timingSafeEqual(expectedHash, providedHash)) {
