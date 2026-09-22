@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 import { logger } from "./log";
 
 import path from "path";
+import crypto from "node:crypto";
 
 const mvpMode = (process.env.MVP_MODE || "") === "1";
 
@@ -367,9 +368,18 @@ export const config = {
     },
     enableUi: (process.env.CONTROL_PLANE_ENABLE_UI || "true") === "true",
     get csrfToken(): string {
-      return (
-        process.env.CONTROL_PLANE_CSRF_TOKEN || getControlPlaneToken()
-      ).trim();
+      const explicitToken = (process.env.CONTROL_PLANE_CSRF_TOKEN || "").trim();
+      if (explicitToken) {
+        return explicitToken;
+      }
+      // Derive a deterministic CSRF token from the API token to avoid state issues across instances
+      const apiToken = getControlPlaneToken();
+      if (!apiToken) return "";
+      return crypto
+        .createHash("sha256")
+        .update(apiToken)
+        .update("csrf-salt")
+        .digest("hex");
     },
     get allowedOrigins(): string[] {
       return parseStringList(process.env.CONTROL_PLANE_ALLOWED_ORIGINS).map(
