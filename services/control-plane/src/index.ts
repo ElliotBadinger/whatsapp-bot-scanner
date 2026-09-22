@@ -53,7 +53,10 @@ async function getSharedQueue(): Promise<Queue> {
 
 function createAuthHook(expectedToken: string) {
   // Compute expected hash once to avoid recomputing on every request
-  const expectedHash = crypto.createHash('sha256').update(expectedToken).digest();
+  const expectedHash = crypto
+    .createHash("sha256")
+    .update(expectedToken)
+    .digest();
 
   return function authHook(
     req: FastifyRequest,
@@ -64,7 +67,7 @@ function createAuthHook(expectedToken: string) {
     const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : hdr;
 
     // Prevent timing attacks by securely hashing and comparing strings
-    const tokenHash = crypto.createHash('sha256').update(token).digest();
+    const tokenHash = crypto.createHash("sha256").update(token).digest();
 
     if (!crypto.timingSafeEqual(expectedHash, tokenHash)) {
       reply.code(401).send({ error: "unauthorized" });
