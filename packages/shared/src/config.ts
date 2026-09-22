@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import dotenv from "dotenv";
 import { logger } from "./log";
 
@@ -367,9 +368,13 @@ export const config = {
     },
     enableUi: (process.env.CONTROL_PLANE_ENABLE_UI || "true") === "true",
     get csrfToken(): string {
-      return (
-        process.env.CONTROL_PLANE_CSRF_TOKEN || getControlPlaneToken()
-      ).trim();
+      const explicit = (process.env.CONTROL_PLANE_CSRF_TOKEN || "").trim();
+      if (explicit) return explicit;
+      return crypto
+        .createHash("sha256")
+        .update(getControlPlaneToken())
+        .update("csrf-salt")
+        .digest("hex");
     },
     get allowedOrigins(): string[] {
       return parseStringList(process.env.CONTROL_PLANE_ALLOWED_ORIGINS).map(
