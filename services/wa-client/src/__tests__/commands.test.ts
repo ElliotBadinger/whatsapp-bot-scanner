@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import {
   afterEach,
   beforeEach,
@@ -99,7 +100,10 @@ describe("handleAdminCommand", () => {
         method: "POST",
         headers: {
           authorization: "Bearer secret-token",
-          "x-csrf-token": "secret-token",
+          "x-csrf-token": crypto
+            .createHash("sha256")
+            .update("secret-token")
+            .digest("hex"),
         },
       }),
     );
@@ -145,7 +149,10 @@ describe("handleAdminCommand", () => {
         method: "POST",
         headers: expect.objectContaining({
           authorization: "Bearer secret-token",
-          "x-csrf-token": "secret-token",
+          "x-csrf-token": crypto
+            .createHash("sha256")
+            .update("secret-token")
+            .digest("hex"),
         }),
       }),
     );
