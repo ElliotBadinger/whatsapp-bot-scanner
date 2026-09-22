@@ -3,7 +3,11 @@ import { createMockQueue, createMockRedis } from "../../../../test-utils/setup";
 
 describe("control-plane error handling", () => {
   const originalEnv = process.env.NODE_ENV;
-  const authHeader = { authorization: "Bearer test-token" };
+  const authHeader = {
+    authorization: "Bearer test-token",
+    "x-csrf-token":
+      "d3a4cdc230277c4d1111710329295dae4652017fd32478be6e3d04ddfc192abb",
+  };
 
   afterEach(() => {
     process.env.NODE_ENV = originalEnv;
