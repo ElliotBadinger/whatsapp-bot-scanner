@@ -1,11 +1,14 @@
-const fs = require('fs');
+const fs = require("fs");
 
-const path = 'services/control-plane/src/index.ts';
-let code = fs.readFileSync(path, 'utf8');
+const path = "services/control-plane/src/index.ts";
+let code = fs.readFileSync(path, "utf8");
 
 // Add crypto import if it doesn't exist
-if (!code.includes('import crypto from "node:crypto";') && !code.includes('import crypto from "crypto";')) {
-    code = 'import crypto from "node:crypto";\n' + code;
+if (
+  !code.includes('import crypto from "node:crypto";') &&
+  !code.includes('import crypto from "crypto";')
+) {
+  code = 'import crypto from "node:crypto";\n' + code;
 }
 
 const target = `function createAuthHook(expectedToken: string) {
@@ -46,9 +49,9 @@ const replacement = `function createAuthHook(expectedToken: string) {
 }`;
 
 if (code.includes(target)) {
-    code = code.replace(target, replacement);
-    fs.writeFileSync(path, code);
-    console.log('Patched control-plane index.ts successfully');
+  code = code.replace(target, replacement);
+  fs.writeFileSync(path, code);
+  console.log("Patched control-plane index.ts successfully");
 } else {
-    console.log('Could not find target block in index.ts');
+  console.log("Could not find target block in index.ts");
 }
