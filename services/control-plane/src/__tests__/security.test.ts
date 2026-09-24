@@ -19,6 +19,21 @@ async function buildTestServer(dbQueryImpl?: (sql: string, params?: unknown[]) =
 
 describe('Security: Authentication & Authorization', () => {
   describe('Admin Endpoint Protection', () => {
+    test('prevents timing attacks on auth token', async () => {
+      const { app } = await buildTestServer();
+      try {
+        const response = await app.inject({
+          method: 'POST',
+          url: '/overrides',
+          headers: { authorization: 'Bearer test-token-wrong-length' },
+          payload: { url_hash: 'abc', status: 'deny' },
+        });
+        expect(response.statusCode).toBe(401);
+      } finally {
+        await app.close();
+      }
+    });
+
     test('rejects requests without auth token', async () => {
       const { app } = await buildTestServer();
       try {
