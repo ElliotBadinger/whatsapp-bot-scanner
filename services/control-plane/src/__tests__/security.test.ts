@@ -1,19 +1,14 @@
-import { buildServer } from "../index";
-import { createMockQueue, createMockRedis } from "../../../../test-utils/setup";
+import { buildServer } from '../index';
+import { createMockQueue, createMockRedis } from '../../../../test-utils/setup';
 
-const authHeader = { authorization: "Bearer test-token" };
+const authHeader = { authorization: 'Bearer test-token' };
 
-async function buildTestServer(
-  dbQueryImpl?: (
-    sql: string,
-    params?: unknown[],
-  ) => Promise<{ rows: unknown[] }>,
-) {
+async function buildTestServer(dbQueryImpl?: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>) {
   const dbClient = {
     query: jest.fn(dbQueryImpl ?? (async () => ({ rows: [] }))),
   };
   const redisClient = createMockRedis();
-  const queue = createMockQueue("scan-request");
+  const queue = createMockQueue('scan-request');
   const { app } = await buildServer({
     dbClient,
     redisClient: redisClient as any,
@@ -22,16 +17,15 @@ async function buildTestServer(
   return { app, dbClient, redisClient, queue };
 }
 
-describe("Security: Authentication & Authorization", () => {
-  describe("Admin Endpoint Protection", () => {
-    test("prevents timing attacks on auth token", async () => {
+describe('Security: Authentication & Authorization', () => {
+  describe('Admin Endpoint Protection', () => {
+    test('rejects requests without auth token', async () => {
       const { app } = await buildTestServer();
       try {
         const response = await app.inject({
-          method: "POST",
-          url: "/overrides",
-          headers: { authorization: "Bearer test-token-wrong-length" },
-          payload: { url_hash: "abc", status: "deny" },
+          method: 'POST',
+          url: '/overrides',
+          payload: { url_hash: 'abc', status: 'deny' },
         });
         expect(response.statusCode).toBe(401);
       } finally {
@@ -39,13 +33,14 @@ describe("Security: Authentication & Authorization", () => {
       }
     });
 
-    test("rejects requests without auth token", async () => {
+    test('rejects requests with invalid bearer format', async () => {
       const { app } = await buildTestServer();
       try {
         const response = await app.inject({
-          method: "POST",
-          url: "/overrides",
-          payload: { url_hash: "abc", status: "deny" },
+          method: 'POST',
+          url: '/overrides',
+          headers: { authorization: 'InvalidFormat token' },
+          payload: { url_hash: 'abc', status: 'deny' },
         });
         expect(response.statusCode).toBe(401);
       } finally {
@@ -53,29 +48,14 @@ describe("Security: Authentication & Authorization", () => {
       }
     });
 
-    test("rejects requests with invalid bearer format", async () => {
+    test('rejects requests with wrong token', async () => {
       const { app } = await buildTestServer();
       try {
         const response = await app.inject({
-          method: "POST",
-          url: "/overrides",
-          headers: { authorization: "InvalidFormat token" },
-          payload: { url_hash: "abc", status: "deny" },
-        });
-        expect(response.statusCode).toBe(401);
-      } finally {
-        await app.close();
-      }
-    });
-
-    test("rejects requests with wrong token", async () => {
-      const { app } = await buildTestServer();
-      try {
-        const response = await app.inject({
-          method: "POST",
-          url: "/overrides",
-          headers: { authorization: "Bearer wrong-token" },
-          payload: { url_hash: "abc", status: "deny" },
+          method: 'POST',
+          url: '/overrides',
+          headers: { authorization: 'Bearer wrong-token' },
+          payload: { url_hash: 'abc', status: 'deny' },
         });
         // Returns 401 (Unauthorized) for invalid tokens - acceptable security behavior
         expect(response.statusCode).toBe(401);
@@ -84,14 +64,29 @@ describe("Security: Authentication & Authorization", () => {
       }
     });
 
-    test("accepts valid auth token", async () => {
+    test('prevents timing attacks on auth token', async () => {
       const { app } = await buildTestServer();
       try {
         const response = await app.inject({
-          method: "POST",
-          url: "/overrides",
+          method: 'POST',
+          url: '/overrides',
+          headers: { authorization: 'Bearer test-token-wrong-length' },
+          payload: { url_hash: 'abc', status: 'deny' },
+        });
+        expect(response.statusCode).toBe(401);
+      } finally {
+        await app.close();
+      }
+    });
+
+    test('accepts valid auth token', async () => {
+      const { app } = await buildTestServer();
+      try {
+        const response = await app.inject({
+          method: 'POST',
+          url: '/overrides',
           headers: authHeader,
-          payload: { url_hash: "abc", status: "deny" },
+          payload: { url_hash: 'abc', status: 'deny' },
         });
         expect(response.statusCode).toBe(201);
       } finally {
@@ -101,17 +96,17 @@ describe("Security: Authentication & Authorization", () => {
   });
 });
 
-describe("Security: Input Validation", () => {
-  describe("SQL Injection Prevention", () => {
-    test("parameterizes queries - injection in url_hash is safe", async () => {
+describe('Security: Input Validation', () => {
+  describe('SQL Injection Prevention', () => {
+    test('parameterizes queries - injection in url_hash is safe', async () => {
       const { app, dbClient } = await buildTestServer();
       try {
         const maliciousHash = "'; DROP TABLE overrides; --";
         const response = await app.inject({
-          method: "POST",
-          url: "/overrides",
+          method: 'POST',
+          url: '/overrides',
           headers: authHeader,
-          payload: { url_hash: maliciousHash, status: "deny" },
+          payload: { url_hash: maliciousHash, status: 'deny' },
         });
 
         // Request should succeed (treated as literal string)
@@ -127,14 +122,14 @@ describe("Security: Input Validation", () => {
       }
     });
 
-    test("parameterizes queries - injection in status is safe", async () => {
+    test('parameterizes queries - injection in status is safe', async () => {
       const { app } = await buildTestServer();
       try {
         const response = await app.inject({
-          method: "POST",
-          url: "/overrides",
+          method: 'POST',
+          url: '/overrides',
           headers: authHeader,
-          payload: { url_hash: "abc", status: "deny'; DROP TABLE--" },
+          payload: { url_hash: 'abc', status: "deny'; DROP TABLE--" },
         });
 
         // Invalid status should be rejected by validation
@@ -145,19 +140,19 @@ describe("Security: Input Validation", () => {
     });
   });
 
-  describe("Path Traversal Prevention", () => {
-    test("blocks path traversal in urlscan-artifacts", async () => {
+  describe('Path Traversal Prevention', () => {
+    test('blocks path traversal in urlscan-artifacts', async () => {
       const { app } = await buildTestServer(async (sql: string) => {
-        if (sql.includes("urlscan_screenshot_path")) {
-          return { rows: [{ urlscan_screenshot_path: "../../../etc/passwd" }] };
+        if (sql.includes('urlscan_screenshot_path')) {
+          return { rows: [{ urlscan_screenshot_path: '../../../etc/passwd' }] };
         }
         return { rows: [] };
       });
 
-      const validHash = "a".repeat(64);
+      const validHash = 'a'.repeat(64);
       try {
         const response = await app.inject({
-          method: "GET",
+          method: 'GET',
           url: `/scans/${validHash}/urlscan-artifacts/screenshot`,
           headers: authHeader,
         });
@@ -168,18 +163,18 @@ describe("Security: Input Validation", () => {
       }
     });
 
-    test("blocks absolute path outside storage", async () => {
+    test('blocks absolute path outside storage', async () => {
       const { app } = await buildTestServer(async (sql: string) => {
-        if (sql.includes("urlscan_screenshot_path")) {
-          return { rows: [{ urlscan_screenshot_path: "/tmp/malicious.png" }] };
+        if (sql.includes('urlscan_screenshot_path')) {
+          return { rows: [{ urlscan_screenshot_path: '/tmp/malicious.png' }] };
         }
         return { rows: [] };
       });
 
-      const validHash = "b".repeat(64);
+      const validHash = 'b'.repeat(64);
       try {
         const response = await app.inject({
-          method: "GET",
+          method: 'GET',
           url: `/scans/${validHash}/urlscan-artifacts/screenshot`,
           headers: authHeader,
         });
@@ -191,33 +186,33 @@ describe("Security: Input Validation", () => {
     });
   });
 
-  describe("URL Validation", () => {
-    test("rejects javascript: protocol URLs", async () => {
+  describe('URL Validation', () => {
+    test('rejects javascript: protocol URLs', async () => {
       const { app } = await buildTestServer();
       try {
         const response = await app.inject({
-          method: "POST",
-          url: "/rescan",
+          method: 'POST',
+          url: '/rescan',
           headers: authHeader,
-          payload: { url: "javascript:alert(1)" },
+          payload: { url: 'javascript:alert(1)' },
         });
 
         expect(response.statusCode).toBe(400);
         const body = JSON.parse(response.payload);
-        expect(body.error).toBe("invalid_url");
+        expect(body.error).toBe('invalid_url');
       } finally {
         await app.close();
       }
     });
 
-    test("rejects data: protocol URLs", async () => {
+    test('rejects data: protocol URLs', async () => {
       const { app } = await buildTestServer();
       try {
         const response = await app.inject({
-          method: "POST",
-          url: "/rescan",
+          method: 'POST',
+          url: '/rescan',
           headers: authHeader,
-          payload: { url: "data:text/html,<script>alert(1)</script>" },
+          payload: { url: 'data:text/html,<script>alert(1)</script>' },
         });
 
         expect(response.statusCode).toBe(400);
@@ -226,14 +221,14 @@ describe("Security: Input Validation", () => {
       }
     });
 
-    test("rejects file: protocol URLs", async () => {
+    test('rejects file: protocol URLs', async () => {
       const { app } = await buildTestServer();
       try {
         const response = await app.inject({
-          method: "POST",
-          url: "/rescan",
+          method: 'POST',
+          url: '/rescan',
           headers: authHeader,
-          payload: { url: "file:///etc/passwd" },
+          payload: { url: 'file:///etc/passwd' },
         });
 
         expect(response.statusCode).toBe(400);
@@ -242,20 +237,20 @@ describe("Security: Input Validation", () => {
       }
     });
 
-    test("accepts valid HTTPS URLs", async () => {
+    test('accepts valid HTTPS URLs', async () => {
       const { app, queue } = await buildTestServer(async (sql: string) => {
-        if (sql.startsWith("SELECT chat_id")) {
-          return { rows: [{ chat_id: "chat-1", message_id: "msg-1" }] };
+        if (sql.startsWith('SELECT chat_id')) {
+          return { rows: [{ chat_id: 'chat-1', message_id: 'msg-1' }] };
         }
         return { rows: [] };
       });
 
       try {
         const response = await app.inject({
-          method: "POST",
-          url: "/rescan",
+          method: 'POST',
+          url: '/rescan',
           headers: authHeader,
-          payload: { url: "https://example.com/safe" },
+          payload: { url: 'https://example.com/safe' },
         });
 
         expect(response.statusCode).toBe(200);
@@ -266,13 +261,13 @@ describe("Security: Input Validation", () => {
     });
   });
 
-  describe("Parameter Validation", () => {
-    test("rejects invalid urlHash format", async () => {
+  describe('Parameter Validation', () => {
+    test('rejects invalid urlHash format', async () => {
       const { app } = await buildTestServer();
       try {
         const response = await app.inject({
-          method: "GET",
-          url: "/scans/invalid-hash/urlscan-artifacts/screenshot",
+          method: 'GET',
+          url: '/scans/invalid-hash/urlscan-artifacts/screenshot',
           headers: authHeader,
         });
 
@@ -282,12 +277,12 @@ describe("Security: Input Validation", () => {
       }
     });
 
-    test("rejects invalid artifact type", async () => {
+    test('rejects invalid artifact type', async () => {
       const { app } = await buildTestServer();
-      const validHash = "c".repeat(64);
+      const validHash = 'c'.repeat(64);
       try {
         const response = await app.inject({
-          method: "GET",
+          method: 'GET',
           url: `/scans/${validHash}/urlscan-artifacts/malicious-type`,
           headers: authHeader,
         });
@@ -298,14 +293,14 @@ describe("Security: Input Validation", () => {
       }
     });
 
-    test("rejects override with invalid status enum", async () => {
+    test('rejects override with invalid status enum', async () => {
       const { app } = await buildTestServer();
       try {
         const response = await app.inject({
-          method: "POST",
-          url: "/overrides",
+          method: 'POST',
+          url: '/overrides',
           headers: authHeader,
-          payload: { url_hash: "abc", status: "invalid-status" },
+          payload: { url_hash: 'abc', status: 'invalid-status' },
         });
 
         expect(response.statusCode).toBe(400);
@@ -316,16 +311,16 @@ describe("Security: Input Validation", () => {
   });
 });
 
-describe("Security: Error Message Safety", () => {
-  test("returns 500 on internal errors without crashing", async () => {
+describe('Security: Error Message Safety', () => {
+  test('returns 500 on internal errors without crashing', async () => {
     const { app } = await buildTestServer(async () => {
-      throw new Error("Database query failed");
+      throw new Error('Database query failed');
     });
 
     try {
       const response = await app.inject({
-        method: "GET",
-        url: "/status",
+        method: 'GET',
+        url: '/status',
         headers: authHeader,
       });
 
@@ -336,12 +331,12 @@ describe("Security: Error Message Safety", () => {
     }
   });
 
-  test("healthz endpoint is always accessible", async () => {
+  test('healthz endpoint is always accessible', async () => {
     const { app } = await buildTestServer();
     try {
       const response = await app.inject({
-        method: "GET",
-        url: "/healthz",
+        method: 'GET',
+        url: '/healthz',
       });
       expect(response.statusCode).toBe(200);
       expect(JSON.parse(response.payload)).toEqual({ ok: true });
