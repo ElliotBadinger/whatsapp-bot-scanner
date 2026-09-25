@@ -63,7 +63,10 @@ function createAuthHook(expectedToken: string) {
     try {
       if (token) {
         const tokenHash = crypto.createHash("sha256").update(token).digest();
-        const expectedHash = crypto.createHash("sha256").update(expectedToken).digest();
+        const expectedHash = crypto
+          .createHash("sha256")
+          .update(expectedToken)
+          .digest();
         tokenValid = crypto.timingSafeEqual(tokenHash, expectedHash);
       }
     } catch {

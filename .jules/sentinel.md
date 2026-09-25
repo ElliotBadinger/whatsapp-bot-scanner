@@ -5,6 +5,7 @@
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
 
 ## 2026-09-25 - [Timing Attack in Token Validation]
+
 **Vulnerability:** The control plane `createAuthHook` compared secret tokens using simple string equality (`!==`), making it susceptible to timing side-channels that leak token characters.
 **Learning:** String comparisons short-circuit. Comparing variable length strings securely requires either padding or hashing both inputs before using `crypto.timingSafeEqual()`, to prevent length leakage throwing errors.
 **Prevention:** Always use `crypto.timingSafeEqual` to compare secrets. Ensure inputs to `timingSafeEqual` are the exact same length (e.g. by comparing hashes of the inputs) so that it doesn't leak the expected length via thrown errors.
