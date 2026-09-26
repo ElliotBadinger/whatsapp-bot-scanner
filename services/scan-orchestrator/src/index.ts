@@ -1894,10 +1894,7 @@ async function handleUrlscanCallback(
 
     let headerMatch = false;
     if (headerToken) {
-      const hashHeader = crypto
-        .createHash("sha256")
-        .update(headerToken)
-        .digest();
+      const hashHeader = crypto.createHash("sha256").update(headerToken).digest();
       headerMatch = crypto.timingSafeEqual(hashSecret, hashHeader);
     }
 
