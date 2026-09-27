@@ -1,12 +1,21 @@
-const fs = require('fs');
-const path = require('path');
+const fs = require("fs");
+const path = require("path");
 
-const filePath = path.join(__dirname, 'services/scan-orchestrator/src/index.ts');
-let content = fs.readFileSync(filePath, 'utf8');
+const filePath = path.join(
+  __dirname,
+  "services/scan-orchestrator/src/index.ts",
+);
+let content = fs.readFileSync(filePath, "utf8");
 
 // Check if crypto is imported, if not, add it.
-if (!content.includes("import crypto from 'node:crypto';") && !content.includes('import crypto from "node:crypto";')) {
-    content = content.replace(/^import /m, "import crypto from 'node:crypto';\nimport ");
+if (
+  !content.includes("import crypto from 'node:crypto';") &&
+  !content.includes('import crypto from "node:crypto";')
+) {
+  content = content.replace(
+    /^import /m,
+    "import crypto from 'node:crypto';\nimport ",
+  );
 }
 
 const targetStr = `  if (!secret || (headerToken !== secret && queryToken !== secret)) {`;
