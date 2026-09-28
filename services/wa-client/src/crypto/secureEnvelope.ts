@@ -4,6 +4,7 @@ import {
   createDecipheriv,
   createHmac,
   timingSafeEqual,
+  createHash,
 } from "node:crypto";
 import type { EncryptionMaterials } from "./dataKeyProvider.js";
 
@@ -58,10 +59,10 @@ function verifyMac(
     .update(payload)
     .digest();
   const provided = Buffer.from(macB64, "base64");
-  if (
-    expected.length !== provided.length ||
-    !timingSafeEqual(expected, provided)
-  ) {
+  const expectedHash = createHash('sha256').update(expected).digest();
+  const providedHash = createHash('sha256').update(provided).digest();
+
+  if (!timingSafeEqual(expectedHash, providedHash)) {
     throw new Error("Encrypted payload failed HMAC verification");
   }
 }
