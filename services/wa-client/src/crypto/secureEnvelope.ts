@@ -58,10 +58,18 @@ function verifyMac(
     .update(payload)
     .digest();
   const provided = Buffer.from(macB64, "base64");
-  if (
-    expected.length !== provided.length ||
-    !timingSafeEqual(expected, provided)
-  ) {
+  const isLengthMatch = expected.length === provided.length;
+
+  let valid = false;
+  if (isLengthMatch) {
+    valid = timingSafeEqual(expected, provided);
+  } else {
+    // Compare expected with itself to consume same time as a successful match
+    timingSafeEqual(expected, expected);
+    valid = false;
+  }
+
+  if (!valid) {
     throw new Error("Encrypted payload failed HMAC verification");
   }
 }
