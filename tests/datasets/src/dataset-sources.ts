@@ -1,7 +1,7 @@
-import { readFile } from 'node:fs/promises';
-import { ensureCachedText, storagePath } from './cache';
+import { readFile } from "node:fs/promises";
+import { ensureCachedText, storagePath } from "./cache";
 
-export type DatasetLabel = 'benign' | 'suspicious' | 'malicious';
+export type DatasetLabel = "benign" | "suspicious" | "malicious";
 
 export interface LabeledUrl {
   url: string;
@@ -20,64 +20,85 @@ function normalizeUrl(url: string): string | null {
   }
 }
 
-export async function fetchOpenPhishMalicious(limit: number): Promise<LabeledUrl[]> {
+export async function fetchOpenPhishMalicious(
+  limit: number,
+): Promise<LabeledUrl[]> {
   const text = await ensureCachedText(
-    'https://openphish.com/feed.txt',
-    storagePath('openphish/feed.txt'),
-    { maxAgeMs: 60 * 60 * 1000 }
+    "https://openphish.com/feed.txt",
+    storagePath("openphish/feed.txt"),
+    { maxAgeMs: 60 * 60 * 1000 },
   );
   const urls = text
-    .split('\n')
+    .split("\n")
     .map((line) => normalizeUrl(line))
     .filter((u): u is string => Boolean(u))
     .slice(0, limit);
-  return urls.map((url) => ({ url, label: 'malicious', source: 'openphish', tags: ['phishing'] }));
+  return urls.map((url) => ({
+    url,
+    label: "malicious",
+    source: "openphish",
+    tags: ["phishing"],
+  }));
 }
 
-export async function fetchUrlhausMalicious(limit: number): Promise<LabeledUrl[]> {
+export async function fetchUrlhausMalicious(
+  limit: number,
+): Promise<LabeledUrl[]> {
   const text = await ensureCachedText(
-    'https://urlhaus.abuse.ch/downloads/text_recent/',
-    storagePath('urlhaus/text_recent.txt'),
-    { maxAgeMs: 30 * 60 * 1000 }
+    "https://urlhaus.abuse.ch/downloads/text_recent/",
+    storagePath("urlhaus/text_recent.txt"),
+    { maxAgeMs: 30 * 60 * 1000 },
   );
   const urls = text
-    .split('\n')
+    .split("\n")
     .map((line) => normalizeUrl(line))
     .filter((u): u is string => Boolean(u))
     .slice(0, limit);
-  return urls.map((url) => ({ url, label: 'malicious', source: 'urlhaus', tags: ['malware'] }));
+  return urls.map((url) => ({
+    url,
+    label: "malicious",
+    source: "urlhaus",
+    tags: ["malware"],
+  }));
 }
 
-export async function fetchMajesticBenign(limit: number): Promise<LabeledUrl[]> {
+export async function fetchMajesticBenign(
+  limit: number,
+): Promise<LabeledUrl[]> {
   // Avoid downloading the full 76MB by fetching the first ~5MB; enough for >100k rows.
   const text = await ensureCachedText(
-    'https://downloads.majestic.com/majestic_million.csv',
-    storagePath('majestic/majestic_million.head.csv'),
+    "https://downloads.majestic.com/majestic_million.csv",
+    storagePath("majestic/majestic_million.head.csv"),
     {
       maxAgeMs: 7 * 24 * 60 * 60 * 1000,
-      headers: { Range: 'bytes=0-5000000' },
-    }
+      headers: { Range: "bytes=0-5000000" },
+    },
   );
 
-  const lines = text.split('\n').slice(1); // header
+  const lines = text.split("\n").slice(1); // header
   const urls: string[] = [];
   for (const line of lines) {
-    const parts = line.split(',');
-    const domain = (parts[2] ?? '').trim();
+    const parts = line.split(",");
+    const domain = (parts[2] ?? "").trim();
     if (!domain) continue;
     const normalized = normalizeUrl(`https://${domain}/`);
     if (normalized) urls.push(normalized);
     if (urls.length >= limit) break;
   }
 
-  return urls.map((u) => ({ url: u, label: 'benign', source: 'majestic-million', tags: ['benign'] }));
+  return urls.map((u) => ({
+    url: u,
+    label: "benign",
+    source: "majestic-million",
+    tags: ["benign"],
+  }));
 }
 
 export async function buildHardModeSuspiciousFromReport(
   reportPath: string,
-  limit: number
+  limit: number,
 ): Promise<LabeledUrl[]> {
-  const text = await readFile(reportPath, 'utf8');
+  const text = await readFile(reportPath, "utf8");
 
   const codeTicks = Array.from(text.matchAll(/`([^`]+)`/g)).map((m) => m[1]);
   const candidates = new Set<string>();
@@ -92,12 +113,14 @@ export async function buildHardModeSuspiciousFromReport(
     if (candidates.size >= limit) break;
   }
 
-  return Array.from(candidates).slice(0, limit).map((url) => ({
-    url,
-    label: 'suspicious',
-    source: 'hard-mode-report',
-    tags: ['hard-mode', 'heuristics'],
-  }));
+  return Array.from(candidates)
+    .slice(0, limit)
+    .map((url) => ({
+      url,
+      label: "suspicious",
+      source: "hard-mode-report",
+      tags: ["hard-mode", "heuristics"],
+    }));
 }
 
 function desanitizeThreatPattern(raw: string): string | null {
@@ -105,13 +128,13 @@ function desanitizeThreatPattern(raw: string): string | null {
   if (!s) return null;
 
   s = s
-    .replace(/^hxxps:\/\//i, 'https://')
-    .replace(/^hxxp:\/\//i, 'http://')
-    .replace(/\s+/g, '')
-    .replace(/\(\.\)/g, '.')
-    .replace(/\[\. ?\]/g, '.')
-    .replace(/\[dot\]/gi, '.')
-    .replace(/\[[a-zA-Z_]{2,}\]/g, 'test');
+    .replace(/^hxxps:\/\//i, "https://")
+    .replace(/^hxxp:\/\//i, "http://")
+    .replace(/\s+/g, "")
+    .replace(/\(\.\)/g, ".")
+    .replace(/\[\. ?\]/g, ".")
+    .replace(/\[dot\]/gi, ".")
+    .replace(/\[[a-zA-Z_]{2,}\]/g, "test");
 
   if (!/^https?:\/\//i.test(s)) {
     s = `https://${s}`;
@@ -123,18 +146,18 @@ function desanitizeThreatPattern(raw: string): string | null {
 function isHighSignalHardMode(url: string): boolean {
   const lower = url.toLowerCase();
   return (
-    lower.includes('urldefense.proofpoint.com/v2/url?') ||
-    lower.includes('.safelinks.protection.outlook.com') ||
-    lower.includes('l.facebook.com/l.php?') ||
-    lower.includes('www.google.com/url?') ||
-    lower.includes('business.google.com/website_shared/launch_bw.html?') ||
-    lower.includes('af_web_dp=') ||
-    lower.includes('$fallback_url=') ||
-    lower.includes('ofl=') ||
-    lower.includes('/cgi-bin/res') ||
-    lower.includes('/verify-human/') ||
-    lower.includes('/how-to-fix/') ||
-    (lower.includes('.php?') && lower.includes('http')) ||
+    lower.includes("urldefense.proofpoint.com/v2/url?") ||
+    lower.includes(".safelinks.protection.outlook.com") ||
+    lower.includes("l.facebook.com/l.php?") ||
+    lower.includes("www.google.com/url?") ||
+    lower.includes("business.google.com/website_shared/launch_bw.html?") ||
+    lower.includes("af_web_dp=") ||
+    lower.includes("$fallback_url=") ||
+    lower.includes("ofl=") ||
+    lower.includes("/cgi-bin/res") ||
+    lower.includes("/verify-human/") ||
+    lower.includes("/how-to-fix/") ||
+    (lower.includes(".php?") && lower.includes("http")) ||
     /https?:\/\/\d{1,3}(?:\.\d{1,3}){3}:\d{2,5}\//.test(lower)
   );
 }

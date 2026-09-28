@@ -159,7 +159,10 @@ export class LocalThreatDatabase {
 
       await pipeline.exec();
 
-      logger.info({ count: urls.length }, "OpenPhish feed updated successfully");
+      logger.info(
+        { count: urls.length },
+        "OpenPhish feed updated successfully",
+      );
     } catch (err) {
       logger.warn({ err }, "Failed to update OpenPhish feed");
     }
