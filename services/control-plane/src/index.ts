@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import Fastify, {
   FastifyRequest,
   FastifyReply,
@@ -51,6 +52,7 @@ async function getSharedQueue(): Promise<Queue> {
 }
 
 function createAuthHook(expectedToken: string) {
+  const expectedBuffer = Buffer.from(expectedToken, "utf8");
   return function authHook(
     req: FastifyRequest,
     reply: FastifyReply,
@@ -58,7 +60,17 @@ function createAuthHook(expectedToken: string) {
   ) {
     const hdr = req.headers["authorization"] || "";
     const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : hdr;
-    if (token !== expectedToken) {
+    const tokenBuffer = Buffer.from(token, "utf8");
+
+    let isMatch = false;
+    if (tokenBuffer.length === expectedBuffer.length) {
+      isMatch = crypto.timingSafeEqual(tokenBuffer, expectedBuffer);
+    } else {
+      // Prevent timing attacks by always performing the comparison
+      crypto.timingSafeEqual(expectedBuffer, expectedBuffer);
+    }
+
+    if (!isMatch) {
       reply.code(401).send({ error: "unauthorized" });
       return;
     }
@@ -87,13 +99,14 @@ export async function buildServer(options: BuildOptions = {}) {
 
   // Public routes (no auth required) - must be registered before the auth hook
   app.get("/healthz", async () => ({ ok: true }));
-  app.get("/metrics", async (_req, reply) => {
-    reply.header("Content-Type", register.contentType);
-    return register.metrics();
-  });
 
   await app.register(async (protectedApp: FastifyInstance) => {
     protectedApp.addHook("preHandler", createAuthHook(requiredToken));
+
+    protectedApp.get("/metrics", async (_req, reply) => {
+      reply.header("Content-Type", register.contentType);
+      return register.metrics();
+    });
 
     protectedApp.get("/status", async () => {
       const { rows } = await dbClient.query(
