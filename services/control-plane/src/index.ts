@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import Fastify, {
   FastifyRequest,
   FastifyReply,
@@ -58,7 +59,19 @@ function createAuthHook(expectedToken: string) {
   ) {
     const hdr = req.headers["authorization"] || "";
     const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : hdr;
-    if (token !== expectedToken) {
+    const expectedBuf = Buffer.from(expectedToken);
+    const providedBuf = Buffer.from(token);
+
+    // Prevent length mismatch error in timingSafeEqual by returning early for length mismatches
+    // We still do a dummy comparison to maintain constant time if length is different.
+    let isMatch = false;
+    if (expectedBuf.length === providedBuf.length) {
+      isMatch = crypto.timingSafeEqual(expectedBuf, providedBuf);
+    } else {
+      crypto.timingSafeEqual(expectedBuf, expectedBuf); // dummy comparison
+    }
+
+    if (!isMatch) {
       reply.code(401).send({ error: "unauthorized" });
       return;
     }
