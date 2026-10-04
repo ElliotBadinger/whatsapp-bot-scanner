@@ -52,7 +52,7 @@ async function getSharedQueue(): Promise<Queue> {
 }
 
 function createAuthHook(expectedToken: string) {
-  const expectedBuffer = Buffer.from(expectedToken || '');
+  const expectedBuffer = Buffer.from(expectedToken || "");
   return function authHook(
     req: FastifyRequest,
     reply: FastifyReply,
@@ -60,7 +60,7 @@ function createAuthHook(expectedToken: string) {
   ) {
     const hdr = req.headers["authorization"] || "";
     const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : hdr;
-    const tokenBuffer = Buffer.from(token || '');
+    const tokenBuffer = Buffer.from(token || "");
 
     let isValid = false;
     if (expectedBuffer.length === tokenBuffer.length) {
