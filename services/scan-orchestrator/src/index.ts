@@ -1,4 +1,15 @@
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
+import { createHash, timingSafeEqual } from "node:crypto";
+
+function safeCompare(a: string | undefined, b: string | undefined) {
+  const hashA = createHash("sha256")
+    .update(a || "")
+    .digest();
+  const hashB = createHash("sha256")
+    .update(b || "")
+    .digest();
+  return timingSafeEqual(hashA, hashB);
+}
 import Redis from "ioredis";
 import { Queue, Worker } from "bullmq";
 import {
@@ -1887,7 +1898,10 @@ async function handleUrlscanCallback(
     ? queryTokenRaw[0]
     : queryTokenRaw;
 
-  if (!secret || (headerToken !== secret && queryToken !== secret)) {
+  if (
+    !secret ||
+    (!safeCompare(headerToken, secret) && !safeCompare(queryToken, secret))
+  ) {
     reply.code(401).send({ ok: false, error: "unauthorized" });
     return;
   }
