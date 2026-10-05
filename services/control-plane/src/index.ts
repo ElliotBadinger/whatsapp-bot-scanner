@@ -5,7 +5,6 @@ import Fastify, {
 } from "fastify";
 import { createHash, timingSafeEqual } from "node:crypto";
 
-
 function safeCompare(a: string, b: string) {
   const hashA = createHash("sha256")
     .update(a || "")

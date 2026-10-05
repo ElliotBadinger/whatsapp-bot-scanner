@@ -5,6 +5,7 @@
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
 
 ## 2025-02-14 - Timing attacks when comparing secrets
+
 **Vulnerability:** API tokens and secrets were being checked with standard JavaScript equality (=== or !==) operators. This is vulnerable to timing attacks as character-by-character string comparisons return early upon the first mismatch.
 **Learning:** These small timing differences could be used by an attacker to guess a secret string one character at a time by making many requests and analyzing the time to response.
 **Prevention:** Use `node:crypto`'s `timingSafeEqual()` function (padding the inputs with hashes of the values so it always processes a constant size and won't crash on length mismatches) when verifying any secure tokens.
