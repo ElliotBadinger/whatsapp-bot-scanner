@@ -4,6 +4,7 @@ import Fastify, {
   type FastifyInstance,
 } from "fastify";
 import fs from "node:fs/promises";
+import crypto from "node:crypto";
 import { createReadStream } from "node:fs";
 import path from "node:path";
 import Redis from "ioredis";
@@ -51,6 +52,8 @@ async function getSharedQueue(): Promise<Queue> {
 }
 
 function createAuthHook(expectedToken: string) {
+  const expectedBuffer = Buffer.from(expectedToken);
+
   return function authHook(
     req: FastifyRequest,
     reply: FastifyReply,
@@ -58,7 +61,16 @@ function createAuthHook(expectedToken: string) {
   ) {
     const hdr = req.headers["authorization"] || "";
     const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : hdr;
-    if (token !== expectedToken) {
+    const providedBuffer = Buffer.from(token);
+
+    let isValid = false;
+    if (expectedBuffer.length === providedBuffer.length) {
+      isValid = crypto.timingSafeEqual(expectedBuffer, providedBuffer);
+    } else {
+      crypto.timingSafeEqual(expectedBuffer, expectedBuffer);
+    }
+
+    if (!isValid) {
       reply.code(401).send({ error: "unauthorized" });
       return;
     }
