@@ -1,6 +1,5 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "whatsapp-bot-scanner",
@@ -219,41 +218,6 @@
       },
       "optionalDependencies": {
         "@aws-sdk/client-kms": "^3.943.0",
-      },
-    },
-    "tests/datasets": {
-      "name": "@wbscanner/dataset-tests",
-      "version": "0.1.0",
-      "devDependencies": {
-        "@types/node": "^22.15.29",
-        "ioredis-mock": "^8.0.0",
-        "typescript": "^5.9.3",
-        "vitest": "^4.0.15",
-      },
-    },
-    "tests/e2e": {
-      "name": "@wbscanner/e2e-tests",
-      "version": "0.1.0",
-      "devDependencies": {
-        "@types/node": "^22.15.29",
-        "typescript": "^5.9.3",
-        "vitest": "^4.0.15",
-      },
-    },
-    "tests/integration": {
-      "name": "@wbscanner/integration-tests",
-      "version": "0.1.0",
-      "devDependencies": {
-        "@types/node": "^22.15.29",
-        "typescript": "^5.9.3",
-        "vitest": "^4.0.15",
-      },
-    },
-    "tests/setup-cli": {
-      "name": "@wbscanner/setup-cli-tests",
-      "version": "0.1.0",
-      "devDependencies": {
-        "vitest": "^4.0.15",
       },
     },
   },
@@ -1016,17 +980,9 @@
 
     "@wbscanner/control-plane": ["@wbscanner/control-plane@workspace:services/control-plane"],
 
-    "@wbscanner/dataset-tests": ["@wbscanner/dataset-tests@workspace:tests/datasets"],
-
-    "@wbscanner/e2e-tests": ["@wbscanner/e2e-tests@workspace:tests/e2e"],
-
-    "@wbscanner/integration-tests": ["@wbscanner/integration-tests@workspace:tests/integration"],
-
     "@wbscanner/scan-orchestrator": ["@wbscanner/scan-orchestrator@workspace:services/scan-orchestrator"],
 
     "@wbscanner/scanner-core": ["@wbscanner/scanner-core@workspace:packages/scanner-core"],
-
-    "@wbscanner/setup-cli-tests": ["@wbscanner/setup-cli-tests@workspace:tests/setup-cli"],
 
     "@wbscanner/shared": ["@wbscanner/shared@workspace:packages/shared"],
 
