@@ -1888,7 +1888,6 @@ async function handleUrlscanCallback(
     ? queryTokenRaw[0]
     : queryTokenRaw;
 
-
   const secretBuf = Buffer.from(secret || "");
   const headerTokenBuf = Buffer.from((headerToken as string) || "");
   const queryTokenBuf = Buffer.from((queryToken as string) || "");
