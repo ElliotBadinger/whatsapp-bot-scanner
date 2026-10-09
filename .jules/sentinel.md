@@ -5,6 +5,7 @@
 **Prevention:** Always convert IPv4-mapped IPv6 addresses to their IPv4 equivalent before checking against allow/deny lists. Use `addr.isIPv4MappedAddress()` and `addr.toIPv4Address()` provided by libraries like `ipaddr.js`.
 
 ## 2024-10-09 - [Fix Timing Attack Vulnerability in Auth Hook]
+
 **Vulnerability:** The `createAuthHook` in the control-plane service directly compared the authentication tokens using `===`. This exposed a timing attack vulnerability as string comparison is not constant-time.
 **Learning:** Authentication tokens and secrets need constant-time comparison to prevent adversaries from guessing the token by analyzing the time taken for comparison.
 **Prevention:** Always use `crypto.timingSafeEqual()` for comparing secrets. When secrets can be of variable length, hash both sides before comparing to ensure equal buffer lengths, avoiding DoS through unhandled length-mismatch exceptions.

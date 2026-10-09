@@ -52,7 +52,10 @@ async function getSharedQueue(): Promise<Queue> {
 }
 
 function createAuthHook(expectedToken: string) {
-  const expectedHash = crypto.createHash('sha256').update(expectedToken).digest();
+  const expectedHash = crypto
+    .createHash("sha256")
+    .update(expectedToken)
+    .digest();
   return function authHook(
     req: FastifyRequest,
     reply: FastifyReply,
@@ -61,7 +64,10 @@ function createAuthHook(expectedToken: string) {
     const hdr = req.headers["authorization"] || "";
     const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : hdr;
 
-    const providedHash = crypto.createHash('sha256').update(token || '').digest();
+    const providedHash = crypto
+      .createHash("sha256")
+      .update(token || "")
+      .digest();
 
     if (!crypto.timingSafeEqual(expectedHash, providedHash)) {
       reply.code(401).send({ error: "unauthorized" });
